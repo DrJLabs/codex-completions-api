@@ -1,0 +1,63 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: codex-completions-api:latest
+    environment:
+      - PORT=11435
+      - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
+      - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
+      - PROXY_STREAM_MODE=incremental
+      - CODEX_BIN=codex
+    # Optional: mount Codex CLI + credentials from host
+    # volumes:
+    #   - ~/.codex:/home/node/.codex:ro
+    #   - /usr/local/bin/codex:/usr/local/bin/codex:ro
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+
+      # Backend service port inside the container
+      - traefik.http.services.codex-api.loadbalancer.server.port=11435
+
+      # Protected API router
+      - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
+      - traefik.http.routers.codex-api.entrypoints=websecure
+      - traefik.http.routers.codex-api.tls=true
+      - traefik.http.routers.codex-api.middlewares=codex-forwardauth
+
+      # ForwardAuth middleware (edge bearer auth)
+      - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
+      - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
+
+      # Public health router (no auth)
+      - traefik.http.routers.codex-health.rule=Host(`codex-api.onemainarmy.com`) && Path(`/healthz`)
+      - traefik.http.routers.codex-health.entrypoints=websecure
+      - traefik.http.routers.codex-health.tls=true
+      - traefik.http.routers.codex-health.service=codex-api
+    restart: unless-stopped
+
+  auth:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server.js
+    environment:
+      - PORT=8080
+      - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
+      - AUTH_REALM=api
+    volumes:
+      - ./auth:/app:ro
+    # Expose to host for Traefik host service to call via 127.0.0.1
+    ports:
+      - 127.0.0.1:18080:8080
+    networks:
+      - traefik
+    restart: unless-stopped
+
+networks:
+  traefik:
+    external: true

@@ -98,3 +98,69 @@ The acceptance checks look for a role-first SSE chunk and the `[DONE]` terminato
 ## License
 
 UNLICENSED (see repository terms). Do not redistribute without permission.
+
+## Deployment: Traefik ForwardAuth (Docker Compose)
+
+This section deploys the API behind Traefik with HTTPS handled by cloudflared and Bearer auth enforced at the edge via Traefik ForwardAuth. The service itself already checks Bearer tokens internally in [app.post()](server.js:46). Public health probe is served at [app.get()](server.js:39).
+
+Prerequisites
+- Traefik v3 running as a host service with Docker provider enabled and an external Docker network named `traefik`.
+- Entrypoint `websecure` is active in Traefik. Certificates are handled by your cloudflared tunnel + Traefik; no ACME changes required.
+- Domain: `codex-api.onemainarmy.com` is routed via cloudflared to Traefik.
+- Docker Compose v2.
+
+Files in this repo
+- Build image: [Dockerfile](Dockerfile)
+- Compose stack: [docker-compose.yml](docker-compose.yml)
+- ForwardAuth microservice: [auth/server.js](auth/server.js:1)
+- Main API server: [Express app](server.js:8), routes [GET /healthz](server.js:39), [GET /v1/models](server.js:41), [POST /v1/chat/completions](server.js:46)
+
+Edge authentication model
+- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (implemented by [auth/server.js](auth/server.js:1)).
+- The auth service validates the `Authorization: Bearer &lt;token&gt;` header equals the shared secret `PROXY_API_KEY`. On mismatch it returns 401 with a `WWW-Authenticate: Bearer realm=api` header.
+- On success, Traefik forwards the request to the app container service port 11435, preserving the original `Authorization` header so the in-app check still applies (defense in depth).
+
+Containerization
+- The app image is defined in [Dockerfile](Dockerfile) and launches the proxy with `node server.js`.
+- Codex CLI availability inside the container:
+  - Option A (mount from host, recommended initially): Uncomment the volumes lines in [docker-compose.yml](docker-compose.yml) to mount your host Codex credentials and binary.
+  - Option B (bake into image): Extend the Dockerfile to install `codex` and copy credentials during build (ensure no secrets end up in the image layers).
+
+Configuration
+- Create an environment file from the example:
+  - `cp .env.example .env`
+  - Set `PROXY_API_KEY` to the shared secret (used by both the auth service and the app).
+- Ensure external Docker network:
+  - `docker network create traefik` (no-op if it already exists)
+- Bring up the stack:
+  - `docker compose up -d --build`
+
+Traefik labels overview (see [docker-compose.yml](docker-compose.yml))
+- Protected API:
+  - Router: `Host('codex-api.onemainarmy.com') && PathPrefix('/v1')`
+  - EntryPoints: `websecure`, `tls=true`
+  - Middleware: `codex-forwardauth` pointing to `http://127.0.0.1:18080/verify`
+  - Service port: `11435`
+- Public health:
+  - Router: `Host('codex-api.onemainarmy.com') && Path('/healthz')`
+  - EntryPoints: `websecure`, `tls=true`
+  - Service: same as API service
+
+Smoke tests
+- Health (public):
+  - `curl -i https://codex-api.onemainarmy.com/healthz`
+- Protected route (no token → 401):
+  - `curl -i https://codex-api.onemainarmy.com/v1/models`
+- Wrong token → 401:
+  - `curl -i -H 'Authorization: Bearer wrong' https://codex-api.onemainarmy.com/v1/models`
+- Correct token → 200 (replace VALUE):
+  - `curl -i -H 'Authorization: Bearer VALUE' https://codex-api.onemainarmy.com/v1/models`
+- SSE streaming sanity:
+  - `curl -N -H 'Authorization: Bearer VALUE' -H 'Content-Type: application/json' \\`
+  - `  -d '{"model":"gpt-5","stream":true,"messages":[{"role":"user","content":"ping"}]}' \\`
+  - `  https://codex-api.onemainarmy.com/v1/chat/completions`
+
+Notes
+- The app already sets headers for SSE in [streaming branch](server.js:120) and disables buffering with `X-Accel-Buffering: no`. Traefik streams by default.
+- Do not expose the app’s container port on the host. Traefik connects via the Docker network `traefik`.
+- Keep `PROXY_API_KEY` out of images and source control. Provide via environment or a Docker secret.

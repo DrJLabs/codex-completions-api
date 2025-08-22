@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+FROM node:18-alpine AS base
+
+ENV NODE_ENV=production \
+    PORT=11435 \
+    CODEX_BIN=codex \
+    PROXY_STREAM_MODE=incremental \
+    CODEX_MODEL=gpt-5
+
+WORKDIR /app
+
+# Install dependencies (prefer npm ci when lockfile exists)
+COPY package.json ./
+RUN npm ci --omit=dev || npm install --omit=dev
+
+# Copy application sources
+COPY server.js ./
+COPY README.md ./
+COPY config ./config
+
+# Run as non-root
+USER node
+
+EXPOSE 11435
+
+# Launch the proxy
+CMD ["node", "server.js"]
