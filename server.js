@@ -1,6 +1,9 @@
 import express from "express";
 import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const app = express();
 app.use(express.json({ limit: "16mb" }));
@@ -59,10 +62,12 @@ app.post("/v1/chat/completions", (req, res) => {
   );
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
 
+  const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
   const args = [
     "exec",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
+    "--output-last-message", outputFile,
     "-m", model
   ];
   // Attempt to set reasoning via config if supported
@@ -71,12 +76,17 @@ app.post("/v1/chat/completions", (req, res) => {
   }
 
   const prompt = joinMessages(messages);
-  args.push(prompt);
 
   const child = spawn(CODEX_BIN, args, {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
   });
+
+  try {
+    const toWrite = prompt.endsWith("\n") ? prompt : `${prompt}\n`;
+    child.stdin.write(toWrite);
+    child.stdin.end();
+  } catch {}
 
   let out = "", err = "";
 
@@ -104,6 +114,12 @@ app.post("/v1/chat/completions", (req, res) => {
   };
 
   if (body.stream && STREAM_MODE === "incremental") {
+    // Prefer JSONL event stream for more reliable parsing
+    if (!args.includes("--json")) {
+      const execIndex = args.indexOf("exec");
+      if (execIndex !== -1) args.splice(execIndex + 1, 0, "--json");
+      else args.unshift("--json");
+    }
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -113,20 +129,60 @@ app.post("/v1/chat/completions", (req, res) => {
     const promptText = joinMessages(messages).trim();
     // Emit role immediately to satisfy clients expecting role-first chunk
     sendRoleOnce();
-    // Simpler SSE: collect fully, then emit one chunk to ensure compatibility
-    child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
+    let sentMessage = false;
+    let lastAgentMessage = "";
+    let buf = "";
+    child.stdout.on("data", (chunk) => {
+      const s = chunk.toString("utf8");
+      out += s;
+      buf += s;
+      let idx;
+      while ((idx = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        const clean = stripAnsi(line).trim();
+        if (!clean) continue;
+        try {
+          const evt = JSON.parse(clean);
+          if (evt && evt.msg && evt.msg.type === "agent_message" && typeof evt.msg.message === "string") {
+            lastAgentMessage = evt.msg.message;
+            sendRoleOnce();
+            sendSSE({
+              id: `chatcmpl-${nanoid()}`,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model,
+              choices: [{ index: 0, delta: { content: evt.msg.message } }]
+            });
+            sentMessage = true;
+          }
+        } catch {
+          // Not JSON; accumulate to out as fallback
+          // no-op (already appended s to out)
+        }
+      }
+    });
     child.stderr.on("data", (e) => { err += e.toString("utf8"); });
     child.on("close", () => {
-      const filtered = stripAnsi(out).trim();
-      if (filtered) {
-        sendRoleOnce();
-        sendSSE({
-          id: `chatcmpl-${nanoid()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [{ index: 0, delta: { content: filtered + "\n" } }]
-        });
+      let content = lastAgentMessage || "";
+      try {
+        if (fs.existsSync(outputFile)) {
+          content = fs.readFileSync(outputFile, "utf8");
+          fs.unlinkSync(outputFile);
+        }
+      } catch {}
+      if (!content) content = stripAnsi(out).trim();
+      if (content) {
+        if (!sentMessage) {
+          sendRoleOnce();
+          sendSSE({
+            id: `chatcmpl-${nanoid()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model,
+            choices: [{ index: 0, delta: { content } }]
+          });
+        }
       }
       finishSSE();
     });
@@ -138,7 +194,16 @@ app.post("/v1/chat/completions", (req, res) => {
   child.stdout.on("data", (d) => { out += d.toString("utf8"); });
   child.stderr.on("data", (d) => { err += d.toString("utf8"); });
   child.on("close", (code) => {
-    const content = stripAnsi(out).trim();
+    let content = "";
+    try {
+      if (fs.existsSync(outputFile)) {
+        content = fs.readFileSync(outputFile, "utf8");
+        fs.unlinkSync(outputFile);
+      }
+    } catch {}
+    if (!content) {
+      content = stripAnsi(out).trim();
+    }
     if (code !== 0 && !content) {
       return res.status(500).json({ error: { message: stripAnsi(err).trim() || `codex exited with ${code}` } });
     }
