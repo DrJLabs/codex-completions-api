@@ -63,6 +63,7 @@ app.post("/v1/chat/completions", (req, res) => {
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
 
   const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
+  const isStreamingReq = !!body.stream && STREAM_MODE === "incremental";
   const args = [
     "exec",
     "--sandbox", "read-only",
@@ -70,6 +71,7 @@ app.post("/v1/chat/completions", (req, res) => {
     "--output-last-message", outputFile,
     "-m", model
   ];
+  // For streaming we avoid --json due to observed child termination in some environments.
   // Attempt to set reasoning via config if supported
   if (allowEffort.has(reasoningEffort)) {
     args.push("--config", `reasoning.effort="${reasoningEffort}"`);
@@ -77,6 +79,7 @@ app.post("/v1/chat/completions", (req, res) => {
 
   const prompt = joinMessages(messages);
 
+  try { console.log("[proxy] spawning:", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
@@ -113,13 +116,8 @@ app.post("/v1/chat/completions", (req, res) => {
     res.end();
   };
 
-  if (body.stream && STREAM_MODE === "incremental") {
-    // Prefer JSONL event stream for more reliable parsing
-    if (!args.includes("--json")) {
-      const execIndex = args.indexOf("exec");
-      if (execIndex !== -1) args.splice(execIndex + 1, 0, "--json");
-      else args.unshift("--json");
-    }
+  if (isStreamingReq) {
+    // Stream role first; send content on process close from last-message file
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -129,42 +127,10 @@ app.post("/v1/chat/completions", (req, res) => {
     const promptText = joinMessages(messages).trim();
     // Emit role immediately to satisfy clients expecting role-first chunk
     sendRoleOnce();
-    let sentMessage = false;
-    let lastAgentMessage = "";
-    let buf = "";
-    child.stdout.on("data", (chunk) => {
-      const s = chunk.toString("utf8");
-      out += s;
-      buf += s;
-      let idx;
-      while ((idx = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, idx);
-        buf = buf.slice(idx + 1);
-        const clean = stripAnsi(line).trim();
-        if (!clean) continue;
-        try {
-          const evt = JSON.parse(clean);
-          if (evt && evt.msg && evt.msg.type === "agent_message" && typeof evt.msg.message === "string") {
-            lastAgentMessage = evt.msg.message;
-            sendRoleOnce();
-            sendSSE({
-              id: `chatcmpl-${nanoid()}`,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model,
-              choices: [{ index: 0, delta: { content: evt.msg.message } }]
-            });
-            sentMessage = true;
-          }
-        } catch {
-          // Not JSON; accumulate to out as fallback
-          // no-op (already appended s to out)
-        }
-      }
-    });
-    child.stderr.on("data", (e) => { err += e.toString("utf8"); });
-    child.on("close", () => {
-      let content = lastAgentMessage || "";
+    child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
+    child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+    child.on("close", (code, signal) => {
+      let content = "";
       try {
         if (fs.existsSync(outputFile)) {
           content = fs.readFileSync(outputFile, "utf8");
@@ -172,21 +138,21 @@ app.post("/v1/chat/completions", (req, res) => {
         }
       } catch {}
       if (!content) content = stripAnsi(out).trim();
+      try { console.log("[proxy] stream close: code=", code, " content_len=", (content ? content.length : 0), " out_len=", out.length, " err_len=", err.length, " err=", err.slice(0,200)); } catch {}
       if (content) {
-        if (!sentMessage) {
-          sendRoleOnce();
-          sendSSE({
-            id: `chatcmpl-${nanoid()}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model,
-            choices: [{ index: 0, delta: { content } }]
-          });
-        }
+        sendRoleOnce();
+        sendSSE({
+          id: `chatcmpl-${nanoid()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [{ index: 0, delta: { content } }]
+        });
       }
       finishSSE();
     });
-    req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
+    // Do not kill child on client disconnect; allow graceful completion
+    // req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
     return;
   }
 
