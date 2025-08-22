@@ -25,6 +25,11 @@ const isModelText = (line) => {
   if (/^(diff --git|\+\+\+ |--- |@@ )/.test(l)) return false; // diff headers
   if (/^\*\*\* (Begin|End) Patch/.test(l)) return false; // apply_patch envelopes
   if (/^(running:|command:|applying patch|reverted|workspace|approval|sandbox|tool:|mcp:|file:|path:)/i.test(l)) return false; // runner logs
+  if (/^\[\d{4}-\d{2}-\d{2}T/.test(l)) return false; // timestamped log lines
+  if (/^[-]{6,}$/.test(l)) return false; // separators
+  if (/^(workdir|model|provider|approval|sandbox|reasoning effort|reasoning summaries|tokens used):/i.test(l)) return false;
+  if (/^user instructions:/i.test(l)) return false;
+  if (/^codex$/i.test(l)) return false;
   return true;
 };
 
@@ -56,13 +61,13 @@ app.post("/v1/chat/completions", (req, res) => {
 
   const args = [
     "exec",
-    "--ask-for-approval", "never",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
     "-m", model
   ];
+  // Attempt to set reasoning via config if supported
   if (allowEffort.has(reasoningEffort)) {
-    args.push("--reasoning", reasoningEffort);
+    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
   }
 
   const prompt = joinMessages(messages);
@@ -105,25 +110,26 @@ app.post("/v1/chat/completions", (req, res) => {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
 
-    child.stdout.on("data", (chunk) => {
-      const clean = stripAnsi(chunk.toString("utf8"));
-      for (const line of clean.split(/\n/)) {
-        if (!line) continue;
-        if (!isModelText(line)) continue;
+    const promptText = joinMessages(messages).trim();
+    // Emit role immediately to satisfy clients expecting role-first chunk
+    sendRoleOnce();
+    // Simpler SSE: collect fully, then emit one chunk to ensure compatibility
+    child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
+    child.stderr.on("data", (e) => { err += e.toString("utf8"); });
+    child.on("close", () => {
+      const filtered = stripAnsi(out).trim();
+      if (filtered) {
         sendRoleOnce();
         sendSSE({
           id: `chatcmpl-${nanoid()}`,
           object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model,
-          choices: [{ index: 0, delta: { content: line + "\n" } }]
+          choices: [{ index: 0, delta: { content: filtered + "\n" } }]
         });
       }
-      out += clean;
+      finishSSE();
     });
-
-    child.stderr.on("data", (e) => { err += e.toString("utf8"); });
-    child.on("close", () => finishSSE());
     req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
     return;
   }
@@ -151,4 +157,3 @@ app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`codex-openai-proxy listening on http://127.0.0.1:${PORT}/v1`);
 });
-
