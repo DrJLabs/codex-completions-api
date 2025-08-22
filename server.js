@@ -68,6 +68,7 @@ app.post("/v1/chat/completions", (req, res) => {
     "exec",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
+    "--skip-git-repo-check",
     "--output-last-message", outputFile,
     "-m", model
   ];
