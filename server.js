@@ -1,0 +1,154 @@
+import express from "express";
+import { spawn } from "node:child_process";
+import { nanoid } from "nanoid";
+
+const app = express();
+app.use(express.json({ limit: "16mb" }));
+
+const PORT = Number(process.env.PORT || 11435);
+const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
+const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
+const CODEX_BIN = process.env.CODEX_BIN || "codex";
+const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
+
+const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
+const toStringContent = (c) => {
+  if (typeof c === "string") return c;
+  try { return JSON.stringify(c); } catch { return String(c); }
+};
+const joinMessages = (messages = []) =>
+  messages.map(m => `[${m.role || "user"}] ${toStringContent(m.content)}`).join("\n");
+
+const isModelText = (line) => {
+  const l = line.trim();
+  if (!l) return false;
+  if (/^(diff --git|\+\+\+ |--- |@@ )/.test(l)) return false; // diff headers
+  if (/^\*\*\* (Begin|End) Patch/.test(l)) return false; // apply_patch envelopes
+  if (/^(running:|command:|applying patch|reverted|workspace|approval|sandbox|tool:|mcp:|file:|path:)/i.test(l)) return false; // runner logs
+  return true;
+};
+
+app.get("/healthz", (_req, res) => res.json({ ok: true }));
+
+app.get("/v1/models", (_req, res) => {
+  res.json({ object: "list", data: [{ id: DEFAULT_MODEL, object: "model", created: 0, owned_by: "codex" }] });
+});
+
+// OpenAI-compatible Chat Completions endpoint backed by Codex CLI
+app.post("/v1/chat/completions", (req, res) => {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token || token !== API_KEY) {
+    return res.status(401).json({ error: { message: "unauthorized" } });
+  }
+
+  const body = req.body || {};
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  if (!messages.length) return res.status(400).json({ error: { message: "messages[] required" } });
+
+  const model = String(body.model || DEFAULT_MODEL);
+  const reasoningEffort = (
+    (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
+      .toString()
+      .toLowerCase()
+  );
+  const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+
+  const args = [
+    "exec",
+    "--ask-for-approval", "never",
+    "--sandbox", "read-only",
+    "--config", 'preferred_auth_method="chatgpt"',
+    "-m", model
+  ];
+  if (allowEffort.has(reasoningEffort)) {
+    args.push("--reasoning", reasoningEffort);
+  }
+
+  const prompt = joinMessages(messages);
+  args.push(prompt);
+
+  const child = spawn(CODEX_BIN, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+
+  let out = "", err = "";
+
+  const sendSSE = (payload) => {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  const sendRoleOnce = (() => {
+    let sent = false;
+    return () => {
+      if (sent) return; sent = true;
+      sendSSE({
+        id: `chatcmpl-${nanoid()}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [{ index: 0, delta: { role: "assistant" } }]
+      });
+    };
+  })();
+
+  const finishSSE = () => {
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+
+  if (body.stream && STREAM_MODE === "incremental") {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    child.stdout.on("data", (chunk) => {
+      const clean = stripAnsi(chunk.toString("utf8"));
+      for (const line of clean.split(/\n/)) {
+        if (!line) continue;
+        if (!isModelText(line)) continue;
+        sendRoleOnce();
+        sendSSE({
+          id: `chatcmpl-${nanoid()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [{ index: 0, delta: { content: line + "\n" } }]
+        });
+      }
+      out += clean;
+    });
+
+    child.stderr.on("data", (e) => { err += e.toString("utf8"); });
+    child.on("close", () => finishSSE());
+    req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
+    return;
+  }
+
+  // Non-streaming fallback
+  child.stdout.on("data", (d) => { out += d.toString("utf8"); });
+  child.stderr.on("data", (d) => { err += d.toString("utf8"); });
+  child.on("close", (code) => {
+    const content = stripAnsi(out).trim();
+    if (code !== 0 && !content) {
+      return res.status(500).json({ error: { message: stripAnsi(err).trim() || `codex exited with ${code}` } });
+    }
+    res.json({
+      id: `chatcmpl-${nanoid()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+      usage: null
+    });
+  });
+});
+
+app.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`codex-openai-proxy listening on http://127.0.0.1:${PORT}/v1`);
+});
+

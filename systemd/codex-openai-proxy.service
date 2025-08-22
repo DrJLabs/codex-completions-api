@@ -1,0 +1,19 @@
+[Unit]
+Description=Codex OpenAI-compatible proxy (user)
+After=network.target
+
+[Service]
+Environment=PORT=11435
+Environment=PROXY_API_KEY=codex-local-secret
+Environment=CODEX_MODEL=gpt-5
+Environment=PROXY_STREAM_MODE=incremental
+Environment=CODEX_BIN=codex
+Environment=HOME=%h
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+WorkingDirectory=%h/.local/share/codex-openai-proxy
+ExecStart=/usr/bin/env node %h/.local/share/codex-openai-proxy/server.js
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+
