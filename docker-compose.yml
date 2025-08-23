@@ -10,10 +10,10 @@ services:
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - PROXY_STREAM_MODE=incremental
       - CODEX_BIN=codex
-    # Optional: mount Codex CLI + credentials from host
-    # volumes:
-    #   - ~/.codex:/home/node/.codex:ro
-    #   - /usr/local/bin/codex:/usr/local/bin/codex:ro
+    # Mount Codex CLI + credentials from host for in-container use
+    volumes:
+      - ~/.codex:/home/node/.codex:ro
+      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
     networks:
       - traefik
     labels:
@@ -28,6 +28,8 @@ services:
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
       - traefik.http.routers.codex-api.middlewares=codex-forwardauth
+
+      
 
       # ForwardAuth middleware (edge bearer auth)
       - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
@@ -44,7 +46,7 @@ services:
   auth:
     image: node:18-alpine
     working_dir: /app
-    command: node server.js
+    command: node server.mjs
     environment:
       - PORT=8080
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}

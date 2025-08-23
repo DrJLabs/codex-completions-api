@@ -8,6 +8,20 @@ import path from "node:path";
 const app = express();
 app.use(express.json({ limit: "16mb" }));
 
+// Minimal HTTP access logging to aid debugging integrations (e.g., Cursor)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    try {
+      const ua = req.headers["user-agent"] || "";
+      const auth = req.headers.authorization ? "present" : "none";
+      const dur = Date.now() - start;
+      console.log(`[http] ${req.method} ${req.originalUrl} -> ${res.statusCode} auth=${auth} ua="${ua}" dur_ms=${dur}`);
+    } catch {}
+  });
+  next();
+});
+
 const PORT = Number(process.env.PORT || 11435);
 const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
@@ -38,11 +52,46 @@ const isModelText = (line) => {
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
-app.get("/v1/models", (_req, res) => {
-  res.json({ object: "list", data: [{ id: DEFAULT_MODEL, object: "model", created: 0, owned_by: "codex" }] });
-});
+// Normalize/alias model names. Accepts custom prefixes like "codex/<model>".
+const normalizeModel = (name) => {
+  const raw = String(name || "").trim();
+  if (!raw) return { requested: "codex-5", effective: DEFAULT_MODEL };
+  // Primary advertised alias without slashes
+  if (raw.toLowerCase() === "codex-5") return { requested: "codex-5", effective: DEFAULT_MODEL };
+  // Allow direct use of underlying model
+  return { requested: raw, effective: raw };
+};
+
+// Models router implementing GET/HEAD/OPTIONS with canonical headers
+const modelsRouter = express.Router();
+const modelsPayload = { object: "list", data: [{ id: "codex-5", object: "model", owned_by: "codex", created: 0 }] };
+const sendModels = (res) => {
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.set("Cache-Control", "public, max-age=60");
+  res.status(200).send(JSON.stringify(modelsPayload));
+};
+modelsRouter.get("/v1/models", (req, res) => { try { console.log("[models] GET /v1/models"); } catch {}; sendModels(res); });
+modelsRouter.get("/v1/models/", (req, res) => { try { console.log("[models] GET /v1/models/"); } catch {}; sendModels(res); });
+modelsRouter.head("/v1/models", (req, res) => { res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end(); });
+modelsRouter.head("/v1/models/", (req, res) => { res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end(); });
+modelsRouter.options("/v1/models", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
+modelsRouter.options("/v1/models/", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
+app.use(modelsRouter);
+
+// Alias for clients that call baseURL without trailing /v1 and then /models
+// (Removed /models alias added for Cursor compatibility)
 
 // OpenAI-compatible Chat Completions endpoint backed by Codex CLI
+// Minimal preflight/HEAD support for compatibility with some IDEs/SDKs
+app.options("/v1/chat/completions", (_req, res) => {
+  res.set("Allow", "POST,HEAD,OPTIONS");
+  res.status(200).end();
+});
+app.head("/v1/chat/completions", (_req, res) => {
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.status(200).end();
+});
+
 app.post("/v1/chat/completions", (req, res) => {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -54,7 +103,8 @@ app.post("/v1/chat/completions", (req, res) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) return res.status(400).json({ error: { message: "messages[] required" } });
 
-  const model = String(body.model || DEFAULT_MODEL);
+  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(body.model || DEFAULT_MODEL);
+  try { console.log(`[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`); } catch {}
   const reasoningEffort = (
     (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
       .toString()
@@ -63,15 +113,18 @@ app.post("/v1/chat/completions", (req, res) => {
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
 
   const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
-  const isStreamingReq = !!body.stream && STREAM_MODE === "incremental";
+  const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
   const args = [
     "exec",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
     "--skip-git-repo-check",
     "--output-last-message", outputFile,
-    "-m", model
+    "-m", effectiveModel
   ];
+  // Prefer JSONL event stream when requested; this enables robust incremental SSE mapping
+  const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
+  if (useJsonl) args.push("--json");
   // For streaming we avoid --json due to observed child termination in some environments.
   // Attempt to set reasoning via config if supported
   if (allowEffort.has(reasoningEffort)) {
@@ -106,7 +159,7 @@ app.post("/v1/chat/completions", (req, res) => {
         id: `chatcmpl-${nanoid()}`,
         object: "chat.completion.chunk",
         created: Math.floor(Date.now() / 1000),
-        model,
+        model: requestedModel,
         choices: [{ index: 0, delta: { role: "assistant" } }]
       });
     };
@@ -126,38 +179,110 @@ app.post("/v1/chat/completions", (req, res) => {
     res.flushHeaders?.();
 
     const promptText = joinMessages(messages).trim();
-    // Emit role immediately to satisfy clients expecting role-first chunk
-    sendRoleOnce();
-    child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
-    child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-    child.on("close", (code, signal) => {
-      let content = "";
-      try {
-        if (fs.existsSync(outputFile)) {
-          content = fs.readFileSync(outputFile, "utf8");
-          fs.unlinkSync(outputFile);
+    if (useJsonl) {
+      // Emit role immediately to satisfy clients expecting role-first chunk
+      sendRoleOnce();
+      // Parse JSONL event stream from Codex and map to OpenAI SSE deltas
+      let buf = "";
+      let sentContentDelta = false;
+      child.stdout.on("data", (chunk) => {
+        const text = chunk.toString("utf8");
+        out += text;
+        buf += text;
+        let idx;
+        while ((idx = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const evt = JSON.parse(trimmed);
+            const t = evt?.msg?.type || "";
+            if (t === "agent_message_delta") {
+              const delta = evt?.msg?.delta || "";
+              if (delta) {
+                sendRoleOnce();
+                sendSSE({
+                  id: `chatcmpl-${nanoid()}`,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, delta: { content: String(delta) } }]
+                });
+                sentContentDelta = true;
+              }
+            } else if (t === "task_complete") {
+              // Will be followed by ShutdownComplete; safe to finish
+              // Emit a no-op delta to ensure role was sent
+              sendRoleOnce();
+            }
+          } catch {
+            // Non-JSON lines are ignored in jsonl mode
+          }
         }
-      } catch {}
-      if (!content) content = stripAnsi(out).trim();
-      try { console.log("[proxy] stream close: code=", code, " content_len=", (content ? content.length : 0), " out_len=", out.length, " err_len=", err.length, " err=", err.slice(0,200)); } catch {}
-      if (content) {
-        sendRoleOnce();
-        sendSSE({
-          id: `chatcmpl-${nanoid()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [{ index: 0, delta: { content } }]
-        });
-      }
-      finishSSE();
-    });
+      });
+      child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.on("close", (code, signal) => {
+        if (!sentContentDelta) {
+          // Fallback: if no incremental content was sent, emit final content once
+          let content = "";
+          try {
+            if (fs.existsSync(outputFile)) {
+              content = fs.readFileSync(outputFile, "utf8");
+              fs.unlinkSync(outputFile);
+            }
+          } catch {}
+          if (!content) content = stripAnsi(out).trim();
+          if (content) {
+            sendRoleOnce();
+            sendSSE({
+              id: `chatcmpl-${nanoid()}`,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: requestedModel,
+              choices: [{ index: 0, delta: { content } }]
+            });
+          }
+        }
+        try { console.log("[proxy] jsonl stream close: code=", code, " out_len=", out.length, " err_len=", err.length); } catch {}
+        finishSSE();
+      });
+    } else {
+      // Fallback incremental mode: emit one chunk with final content
+      // Emit role immediately to satisfy clients expecting role-first chunk
+      sendRoleOnce();
+      child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
+      child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.on("close", (code, signal) => {
+        let content = "";
+        try {
+          if (fs.existsSync(outputFile)) {
+            content = fs.readFileSync(outputFile, "utf8");
+            fs.unlinkSync(outputFile);
+          }
+        } catch {}
+        if (!content) content = stripAnsi(out).trim();
+        try { console.log("[proxy] stream close: code=", code, " content_len=", (content ? content.length : 0), " out_len=", out.length, " err_len=", err.length, " err=", err.slice(0,200)); } catch {}
+        if (content) {
+          sendRoleOnce();
+          sendSSE({
+            id: `chatcmpl-${nanoid()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: requestedModel,
+            choices: [{ index: 0, delta: { content } }]
+          });
+        }
+        finishSSE();
+      });
+    }
     // Do not kill child on client disconnect; allow graceful completion
     // req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
     return;
   }
 
   // Non-streaming fallback
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   child.stdout.on("data", (d) => { out += d.toString("utf8"); });
   child.stderr.on("data", (d) => { err += d.toString("utf8"); });
   child.on("close", (code) => {
@@ -178,7 +303,7 @@ app.post("/v1/chat/completions", (req, res) => {
       id: `chatcmpl-${nanoid()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model,
+      model: requestedModel,
       choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
       usage: null
     });

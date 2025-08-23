@@ -50,6 +50,7 @@ An example file is in `config/roo-openai-compatible.json`.
 ## API mapping
 
 - `model`: passthrough to `-m <model>`.
+  - Accepts aliases like `codex/<model>` (e.g., `codex/gpt-5`), which normalize to `<model>` when invoking Codex.
 - `messages[]`: joined into a single positional prompt with `[role]` prefixes.
 - `stream: true`: SSE role-first chunk, then one aggregated content chunk on process close, then `[DONE]`.
   - Upgrade path: parse `codex exec --json` events to emit true incremental chunks.
@@ -59,7 +60,7 @@ An example file is in `config/roo-openai-compatible.json`.
 ## Acceptance criteria
 
 - `GET /healthz` returns `{ ok: true }`.
-- `GET /v1/models` lists `gpt-5` by default.
+- `GET /v1/models` lists only `codex-5` (no slashes) so clients like Cursor won’t confuse it with OpenAI built-ins. Requests that specify `gpt-5` directly still work.
 - `POST /v1/chat/completions` with `stream:true` yields SSE with a role-first chunk and a `[DONE]` terminator (content chunk may arrive aggregated before `[DONE]`).
 - Codex child invoked as:
 
