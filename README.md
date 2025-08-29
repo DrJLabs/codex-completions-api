@@ -4,7 +4,7 @@ OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE
 
 ## Features
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
-- SSE streaming compatibility: emits an initial `delta.role=assistant` chunk, then a single content chunk (aggregated Codex stdout) and `[DONE]`.
+- SSE streaming: emits an initial `delta.role=assistant` chunk. By default content is aggregated into one chunk; with `PROXY_STREAM_MODE=jsonl`, the proxy parses `codex exec --json` to stream incremental deltas when available, or the full agent message as soon as it’s emitted.
 - Minimal output shaping: ANSI is stripped; additional heuristics exist but are conservative by default to avoid dropping valid content.
 - Reasoning effort mapping: `reasoning.effort` → `--config reasoning.effort="<low|medium|high|minimal>"` (silently ignored by older builds).
 - Safety: Codex runs with `--sandbox read-only`. Approval flags are not passed to `exec` (see Notes).
@@ -34,8 +34,12 @@ Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
-- `PROXY_STREAM_MODE` (default: `incremental`)
+- `PROXY_STREAM_MODE` (default: `incremental`) — set to `jsonl` to parse `--json` events for finer-grained streaming.
 - `CODEX_BIN` (default: `codex`)
+- `PROXY_ENABLE_CORS` (default: `true`) — set to `false` to disable permissive CORS headers.
+- `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
+- `PROXY_TIMEOUT_MS` (default: `60000`) — per-request timeout to abort hung Codex subprocesses.
+- `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
 
 ## Roo Code configuration
 
@@ -52,8 +56,9 @@ An example file is in `config/roo-openai-compatible.json`.
 - `model`: passthrough to `-m <model>`.
   - Accepts aliases like `codex/<model>` (e.g., `codex/gpt-5`), which normalize to `<model>` when invoking Codex.
 - `messages[]`: joined into a single positional prompt with `[role]` prefixes.
-- `stream: true`: SSE role-first chunk, then one aggregated content chunk on process close, then `[DONE]`.
-  - Upgrade path: parse `codex exec --json` events to emit true incremental chunks.
+- `stream: true`:
+  - Default: role-first SSE chunk, then one aggregated content chunk on process close, then `[DONE]`.
+  - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex exec --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
 - Other knobs (temperature, top_p, penalties, max_tokens): ignored.
 
@@ -73,7 +78,7 @@ codex exec --sandbox read-only --config preferred_auth_method="chatgpt" -m gpt-5
 - Approval flag: `codex exec` does not accept `--ask-for-approval`. The proxy relies on `exec`'s non-interactive behavior and your Codex defaults. If you need to enforce approvals globally, configure them in `~/.codex/config.toml`.
 - Reasoning effort: Some versions may ignore `--config reasoning.effort=...`. Use Roo’s “High” if unsure.
 - Port already in use: If `11435` is busy, launch with `PORT=18000 npm run start` and run acceptance with `BASE_URL=http://127.0.0.1:18000/v1`.
-- Streaming shape: Immediate role chunk is emitted to satisfy Chat Completions SSE clients. Content is currently aggregated into a single chunk; move to `--json` parsing for true token-by-token streaming.
+- Streaming shape: Immediate role chunk is emitted to satisfy Chat Completions SSE clients. Default aggregates content into a single chunk. Set `PROXY_STREAM_MODE=jsonl` to parse Codex JSON-lines: when deltas are available they are streamed; otherwise the full message is forwarded as soon as Codex emits it.
 - Auth: Ensure you’re logged into Codex (`codex login`).
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
 
@@ -95,6 +100,13 @@ BASE_URL=http://127.0.0.1:18000/v1 bash scripts/acceptance.sh
 ```
 
 The acceptance checks look for a role-first SSE chunk and the `[DONE]` terminator. Content may arrive as one aggregated chunk prior to `[DONE]`.
+## Cursor compatibility quickstart
+- Base URL: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
+- API Key: same value as `PROXY_API_KEY`.
+- Model: select `codex-5` (proxy normalizes to effective `gpt-5`).
+- Streaming: supported (role-first delta + `[DONE]`). For more granular deltas set `PROXY_STREAM_MODE=jsonl`.
+- Optional: set `PROXY_PROTECT_MODELS=true` to force auth on `/v1/models` during verification.
+- Hangs: if Codex is missing or stalls, responses will fail fast per `PROXY_TIMEOUT_MS` instead of hanging.
 
 ## License
 

@@ -29,6 +29,8 @@ This document summarizes improvements inspired by LiteLLM’s proxy and Codex CL
   - `data: {"object":"chat.completion.chunk", "choices":[{"delta":{"role":"assistant"}}]}`
 - Incremental content (from `agent_message_delta`):
   - `data: {"object":"chat.completion.chunk", "choices":[{"delta":{"content":"..."}}]}`
+- Full-message fallback (when Codex emits `agent_message` without deltas):
+  - `data: {"object":"chat.completion.chunk", "choices":[{"delta":{"content":"<full message>"}}]}`
 - Completion terminator: `data: [DONE]`
 
 ## LiteLLM-Derived Practices We Adopt
@@ -71,4 +73,3 @@ This document summarizes improvements inspired by LiteLLM’s proxy and Codex CL
 
 - JSON-lines streaming (Codex `--json`) yields resilient incremental output without scraping ANSI or mixing logs.
 - HEAD/OPTIONS and headers alignment reduce friction for generic OpenAI clients using HTTP preflight and strict content-type checks.
-

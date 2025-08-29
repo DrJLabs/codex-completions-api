@@ -4,9 +4,26 @@ import { nanoid } from "nanoid";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// Simple CORS without extra dependency
+const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
+const applyCors = (req, res) => {
+  if (!CORS_ENABLED) return;
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+  res.setHeader("Access-Control-Max-Age", "600");
+};
 
 const app = express();
 app.use(express.json({ limit: "16mb" }));
+// Global CORS headers
+app.use((req, res, next) => {
+  applyCors(req, res);
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
 
 // Minimal HTTP access logging to aid debugging integrations (e.g., Cursor)
 app.use((req, res, next) => {
@@ -27,6 +44,11 @@ const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
 const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
+const ALLOWED_MODEL_IDS = new Set(["codex-5", DEFAULT_MODEL]);
+const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 60000);
+const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "true").toLowerCase() !== "false";
+const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
 
 const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
 const toStringContent = (c) => {
@@ -66,14 +88,69 @@ const normalizeModel = (name) => {
 const modelsRouter = express.Router();
 const modelsPayload = { object: "list", data: [{ id: "codex-5", object: "model", owned_by: "codex", created: 0 }] };
 const sendModels = (res) => {
+  applyCors(null, res);
   res.set("Content-Type", "application/json; charset=utf-8");
   res.set("Cache-Control", "public, max-age=60");
   res.status(200).send(JSON.stringify(modelsPayload));
 };
-modelsRouter.get("/v1/models", (req, res) => { try { console.log("[models] GET /v1/models"); } catch {}; sendModels(res); });
-modelsRouter.get("/v1/models/", (req, res) => { try { console.log("[models] GET /v1/models/"); } catch {}; sendModels(res); });
-modelsRouter.head("/v1/models", (req, res) => { res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end(); });
-modelsRouter.head("/v1/models/", (req, res) => { res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end(); });
+modelsRouter.get("/v1/models", (req, res) => {
+  try { console.log("[models] GET /v1/models"); } catch {}
+  if (PROTECT_MODELS) {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token || token !== API_KEY) {
+      applyCors(null, res);
+      return res
+        .status(401)
+        .set("WWW-Authenticate", "Bearer realm=api")
+        .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+    }
+  }
+  sendModels(res);
+});
+modelsRouter.get("/v1/models/", (req, res) => {
+  try { console.log("[models] GET /v1/models/"); } catch {}
+  if (PROTECT_MODELS) {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token || token !== API_KEY) {
+      applyCors(null, res);
+      return res
+        .status(401)
+        .set("WWW-Authenticate", "Bearer realm=api")
+        .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+    }
+  }
+  sendModels(res);
+});
+modelsRouter.head("/v1/models", (req, res) => {
+  applyCors(null, res);
+  if (PROTECT_MODELS) {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token || token !== API_KEY) {
+      return res
+        .status(401)
+        .set("WWW-Authenticate", "Bearer realm=api")
+        .end();
+    }
+  }
+  res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end();
+});
+modelsRouter.head("/v1/models/", (req, res) => {
+  applyCors(null, res);
+  if (PROTECT_MODELS) {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token || token !== API_KEY) {
+      return res
+        .status(401)
+        .set("WWW-Authenticate", "Bearer realm=api")
+        .end();
+    }
+  }
+  res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end();
+});
 modelsRouter.options("/v1/models", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
 modelsRouter.options("/v1/models/", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
 app.use(modelsRouter);
@@ -93,18 +170,38 @@ app.head("/v1/chat/completions", (_req, res) => {
 });
 
 app.post("/v1/chat/completions", (req, res) => {
+  let responded = false;
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
-    return res.status(401).json({ error: { message: "unauthorized" } });
+    applyCors(null, res);
+    return res
+      .status(401)
+      .set("WWW-Authenticate", "Bearer realm=api")
+      .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
   }
 
   const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
-  if (!messages.length) return res.status(400).json({ error: { message: "messages[] required" } });
+  if (!messages.length) {
+    applyCors(null, res);
+    return res.status(400).json({ error: { message: "messages[] required", type: "invalid_request_error", param: "messages", code: "invalid_request_error" } });
+  }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(body.model || DEFAULT_MODEL);
   try { console.log(`[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`); } catch {}
+  // Model allowlist with OpenAI-style not-found error
+  if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
+    applyCors(null, res);
+    return res.status(404).json({
+      error: {
+        message: `The model ${requestedModel} does not exist or you do not have access to it.`,
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found"
+      }
+    });
+  }
   const reasoningEffort = (
     (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
       .toString()
@@ -137,6 +234,53 @@ app.post("/v1/chat/completions", (req, res) => {
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
+  });
+  const onDone = () => { responded = true; };
+  const onChildError = (e) => {
+    try { console.log("[proxy] child error:", e?.message || String(e)); } catch {}
+    if (responded) return;
+    responded = true;
+    if (isStreamingReq) {
+      // If streaming has begun, send an error note and terminate stream
+      try {
+        // headers are set below before streaming branches
+        res.write(`data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`);
+      } catch {}
+      try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+    } else {
+      applyCors(null, res);
+      res.status(500).json({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } });
+    }
+  };
+  child.on("error", onChildError);
+  const timeout = setTimeout(() => {
+    if (responded) return;
+    onChildError(new Error("request timeout"));
+    try { child.kill("SIGKILL"); } catch {}
+  }, REQ_TIMEOUT_MS);
+  let idleTimer;
+  const resetIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (responded) return;
+      try { console.log("[proxy] idle timeout reached; terminating child"); } catch {}
+      if (isStreamingReq) {
+        try {
+          res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`);
+        } catch {}
+        try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+      } else {
+        applyCors(null, res);
+        res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } });
+      }
+      responded = true;
+      try { child.kill("SIGTERM"); } catch {}
+    }, IDLE_TIMEOUT_MS);
+  };
+  resetIdle();
+  req.on("close", () => {
+    if (responded) return;
+    if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
   });
 
   try {
@@ -176,6 +320,7 @@ app.post("/v1/chat/completions", (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.flushHeaders?.();
 
     const promptText = joinMessages(messages).trim();
@@ -186,6 +331,7 @@ app.post("/v1/chat/completions", (req, res) => {
       let buf = "";
       let sentContentDelta = false;
       child.stdout.on("data", (chunk) => {
+        resetIdle();
         const text = chunk.toString("utf8");
         out += text;
         buf += text;
@@ -197,9 +343,9 @@ app.post("/v1/chat/completions", (req, res) => {
           if (!trimmed) continue;
           try {
             const evt = JSON.parse(trimmed);
-            const t = evt?.msg?.type || "";
+            const t = (evt && (evt.msg?.type || evt.type)) || "";
             if (t === "agent_message_delta") {
-              const delta = evt?.msg?.delta || "";
+              const delta = (evt.msg?.delta ?? evt.delta) || "";
               if (delta) {
                 sendRoleOnce();
                 sendSSE({
@@ -208,6 +354,21 @@ app.post("/v1/chat/completions", (req, res) => {
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: String(delta) } }]
+                });
+                sentContentDelta = true;
+              }
+            } else if (t === "agent_message") {
+              // Newer Codex versions may emit full messages but not deltas.
+              // Stream the full message immediately instead of waiting for process close.
+              const message = (evt.msg?.message ?? evt.message) || "";
+              if (message) {
+                sendRoleOnce();
+                sendSSE({
+                  id: `chatcmpl-${nanoid()}`,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, delta: { content: String(message) } }]
                 });
                 sentContentDelta = true;
               }
@@ -221,8 +382,10 @@ app.post("/v1/chat/completions", (req, res) => {
           }
         }
       });
-      child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.stderr.on("data", (e) => { resetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
+        clearTimeout(timeout);
+        if (idleTimer) clearTimeout(idleTimer);
         if (!sentContentDelta) {
           // Fallback: if no incremental content was sent, emit final content once
           let content = "";
@@ -233,16 +396,15 @@ app.post("/v1/chat/completions", (req, res) => {
             }
           } catch {}
           if (!content) content = stripAnsi(out).trim();
-          if (content) {
-            sendRoleOnce();
-            sendSSE({
-              id: `chatcmpl-${nanoid()}`,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: requestedModel,
-              choices: [{ index: 0, delta: { content } }]
-            });
-          }
+          if (!content) content = "No output from backend.";
+          sendRoleOnce();
+          sendSSE({
+            id: `chatcmpl-${nanoid()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: requestedModel,
+            choices: [{ index: 0, delta: { content } }]
+          });
         }
         try { console.log("[proxy] jsonl stream close: code=", code, " out_len=", out.length, " err_len=", err.length); } catch {}
         finishSSE();
@@ -254,6 +416,8 @@ app.post("/v1/chat/completions", (req, res) => {
       child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
       child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
+        clearTimeout(timeout);
+        if (idleTimer) clearTimeout(idleTimer);
         let content = "";
         try {
           if (fs.existsSync(outputFile)) {
@@ -263,16 +427,15 @@ app.post("/v1/chat/completions", (req, res) => {
         } catch {}
         if (!content) content = stripAnsi(out).trim();
         try { console.log("[proxy] stream close: code=", code, " content_len=", (content ? content.length : 0), " out_len=", out.length, " err_len=", err.length, " err=", err.slice(0,200)); } catch {}
-        if (content) {
-          sendRoleOnce();
-          sendSSE({
-            id: `chatcmpl-${nanoid()}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: requestedModel,
-            choices: [{ index: 0, delta: { content } }]
-          });
-        }
+        if (!content) content = "No output from backend.";
+        sendRoleOnce();
+        sendSSE({
+          id: `chatcmpl-${nanoid()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: requestedModel,
+          choices: [{ index: 0, delta: { content } }]
+        });
         finishSSE();
       });
     }
@@ -283,9 +446,11 @@ app.post("/v1/chat/completions", (req, res) => {
 
   // Non-streaming fallback
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  child.stdout.on("data", (d) => { out += d.toString("utf8"); });
-  child.stderr.on("data", (d) => { err += d.toString("utf8"); });
+  child.stdout.on("data", (d) => { resetIdle(); out += d.toString("utf8"); });
+  child.stderr.on("data", (d) => { resetIdle(); err += d.toString("utf8"); });
   child.on("close", (code) => {
+    clearTimeout(timeout);
+    if (idleTimer) clearTimeout(idleTimer);
     let content = "";
     try {
       if (fs.existsSync(outputFile)) {
@@ -296,16 +461,278 @@ app.post("/v1/chat/completions", (req, res) => {
     if (!content) {
       content = stripAnsi(out).trim();
     }
-    if (code !== 0 && !content) {
-      return res.status(500).json({ error: { message: stripAnsi(err).trim() || `codex exited with ${code}` } });
+    if (!content) {
+      // Fallback to stderr or a minimal message to satisfy clients expecting an assistant message
+      content = stripAnsi(err).trim() || "No output from backend.";
     }
+    applyCors(null, res);
     res.json({
       id: `chatcmpl-${nanoid()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model: requestedModel,
       choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-      usage: null
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    });
+  });
+});
+
+// OpenAI-compatible Completions shim mapped to Chat backend
+app.options("/v1/completions", (_req, res) => {
+  res.set("Allow", "POST,HEAD,OPTIONS");
+  res.status(200).end();
+});
+app.head("/v1/completions", (_req, res) => {
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.status(200).end();
+});
+app.post("/v1/completions", (req, res) => {
+  try { console.log("[completions] POST /v1/completions received"); } catch {}
+  let responded = false;
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token || token !== API_KEY) {
+    applyCors(null, res);
+    return res
+      .status(401)
+      .set("WWW-Authenticate", "Bearer realm=api")
+      .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+  }
+
+  const body = req.body || {};
+  try { console.log("[completions] body keys=", Object.keys(body || {})); } catch {}
+  const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : (body.prompt || "");
+  if (!prompt) {
+    applyCors(null, res);
+    return res.status(400).json({ error: { message: "prompt required", type: "invalid_request_error", param: "prompt", code: "invalid_request_error" } });
+  }
+
+  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(body.model || DEFAULT_MODEL);
+  try { console.log(`[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`); } catch {}
+  if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
+    applyCors(null, res);
+    return res.status(404).json({
+      error: {
+        message: `The model ${requestedModel} does not exist or you do not have access to it.`,
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found"
+      }
+    });
+  }
+
+  const reasoningEffort = (
+    (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
+      .toString()
+      .toLowerCase()
+  );
+  const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+
+  const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
+  const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
+  const args = [
+    "exec",
+    "--sandbox", "read-only",
+    "--config", 'preferred_auth_method="chatgpt"',
+    "--skip-git-repo-check",
+    "--output-last-message", outputFile,
+    "-m", effectiveModel
+  ];
+  const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
+  if (useJsonl) args.push("--json");
+  if (allowEffort.has(reasoningEffort)) {
+    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
+  }
+
+  const messages = [{ role: "user", content: prompt }];
+  const toSend = joinMessages(messages);
+
+  try { console.log("[proxy] spawning (completions):", CODEX_BIN, args.join(" "), " prompt_len=", toSend.length); } catch {}
+  const child = spawn(CODEX_BIN, args, {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+  const onChildError = (e) => {
+    try { console.log("[proxy] child error (completions):", e?.message || String(e)); } catch {}
+    if (responded) return;
+    responded = true;
+    if (isStreamingReq) {
+      try {
+        res.write(`data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`);
+      } catch {}
+      try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+    } else {
+      applyCors(null, res);
+      res.status(500).json({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } });
+    }
+  };
+  child.on("error", onChildError);
+  const timeout = setTimeout(() => {
+    if (responded) return;
+    onChildError(new Error("request timeout"));
+    try { child.kill("SIGKILL"); } catch {}
+  }, REQ_TIMEOUT_MS);
+  let idleTimerCompletions;
+  const resetIdleCompletions = () => {
+    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    idleTimerCompletions = setTimeout(() => {
+      if (responded) return;
+      try { console.log("[proxy] completions idle timeout; terminating child"); } catch {}
+      if (isStreamingReq) {
+        try {
+          res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`);
+        } catch {}
+        try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+      } else {
+        applyCors(null, res);
+        res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } });
+      }
+      responded = true;
+      try { child.kill("SIGTERM"); } catch {}
+    }, IDLE_TIMEOUT_MS);
+  };
+  resetIdleCompletions();
+  req.on("close", () => {
+    if (responded) return;
+    if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
+  });
+  try {
+    const toWrite = toSend.endsWith("\n") ? toSend : `${toSend}\n`;
+    child.stdin.write(toWrite);
+    child.stdin.end();
+  } catch {}
+
+  let out = "", err = "";
+  const sendSSE = (payload) => { res.write(`data: ${JSON.stringify(payload)}\n\n`); };
+  const finishSSE = () => { res.write("data: [DONE]\n\n"); res.end(); };
+
+  if (isStreamingReq) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    if (useJsonl) {
+      let buf = "";
+      let sentAny = false;
+      child.stdout.on("data", (chunk) => {
+        resetIdleCompletions();
+        const text = chunk.toString("utf8");
+        out += text; buf += text;
+        let idx;
+        while ((idx = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+          const trimmed = line.trim(); if (!trimmed) continue;
+          try {
+            const evt = JSON.parse(trimmed);
+            const t = (evt && (evt.msg?.type || evt.type)) || "";
+            if (t === "agent_message_delta") {
+              const delta = (evt.msg?.delta ?? evt.delta) || "";
+              if (delta) {
+                sentAny = true;
+                sendSSE({
+                  id: `cmpl-${nanoid()}`,
+                  object: "text_completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, text: String(delta) }]
+                });
+              }
+            } else if (t === "agent_message") {
+              const message = (evt.msg?.message ?? evt.message) || "";
+              if (message) {
+                sentAny = true;
+                sendSSE({
+                  id: `cmpl-${nanoid()}`,
+                  object: "text_completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, text: String(message) }]
+                });
+              }
+            }
+          } catch {}
+        }
+      });
+      child.stderr.on("data", (e) => { resetIdleCompletions(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.on("close", (code) => {
+        clearTimeout(timeout);
+        if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+        if (!sentAny) {
+          let content = "";
+          try {
+            if (fs.existsSync(outputFile)) {
+              content = fs.readFileSync(outputFile, "utf8");
+              fs.unlinkSync(outputFile);
+            }
+          } catch {}
+          if (!content) content = stripAnsi(out).trim();
+          if (!content) content = "No output from backend.";
+          sendSSE({
+            id: `cmpl-${nanoid()}`,
+            object: "text_completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: requestedModel,
+            choices: [{ index: 0, text: content }]
+          });
+        }
+        finishSSE();
+      });
+      return;
+    }
+
+    // Fallback streaming: send final text as a single chunk
+    child.stdout.on("data", (d) => { resetIdleCompletions(); out += d.toString("utf8"); });
+    child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
+    child.on("close", () => {
+      clearTimeout(timeout);
+      if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+      let content = "";
+      try {
+        if (fs.existsSync(outputFile)) {
+          content = fs.readFileSync(outputFile, "utf8");
+          fs.unlinkSync(outputFile);
+        }
+      } catch {}
+      if (!content) content = stripAnsi(out).trim();
+      if (!content) content = "No output from backend.";
+      sendSSE({
+        id: `cmpl-${nanoid()}`,
+        object: "text_completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: requestedModel,
+        choices: [{ index: 0, text: content }]
+      });
+      finishSSE();
+    });
+    return;
+  }
+
+  // Non-streaming
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  child.stdout.on("data", (d) => { resetIdleCompletions(); out += d.toString("utf8"); });
+  child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
+  child.on("close", (code) => {
+    clearTimeout(timeout);
+    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    let content = "";
+    try {
+      if (fs.existsSync(outputFile)) {
+        content = fs.readFileSync(outputFile, "utf8");
+        fs.unlinkSync(outputFile);
+      }
+    } catch {}
+    if (!content) content = stripAnsi(out).trim();
+    if (!content) content = stripAnsi(err).trim() || "No output from backend.";
+    applyCors(null, res);
+    res.json({
+      id: `cmpl-${nanoid()}`,
+      object: "text_completion",
+      created: Math.floor(Date.now() / 1000),
+      model: requestedModel,
+      choices: [{ index: 0, text: content, logprobs: null, finish_reason: "stop" }],
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     });
   });
 });

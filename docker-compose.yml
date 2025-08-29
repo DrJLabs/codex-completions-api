@@ -9,6 +9,8 @@ services:
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - PROXY_STREAM_MODE=incremental
+      - PROXY_TIMEOUT_MS=120000
+      - PROXY_IDLE_TIMEOUT_MS=15000
       - CODEX_BIN=codex
     # Mount Codex CLI + credentials from host for in-container use
     volumes:
@@ -16,6 +18,9 @@ services:
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
     networks:
       - traefik
+    # Expose app port locally for direct localhost integrations (e.g., Roo)
+    ports:
+      - 127.0.0.1:11435:11435
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
