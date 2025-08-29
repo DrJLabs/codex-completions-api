@@ -259,6 +259,8 @@ app.post("/v1/chat/completions", (req, res) => {
   // For streaming we avoid --json due to observed child termination in some environments.
   // Attempt to set reasoning via config if supported
   if (allowEffort.has(reasoningEffort)) {
+    // Prefer newer codex-cli config key; keep legacy key for backward compatibility
+    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
     args.push("--config", `reasoning.effort="${reasoningEffort}"`);
   }
 
@@ -622,6 +624,7 @@ app.post("/v1/completions", (req, res) => {
   const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
   if (useJsonl) args.push("--json");
   if (allowEffort.has(reasoningEffort)) {
+    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
     args.push("--config", `reasoning.effort="${reasoningEffort}"`);
   }
 
