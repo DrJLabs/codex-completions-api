@@ -369,14 +369,29 @@ app.post("/v1/chat/completions", (req, res) => {
     }
 
     const promptText = joinMessages(messages).trim();
+    // Clear generic idle timer; streaming uses its own idle management
+    if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
     if (useJsonl) {
       // Emit role immediately to satisfy clients expecting role-first chunk
       sendRoleOnce();
       // Parse JSONL event stream from Codex and map to OpenAI SSE deltas
       let buf = "";
       let sentContentDelta = false;
+      const streamResetIdle = (() => {
+        let timer;
+        return () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => {
+            if (responded) return;
+            try { console.log("[proxy] stream idle timeout (jsonl); terminating backend"); } catch {}
+            try { child.kill("SIGTERM"); } catch {}
+            try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
+          }, STREAM_IDLE_TIMEOUT_MS);
+        };
+      })();
+      streamResetIdle();
       child.stdout.on("data", (chunk) => {
-        resetIdle();
+        streamResetIdle();
         const text = chunk.toString("utf8");
         out += text;
         buf += text;
@@ -427,9 +442,10 @@ app.post("/v1/chat/completions", (req, res) => {
           }
         }
       });
-      child.stderr.on("data", (e) => { resetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
         clearTimeout(timeout);
+        if (keepalive) clearInterval(keepalive);
         if (idleTimer) clearTimeout(idleTimer);
         if (!sentContentDelta) {
           // Fallback: if no incremental content was sent, emit final content once

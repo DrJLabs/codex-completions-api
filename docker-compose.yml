@@ -5,13 +5,15 @@ services:
       dockerfile: Dockerfile
     image: codex-completions-api:latest
     environment:
-      - PORT=11435
+      - PORT=${PORT:-11435}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
-      - PROXY_STREAM_MODE=incremental
-      - PROXY_TIMEOUT_MS=120000
-      - PROXY_IDLE_TIMEOUT_MS=15000
-      - CODEX_BIN=codex
+      - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
+      - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
+      - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
+      - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
+      - PROXY_SSE_KEEPALIVE_MS=${PROXY_SSE_KEEPALIVE_MS:-15000}
+      - CODEX_BIN=${CODEX_BIN:-codex}
     # Mount Codex CLI + credentials from host for in-container use
     volumes:
       - ~/.codex:/home/node/.codex:ro
