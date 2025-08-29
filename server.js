@@ -53,7 +53,9 @@ const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
 const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
-const ALLOWED_MODEL_IDS = new Set(["codex-5", DEFAULT_MODEL]);
+const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
+const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map(v => `codex-5-${v}`)];
+const ALLOWED_MODEL_IDS = new Set([...PUBLIC_MODEL_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 60000);
 // Default to not killing Codex on disconnect to better match typical OpenAI clients
@@ -94,9 +96,17 @@ const normalizeModel = (name) => {
   return { requested: raw, effective: raw };
 };
 
+const impliedEffortForModel = (requestedModel) => {
+  const m = String(requestedModel || "").toLowerCase();
+  for (const v of REASONING_VARIANTS) {
+    if (m === `codex-5-${v}`) return v;
+  }
+  return "";
+};
+
 // Models router implementing GET/HEAD/OPTIONS with canonical headers
 const modelsRouter = express.Router();
-const modelsPayload = { object: "list", data: [{ id: "codex-5", object: "model", owned_by: "codex", created: 0 }] };
+const modelsPayload = { object: "list", data: PUBLIC_MODEL_IDS.map(id => ({ id, object: "model", owned_by: "codex", created: 0 })) };
 const sendModels = (res) => {
   applyCors(null, res);
   res.set("Content-Type", "application/json; charset=utf-8");
@@ -212,12 +222,16 @@ app.post("/v1/chat/completions", (req, res) => {
       }
     });
   }
-  const reasoningEffort = (
+  let reasoningEffort = (
     (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
       .toString()
       .toLowerCase()
   );
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+  if (!reasoningEffort) {
+    const implied = impliedEffortForModel(requestedModel);
+    if (implied) reasoningEffort = implied;
+  }
 
   const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
   const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
@@ -531,12 +545,16 @@ app.post("/v1/completions", (req, res) => {
     });
   }
 
-  const reasoningEffort = (
+  let reasoningEffort = (
     (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
       .toString()
       .toLowerCase()
   );
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+  if (!reasoningEffort) {
+    const implied = impliedEffortForModel(requestedModel);
+    if (implied) reasoningEffort = implied;
+  }
 
   const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
   const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
