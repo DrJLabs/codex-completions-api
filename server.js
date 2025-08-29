@@ -8,7 +8,16 @@ import path from "node:path";
 const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
 const applyCors = (req, res) => {
   if (!CORS_ENABLED) return;
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req?.headers?.origin;
+  if (origin) {
+    // Reflect the Origin to support non-HTTP schemes like app://obsidian.md
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    // Allow credentials in case clients use them; safe with reflected origin
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
   res.setHeader("Access-Control-Max-Age", "600");
@@ -47,7 +56,8 @@ const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase
 const ALLOWED_MODEL_IDS = new Set(["codex-5", DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 60000);
-const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "true").toLowerCase() !== "false";
+// Default to not killing Codex on disconnect to better match typical OpenAI clients
+const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "false").toLowerCase() !== "false";
 const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
 
 const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
@@ -413,8 +423,8 @@ app.post("/v1/chat/completions", (req, res) => {
       // Fallback incremental mode: emit one chunk with final content
       // Emit role immediately to satisfy clients expecting role-first chunk
       sendRoleOnce();
-      child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
-      child.stderr.on("data", (e) => { const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      child.stdout.on("data", (chunk) => { resetIdle(); out += chunk.toString("utf8"); });
+      child.stderr.on("data", (e) => { resetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
         clearTimeout(timeout);
         if (idleTimer) clearTimeout(idleTimer);

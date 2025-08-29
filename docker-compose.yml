@@ -34,6 +34,12 @@ services:
       - traefik.http.routers.codex-api.tls=true
       - traefik.http.routers.codex-api.middlewares=codex-forwardauth
 
+      # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
+      - traefik.http.routers.codex-api-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
+      - traefik.http.routers.codex-api-preflight.entrypoints=websecure
+      - traefik.http.routers.codex-api-preflight.tls=true
+      - traefik.http.routers.codex-api-preflight.service=codex-api
+
       
 
       # ForwardAuth middleware (edge bearer auth)
