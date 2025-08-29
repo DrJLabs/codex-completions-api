@@ -91,7 +91,10 @@ const normalizeModel = (name) => {
   const raw = String(name || "").trim();
   if (!raw) return { requested: "codex-5", effective: DEFAULT_MODEL };
   // Primary advertised alias without slashes
-  if (raw.toLowerCase() === "codex-5") return { requested: "codex-5", effective: DEFAULT_MODEL };
+  const lower = raw.toLowerCase();
+  if (lower === "codex-5") return { requested: "codex-5", effective: DEFAULT_MODEL };
+  // Reasoning variants map to the effective default model
+  if (PUBLIC_MODEL_IDS.includes(lower)) return { requested: lower, effective: DEFAULT_MODEL };
   // Allow direct use of underlying model
   return { requested: raw, effective: raw };
 };
