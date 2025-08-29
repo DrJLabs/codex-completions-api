@@ -57,10 +57,17 @@ const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
 const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map(v => `codex-5-${v}`)];
 const ALLOWED_MODEL_IDS = new Set([...PUBLIC_MODEL_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
-const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 60000);
+// Timeouts and connection stability
+// Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
+const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
 // Default to not killing Codex on disconnect to better match typical OpenAI clients
 const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "false").toLowerCase() !== "false";
+// Idle timeout when waiting for backend output.
 const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
+// Separate idle timeout for streaming responses (allow much longer lulls between chunks)
+const STREAM_IDLE_TIMEOUT_MS = Number(process.env.PROXY_STREAM_IDLE_TIMEOUT_MS || 300000); // default 5m
+// Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
+const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
 const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
 const toStringContent = (c) => {
@@ -321,6 +328,10 @@ app.post("/v1/chat/completions", (req, res) => {
   const sendSSE = (payload) => {
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
+  const sendSSEKeepalive = () => {
+    // SSE comment line; ignored by clients but keeps intermediaries from timing out
+    res.write(`: keepalive ${Date.now()}\n\n`);
+  };
 
   const sendRoleOnce = (() => {
     let sent = false;
@@ -349,6 +360,13 @@ app.post("/v1/chat/completions", (req, res) => {
     res.setHeader("X-Accel-Buffering", "no");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.flushHeaders?.();
+    // Keepalive pings to keep the connection warm across proxies
+    let keepalive;
+    if (SSE_KEEPALIVE_MS > 0) {
+      keepalive = setInterval(() => {
+        try { sendSSEKeepalive(); } catch {}
+      }, SSE_KEEPALIVE_MS);
+    }
 
     const promptText = joinMessages(messages).trim();
     if (useJsonl) {
@@ -440,10 +458,26 @@ app.post("/v1/chat/completions", (req, res) => {
       // Fallback incremental mode: emit one chunk with final content
       // Emit role immediately to satisfy clients expecting role-first chunk
       sendRoleOnce();
-      child.stdout.on("data", (chunk) => { resetIdle(); out += chunk.toString("utf8"); });
-      child.stderr.on("data", (e) => { resetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+      // For streaming, use a longer idle window to accommodate long-thinking phases
+      const streamResetIdle = (() => {
+        let timer;
+        return () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => {
+            if (responded) return;
+            try { console.log("[proxy] stream idle timeout; keeping connection but terminating backend"); } catch {}
+            try { child.kill("SIGTERM"); } catch {}
+            // Inform client but keep connection open briefly for [DONE]
+            try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
+          }, STREAM_IDLE_TIMEOUT_MS);
+        };
+      })();
+      streamResetIdle();
+      child.stdout.on("data", (chunk) => { streamResetIdle(); out += chunk.toString("utf8"); });
+      child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
         clearTimeout(timeout);
+        if (keepalive) clearInterval(keepalive);
         if (idleTimer) clearTimeout(idleTimer);
         let content = "";
         try {
