@@ -53,11 +53,11 @@ services:
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
 
-      # CORS middleware (edge): reflect any origin, allow creds, broad headers
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowOriginListRegex=.*
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=true
+      # CORS middleware (edge): add Stainless headers allow‑list per Obsidian/Copilot
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,X-Requested-With,OpenAI-Organization,X-Obsidian,X-Obsidian-Copilot
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowOriginList="*"
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
       - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
       - traefik.http.middlewares.codex-cors.headers.addVaryHeader=true
