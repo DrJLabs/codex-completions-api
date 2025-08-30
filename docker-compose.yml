@@ -34,13 +34,18 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      - traefik.http.routers.codex-api.middlewares=codex-forwardauth
+      # Attach CORS and ForwardAuth to protected router (order of middlewares is fine)
+      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-forwardauth
 
       # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
       - traefik.http.routers.codex-api-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-api-preflight.entrypoints=websecure
       - traefik.http.routers.codex-api-preflight.tls=true
       - traefik.http.routers.codex-api-preflight.service=codex-api
+      - traefik.http.routers.codex-api-preflight.middlewares=codex-cors
+
+      # Also expose a generic preflight router name for compatibility
+      - traefik.http.routers.codex-preflight.middlewares=codex-cors
 
       
 
@@ -48,6 +53,15 @@ services:
       - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
+
+      # CORS middleware (edge)
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowOriginList="*"
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
+      - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
+      - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
+      - traefik.http.middlewares.codex-cors.headers.addVaryHeader=true
 
       # Public health router (no auth)
       - traefik.http.routers.codex-health.rule=Host(`codex-api.onemainarmy.com`) && Path(`/healthz`)
