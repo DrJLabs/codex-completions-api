@@ -62,6 +62,20 @@ An example file is in `config/roo-openai-compatible.json`.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
 - Other knobs (temperature, top_p, penalties, max_tokens): ignored.
 
+### Reasoning variants
+
+The proxy advertises additional model ids that all map to GPT‑5 but set the reasoning effort automatically unless explicitly provided in the request:
+
+- `codex-5-low`
+- `codex-5-medium`
+- `codex-5-high`
+- `codex-5-minimal`
+
+Behavior:
+- Selection sets `--config model_reasoning_effort="<level>"` (and a legacy `--config reasoning.effort="<level>"` for older CLIs).
+- If `body.reasoning.effort` is present in the incoming request, it takes precedence over the implied level.
+- The underlying `-m` remains the effective model (default: `gpt-5`).
+
 ## Acceptance criteria
 
 - `GET /healthz` returns `{ ok: true }`.
@@ -81,6 +95,16 @@ codex exec --sandbox read-only --config preferred_auth_method="chatgpt" -m gpt-5
 - Streaming shape: Immediate role chunk is emitted to satisfy Chat Completions SSE clients. Default aggregates content into a single chunk. Set `PROXY_STREAM_MODE=jsonl` to parse Codex JSON-lines: when deltas are available they are streamed; otherwise the full message is forwarded as soon as Codex emits it.
 - Auth: Ensure you’re logged into Codex (`codex login`).
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
+
+### Long-running tasks and stable streaming
+
+For long/complex tasks or slow backends, tune these environment variables:
+
+- `PROXY_TIMEOUT_MS` (default 300000): overall request timeout (non‑stream).
+- `PROXY_STREAM_IDLE_TIMEOUT_MS` (default 300000): idle window for streaming before the backend is terminated.
+- `PROXY_SSE_KEEPALIVE_MS` (default 15000): interval for SSE comment pings to keep connections alive across proxies.
+
+The proxy sends periodic `: keepalive` SSE comments to prevent intermediaries from closing idle connections. Prefer `stream:true` for long tasks.
 
 ## Security and .gitignore
 
