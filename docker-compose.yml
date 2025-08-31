@@ -34,12 +34,12 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      # Attach CORS and ForwardAuth to protected router (order of middlewares is fine)
-      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-forwardauth
+      # Attach ForwardAuth then CORS so headers apply to 401/4xx too
+      - traefik.http.routers.codex-api.middlewares=codex-forwardauth,codex-cors
 
       # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
       # High-priority preflight router: HTTPS only, bypass ForwardAuth, still apply CORS
-      - traefik.http.routers.codex-preflight.rule=PathPrefix(`/v1`) && Method(`OPTIONS`)
+      - traefik.http.routers.codex-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-preflight.entrypoints=websecure
       - traefik.http.routers.codex-preflight.tls=true
       - traefik.http.routers.codex-preflight.priority=10000
@@ -56,7 +56,8 @@ services:
       # CORS middleware (edge): add Stainless headers allow‑list per Obsidian/Copilot
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowOriginList="*"
+      # Use wildcard origin since we do not use cookies; ensures app:// origins work
+      - traefik.http.middlewares.codex-cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
       - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
