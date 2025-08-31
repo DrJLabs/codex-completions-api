@@ -36,15 +36,15 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      # Apply CORS and security headers before ForwardAuth; add rate limiting
-      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-headers,codex-forwardauth,codex-ratelimit
+      # Apply CORS and security headers, rate limit prior to ForwardAuth
+      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-headers,codex-ratelimit,codex-forwardauth
 
       # CORS preflight (OPTIONS): bypass ForwardAuth entirely; Traefik responds with headers
       - traefik.http.routers.codex-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-preflight.entrypoints=websecure
       - traefik.http.routers.codex-preflight.tls=true
       - traefik.http.routers.codex-preflight.priority=10000
-      - traefik.http.routers.codex-preflight.middlewares=codex-cors,codex-headers
+      - traefik.http.routers.codex-preflight.middlewares=codex-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-preflight.service=noop@internal
 
       
@@ -70,7 +70,7 @@ services:
       - traefik.http.middlewares.codex-headers.headers.frameDeny=true
       - traefik.http.middlewares.codex-headers.headers.contentTypeNosniff=true
       - traefik.http.middlewares.codex-headers.headers.referrerPolicy=no-referrer
-      - traefik.http.middlewares.codex-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=()
+      - traefik.http.middlewares.codex-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), interest-cohort=()
       - traefik.http.middlewares.codex-headers.headers.customResponseHeaders.X-DNS-Prefetch-Control=off
 
       # Rate limit middleware
