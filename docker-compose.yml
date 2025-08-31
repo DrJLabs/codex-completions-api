@@ -8,6 +8,8 @@ services:
       - PORT=${PORT:-11435}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
+      # Disable app-level CORS; Traefik and Cloudflare handle CORS at the edge
+      - PROXY_ENABLE_CORS=false
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
@@ -34,8 +36,8 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      # Attach ForwardAuth then CORS so headers apply to 401/4xx too
-      - traefik.http.routers.codex-api.middlewares=codex-forwardauth,codex-cors
+      # Apply CORS first so headers wrap ForwardAuth 4xx responses
+      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-forwardauth
 
       # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
       # High-priority preflight router: HTTPS only, bypass ForwardAuth, still apply CORS
@@ -44,7 +46,7 @@ services:
       - traefik.http.routers.codex-preflight.tls=true
       - traefik.http.routers.codex-preflight.priority=10000
       - traefik.http.routers.codex-preflight.middlewares=codex-cors
-      - traefik.http.routers.codex-preflight.service=codex-api
+      - traefik.http.routers.codex-preflight.service=noop@internal
 
       
 
