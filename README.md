@@ -36,10 +36,11 @@ Environment variables:
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (default: `incremental`) — set to `jsonl` to parse `--json` events for finer-grained streaming.
 - `CODEX_BIN` (default: `codex`)
-- `PROXY_ENABLE_CORS` (default: `true`) — set to `false` to disable permissive CORS headers.
+ - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `60000`) — per-request timeout to abort hung Codex subprocesses.
-- `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
+ - `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
+ - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
 
 ## Roo Code configuration
 
@@ -136,7 +137,7 @@ The acceptance checks look for a role-first SSE chunk and the `[DONE]` terminato
 
 UNLICENSED (see repository terms). Do not redistribute without permission.
 
-## Deployment: Traefik ForwardAuth (Docker Compose)
+## Deployment: Traefik + Cloudflare (Docker Compose)
 
 This section deploys the API behind Traefik with HTTPS handled by cloudflared and Bearer auth enforced at the edge via Traefik ForwardAuth. The service itself already checks Bearer tokens internally in [app.post()](server.js:46). Public health probe is served at [app.get()](server.js:39).
 
@@ -201,3 +202,35 @@ Notes
 - The app already sets headers for SSE in [streaming branch](server.js:120) and disables buffering with `X-Accel-Buffering: no`. Traefik streams by default.
 - Do not expose the app’s container port on the host. Traefik connects via the Docker network `traefik`.
 - Keep `PROXY_API_KEY` out of images and source control. Provide via environment or a Docker secret.
+
+## Security Hardening
+
+This repository ships an edge-first security posture when deployed via Traefik and Cloudflare. Key elements:
+
+- CORS at the edge: App CORS is disabled (`PROXY_ENABLE_CORS=false` in Compose). Traefik emits CORS headers for actual and preflight responses; Cloudflare adds/normalizes these for OPTIONS and error paths.
+- Preflight router: Host-scoped `OPTIONS` router uses `noop@internal` so the origin is never hit, with middlewares `codex-cors,codex-headers,codex-ratelimit`.
+- Security headers: HSTS, frame deny, nosniff, referrer policy, and a restrictive `Permissions-Policy` (includes `interest-cohort=()`).
+- Rate limiting: `codex-ratelimit` applied before ForwardAuth to shield the auth service.
+
+Cloudflare Response Header Transform (dashboard)
+- Rules → Transform Rules → Response Header Modification → Create
+  - When: Host equals your domain + Path starts with `/v1/` + Method in OPTIONS, GET, POST, HEAD
+  - Set headers:
+    - Access-Control-Allow-Origin: `*`
+    - Access-Control-Allow-Methods: `GET, POST, HEAD, OPTIONS`
+    - Access-Control-Allow-Headers: `Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count`
+    - Access-Control-Max-Age: `600`
+
+Preflight smoke test
+```bash
+curl -i -X OPTIONS 'https://codex-api.onemainarmy.com/v1/chat/completions' \
+  -H 'Origin: app://obsidian.md' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization, content-type, x-stainless-os'
+# Expect: ACAO: *, Allow-Methods present, Allow-Headers includes X-Stainless-*
+```
+
+Tightening origins
+- Default is `Access-Control-Allow-Origin: *` (safe with bearer tokens; no cookies). To restrict:
+  - Set a Traefik allowlist via `accessControlAllowOriginList[...]` and regex entries (include `app://obsidian.md`, localhost, and trusted web origins).
+  - Update the Cloudflare transform rule to either reflect the request `Origin` (Worker) or set an explicit allowlist value.
