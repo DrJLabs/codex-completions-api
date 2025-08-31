@@ -76,7 +76,6 @@ services:
       # Rate limit middleware
       - traefik.http.middlewares.codex-ratelimit.ratelimit.average=${RATE_LIMIT_AVG:-200}
       - traefik.http.middlewares.codex-ratelimit.ratelimit.burst=${RATE_LIMIT_BURST:-400}
-
       # Public health router (no auth)
       - traefik.http.routers.codex-health.rule=Host(`codex-api.onemainarmy.com`) && Path(`/healthz`)
       - traefik.http.routers.codex-health.entrypoints=websecure
