@@ -8,7 +8,7 @@ services:
       - PORT=${PORT:-11435}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
-      # Disable app-level CORS; Traefik and Cloudflare handle CORS at the edge
+      # App-level CORS is disabled; edge handles CORS
       - PROXY_ENABLE_CORS=false
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
@@ -36,16 +36,15 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      # Apply CORS first so headers wrap ForwardAuth 4xx responses
-      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-forwardauth
+      # Apply CORS and security headers, rate limit prior to ForwardAuth
+      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-headers,codex-ratelimit,codex-forwardauth
 
-      # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
-      # High-priority preflight router: HTTPS only, bypass ForwardAuth, still apply CORS
+      # CORS preflight (OPTIONS): bypass ForwardAuth entirely; Traefik responds with headers
       - traefik.http.routers.codex-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-preflight.entrypoints=websecure
       - traefik.http.routers.codex-preflight.tls=true
       - traefik.http.routers.codex-preflight.priority=10000
-      - traefik.http.routers.codex-preflight.middlewares=codex-cors
+      - traefik.http.routers.codex-preflight.middlewares=codex-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-preflight.service=noop@internal
 
       
@@ -55,21 +54,34 @@ services:
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
 
-      # CORS middleware (edge): add Stainless headers allow‑list per Obsidian/Copilot
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count
+      # CORS middleware (edge)
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
-      # Use wildcard origin since we do not use cookies; ensures app:// origins work
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count
       - traefik.http.middlewares.codex-cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
-      - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
+      - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-cors.headers.addVaryHeader=true
 
+      # Security headers middleware (edge)
+      - traefik.http.middlewares.codex-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.codex-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.codex-headers.headers.stsPreload=true
+      - traefik.http.middlewares.codex-headers.headers.frameDeny=true
+      - traefik.http.middlewares.codex-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.codex-headers.headers.referrerPolicy=no-referrer
+      - traefik.http.middlewares.codex-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), interest-cohort=()
+      - traefik.http.middlewares.codex-headers.headers.customResponseHeaders.X-DNS-Prefetch-Control=off
+
+      # Rate limit middleware
+      - traefik.http.middlewares.codex-ratelimit.ratelimit.average=${RATE_LIMIT_AVG:-200}
+      - traefik.http.middlewares.codex-ratelimit.ratelimit.burst=${RATE_LIMIT_BURST:-400}
       # Public health router (no auth)
       - traefik.http.routers.codex-health.rule=Host(`codex-api.onemainarmy.com`) && Path(`/healthz`)
       - traefik.http.routers.codex-health.entrypoints=websecure
       - traefik.http.routers.codex-health.tls=true
       - traefik.http.routers.codex-health.service=codex-api
+      - traefik.http.routers.codex-health.middlewares=codex-headers
     restart: unless-stopped
 
   auth:
