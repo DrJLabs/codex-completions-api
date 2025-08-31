@@ -8,6 +8,8 @@ services:
       - PORT=${PORT:-11435}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
+      # Disable app-level CORS; Traefik and Cloudflare handle CORS at the edge
+      - PROXY_ENABLE_CORS=false
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
@@ -34,13 +36,17 @@ services:
       - traefik.http.routers.codex-api.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-api.entrypoints=websecure
       - traefik.http.routers.codex-api.tls=true
-      - traefik.http.routers.codex-api.middlewares=codex-forwardauth
+      # Apply CORS first so headers wrap ForwardAuth 4xx responses
+      - traefik.http.routers.codex-api.middlewares=codex-cors,codex-forwardauth
 
       # CORS preflight (OPTIONS) should bypass ForwardAuth to let the app answer 204 with CORS headers
-      - traefik.http.routers.codex-api-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
-      - traefik.http.routers.codex-api-preflight.entrypoints=websecure
-      - traefik.http.routers.codex-api-preflight.tls=true
-      - traefik.http.routers.codex-api-preflight.service=codex-api
+      # High-priority preflight router: HTTPS only, bypass ForwardAuth, still apply CORS
+      - traefik.http.routers.codex-preflight.rule=Host(`codex-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
+      - traefik.http.routers.codex-preflight.entrypoints=websecure
+      - traefik.http.routers.codex-preflight.tls=true
+      - traefik.http.routers.codex-preflight.priority=10000
+      - traefik.http.routers.codex-preflight.middlewares=codex-cors
+      - traefik.http.routers.codex-preflight.service=noop@internal
 
       
 
@@ -48,6 +54,16 @@ services:
       - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
+
+      # CORS middleware (edge): add Stainless headers allow‑list per Obsidian/Copilot
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
+      # Use wildcard origin since we do not use cookies; ensures app:// origins work
+      - traefik.http.middlewares.codex-cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
+      - traefik.http.middlewares.codex-cors.headers.accessControlExposeHeaders=Content-Type
+      - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
+      - traefik.http.middlewares.codex-cors.headers.addVaryHeader=true
 
       # Public health router (no auth)
       - traefik.http.routers.codex-health.rule=Host(`codex-api.onemainarmy.com`) && Path(`/healthz`)
