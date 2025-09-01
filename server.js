@@ -69,6 +69,24 @@ const STREAM_IDLE_TIMEOUT_MS = Number(process.env.PROXY_STREAM_IDLE_TIMEOUT_MS |
 // Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
 const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
+// Approximate token usage logging
+const TOKEN_LOG_PATH = process.env.TOKEN_LOG_PATH || path.join(process.cwd(), "logs", "usage.ndjson");
+try { fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true }); } catch {}
+const estTokens = (s = "") => Math.ceil(String(s).length / 4);
+const estTokensForMessages = (msgs = []) => {
+  let chars = 0;
+  for (const m of msgs) {
+    if (!m) continue;
+    const c = m.content;
+    if (Array.isArray(c)) chars += c.map(x => (typeof x === "string" ? x : JSON.stringify(x))).join("").length;
+    else chars += String(c || "").length;
+  }
+  return Math.ceil(chars / 4);
+};
+const appendUsage = (obj = {}) => {
+  try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" }); } catch {}
+};
+
 const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
 const toStringContent = (c) => {
   if (typeof c === "string") return c;
@@ -200,6 +218,8 @@ app.head("/v1/chat/completions", (_req, res) => {
 });
 
 app.post("/v1/chat/completions", (req, res) => {
+  const reqId = nanoid();
+  const started = Date.now();
   let responded = false;
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -265,6 +285,7 @@ app.post("/v1/chat/completions", (req, res) => {
   }
 
   const prompt = joinMessages(messages);
+  const promptTokensEst = estTokensForMessages(messages);
 
   try { console.log("[proxy] spawning:", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
@@ -286,6 +307,7 @@ app.post("/v1/chat/completions", (req, res) => {
     } else {
       applyCors(null, res);
       res.status(500).json({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } });
+      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: !!isStreamingReq, prompt_tokens_est: promptTokensEst, completion_tokens_est: 0, total_tokens_est: promptTokensEst, duration_ms: Date.now()-started, status: 500, user_agent: req.headers["user-agent"] || "" });
     }
   };
   child.on("error", onChildError);
@@ -700,6 +722,7 @@ app.post("/v1/completions", (req, res) => {
     if (useJsonl) {
       let buf = "";
       let sentAny = false;
+      let completionChars = 0;
       child.stdout.on("data", (chunk) => {
         resetIdleCompletions();
         const text = chunk.toString("utf8");
@@ -715,6 +738,7 @@ app.post("/v1/completions", (req, res) => {
               const delta = (evt.msg?.delta ?? evt.delta) || "";
               if (delta) {
                 sentAny = true;
+                completionChars += String(delta).length;
                 sendSSE({
                   id: `cmpl-${nanoid()}`,
                   object: "text_completion.chunk",
@@ -727,6 +751,7 @@ app.post("/v1/completions", (req, res) => {
               const message = (evt.msg?.message ?? evt.message) || "";
               if (message) {
                 sentAny = true;
+                completionChars += String(message).length;
                 sendSSE({
                   id: `cmpl-${nanoid()}`,
                   object: "text_completion.chunk",
@@ -761,13 +786,16 @@ app.post("/v1/completions", (req, res) => {
             choices: [{ index: 0, text: content }]
           });
         }
+        const completion_tokens_est = Math.ceil(completionChars / 4);
+        appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
         finishSSE();
       });
       return;
     }
 
     // Fallback streaming: send final text as a single chunk
-    child.stdout.on("data", (d) => { resetIdleCompletions(); out += d.toString("utf8"); });
+    let completionChars = 0;
+    child.stdout.on("data", (d) => { resetIdleCompletions(); const s=d.toString("utf8"); out += s; completionChars += s.length; });
     child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
     child.on("close", () => {
       clearTimeout(timeout);
@@ -781,6 +809,8 @@ app.post("/v1/completions", (req, res) => {
       } catch {}
       if (!content) content = stripAnsi(out).trim();
       if (!content) content = "No output from backend.";
+      const completion_tokens_est = Math.ceil(completionChars/4);
+      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
       sendSSE({
         id: `cmpl-${nanoid()}`,
         object: "text_completion.chunk",
@@ -810,13 +840,15 @@ app.post("/v1/completions", (req, res) => {
     if (!content) content = stripAnsi(out).trim();
     if (!content) content = stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
+    const completion_tokens_est = estTokens(content);
+    appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
     res.json({
       id: `cmpl-${nanoid()}`,
       object: "text_completion",
       created: Math.floor(Date.now() / 1000),
       model: requestedModel,
       choices: [{ index: 0, text: content, logprobs: null, finish_reason: "stop" }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      usage: { prompt_tokens: promptTokensEst, completion_tokens: completion_tokens_est, total_tokens: promptTokensEst + completion_tokens_est }
     });
   });
 });

@@ -7,6 +7,7 @@ OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE
 - SSE streaming: emits an initial `delta.role=assistant` chunk. By default content is aggregated into one chunk; with `PROXY_STREAM_MODE=jsonl`, the proxy parses `codex exec --json` to stream incremental deltas when available, or the full agent message as soon as it’s emitted.
 - Minimal output shaping: ANSI is stripped; additional heuristics exist but are conservative by default to avoid dropping valid content.
 - Reasoning effort mapping: `reasoning.effort` → `--config reasoning.effort="<low|medium|high|minimal>"` (silently ignored by older builds).
+- Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Safety: Codex runs with `--sandbox read-only`. Approval flags are not passed to `exec` (see Notes).
 
 ## Quick start
@@ -39,7 +40,8 @@ Environment variables:
  - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `60000`) — per-request timeout to abort hung Codex subprocesses.
- - `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
+- `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
+- `TOKEN_LOG_PATH` (default: `logs/usage.ndjson`) — where usage events are appended (NDJSON).
  - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
 
 ## Roo Code configuration
@@ -62,6 +64,17 @@ An example file is in `config/roo-openai-compatible.json`.
   - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex exec --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
 - Other knobs (temperature, top_p, penalties, max_tokens): ignored.
+
+### Usage/Token tracking (approximate)
+
+The proxy estimates tokens using a simple heuristic (~1 token per 4 characters) and logs each `/v1/chat/completions` call to an NDJSON file. For most operational trending this is sufficient; it does not reflect provider billing.
+
+Endpoints (protected by the same edge auth as other `/v1/*` routes):
+- `GET /v1/usage?start=<iso|epoch>&end=<iso|epoch>&group=<hour|day>` → aggregated counts
+- `GET /v1/usage/raw?limit=100` → last N raw events
+
+Event fields:
+- `ts` (ms since epoch), `route`, `method`, `requested_model`, `effective_model`, `stream`, `prompt_tokens_est`, `completion_tokens_est`, `total_tokens_est`, `duration_ms`, `status`, `user_agent`.
 
 ### Reasoning variants
 
