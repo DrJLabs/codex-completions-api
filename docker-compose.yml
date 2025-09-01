@@ -64,7 +64,7 @@ services:
 
       # CORS middleware (edge)
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
-      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count,dangerously-allow-browser
+      - traefik.http.middlewares.codex-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,OpenAI-Version,OpenAI-Project,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count,dangerously-allow-browser
       - traefik.http.middlewares.codex-cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
       - traefik.http.middlewares.codex-cors.headers.accessControlAllowCredentials=false
       - traefik.http.middlewares.codex-cors.headers.accessControlMaxAge=600
