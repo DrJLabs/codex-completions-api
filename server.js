@@ -399,6 +399,8 @@ app.post("/v1/chat/completions", (req, res) => {
       // Emit role immediately to satisfy clients expecting role-first chunk
       sendRoleOnce();
       // Parse JSONL event stream from Codex and map to OpenAI SSE deltas
+      const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+      let completionChars = 0;
       let buf = "";
       let sentContentDelta = false;
       const streamResetIdle = (() => {
@@ -432,6 +434,7 @@ app.post("/v1/chat/completions", (req, res) => {
               const delta = (evt.msg?.delta ?? evt.delta) || "";
               if (delta) {
                 sendRoleOnce();
+                try { completionChars += String(delta).length; } catch {}
                 sendSSE({
                   id: `chatcmpl-${nanoid()}`,
                   object: "chat.completion.chunk",
@@ -447,6 +450,7 @@ app.post("/v1/chat/completions", (req, res) => {
               const message = (evt.msg?.message ?? evt.message) || "";
               if (message) {
                 sendRoleOnce();
+                try { completionChars += String(message).length; } catch {}
                 sendSSE({
                   id: `chatcmpl-${nanoid()}`,
                   object: "chat.completion.chunk",
@@ -492,6 +496,13 @@ app.post("/v1/chat/completions", (req, res) => {
           });
         }
         try { console.log("[proxy] jsonl stream close: code=", code, " out_len=", out.length, " err_len=", err.length); } catch {}
+        if (includeUsage) {
+          const prompt_tokens_est = Math.ceil(prompt.length/4);
+          const completion_tokens_est = Math.ceil(completionChars/4);
+          try {
+            sendSSE({ event: "usage", usage: { prompt_tokens: prompt_tokens_est, completion_tokens: completion_tokens_est, total_tokens: prompt_tokens_est + completion_tokens_est } });
+          } catch {}
+        }
         finishSSE();
       });
     } else {
@@ -513,7 +524,9 @@ app.post("/v1/chat/completions", (req, res) => {
         };
       })();
       streamResetIdle();
-      child.stdout.on("data", (chunk) => { streamResetIdle(); out += chunk.toString("utf8"); });
+      const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+      let completionChars = 0;
+      child.stdout.on("data", (chunk) => { streamResetIdle(); const s = chunk.toString("utf8"); out += s; completionChars += s.length; });
       child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
       child.on("close", (code, signal) => {
         clearTimeout(timeout);
@@ -537,6 +550,13 @@ app.post("/v1/chat/completions", (req, res) => {
           model: requestedModel,
           choices: [{ index: 0, delta: { content } }]
         });
+        if (includeUsage) {
+          const prompt_tokens_est = Math.ceil(prompt.length/4);
+          const completion_tokens_est = Math.ceil(completionChars/4);
+          try {
+            sendSSE({ event: "usage", usage: { prompt_tokens: prompt_tokens_est, completion_tokens: completion_tokens_est, total_tokens: prompt_tokens_est + completion_tokens_est } });
+          } catch {}
+        }
         finishSSE();
       });
     }
