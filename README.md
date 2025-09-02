@@ -247,3 +247,5 @@ Tightening origins
 - Default is `Access-Control-Allow-Origin: *` (safe with bearer tokens; no cookies). To restrict:
   - Set a Traefik allowlist via `accessControlAllowOriginList[...]` and regex entries (include `app://obsidian.md`, localhost, and trusted web origins).
   - Update the Cloudflare transform rule to either reflect the request `Origin` (Worker) or set an explicit allowlist value.
+- Streaming usage event (in-band): Include `"stream_options": { "include_usage": true }` to receive a final SSE usage event: `data: {"event":"usage","usage":{"prompt_tokens":N,"completion_tokens":M,"total_tokens":N+M}}`.
+- Ask the model directly: Send a user message like `usage today`, `usage yesterday`, `usage last 7d`, or `usage start=2025-09-01 end=2025-09-02 group=hour`. The proxy detects these simple queries and responds with a usage summary without invoking the backend model.
