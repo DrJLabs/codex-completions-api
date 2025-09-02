@@ -111,6 +111,55 @@ const isModelText = (line) => {
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
+// Usage query support (file-backed NDJSON aggregates)
+const parseTime = (v) => {
+  if (!v) return 0;
+  if (/^\d+$/.test(String(v))) return Number(v);
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? 0 : t;
+};
+const loadUsageEvents = () => {
+  try {
+    if (!fs.existsSync(TOKEN_LOG_PATH)) return [];
+    const lines = fs.readFileSync(TOKEN_LOG_PATH, "utf8").split(/\n+/).filter(Boolean);
+    return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  } catch { return []; }
+};
+const aggregateUsage = (events = [], start = 0, end = Date.now() + 1, group = "") => {
+  const filtered = events.filter(e => (e.ts || 0) >= start && (e.ts || 0) < end);
+  const agg = { total_requests: 0, prompt_tokens_est: 0, completion_tokens_est: 0, total_tokens_est: 0 };
+  const buckets = {};
+  for (const e of filtered) {
+    agg.total_requests += 1;
+    agg.prompt_tokens_est += e.prompt_tokens_est || 0;
+    agg.completion_tokens_est += e.completion_tokens_est || 0;
+    agg.total_tokens_est += e.total_tokens_est || 0;
+    if (group === "hour" || group === "day") {
+      const d = new Date(e.ts || 0);
+      const key = group === "hour" ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).toISOString() : new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+      buckets[key] ||= { ts: key, requests: 0, prompt_tokens_est: 0, completion_tokens_est: 0, total_tokens_est: 0 };
+      const b = buckets[key];
+      b.requests += 1; b.prompt_tokens_est += e.prompt_tokens_est || 0; b.completion_tokens_est += e.completion_tokens_est || 0; b.total_tokens_est += e.total_tokens_est || 0;
+    }
+  }
+  const out = { start, end, group: group || undefined, ...agg };
+  if (group === "hour" || group === "day") out.buckets = Object.values(buckets).sort((a,b)=>a.ts.localeCompare(b.ts));
+  return out;
+};
+app.get("/v1/usage", (req, res) => {
+  const start = parseTime(req.query.start) || 0;
+  const end = parseTime(req.query.end) || Date.now() + 1;
+  const group = (req.query.group || "").toString();
+  const events = loadUsageEvents();
+  const agg = aggregateUsage(events, start, end, group);
+  res.json(agg);
+});
+app.get("/v1/usage/raw", (req, res) => {
+  const limit = Math.max(1, Math.min(10000, Number(req.query.limit || 200)));
+  const events = loadUsageEvents();
+  res.json({ count: Math.min(limit, events.length), events: events.slice(-limit) });
+});
+
 // Normalize/alias model names. Accepts custom prefixes like "codex/<model>".
 const normalizeModel = (name) => {
   const raw = String(name || "").trim();
