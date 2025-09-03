@@ -9,6 +9,10 @@
     "start": "node server.js",
     "smoke": "bash scripts/smoke.sh",
     "test": "playwright test",
+    "test:unit": "vitest run -u",
+    "test:unit:watch": "vitest",
+    "test:integration": "vitest run tests/integration --reporter=default",
+    "test:all": "npm run test:unit && npm run test:integration && npm test",
     "test:report": "playwright show-report",
     "bmad:refresh": "bmad-method install -f -i codex",
     "bmad:list": "bmad-method list:agents",
@@ -19,7 +23,10 @@
     "nanoid": "^5.0.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.0"
+    "@playwright/test": "^1.45.0",
+    "get-port": "^7.0.0",
+    "node-fetch": "^3.3.2",
+    "vitest": "^1.6.0"
   },
   "engines": {
     "node": ">=18"
