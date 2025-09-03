@@ -52,7 +52,12 @@ const PORT = Number(process.env.PORT || 11435);
 const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
+// Allow isolating Codex CLI configuration per deployment. When set, child processes
+// receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
+// Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
+const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir?.() || process.env.HOME || "", ".codex-api");
 const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
+const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
 const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map(v => `codex-5-${v}`)];
 const ALLOWED_MODEL_IDS = new Set([...PUBLIC_MODEL_IDS, DEFAULT_MODEL]);
@@ -318,10 +323,12 @@ app.post("/v1/chat/completions", (req, res) => {
     "exec",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
+    "--config", "project_doc_max_bytes=0",
     "--skip-git-repo-check",
     "--output-last-message", outputFile,
     "-m", effectiveModel
   ];
+  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
   // Prefer JSONL event stream when requested; this enables robust incremental SSE mapping
   const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
   if (useJsonl) args.push("--json");
@@ -339,7 +346,7 @@ app.post("/v1/chat/completions", (req, res) => {
   try { console.log("[proxy] spawning:", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env },
+    env: { ...process.env, CODEX_HOME },
   });
   const onDone = () => { responded = true; };
   const onChildError = (e) => {
@@ -708,10 +715,12 @@ app.post("/v1/completions", (req, res) => {
     "exec",
     "--sandbox", "read-only",
     "--config", 'preferred_auth_method="chatgpt"',
+    "--config", "project_doc_max_bytes=0",
     "--skip-git-repo-check",
     "--output-last-message", outputFile,
     "-m", effectiveModel
   ];
+  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
   const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
   if (useJsonl) args.push("--json");
   if (allowEffort.has(reasoningEffort)) {
@@ -725,7 +734,7 @@ app.post("/v1/completions", (req, res) => {
   try { console.log("[proxy] spawning (completions):", CODEX_BIN, args.join(" "), " prompt_len=", toSend.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env },
+    env: { ...process.env, CODEX_HOME },
   });
   const onChildError = (e) => {
     try { console.log("[proxy] child error (completions):", e?.message || String(e)); } catch {}
