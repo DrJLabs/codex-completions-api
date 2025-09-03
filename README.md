@@ -12,24 +12,31 @@ OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE
 
 ## Quick start
 
-- Prereqs: Node >= 18, npm, curl. Codex CLI will be installed if missing.
-- One-liner install + systemd user service:
+- Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
 
+Option A — Node (local):
 ```bash
-bash scripts/install.sh
+npm install
+PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
+# health
+curl -s http://127.0.0.1:11435/healthz | jq .
+# models
+curl -s http://127.0.0.1:11435/v1/models | jq .
+# chat (non-stream)
+curl -s http://127.0.0.1:11435/v1/chat/completions \
+  -H "Authorization: Bearer codex-local-secret" -H 'Content-Type: application/json' \
+  -d '{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Respond with a short sentence."}]}' | jq .
 ```
 
-This installs to `~/.local/share/codex-openai-proxy`, creates a user service, and runs the proxy at `http://127.0.0.1:11435/v1` with API key `codex-local-secret`.
-If port `11435` is already in use, override with `PORT=18000 npm run start` (and use `BASE_URL=http://127.0.0.1:18000/v1` in tests).
+Option B — Docker Compose:
+```bash
+docker compose up -d --build
+curl -s http://127.0.0.1:11435/healthz | jq .
+```
 
 ## Local development
 
-```bash
-npm install
-npm run start
-# In another shell
-bash scripts/smoke.sh
-```
+Use the curl snippets above to validate endpoints while `npm run start` is running.
 
 Environment variables:
 - `PORT` (default: `11435`)
@@ -41,9 +48,13 @@ Environment variables:
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
  - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
-- `PROXY_TIMEOUT_MS` (default: `60000`) — per-request timeout to abort hung Codex subprocesses.
-- `PROXY_KILL_ON_DISCONNECT` (default: `true`) — terminate Codex if the client disconnects.
-- `TOKEN_LOG_PATH` (default: `logs/usage.ndjson`) — where usage events are appended (NDJSON).
+- `PROXY_TIMEOUT_MS` (default: `300000`) — overall request timeout (5 minutes).
+- `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
+- `PROXY_STREAM_IDLE_TIMEOUT_MS` (default: `300000`) — stream idle timeout between chunks (5 minutes).
+- `PROXY_PROTO_IDLE_MS` (default: `120000`) — non‑stream aggregation idle guard for proto mode.
+- `PROXY_KILL_ON_DISCONNECT` (default: `false`) — if true, terminate Codex when client disconnects.
+- `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
+- `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).
  - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
 
 ## Roo Code configuration
@@ -66,6 +77,18 @@ An example file is in `config/roo-openai-compatible.json`.
   - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex exec --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
 - Other knobs (temperature, top_p, penalties, max_tokens): ignored.
+
+## How it works (main‑p)
+
+- The proxy normalizes the requested model (e.g., `codex-5` → effective `gpt-5`) and prepares Codex proto args:
+  - `preferred_auth_method="chatgpt"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `tools.web_search=false`, `model="<effective>"`, optional `model_provider`, and `reasoning.effort` when supplied.
+- It joins `messages[]` into a single text prompt `"[role] content"` lines and sends one `user_input` op to the Codex proto child process.
+- Streaming (`stream:true`):
+  - Sends an initial SSE chunk with `delta.role=assistant`.
+  - For each `agent_message_delta`, emits a content delta chunk; otherwise emits the full `agent_message` when received.
+  - Appends `[DONE]` and ends the stream. Keepalives (`: keepalive`) are sent every `SSE_KEEPALIVE_MS`.
+- Non‑stream: Accumulates deltas until `task_complete`, then responds with an OpenAI‑style JSON body.
+- One proto process per request: the child process is terminated on timeout/idle/close; no state is retained between requests.
 
 ### Usage/Token tracking (approximate)
 
@@ -133,20 +156,15 @@ The proxy sends periodic `: keepalive` SSE comments to prevent intermediaries fr
 
 Sensitive files such as `.env`, `.npmrc`, and any Codex cache directory (`.codex/`) are ignored by `.gitignore`. The proxy never reads or writes your project files; it runs Codex with `--sandbox read-only`.
 
-## Running acceptance
+## Manual checks (SSE)
 
-You can run the acceptance checks locally (requires Codex installed and logged in):
-
+Validate streaming with curl:
 ```bash
-# Default port
-bash scripts/acceptance.sh
-
-# Alternate port if 11435 is in use
-PORT=18000 npm run start &
-BASE_URL=http://127.0.0.1:18000/v1 bash scripts/acceptance.sh
+curl -sN http://127.0.0.1:11435/v1/chat/completions \
+  -H "Authorization: Bearer $PROXY_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' | sed -n '1,30p'
 ```
-
-The acceptance checks look for a role-first SSE chunk and the `[DONE]` terminator. Content may arrive as one aggregated chunk prior to `[DONE]`.
+Expect an initial role delta, one or more `data: {"..."}` chunks, then `data: [DONE]`.
 ## Cursor compatibility quickstart
 - Base URL: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
 - API Key: same value as `PROXY_API_KEY`.
@@ -172,8 +190,8 @@ Prerequisites
 Files in this repo
 - Build image: [Dockerfile](Dockerfile)
 - Compose stack: [docker-compose.yml](docker-compose.yml)
-- ForwardAuth microservice: [auth/server.js](auth/server.js:1)
-- Main API server: [Express app](server.js:8), routes [GET /healthz](server.js:39), [GET /v1/models](server.js:41), [POST /v1/chat/completions](server.js:46)
+- ForwardAuth microservice: [auth/server.js](auth/server.js)
+- Main API server: [server.js](server.js)
 
 Edge authentication model
 - Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (implemented by [auth/server.js](auth/server.js:1)).
@@ -261,3 +279,12 @@ Tightening origins
   - Update the Cloudflare transform rule to either reflect the request `Origin` (Worker) or set an explicit allowlist value.
 - Streaming usage event (in-band): Include `"stream_options": { "include_usage": true }` to receive a final SSE usage event: `data: {"event":"usage","usage":{"prompt_tokens":N,"completion_tokens":M,"total_tokens":N+M}}`.
 - Ask the model directly: Send a user message like `usage today`, `usage yesterday`, `usage last 7d`, or `usage start=2025-09-01 end=2025-09-02 group=hour`. The proxy detects these simple queries and responds with a usage summary without invoking the backend model.
+
+## Branch status
+
+This branch (`main-p`) uses one Codex proto process per request (stateless). Feature branches exist but are not merged:
+- `feat/playwright-tests`: Playwright API/SSE tests with a deterministic shim.
+- `feat/prompt-cache-resume`: experimental, feature-gated caching hooks.
+- `feat/proto-continuous-sessions`: continuous proto sessions keyed by `session_id`.
+
+They remain idle; refer to their commit messages for details.
