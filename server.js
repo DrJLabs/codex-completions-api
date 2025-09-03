@@ -450,12 +450,16 @@ app.post("/v1/chat/completions", (req, res) => {
           if (t === "agent_message_delta") {
             const d = String((evt.msg?.delta ?? evt.delta) || "");
             if (d) {
-              // Handle implementations that repeat full content as "delta"
+              // Coalesce deltas: if "d" is full content, emit the new suffix; otherwise treat as incremental piece
               let toEmit = d;
-              if (accum && d.startsWith(accum)) toEmit = d.slice(accum.length);
+              if (accum && d.startsWith(accum)) {
+                toEmit = d.slice(accum.length);
+                accum = d;
+              } else {
+                accum += toEmit;
+              }
               if (toEmit) {
                 sentAny = true;
-                accum = d;
                 sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
               }
             }
@@ -694,9 +698,14 @@ app.post("/v1/completions", (req, res) => {
             const delta = String((evt.msg?.delta ?? evt.delta) || "");
             if (delta) {
               let toEmit = delta;
-              if (accum && delta.startsWith(accum)) toEmit = delta.slice(accum.length);
+              if (accum && delta.startsWith(accum)) {
+                toEmit = delta.slice(accum.length);
+                accum = delta;
+              } else {
+                accum += toEmit;
+              }
               if (toEmit) {
-                sentAny = true; accum = delta; completionChars += toEmit.length;
+                sentAny = true; completionChars += toEmit.length;
                 sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
               }
             }
