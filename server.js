@@ -494,6 +494,11 @@ app.post("/v1/chat/completions", (req, res) => {
     }
   });
   child.stderr.on("data", () => { resetProtoIdle(); });
+  // Write submission after listeners are attached
+  try {
+    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
+    child.stdin.write(JSON.stringify(submission) + "\n");
+  } catch {}
   child.on("close", () => {
     if (responded) return; responded = true;
     clearTimeout(timeout);
