@@ -37,6 +37,8 @@ Environment variables:
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (default: `incremental`) — set to `jsonl` to parse `--json` events for finer-grained streaming.
 - `CODEX_BIN` (default: `codex`)
+- `CODEX_HOME` (default: `$HOME/.codex-api`) — overrides HOME for the Codex child process. Codex then reads config from `$CODEX_HOME/.codex/config.toml`, isolating proxy config from your interactive CLI (`~/.codex`).
+- `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
  - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `60000`) — per-request timeout to abort hung Codex subprocesses.
@@ -98,7 +100,13 @@ Behavior:
 - Codex child invoked as:
 
 ```
-codex exec --sandbox read-only --config preferred_auth_method="chatgpt" -m gpt-5 [--config reasoning.effort="high"] "<prompt>"
+codex exec \
+  --sandbox read-only \
+  --config preferred_auth_method="chatgpt" \
+  --config project_doc_max_bytes=0 \
+  -m gpt-5 \
+  [--config reasoning.effort="high"] \
+  "<prompt>"
 ```
 
 ## Notes and troubleshooting
@@ -109,6 +117,7 @@ codex exec --sandbox read-only --config preferred_auth_method="chatgpt" -m gpt-5
 - Streaming shape: Immediate role chunk is emitted to satisfy Chat Completions SSE clients. Default aggregates content into a single chunk. Set `PROXY_STREAM_MODE=jsonl` to parse Codex JSON-lines: when deltas are available they are streamed; otherwise the full message is forwarded as soon as Codex emits it.
 - Auth: Ensure you’re logged into Codex (`codex login`).
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
+- Project docs are disabled for proxy runs: the proxy passes `--config project_doc_max_bytes=0` so the Codex backend behaves like a pure model API and does not ingest the app repo. The global `AGENTS.md` under `CODEX_HOME` still applies.
 
 ### Long-running tasks and stable streaming
 
@@ -174,7 +183,10 @@ Edge authentication model
 Containerization
 - The app image is defined in [Dockerfile](Dockerfile) and launches the proxy with `node server.js`.
 - Codex CLI availability inside the container:
-  - Option A (mount from host, recommended initially): Uncomment the volumes lines in [docker-compose.yml](docker-compose.yml) to mount your host Codex credentials and binary.
+  - Option A (mount from host, recommended initially): By default the app runs Codex with `HOME=/home/node` and expects config under `/home/node/.codex/config.toml`. The Compose file mounts your host `~/.codex-api` into the container at `/home/node/.codex` and binds the `codex` binary:
+    - Host → Container: `~/.codex-api` → `/home/node/.codex:ro`
+    - Host → Container: `~/.cargo/bin/codex` → `/usr/local/bin/codex:ro`
+    - Create your config at `~/.codex-api/config.toml` on the host.
   - Option B (bake into image): Extend the Dockerfile to install `codex` and copy credentials during build (ensure no secrets end up in the image layers).
 
 Configuration
