@@ -515,6 +515,7 @@ app.post("/v1/chat/completions", (req, res) => {
   }
 
   // Non-streaming (proto): assemble content until task completion
+  if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0; let done = false;
   const resetProtoIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { if (responded) return; responded = true; try { child.kill("SIGTERM"); } catch {}; applyCors(null, res); res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } }); }, PROTO_IDLE_MS); }; })();
