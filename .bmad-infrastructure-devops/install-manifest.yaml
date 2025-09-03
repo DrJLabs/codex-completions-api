@@ -1,10 +1,10 @@
 version: 1.12.0
-installed_at: '2025-09-01T18:03:13.904Z'
+installed_at: '2025-09-02T21:51:55.468Z'
 install_type: expansion-pack
 expansion_pack_id: bmad-infrastructure-devops
 expansion_pack_name: bmad-infrastructure-devops
 ides_setup:
-  - gemini
+  - codex
 files:
   - path: .bmad-infrastructure-devops/config.yaml
     hash: 377501855792eeef
@@ -26,6 +26,12 @@ files:
       .bmad-infrastructure-devops/templates/infrastructure-architecture-tmpl.yaml
     hash: 022365b3a233fe86
     modified: false
+  - path: .bmad-infrastructure-devops/checklists/infrastructure-checklist.md
+    hash: fa0d68176739b616
+    modified: false
+  - path: .bmad-infrastructure-devops/agents/infra-devops-platform.md
+    hash: 0b7299d557f98934
+    modified: false
   - path: .bmad-infrastructure-devops/data/technical-preferences.md
     hash: a829f3172a10b396
     modified: false
@@ -43,10 +49,4 @@ files:
     modified: false
   - path: .bmad-infrastructure-devops/tasks/create-doc.md
     hash: 0a6aeba58cd7a3e4
-    modified: false
-  - path: .bmad-infrastructure-devops/checklists/infrastructure-checklist.md
-    hash: fa0d68176739b616
-    modified: false
-  - path: .bmad-infrastructure-devops/agents/infra-devops-platform.md
-    hash: 0b7299d557f98934
     modified: false
