@@ -317,22 +317,16 @@ app.post("/v1/chat/completions", (req, res) => {
     if (implied) reasoningEffort = implied;
   }
 
-  const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
-  const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
+  const isStreamingReq = !!body.stream;
   const args = [
-    "exec",
-    "--sandbox", "read-only",
+    "proto",
     "--config", 'preferred_auth_method="chatgpt"',
     "--config", "project_doc_max_bytes=0",
-    "--skip-git-repo-check",
-    "--output-last-message", outputFile,
-    "-m", effectiveModel
+    "--config", 'history.persistence="none"',
+    "--config", 'tools.web_search=false',
+    "--config", `model="${effectiveModel}"`
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
-  // Prefer JSONL event stream when requested; this enables robust incremental SSE mapping
-  const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
-  if (useJsonl) args.push("--json");
-  // For streaming we avoid --json due to observed child termination in some environments.
   // Attempt to set reasoning via config if supported
   if (allowEffort.has(reasoningEffort)) {
     // Prefer newer codex-cli config key; keep legacy key for backward compatibility
@@ -343,7 +337,7 @@ app.post("/v1/chat/completions", (req, res) => {
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
 
-  try { console.log("[proxy] spawning:", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
+  try { console.log("[proxy] spawning (proto):", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
@@ -398,8 +392,8 @@ app.post("/v1/chat/completions", (req, res) => {
   });
 
   try {
-    const toWrite = prompt.endsWith("\n") ? prompt : `${prompt}\n`;
-    child.stdin.write(toWrite);
+    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
+    child.stdin.write(JSON.stringify(submission) + "\n");
     child.stdin.end();
   } catch {}
 
@@ -451,206 +445,98 @@ app.post("/v1/chat/completions", (req, res) => {
     const promptText = joinMessages(messages).trim();
     // Clear generic idle timer; streaming uses its own idle management
     if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
-    if (useJsonl) {
-      // Emit role immediately to satisfy clients expecting role-first chunk
-      sendRoleOnce();
-      // Parse JSONL event stream from Codex and map to OpenAI SSE deltas
-      const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-      let completionChars = 0;
-      let buf = "";
-      let sentContentDelta = false;
-      const streamResetIdle = (() => {
-        let timer;
-        return () => {
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(() => {
-            if (responded) return;
-            try { console.log("[proxy] stream idle timeout (jsonl); terminating backend"); } catch {}
-            try { child.kill("SIGTERM"); } catch {}
-            try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
-          }, STREAM_IDLE_TIMEOUT_MS);
-        };
-      })();
+    // Proto structured streaming
+    sendRoleOnce();
+    const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let completionChars = 0;
+    let buf = "";
+    let sentAny = false;
+    const streamResetIdle = (() => {
+      let timer;
+      return () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (responded) return;
+          try { console.log("[proxy] stream idle timeout (proto); terminating backend"); } catch {}
+          try { child.kill("SIGTERM"); } catch {}
+          try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+    })();
+    streamResetIdle();
+    child.stdout.on("data", (chunk) => {
       streamResetIdle();
-      child.stdout.on("data", (chunk) => {
-        streamResetIdle();
-        const text = chunk.toString("utf8");
-        out += text;
-        buf += text;
-        let idx;
-        while ((idx = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const evt = JSON.parse(trimmed);
-            const t = (evt && (evt.msg?.type || evt.type)) || "";
-            if (t === "agent_message_delta") {
-              const delta = (evt.msg?.delta ?? evt.delta) || "";
-              if (delta) {
-                sendRoleOnce();
-                try { completionChars += String(delta).length; } catch {}
-                sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, delta: { content: String(delta) } }]
-                });
-                sentContentDelta = true;
-              }
-            } else if (t === "agent_message") {
-              // Newer Codex versions may emit full messages but not deltas.
-              // Stream the full message immediately instead of waiting for process close.
-              const message = (evt.msg?.message ?? evt.message) || "";
-              if (message) {
-                sendRoleOnce();
-                try { completionChars += String(message).length; } catch {}
-                sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, delta: { content: String(message) } }]
-                });
-                sentContentDelta = true;
-              }
-            } else if (t === "task_complete") {
-              // Will be followed by ShutdownComplete; safe to finish
-              // Emit a no-op delta to ensure role was sent
-              sendRoleOnce();
-            }
-          } catch {
-            // Non-JSON lines are ignored in jsonl mode
-          }
-        }
-      });
-      child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-      child.on("close", (code, signal) => {
-        clearTimeout(timeout);
-        if (keepalive) clearInterval(keepalive);
-        if (idleTimer) clearTimeout(idleTimer);
-        if (!sentContentDelta) {
-          // Fallback: if no incremental content was sent, emit final content once
-          let content = "";
-          try {
-            if (fs.existsSync(outputFile)) {
-              content = fs.readFileSync(outputFile, "utf8");
-              fs.unlinkSync(outputFile);
-            }
-          } catch {}
-          if (!content) content = stripAnsi(out).trim();
-          if (!content) content = "No output from backend.";
-          sendRoleOnce();
-          sendSSE({
-            id: `chatcmpl-${nanoid()}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: requestedModel,
-            choices: [{ index: 0, delta: { content } }]
-          });
-        }
-        try { console.log("[proxy] jsonl stream close: code=", code, " out_len=", out.length, " err_len=", err.length); } catch {}
-        if (includeUsage) {
-          const prompt_tokens_est = Math.ceil(prompt.length/4);
-          const completion_tokens_est = Math.ceil(completionChars/4);
-          try {
-            sendSSE({ event: "usage", usage: { prompt_tokens: prompt_tokens_est, completion_tokens: completion_tokens_est, total_tokens: prompt_tokens_est + completion_tokens_est } });
-          } catch {}
-        }
-        finishSSE();
-      });
-    } else {
-      // Fallback incremental mode: emit one chunk with final content
-      // Emit role immediately to satisfy clients expecting role-first chunk
-      sendRoleOnce();
-      // For streaming, use a longer idle window to accommodate long-thinking phases
-      const streamResetIdle = (() => {
-        let timer;
-        return () => {
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(() => {
-            if (responded) return;
-            try { console.log("[proxy] stream idle timeout; keeping connection but terminating backend"); } catch {}
-            try { child.kill("SIGTERM"); } catch {}
-            // Inform client but keep connection open briefly for [DONE]
-            try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
-          }, STREAM_IDLE_TIMEOUT_MS);
-        };
-      })();
-      streamResetIdle();
-      const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-      let completionChars = 0;
-      child.stdout.on("data", (chunk) => { streamResetIdle(); const s = chunk.toString("utf8"); out += s; completionChars += s.length; });
-      child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-      child.on("close", (code, signal) => {
-        clearTimeout(timeout);
-        if (keepalive) clearInterval(keepalive);
-        if (idleTimer) clearTimeout(idleTimer);
-        let content = "";
+      const text = chunk.toString("utf8"); out += text; buf += text;
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+        const trimmed = line.trim(); if (!trimmed) continue;
         try {
-          if (fs.existsSync(outputFile)) {
-            content = fs.readFileSync(outputFile, "utf8");
-            fs.unlinkSync(outputFile);
+          const evt = JSON.parse(trimmed);
+          const t = (evt && (evt.msg?.type || evt.type)) || "";
+          if (t === "agent_message_delta") {
+            const delta = (evt.msg?.delta ?? evt.delta) || "";
+            if (delta) {
+              sentAny = true; completionChars += String(delta).length;
+              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(delta) } }] });
+            }
+          } else if (t === "agent_message") {
+            const message = (evt.msg?.message ?? evt.message) || "";
+            if (message) {
+              sentAny = true; completionChars += String(message).length;
+              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(message) } }] });
+            }
+          } else if (t === "token_count") {
+            if (includeUsage) {
+              const pt = Number(evt.msg?.prompt_tokens || 0);
+              const ct = Number(evt.msg?.completion_tokens || 0);
+              sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+            }
           }
         } catch {}
-        if (!content) content = stripAnsi(out).trim();
-        try { console.log("[proxy] stream close: code=", code, " content_len=", (content ? content.length : 0), " out_len=", out.length, " err_len=", err.length, " err=", err.slice(0,200)); } catch {}
-        if (!content) content = "No output from backend.";
-        sendRoleOnce();
-        sendSSE({
-          id: `chatcmpl-${nanoid()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: requestedModel,
-          choices: [{ index: 0, delta: { content } }]
-        });
-        if (includeUsage) {
-          const prompt_tokens_est = Math.ceil(prompt.length/4);
-          const completion_tokens_est = Math.ceil(completionChars/4);
-          try {
-            sendSSE({ event: "usage", usage: { prompt_tokens: prompt_tokens_est, completion_tokens: completion_tokens_est, total_tokens: prompt_tokens_est + completion_tokens_est } });
-          } catch {}
-        }
-        finishSSE();
-      });
-    }
+      }
+    });
+    child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (keepalive) clearInterval(keepalive);
+      if (idleTimer) clearTimeout(idleTimer);
+      if (!sentAny) {
+        const content = stripAnsi(out).trim() || "No output from backend.";
+        sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content } }] });
+      }
+      finishSSE();
+    });
     // Do not kill child on client disconnect; allow graceful completion
     // req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
     return;
   }
 
-  // Non-streaming fallback
+  // Non-streaming (proto): assemble content from deltas or final message
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  child.stdout.on("data", (d) => { resetIdle(); out += d.toString("utf8"); });
+  let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0;
+  child.stdout.on("data", (d) => {
+    resetIdle(); const s=d.toString("utf8"); out += s; buf2 += s;
+    let idx; while ((idx = buf2.indexOf("\n")) >= 0) {
+      const line = buf2.slice(0, idx); buf2 = buf2.slice(idx+1);
+      const t = line.trim(); if (!t) continue;
+      try {
+        const evt = JSON.parse(t); const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
+        else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
+        else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
+      } catch {}
+    }
+  });
   child.stderr.on("data", (d) => { resetIdle(); err += d.toString("utf8"); });
-  child.on("close", (code) => {
+  child.on("close", () => {
+    if (responded) return; responded = true;
     clearTimeout(timeout);
     if (idleTimer) clearTimeout(idleTimer);
-    let content = "";
-    try {
-      if (fs.existsSync(outputFile)) {
-        content = fs.readFileSync(outputFile, "utf8");
-        fs.unlinkSync(outputFile);
-      }
-    } catch {}
-    if (!content) {
-      content = stripAnsi(out).trim();
-    }
-    if (!content) {
-      // Fallback to stderr or a minimal message to satisfy clients expecting an assistant message
-      content = stripAnsi(err).trim() || "No output from backend.";
-    }
+    const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
-    res.json({
-      id: `chatcmpl-${nanoid()}`,
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
-      model: requestedModel,
-      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-    });
+    const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(final);
+    res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: "stop" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
   });
 });
 
@@ -709,20 +595,16 @@ app.post("/v1/completions", (req, res) => {
     if (implied) reasoningEffort = implied;
   }
 
-  const outputFile = path.join(os.tmpdir(), `codex-last-${nanoid()}.txt`);
-  const isStreamingReq = !!body.stream && ["incremental", "json", "jsonlines", "jsonl"].includes(STREAM_MODE);
+  const isStreamingReq = !!body.stream;
   const args = [
-    "exec",
-    "--sandbox", "read-only",
+    "proto",
     "--config", 'preferred_auth_method="chatgpt"',
     "--config", "project_doc_max_bytes=0",
-    "--skip-git-repo-check",
-    "--output-last-message", outputFile,
-    "-m", effectiveModel
+    "--config", 'history.persistence="none"',
+    "--config", 'tools.web_search=false',
+    "--config", `model="${effectiveModel}"`
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
-  const useJsonl = isStreamingReq && ["json", "jsonlines", "jsonl"].includes(STREAM_MODE);
-  if (useJsonl) args.push("--json");
   if (allowEffort.has(reasoningEffort)) {
     args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
     args.push("--config", `reasoning.effort="${reasoningEffort}"`);
@@ -731,7 +613,7 @@ app.post("/v1/completions", (req, res) => {
   const messages = [{ role: "user", content: prompt }];
   const toSend = joinMessages(messages);
 
-  try { console.log("[proxy] spawning (completions):", CODEX_BIN, args.join(" "), " prompt_len=", toSend.length); } catch {}
+  try { console.log("[proxy] spawning (proto completions):", CODEX_BIN, args.join(" "), " prompt_len=", toSend.length); } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
@@ -781,8 +663,8 @@ app.post("/v1/completions", (req, res) => {
     if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
   });
   try {
-    const toWrite = toSend.endsWith("\n") ? toSend : `${toSend}\n`;
-    child.stdin.write(toWrite);
+    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: toSend }] } };
+    child.stdin.write(JSON.stringify(submission) + "\n");
     child.stdin.end();
   } catch {}
 
@@ -796,138 +678,74 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-
-    if (useJsonl) {
-      let buf = "";
-      let sentAny = false;
-      let completionChars = 0;
-      child.stdout.on("data", (chunk) => {
-        resetIdleCompletions();
-        const text = chunk.toString("utf8");
-        out += text; buf += text;
-        let idx;
-        while ((idx = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
-          const trimmed = line.trim(); if (!trimmed) continue;
-          try {
-            const evt = JSON.parse(trimmed);
-            const t = (evt && (evt.msg?.type || evt.type)) || "";
-            if (t === "agent_message_delta") {
-              const delta = (evt.msg?.delta ?? evt.delta) || "";
-              if (delta) {
-                sentAny = true;
-                completionChars += String(delta).length;
-                sendSSE({
-                  id: `cmpl-${nanoid()}`,
-                  object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, text: String(delta) }]
-                });
-              }
-            } else if (t === "agent_message") {
-              const message = (evt.msg?.message ?? evt.message) || "";
-              if (message) {
-                sentAny = true;
-                completionChars += String(message).length;
-                sendSSE({
-                  id: `cmpl-${nanoid()}`,
-                  object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, text: String(message) }]
-                });
-              }
+    let buf = ""; let sentAny = false; let completionChars = 0;
+    child.stdout.on("data", (chunk) => {
+      resetIdleCompletions();
+      const text = chunk.toString("utf8"); out += text; buf += text;
+      let idx; while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+        const trimmed = line.trim(); if (!trimmed) continue;
+        try {
+          const evt = JSON.parse(trimmed);
+          const t = (evt && (evt.msg?.type || evt.type)) || "";
+          if (t === "agent_message_delta") {
+            const delta = (evt.msg?.delta ?? evt.delta) || "";
+            if (delta) {
+              sentAny = true; completionChars += String(delta).length;
+              sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: String(delta) }] });
             }
-          } catch {}
-        }
-      });
-      child.stderr.on("data", (e) => { resetIdleCompletions(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-      child.on("close", (code) => {
-        clearTimeout(timeout);
-        if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
-        if (!sentAny) {
-          let content = "";
-          try {
-            if (fs.existsSync(outputFile)) {
-              content = fs.readFileSync(outputFile, "utf8");
-              fs.unlinkSync(outputFile);
+          } else if (t === "agent_message") {
+            const message = (evt.msg?.message ?? evt.message) || "";
+            if (message) {
+              sentAny = true; completionChars += String(message).length;
+              sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: String(message) }] });
             }
-          } catch {}
-          if (!content) content = stripAnsi(out).trim();
-          if (!content) content = "No output from backend.";
-          sendSSE({
-            id: `cmpl-${nanoid()}`,
-            object: "text_completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: requestedModel,
-            choices: [{ index: 0, text: content }]
-          });
-        }
-        const completion_tokens_est = Math.ceil(completionChars / 4);
-        appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
-        finishSSE();
-      });
-      return;
-    }
-
-    // Fallback streaming: send final text as a single chunk
-    let completionChars = 0;
-    child.stdout.on("data", (d) => { resetIdleCompletions(); const s=d.toString("utf8"); out += s; completionChars += s.length; });
-    child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
-    child.on("close", () => {
+          }
+        } catch {}
+      }
+    });
+    child.stderr.on("data", (e) => { resetIdleCompletions(); const s=e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
+    child.on("close", (code) => {
       clearTimeout(timeout);
       if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
-      let content = "";
-      try {
-        if (fs.existsSync(outputFile)) {
-          content = fs.readFileSync(outputFile, "utf8");
-          fs.unlinkSync(outputFile);
-        }
-      } catch {}
-      if (!content) content = stripAnsi(out).trim();
-      if (!content) content = "No output from backend.";
-      const completion_tokens_est = Math.ceil(completionChars/4);
+      if (!sentAny) {
+        const content = stripAnsi(out).trim() || "No output from backend.";
+        sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: content }] });
+      }
+      const completion_tokens_est = Math.ceil(completionChars / 4);
       appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
-      sendSSE({
-        id: `cmpl-${nanoid()}`,
-        object: "text_completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model: requestedModel,
-        choices: [{ index: 0, text: content }]
-      });
       finishSSE();
     });
     return;
   }
+  
 
-  // Non-streaming
+  // Non-streaming (proto): accumulate text
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  child.stdout.on("data", (d) => { resetIdleCompletions(); out += d.toString("utf8"); });
+  let bufN = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0;
+  child.stdout.on("data", (d) => {
+    resetIdleCompletions(); const s=d.toString("utf8"); out += s; bufN += s;
+    let idx; while ((idx = bufN.indexOf("\n")) >= 0) {
+      const line = bufN.slice(0, idx); bufN = bufN.slice(idx+1);
+      const t = line.trim(); if (!t) continue;
+      try {
+        const evt = JSON.parse(t); const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
+        else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
+        else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
+      } catch {}
+    }
+  });
   child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
-  child.on("close", (code) => {
+  child.on("close", () => {
+    if (responded) return; responded = true;
     clearTimeout(timeout);
     if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
-    let content = "";
-    try {
-      if (fs.existsSync(outputFile)) {
-        content = fs.readFileSync(outputFile, "utf8");
-        fs.unlinkSync(outputFile);
-      }
-    } catch {}
-    if (!content) content = stripAnsi(out).trim();
-    if (!content) content = stripAnsi(err).trim() || "No output from backend.";
+    const textOut = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
-    const completion_tokens_est = estTokens(content);
-    appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
-    res.json({
-      id: `cmpl-${nanoid()}`,
-      object: "text_completion",
-      created: Math.floor(Date.now() / 1000),
-      model: requestedModel,
-      choices: [{ index: 0, text: content, logprobs: null, finish_reason: "stop" }],
-      usage: { prompt_tokens: promptTokensEst, completion_tokens: completion_tokens_est, total_tokens: promptTokensEst + completion_tokens_est }
-    });
+    const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(textOut);
+    appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: pt, completion_tokens_est: ct, total_tokens_est: pt + ct, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+    res.json({ id: `cmpl-${nanoid()}`, object: "text_completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: textOut, logprobs: null, finish_reason: "stop" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
   });
 });
 
