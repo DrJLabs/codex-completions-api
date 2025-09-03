@@ -7,14 +7,21 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "node server.js",
-    "smoke": "bash scripts/smoke.sh"
+    "smoke": "bash scripts/smoke.sh",
+    "test": "playwright test",
+    "test:report": "playwright show-report",
+    "bmad:refresh": "bmad-method install -f -i codex",
+    "bmad:list": "bmad-method list:agents",
+    "bmad:validate": "bmad-method validate"
   },
   "dependencies": {
     "express": "^4.19.2",
     "nanoid": "^5.0.7"
   },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  },
   "engines": {
     "node": ">=18"
   }
 }
-
