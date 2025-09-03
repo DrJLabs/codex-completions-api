@@ -345,6 +345,8 @@ app.post("/v1/chat/completions", (req, res) => {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
   });
+  try { child.stdout.setEncoding && child.stdout.setEncoding("utf8"); } catch {}
+  try { child.stderr.setEncoding && child.stderr.setEncoding("utf8"); } catch {}
   const onDone = () => { responded = true; };
   const onChildError = (e) => {
     try { console.log("[proxy] child error:", e?.message || String(e)); } catch {}
@@ -480,16 +482,27 @@ app.post("/v1/chat/completions", (req, res) => {
   const resetProtoIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { if (responded) return; responded = true; try { child.kill("SIGTERM"); } catch {}; applyCors(null, res); res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } }); }, PROTO_IDLE_MS); }; })();
   resetProtoIdle();
   child.stdout.on("data", (d) => {
-    resetProtoIdle(); const s=d.toString("utf8"); out += s; buf2 += s;
+    resetProtoIdle(); const s= typeof d === "string" ? d : d.toString("utf8"); out += s; buf2 += s;
     let idx; while ((idx = buf2.indexOf("\n")) >= 0) {
       const line = buf2.slice(0, idx); buf2 = buf2.slice(idx+1);
       const t = line.trim(); if (!t) continue;
       try {
         const evt = JSON.parse(t); const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        if (DEBUG_PROTO) try { console.log("[proto] evt:", tp); } catch {}
         if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
         else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
         else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
-        else if (tp === "task_complete") { done = true; }
+        else if (tp === "task_complete") {
+          done = true;
+          if (!responded) {
+            responded = true;
+            applyCors(null, res);
+            const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
+            res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: "stop" }] });
+            try { child.stdin.write(JSON.stringify({ id: nanoid(), op: { type: "shutdown" } }) + "\n"); } catch {}
+            try { child.kill("SIGTERM"); } catch {}
+          }
+        }
       } catch {}
     }
   });
