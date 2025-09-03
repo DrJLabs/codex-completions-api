@@ -448,9 +448,18 @@ app.post("/v1/chat/completions", (req, res) => {
           const evt = JSON.parse(trimmed); const t = (evt && (evt.msg?.type || evt.type)) || "";
           if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") { continue; }
           if (t === "agent_message_delta") {
-            const d = (evt.msg?.delta ?? evt.delta) || ""; if (d) { sentAny = true; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(d) } }] }); }
+            const d = (evt.msg?.delta ?? evt.delta) || "";
+            if (d) {
+              sentAny = true;
+              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(d) } }] });
+            }
           } else if (t === "agent_message") {
-            const m = (evt.msg?.message ?? evt.message) || ""; if (m) { sentAny = true; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(m) } }] }); }
+            const m = (evt.msg?.message ?? evt.message) || "";
+            // If deltas already streamed, skip full message to avoid duplication
+            if (m && !sentAny) {
+              sentAny = true;
+              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(m) } }] });
+            }
           } else if (t === "token_count" && includeUsage) {
             const pt = Number(evt.msg?.prompt_tokens || 0); const ct = Number(evt.msg?.completion_tokens || 0); sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
           } else if (t === "task_complete") {
@@ -678,7 +687,7 @@ app.post("/v1/completions", (req, res) => {
             }
           } else if (t === "agent_message") {
             const message = (evt.msg?.message ?? evt.message) || "";
-            if (message) {
+            if (message && !sentAny) {
               sentAny = true; completionChars += String(message).length;
               sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: String(message) }] });
             }
