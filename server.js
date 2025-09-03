@@ -437,6 +437,7 @@ app.post("/v1/chat/completions", (req, res) => {
     let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
     let buf = ""; let sentAny = false; let emitted = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let ptCount = 0, ctCount = 0;
     const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
@@ -471,10 +472,17 @@ app.post("/v1/chat/completions", (req, res) => {
                 sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: suffix } }] });
               }
             }
-          } else if (t === "token_count" && includeUsage) {
-            const pt = Number(evt.msg?.prompt_tokens || 0); const ct = Number(evt.msg?.completion_tokens || 0); sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+          } else if (t === "token_count") {
+            ptCount = Number(evt.msg?.prompt_tokens || 0);
+            ctCount = Number(evt.msg?.completion_tokens || 0);
+            if (includeUsage) {
+              sendSSE({ event: "usage", usage: { prompt_tokens: ptCount, completion_tokens: ctCount, total_tokens: ptCount + ctCount } });
+            }
           } else if (t === "task_complete") {
             // Finish stream immediately on task completion
+            try {
+              appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: ptCount || promptTokensEst, completion_tokens_est: ctCount || Math.ceil(emitted.length/4), total_tokens_est: (ptCount || promptTokensEst) + (ctCount || Math.ceil(emitted.length/4)), duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+            } catch {}
             try { finishSSE(); } catch {}
             try { child.kill("SIGTERM"); } catch {}
             return;
@@ -539,6 +547,9 @@ app.post("/v1/chat/completions", (req, res) => {
     const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
     const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(final);
+    try {
+      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: pt, completion_tokens_est: ct, total_tokens_est: pt + ct, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+    } catch {}
     res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: done ? "stop" : "length" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
   });
 });
