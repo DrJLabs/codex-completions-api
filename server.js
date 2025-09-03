@@ -77,8 +77,8 @@ const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(process.env.PROXY_DEBUG_PROTO 
 // Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
 const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
-// Approximate token usage logging
-const TOKEN_LOG_PATH = process.env.TOKEN_LOG_PATH || path.join(process.cwd(), "logs", "usage.ndjson");
+// Approximate token usage logging (default to writable tmpdir inside container)
+const TOKEN_LOG_PATH = process.env.TOKEN_LOG_PATH || path.join(os.tmpdir(), "codex-usage.ndjson");
 try { fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true }); } catch {}
 const estTokens = (s = "") => Math.ceil(String(s).length / 4);
 const estTokensForMessages = (msgs = []) => {
