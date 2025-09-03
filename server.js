@@ -436,7 +436,7 @@ app.post("/v1/chat/completions", (req, res) => {
     if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
     let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
-    let buf = ""; let sentAny = false; let accum = ""; let lastEmitted = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let buf = ""; let sentAny = false; let emitted = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
@@ -450,31 +450,25 @@ app.post("/v1/chat/completions", (req, res) => {
           if (t === "agent_message_delta") {
             const d = String((evt.msg?.delta ?? evt.delta) || "");
             if (d) {
-              // Coalesce deltas: if "d" is full content, emit the new suffix; otherwise treat as incremental piece
-              let toEmit = d;
-              if (accum && d.startsWith(accum)) {
-                toEmit = d.slice(accum.length);
-                accum = d;
-              } else {
-                accum += toEmit;
-              }
-              if (toEmit && toEmit !== lastEmitted) {
+              let suffix = d;
+              if (d.startsWith(emitted)) suffix = d.slice(emitted.length);
+              // If provider sends tiny incremental pieces, suffix may equal d and not start with emitted; append anyway
+              if (suffix) {
                 sentAny = true;
-                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
-                lastEmitted = toEmit;
+                emitted += suffix;
+                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: suffix } }] });
               }
             }
           } else if (t === "agent_message") {
             const m = String((evt.msg?.message ?? evt.message) || "");
-            // If deltas already streamed, skip full message to avoid duplication
-            if (m && !sentAny) {
-              let toEmit = m;
-              if (accum && m.startsWith(accum)) toEmit = m.slice(accum.length);
-              if (toEmit && toEmit !== lastEmitted) {
+            if (m) {
+              let suffix = "";
+              if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
+              else if (!sentAny) suffix = m; // emit full message only if we have not sent any deltas
+              if (suffix) {
                 sentAny = true;
-                accum = m;
-                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
-                lastEmitted = toEmit;
+                emitted += suffix;
+                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: suffix } }] });
               }
             }
           } else if (t === "token_count" && includeUsage) {
@@ -686,7 +680,7 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-    let buf = ""; let sentAny = false; let completionChars = 0; let accum = ""; let lastEmitted = "";
+    let buf = ""; let sentAny = false; let completionChars = 0; let emitted = "";
     child.stdout.on("data", (chunk) => {
       resetIdleCompletions();
       const text = chunk.toString("utf8"); out += text; buf += text;
@@ -699,28 +693,22 @@ app.post("/v1/completions", (req, res) => {
           if (t === "agent_message_delta") {
             const delta = String((evt.msg?.delta ?? evt.delta) || "");
             if (delta) {
-              let toEmit = delta;
-              if (accum && delta.startsWith(accum)) {
-                toEmit = delta.slice(accum.length);
-                accum = delta;
-              } else {
-                accum += toEmit;
-              }
-              if (toEmit && toEmit !== lastEmitted) {
-                sentAny = true; completionChars += toEmit.length;
-                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
-                lastEmitted = toEmit;
+              let suffix = delta;
+              if (delta.startsWith(emitted)) suffix = delta.slice(emitted.length);
+              if (suffix) {
+                sentAny = true; emitted += suffix; completionChars += suffix.length;
+                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: suffix }] });
               }
             }
           } else if (t === "agent_message") {
             const message = String((evt.msg?.message ?? evt.message) || "");
-            if (message && !sentAny) {
-              let toEmit = message;
-              if (accum && message.startsWith(accum)) toEmit = message.slice(accum.length);
-              if (toEmit && toEmit !== lastEmitted) {
-                sentAny = true; accum = message; completionChars += toEmit.length;
-                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
-                lastEmitted = toEmit;
+            if (message) {
+              let suffix = "";
+              if (message.startsWith(emitted)) suffix = message.slice(emitted.length);
+              else if (!sentAny) suffix = message;
+              if (suffix) {
+                sentAny = true; emitted += suffix; completionChars += suffix.length;
+                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: suffix }] });
               }
             }
           }
