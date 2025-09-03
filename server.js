@@ -436,7 +436,7 @@ app.post("/v1/chat/completions", (req, res) => {
     if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
     let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
-    let buf = ""; let sentAny = false; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let buf = ""; let sentAny = false; let accum = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
@@ -448,17 +448,28 @@ app.post("/v1/chat/completions", (req, res) => {
           const evt = JSON.parse(trimmed); const t = (evt && (evt.msg?.type || evt.type)) || "";
           if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") { continue; }
           if (t === "agent_message_delta") {
-            const d = (evt.msg?.delta ?? evt.delta) || "";
+            const d = String((evt.msg?.delta ?? evt.delta) || "");
             if (d) {
-              sentAny = true;
-              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(d) } }] });
+              // Handle implementations that repeat full content as "delta"
+              let toEmit = d;
+              if (accum && d.startsWith(accum)) toEmit = d.slice(accum.length);
+              if (toEmit) {
+                sentAny = true;
+                accum = d;
+                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
+              }
             }
           } else if (t === "agent_message") {
-            const m = (evt.msg?.message ?? evt.message) || "";
+            const m = String((evt.msg?.message ?? evt.message) || "");
             // If deltas already streamed, skip full message to avoid duplication
             if (m && !sentAny) {
-              sentAny = true;
-              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(m) } }] });
+              let toEmit = m;
+              if (accum && m.startsWith(accum)) toEmit = m.slice(accum.length);
+              if (toEmit) {
+                sentAny = true;
+                accum = m;
+                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
+              }
             }
           } else if (t === "token_count" && includeUsage) {
             const pt = Number(evt.msg?.prompt_tokens || 0); const ct = Number(evt.msg?.completion_tokens || 0); sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
@@ -669,7 +680,7 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-    let buf = ""; let sentAny = false; let completionChars = 0;
+    let buf = ""; let sentAny = false; let completionChars = 0; let accum = "";
     child.stdout.on("data", (chunk) => {
       resetIdleCompletions();
       const text = chunk.toString("utf8"); out += text; buf += text;
@@ -680,16 +691,24 @@ app.post("/v1/completions", (req, res) => {
           const evt = JSON.parse(trimmed);
           const t = (evt && (evt.msg?.type || evt.type)) || "";
           if (t === "agent_message_delta") {
-            const delta = (evt.msg?.delta ?? evt.delta) || "";
+            const delta = String((evt.msg?.delta ?? evt.delta) || "");
             if (delta) {
-              sentAny = true; completionChars += String(delta).length;
-              sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: String(delta) }] });
+              let toEmit = delta;
+              if (accum && delta.startsWith(accum)) toEmit = delta.slice(accum.length);
+              if (toEmit) {
+                sentAny = true; accum = delta; completionChars += toEmit.length;
+                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
+              }
             }
           } else if (t === "agent_message") {
-            const message = (evt.msg?.message ?? evt.message) || "";
+            const message = String((evt.msg?.message ?? evt.message) || "");
             if (message && !sentAny) {
-              sentAny = true; completionChars += String(message).length;
-              sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: String(message) }] });
+              let toEmit = message;
+              if (accum && message.startsWith(accum)) toEmit = message.slice(accum.length);
+              if (toEmit) {
+                sentAny = true; accum = message; completionChars += toEmit.length;
+                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
+              }
             }
           }
         } catch {}
