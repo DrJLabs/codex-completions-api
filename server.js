@@ -436,7 +436,7 @@ app.post("/v1/chat/completions", (req, res) => {
     if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
     let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
-    let buf = ""; let sentAny = false; let accum = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let buf = ""; let sentAny = false; let accum = ""; let lastEmitted = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
@@ -458,9 +458,10 @@ app.post("/v1/chat/completions", (req, res) => {
               } else {
                 accum += toEmit;
               }
-              if (toEmit) {
+              if (toEmit && toEmit !== lastEmitted) {
                 sentAny = true;
                 sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
+                lastEmitted = toEmit;
               }
             }
           } else if (t === "agent_message") {
@@ -469,10 +470,11 @@ app.post("/v1/chat/completions", (req, res) => {
             if (m && !sentAny) {
               let toEmit = m;
               if (accum && m.startsWith(accum)) toEmit = m.slice(accum.length);
-              if (toEmit) {
+              if (toEmit && toEmit !== lastEmitted) {
                 sentAny = true;
                 accum = m;
                 sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: toEmit } }] });
+                lastEmitted = toEmit;
               }
             }
           } else if (t === "token_count" && includeUsage) {
@@ -684,7 +686,7 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-    let buf = ""; let sentAny = false; let completionChars = 0; let accum = "";
+    let buf = ""; let sentAny = false; let completionChars = 0; let accum = ""; let lastEmitted = "";
     child.stdout.on("data", (chunk) => {
       resetIdleCompletions();
       const text = chunk.toString("utf8"); out += text; buf += text;
@@ -704,9 +706,10 @@ app.post("/v1/completions", (req, res) => {
               } else {
                 accum += toEmit;
               }
-              if (toEmit) {
+              if (toEmit && toEmit !== lastEmitted) {
                 sentAny = true; completionChars += toEmit.length;
                 sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
+                lastEmitted = toEmit;
               }
             }
           } else if (t === "agent_message") {
@@ -714,9 +717,10 @@ app.post("/v1/completions", (req, res) => {
             if (message && !sentAny) {
               let toEmit = message;
               if (accum && message.startsWith(accum)) toEmit = message.slice(accum.length);
-              if (toEmit) {
+              if (toEmit && toEmit !== lastEmitted) {
                 sentAny = true; accum = message; completionChars += toEmit.length;
                 sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: toEmit }] });
+                lastEmitted = toEmit;
               }
             }
           }
