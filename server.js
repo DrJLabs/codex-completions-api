@@ -396,7 +396,7 @@ app.post("/v1/chat/completions", (req, res) => {
   try {
     const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
     child.stdin.write(JSON.stringify(submission) + "\n");
-    child.stdin.end();
+    // Keep stdin open to allow graceful task completion; will be closed by child exit
   } catch {}
 
   let out = "", err = "";
@@ -429,88 +429,41 @@ app.post("/v1/chat/completions", (req, res) => {
   };
 
   if (isStreamingReq) {
-    // Stream role first; send content on process close from last-message file
     res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.flushHeaders?.();
-    // Keepalive pings to keep the connection warm across proxies
-    let keepalive;
-    if (SSE_KEEPALIVE_MS > 0) {
-      keepalive = setInterval(() => {
-        try { sendSSEKeepalive(); } catch {}
-      }, SSE_KEEPALIVE_MS);
-    }
-
-    const promptText = joinMessages(messages).trim();
-    // Clear generic idle timer; streaming uses its own idle management
     if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
-    // Proto structured streaming
+    let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
-    const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-    let completionChars = 0;
-    let buf = "";
-    let sentAny = false;
-    const streamResetIdle = (() => {
-      let timer;
-      return () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          if (responded) return;
-          try { console.log("[proxy] stream idle timeout (proto); terminating backend"); } catch {}
-          try { child.kill("SIGTERM"); } catch {}
-          try { res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`); } catch {}
-        }, STREAM_IDLE_TIMEOUT_MS);
-      };
-    })();
-    streamResetIdle();
+    let buf = ""; let sentAny = false; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
+    resetStreamIdle();
     child.stdout.on("data", (chunk) => {
-      streamResetIdle();
-      const text = chunk.toString("utf8"); out += text; buf += text;
-      let idx;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+      resetStreamIdle(); const s = chunk.toString("utf8"); out += s; buf += s;
+      let idx; while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx+1);
         const trimmed = line.trim(); if (!trimmed) continue;
         try {
-          const evt = JSON.parse(trimmed);
-          const t = (evt && (evt.msg?.type || evt.type)) || "";
+          const evt = JSON.parse(trimmed); const t = (evt && (evt.msg?.type || evt.type)) || "";
+          if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") { continue; }
           if (t === "agent_message_delta") {
-            const delta = (evt.msg?.delta ?? evt.delta) || "";
-            if (delta) {
-              sentAny = true; completionChars += String(delta).length;
-              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(delta) } }] });
-            }
+            const d = (evt.msg?.delta ?? evt.delta) || ""; if (d) { sentAny = true; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(d) } }] }); }
           } else if (t === "agent_message") {
-            const message = (evt.msg?.message ?? evt.message) || "";
-            if (message) {
-              sentAny = true; completionChars += String(message).length;
-              sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(message) } }] });
-            }
-          } else if (t === "token_count") {
-            if (includeUsage) {
-              const pt = Number(evt.msg?.prompt_tokens || 0);
-              const ct = Number(evt.msg?.completion_tokens || 0);
-              sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
-            }
+            const m = (evt.msg?.message ?? evt.message) || ""; if (m) { sentAny = true; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: String(m) } }] }); }
+          } else if (t === "token_count" && includeUsage) {
+            const pt = Number(evt.msg?.prompt_tokens || 0); const ct = Number(evt.msg?.completion_tokens || 0); sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+          } else if (t === "task_complete") {
+            // Will finish on close below
+          } else if (t === "error") {
+            if (process.env.PROXY_DEBUG_PROTO) try { console.log("[proto] error event"); } catch {}
           }
-        } catch {}
+        } catch (e) { if (process.env.PROXY_DEBUG_PROTO) try { console.log("[proto] parse error line:", trimmed); } catch {} }
       }
     });
-    child.stderr.on("data", (e) => { streamResetIdle(); const s = e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (keepalive) clearInterval(keepalive);
-      if (idleTimer) clearTimeout(idleTimer);
-      if (!sentAny) {
-        const content = stripAnsi(out).trim() || "No output from backend.";
-        sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content } }] });
-      }
-      finishSSE();
-    });
-    // Do not kill child on client disconnect; allow graceful completion
-    // req.on("close", () => { try { child.kill("SIGTERM"); } catch {} });
+    child.stderr.on("data", () => { resetStreamIdle(); });
+    child.on("close", () => { if (keepalive) clearInterval(keepalive); if (!sentAny) { const content = stripAnsi(out).trim() || "No output from backend."; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content } }] }); } finishSSE(); });
     return;
   }
 
@@ -671,7 +624,6 @@ app.post("/v1/completions", (req, res) => {
   try {
     const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: toSend }] } };
     child.stdin.write(JSON.stringify(submission) + "\n");
-    child.stdin.end();
   } catch {}
 
   let out = "", err = "";
