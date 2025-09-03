@@ -72,7 +72,8 @@ const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
 // Separate idle timeout for streaming responses (allow much longer lulls between chunks)
 const STREAM_IDLE_TIMEOUT_MS = Number(process.env.PROXY_STREAM_IDLE_TIMEOUT_MS || 300000); // default 5m
 // Proto-specific idle for non-streaming aggregation before giving up (ms)
-const PROTO_IDLE_MS = Number(process.env.PROXY_PROTO_IDLE_MS || 60000);
+const PROTO_IDLE_MS = Number(process.env.PROXY_PROTO_IDLE_MS || 120000);
+const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(process.env.PROXY_DEBUG_PROTO || ""));
 // Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
 const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
@@ -393,11 +394,7 @@ app.post("/v1/chat/completions", (req, res) => {
     if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
   });
 
-  try {
-    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
-    child.stdin.write(JSON.stringify(submission) + "\n");
-    // Keep stdin open to allow graceful task completion; will be closed by child exit
-  } catch {}
+  // Defer writing submission until after listeners are attached
 
   let out = "", err = "";
 
@@ -455,7 +452,10 @@ app.post("/v1/chat/completions", (req, res) => {
           } else if (t === "token_count" && includeUsage) {
             const pt = Number(evt.msg?.prompt_tokens || 0); const ct = Number(evt.msg?.completion_tokens || 0); sendSSE({ event: "usage", usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
           } else if (t === "task_complete") {
-            // Will finish on close below
+            // Finish stream immediately on task completion
+            try { finishSSE(); } catch {}
+            try { child.kill("SIGTERM"); } catch {}
+            return;
           } else if (t === "error") {
             if (process.env.PROXY_DEBUG_PROTO) try { console.log("[proto] error event"); } catch {}
           }
@@ -463,6 +463,11 @@ app.post("/v1/chat/completions", (req, res) => {
       }
     });
     child.stderr.on("data", () => { resetStreamIdle(); });
+    // Write submission after listeners are attached
+    try {
+      const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
+      child.stdin.write(JSON.stringify(submission) + "\n");
+    } catch {}
     child.on("close", () => { if (keepalive) clearInterval(keepalive); if (!sentAny) { const content = stripAnsi(out).trim() || "No output from backend."; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content } }] }); } finishSSE(); });
     return;
   }
@@ -470,6 +475,7 @@ app.post("/v1/chat/completions", (req, res) => {
   // Non-streaming (proto): assemble content until task completion
   if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
   let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0; let done = false;
   const resetProtoIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { if (responded) return; responded = true; try { child.kill("SIGTERM"); } catch {}; applyCors(null, res); res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } }); }, PROTO_IDLE_MS); }; })();
   resetProtoIdle();
