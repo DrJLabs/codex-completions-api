@@ -71,6 +71,8 @@ const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "false").toL
 const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
 // Separate idle timeout for streaming responses (allow much longer lulls between chunks)
 const STREAM_IDLE_TIMEOUT_MS = Number(process.env.PROXY_STREAM_IDLE_TIMEOUT_MS || 300000); // default 5m
+// Proto-specific idle for non-streaming aggregation before giving up (ms)
+const PROTO_IDLE_MS = Number(process.env.PROXY_PROTO_IDLE_MS || 60000);
 // Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
 const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
@@ -512,11 +514,13 @@ app.post("/v1/chat/completions", (req, res) => {
     return;
   }
 
-  // Non-streaming (proto): assemble content from deltas or final message
+  // Non-streaming (proto): assemble content until task completion
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0;
+  let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0; let done = false;
+  const resetProtoIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { if (responded) return; responded = true; try { child.kill("SIGTERM"); } catch {}; applyCors(null, res); res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } }); }, PROTO_IDLE_MS); }; })();
+  resetProtoIdle();
   child.stdout.on("data", (d) => {
-    resetIdle(); const s=d.toString("utf8"); out += s; buf2 += s;
+    resetProtoIdle(); const s=d.toString("utf8"); out += s; buf2 += s;
     let idx; while ((idx = buf2.indexOf("\n")) >= 0) {
       const line = buf2.slice(0, idx); buf2 = buf2.slice(idx+1);
       const t = line.trim(); if (!t) continue;
@@ -525,10 +529,11 @@ app.post("/v1/chat/completions", (req, res) => {
         if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
         else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
         else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
+        else if (tp === "task_complete") { done = true; }
       } catch {}
     }
   });
-  child.stderr.on("data", (d) => { resetIdle(); err += d.toString("utf8"); });
+  child.stderr.on("data", () => { resetProtoIdle(); });
   child.on("close", () => {
     if (responded) return; responded = true;
     clearTimeout(timeout);
@@ -536,7 +541,7 @@ app.post("/v1/chat/completions", (req, res) => {
     const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
     const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(final);
-    res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: "stop" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+    res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: done ? "stop" : "length" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
   });
 });
 
