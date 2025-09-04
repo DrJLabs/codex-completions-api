@@ -1,14 +1,14 @@
 # Codex Completions API (OpenAI-compatible proxy)
 
-OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE streaming compatibility and minimal output shaping. Designed for Roo Code to treat Codex CLI as a first-class "model" via the OpenAI-Compatible provider path.
+OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE streaming compatibility and minimal output shaping. An OpenAI Chat Completions‑compatible HTTP proxy that invokes the Codex CLI in "proto" mode. It provides a drop‑in /v1/chat/completions endpoint with Server‑Sent Events (SSE) streaming and minimal output shaping so that any OpenAI‑style client (SDKs, tools, curl) can talk to Codex as if it were a standard model API.
 
 ## Features
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
-- SSE streaming: emits an initial `delta.role=assistant` chunk. By default content is aggregated into one chunk; with `PROXY_STREAM_MODE=jsonl`, the proxy parses `codex exec --json` to stream incremental deltas when available, or the full agent message as soon as it’s emitted.
+- Streaming via Codex proto events: first SSE chunk sets `delta.role=assistant`, then incremental deltas when proto emits them; otherwise a full message arrives once available. The stream always ends with `[DONE]`. Periodic `: keepalive` SSE comments keep intermediaries from timing out.
 - Minimal output shaping: ANSI is stripped; additional heuristics exist but are conservative by default to avoid dropping valid content.
-- Reasoning effort mapping: `reasoning.effort` → `--config reasoning.effort="<low|medium|high|minimal>"` (silently ignored by older builds).
+- Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
-- Safety: Codex runs with `--sandbox read-only`. Approval flags are not passed to `exec` (see Notes).
+- Safety: Codex runs read‑only; the proxy does not read project files. One proto process per request on this branch (stateless).
 
 ## Quick start
 
@@ -72,7 +72,7 @@ Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
-- `PROXY_STREAM_MODE` (default: `incremental`) — set to `jsonl` to parse `--json` events for finer-grained streaming.
+- `PROXY_STREAM_MODE` (default: `incremental`) — proto‑based streaming emits deltas when available or an aggregated message; this knob is kept for compatibility.
 - `CODEX_BIN` (default: `codex`)
 - `CODEX_HOME` (default: `$HOME/.codex-api`) — overrides HOME for the Codex child process. Codex then reads config from `$CODEX_HOME/.codex/config.toml`, isolating proxy config from your interactive CLI (`~/.codex`).
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -90,7 +90,7 @@ Environment variables:
 ## Roo Code configuration
 
 Use OpenAI-Compatible provider:
-- Base URL: `http://127.0.0.1:11435/v1`
+- Any OpenAI‑style Chat Completions client can talk to this proxy by setting the base URL and API key. Example: `http://127.0.0.1:11435/v1`
 - API Key: `codex-local-secret`
 - Model: `gpt-5`
 - Reasoning effort: `High`
@@ -104,7 +104,7 @@ An example file is in `config/roo-openai-compatible.json`.
 - `messages[]`: joined into a single positional prompt with `[role]` prefixes.
 - `stream: true`:
   - Default: role-first SSE chunk, then one aggregated content chunk on process close, then `[DONE]`.
-  - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex exec --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
+  - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex proto --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
 - Other knobs (temperature, top_p, penalties, max_tokens): ignored.
 
@@ -145,7 +145,7 @@ Behavior:
 - If `body.reasoning.effort` is present in the incoming request, it takes precedence over the implied level.
 - The underlying `-m` remains the effective model (default: `gpt-5`).
 
-## Acceptance criteria
+## Behavior summary
 
 - `GET /healthz` returns `{ ok: true }`.
 - `GET /v1/models` lists only `codex-5` (no slashes) so clients like Cursor won’t confuse it with OpenAI built-ins. Requests that specify `gpt-5` directly still work.
@@ -153,22 +153,22 @@ Behavior:
 - Codex child invoked as:
 
 ```
-codex exec \
+codex proto \
   --sandbox read-only \
   --config preferred_auth_method="chatgpt" \
   --config project_doc_max_bytes=0 \
   -m gpt-5 \
-  [--config reasoning.effort="high"] \
+  [--config model_reasoning_effort="high"] \
   "<prompt>"
 ```
 
 ## Notes and troubleshooting
 
-- Approval flag: `codex exec` does not accept `--ask-for-approval`. The proxy relies on `exec`'s non-interactive behavior and your Codex defaults. If you need to enforce approvals globally, configure them in `~/.codex/config.toml`.
-- Reasoning effort: Some versions may ignore `--config reasoning.effort=...`. Use Roo’s “High” if unsure.
+- Approval flag: `codex proto` does not accept `--ask-for-approval`. 
+- 
 - Port already in use: If `11435` is busy, launch with `PORT=18000 npm run start` and run acceptance with `BASE_URL=http://127.0.0.1:18000/v1`.
-- Streaming shape: Immediate role chunk is emitted to satisfy Chat Completions SSE clients. Default aggregates content into a single chunk. Set `PROXY_STREAM_MODE=jsonl` to parse Codex JSON-lines: when deltas are available they are streamed; otherwise the full message is forwarded as soon as Codex emits it.
-- Auth: Ensure you’re logged into Codex (`codex login`).
+- Streaming shape: First SSE chunk sets the role; subsequent chunks are deltas when proto emits them; `[DONE]` terminates the stream.
+- Auth: Ensure Codex CLI is logged in (e.g., `codex login`) if you are not using the test shim.
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
 - Project docs are disabled for proxy runs: the proxy passes `--config project_doc_max_bytes=0` so the Codex backend behaves like a pure model API and does not ingest the app repo. The global `AGENTS.md` under `CODEX_HOME` still applies.
 
@@ -195,8 +195,8 @@ curl -sN http://127.0.0.1:11435/v1/chat/completions \
   -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' | sed -n '1,30p'
 ```
 Expect an initial role delta, one or more `data: {"..."}` chunks, then `data: [DONE]`.
-## Cursor compatibility quickstart
-- Base URL: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
+## Client compatibility quickstart
+- Any OpenAI‑style Chat Completions client can talk to this proxy by setting the base URL and API key. Example: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
 - API Key: same value as `PROXY_API_KEY`.
 - Model: select `codex-5` (proxy normalizes to effective `gpt-5`).
 - Streaming: supported (role-first delta + `[DONE]`). For more granular deltas set `PROXY_STREAM_MODE=jsonl`.
