@@ -38,6 +38,36 @@ curl -s http://127.0.0.1:11435/healthz | jq .
 
 Use the curl snippets above to validate endpoints while `npm run start` is running.
 
+## Testing
+
+This repo uses a three-layer testing setup optimized for fast inner-loop feedback while coding:
+
+1) Unit (Vitest, fast, watchable)
+- Scope: pure helpers in `src/utils.js` (model normalization, token heuristics, message joining, time/usage math, CORS header logic, text filtering).
+- Commands:
+  - `npm run test:unit` — run once
+  - `npm run test:unit:watch` — watch mode during development
+  - `npm run coverage:unit` — unit test coverage (v8)
+
+2) Integration (Vitest, real server, no external deps)
+- Scope: Express endpoints with a deterministic Codex "proto" shim; exercises auth, error codes, non‑stream chat, and usage endpoints.
+- Notes: spawns `node server.js` on a random port and sets `CODEX_BIN=scripts/fake-codex-proto.js`, so no Codex installation is required.
+- Command: `npm run test:integration`
+
+3) End‑to‑End API/SSE (Playwright Test)
+- Scope: verifies `/v1/models`, non‑stream chat, and streaming SSE (`role` delta and `[DONE]`).
+- Command: `npm test`
+- Tip: set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` if you are only running API/SSE tests and do not want browsers downloaded.
+
+All together
+- `npm run test:all` — unit → integration → e2e in sequence. Useful before pushing.
+
+Suggested dev loop
+- Working on pure helpers? Start `npm run test:unit:watch` and code in `src/utils.js`.
+- Changing route logic or request/response shapes? Run `npm run test:integration` frequently.
+- Touching streaming behavior? Validate with `npm test` (Playwright SSE) or the curl snippet in “Manual checks (SSE)”.
+
+
 Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)

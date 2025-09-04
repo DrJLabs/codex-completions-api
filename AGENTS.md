@@ -23,10 +23,18 @@ Branch: main-p (proxy is stateless; one Codex proto process per request). Featur
 - Models: advertise only `codex-5`; normalize to effective `gpt-5` before spawning Codex.
 
 ## Testing Guidelines
-- No unit test framework in this branch; validate with curl:
-  - Models: `curl -i $BASE/v1/models` → 200 with id `codex-5`.
-  - Chat (non‑stream): POST `/v1/chat/completions` with bearer key → 200 JSON.
-  - Chat (stream): `stream:true` returns SSE chunks and `[DONE]`.
+- Layers and when to use them during coding:
+  - **Unit (Vitest, fast, watchable)** — for pure helpers in `src/utils.js` (normalization, tokens, message joining, time/usage, CORS, filters).
+    - Run: `npm run test:unit` (once) or `npm run test:unit:watch` (while editing utils).
+  - **Integration (Vitest, real server)** — validates Express routes with the deterministic Codex shim.
+    - Run: `npm run test:integration` (use after route/handler changes; no Docker/Codex needed).
+  - **E2E API/SSE (Playwright)** — verifies `/v1/models`, non‑stream chat, and streaming SSE contract.
+    - Run: `npm test` (before push or when touching streaming behavior).
+- Full suite: `npm run test:all` (unit → integration → e2e).
+- Curl smoke (quick manual checks):
+  - Models: `curl -s $BASE/v1/models | jq .` → includes `codex-5`.
+  - Chat (non‑stream): POST `/v1/chat/completions` with bearer → JSON reply.
+  - Chat (stream): `stream:true` returns role-first delta + `[DONE]`.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative subject (e.g., "Add SSE headers for streaming").
