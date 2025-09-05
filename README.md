@@ -178,6 +178,20 @@ PROXY_API_KEY=<your-dev-key> npm run start:codev:shim
 
 Both commands serve at `http://127.0.0.1:18000/v1`.
 
+### Simplest dev start (loads `.env` automatically)
+
+Use the helper launcher which sources `.env` (and `.env.secret` if present) and runs on port 18000 by default:
+
+```
+npm run dev
+```
+
+Options:
+- `npm run dev -- -p 19000` — change port
+- `npm run dev:shim` — run without Codex CLI, using the built-in proto shim
+
+The launcher never prints secrets and prefers project-local `.codev` config via `CODEX_HOME=.codev`.
+
 ## Notes and troubleshooting
 
 - Approval flag: `codex proto` does not accept `--ask-for-approval`. 
