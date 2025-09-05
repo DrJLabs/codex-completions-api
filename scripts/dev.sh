@@ -23,7 +23,13 @@ if [[ -f "$ROOT_DIR/.env.secret" ]]; then
   set +a
 fi
 
+# Fallback: if PROXY_API_KEY still empty, try parsing from .env explicitly
+if [[ -z "${PROXY_API_KEY:-}" && -f "$ROOT_DIR/.env" ]]; then
+  PROXY_API_KEY="$(sed -n 's/^PROXY_API_KEY=//p' "$ROOT_DIR/.env" | head -n1)"
+fi
+
 # Defaults (can be overridden by env or flags)
+# Force dev default port unless overridden by flag or env at invocation
 PORT="${PORT:-18000}"
 CODEX_HOME="${CODEX_HOME:-$ROOT_DIR/.codev}"
 CODEX_BIN="${CODEX_BIN:-}"
@@ -66,4 +72,3 @@ fi
 
 echo "Dev server: http://127.0.0.1:$PORT/v1 (CODEX_HOME=$CODEX_HOME)"
 exec node "$ROOT_DIR/server.js"
-
