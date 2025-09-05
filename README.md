@@ -162,6 +162,22 @@ codex proto \
   "<prompt>"
 ```
 
+### Local dev with `.codev`
+
+For an isolated dev setup that doesn’t touch your global Codex state, this repo supports a project-local config under `.codev/` (checked in with `AGENTS.md` and `config.toml`). Run the server on a separate port (e.g., 18000) using that config by pointing `CODEX_HOME` to `.codev`:
+
+```
+PROXY_API_KEY=<your-dev-key> npm run start:codev
+```
+
+If you don’t have the Codex CLI installed, you can use the built-in proto shim to mimic streaming behavior:
+
+```
+PROXY_API_KEY=<your-dev-key> npm run start:codev:shim
+```
+
+Both commands serve at `http://127.0.0.1:18000/v1`.
+
 ## Notes and troubleshooting
 
 - Approval flag: `codex proto` does not accept `--ask-for-approval`. 
@@ -171,6 +187,35 @@ codex proto \
 - Auth: Ensure Codex CLI is logged in (e.g., `codex login`) if you are not using the test shim.
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
 - Project docs are disabled for proxy runs: the proxy passes `--config project_doc_max_bytes=0` so the Codex backend behaves like a pure model API and does not ingest the app repo. The global `AGENTS.md` under `CODEX_HOME` still applies.
+
+### Writable `CODEX_HOME` and rollouts
+
+The Codex CLI persists lightweight session artifacts ("rollouts") to its home directory. These rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from the proto session. They enable:
+- Debugging and reproducibility of agent behavior
+- Auditability/telemetry for long‑running sessions
+- Optional offline analysis or redaction pipelines
+
+Because rollouts are written by the Codex process, the directory pointed to by `CODEX_HOME` must be writable from inside the container. If it is read‑only, Codex fails at startup and the proxy may fall back to the placeholder response "No output from backend.".
+
+Symptoms of a read‑only `CODEX_HOME`:
+- App logs show: `failed to initialize rollout recorder: Read-only file system (os error 30)`
+- Client sees minimal placeholder output despite a 200 status, or stream closes early.
+
+Fix (Docker Compose): mount the Codex home read‑write.
+
+```yaml
+services:
+  app:
+    environment:
+      - CODEX_HOME=/home/node/.codex
+    volumes:
+      - ~/.codex-api:/home/node/.codex        # RW (no :ro)
+      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
+```
+
+Notes:
+- Keep `~/.codex-api` separate from your interactive `~/.codex` to avoid cross‑contamination of configs.
+- If your security posture requires tighter control, mount configs as read‑only but provide a separate writable subdirectory for rollouts, and point Codex to it via its config. The proxy only requires that Codex can write its rollout/session artifacts somewhere under `CODEX_HOME`.
 
 ### Long-running tasks and stable streaming
 
