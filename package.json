@@ -7,6 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "node server.js",
+    "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
+    "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
     "smoke": "bash scripts/smoke.sh",
     "test": "playwright test",
     "test:unit": "vitest run tests/unit",
