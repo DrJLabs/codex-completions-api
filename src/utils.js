@@ -104,14 +104,27 @@ export const isModelText = (line) => {
 export const impliedEffortForModel = (requestedModel) => {
   const m = String(requestedModel || "").toLowerCase();
   const variants = ["low", "medium", "high", "minimal"];
-  for (const v of variants) if (m === `codex-5-${v}`) return v;
+  for (const v of variants) {
+    if (m === `codex-5-${v}` || m === `codev-5-${v}`) return v;
+  }
   return "";
 };
 
 export const normalizeModel = (
   name,
   defaultModel = "gpt-5",
-  publicIds = ["codex-5", "codex-5-low", "codex-5-medium", "codex-5-high", "codex-5-minimal"]
+  publicIds = [
+    "codex-5",
+    "codex-5-low",
+    "codex-5-medium",
+    "codex-5-high",
+    "codex-5-minimal",
+    "codev-5",
+    "codev-5-low",
+    "codev-5-medium",
+    "codev-5-high",
+    "codev-5-minimal",
+  ]
 ) => {
   const raw = String(name || "").trim();
   if (!raw) return { requested: "codex-5", effective: defaultModel };

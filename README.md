@@ -68,6 +68,12 @@ Dev parity stack (public behind Traefik):
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
 
+Model IDs in dev vs prod:
+
+- Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`.
+- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`.
+- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5`) with the implied reasoning effort.
+
 Notes:
 
 - Dev config stays in `.codev/` (writable). Runtime writes are isolated under `PROXY_CODEX_WORKDIR`.
