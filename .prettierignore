@@ -1,0 +1,10 @@
+node_modules/
+playwright-report/
+test-results/
+blob-report/
+web-bundles/
+coverage/
+.DS_Store
+.tmp*
+.server.log
+local-server.log
