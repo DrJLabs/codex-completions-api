@@ -21,7 +21,9 @@ services:
       - CODEX_BIN=${CODEX_BIN:-codex}
     # Mount Codex CLI + credentials from host for in-container use
     volumes:
-      - ~/.codex-api:/home/node/.codex:ro
+      # Mount Codex config + state. Must be writable so Codex can record rollouts/sessions.
+      - ~/.codex-api:/home/node/.codex
+      # Codex CLI binary (read-only is fine)
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
     networks:
       - traefik

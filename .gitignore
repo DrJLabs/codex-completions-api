@@ -1,0 +1,18 @@
+.env.secret
+.env
+local-server.log
+.server.pid
+.server.log
+logs/
+# Playwright artifacts
+test-results/
+playwright-report/
+blob-report/
+# BMAD (local only)
+.bmad-core/
+.bmad-*/
+
+# Re-include tracked dev config and examples
+!.codev/
+!.codev/**
+!.env.example

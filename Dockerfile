@@ -16,6 +16,7 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # Copy application sources
 COPY server.js ./
 COPY README.md ./
+COPY src ./src
 COPY config ./config
 
 # Run as non-root
