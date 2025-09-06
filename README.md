@@ -88,6 +88,7 @@ DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
 ```
 
 Behavior:
+
 - Origin (host only): checks `https://127.0.0.1/healthz` and `/v1/models` with `Host: $DOMAIN`.
 - Edge (Cloudflare): checks `/healthz`, `/v1/models`, and an optional authenticated non‑stream chat.
 
@@ -314,6 +315,7 @@ DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
 ```
 
 Behavior:
+
 - Checks origin via `https://127.0.0.1` with `Host: $DOMAIN` for `/healthz` and `/v1/models` (skippable with `SKIP_ORIGIN=1`).
 - Checks Cloudflare for the same endpoints.
 - If `KEY` is provided, issues a non‑stream chat completion and validates a text response.

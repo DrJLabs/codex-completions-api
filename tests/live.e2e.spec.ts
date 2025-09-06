@@ -65,7 +65,7 @@ test.describe("Live E2E (real Codex)", () => {
     expect(content).not.toContain("No output from backend.");
   });
 
-test("streaming emits role delta, content, and [DONE]", async ({ baseURL }) => {
+  test("streaming emits role delta, content, and [DONE]", async ({ baseURL }) => {
     const url = new URL("/v1/chat/completions", baseURL).toString();
     const events = await readSSE(
       url,
@@ -93,7 +93,9 @@ test("streaming emits role delta, content, and [DONE]", async ({ baseURL }) => {
     const hasRoleDelta = events.some((d) => {
       try {
         const obj = JSON.parse(d);
-        return obj?.object === "chat.completion.chunk" && obj?.choices?.[0]?.delta?.role === "assistant";
+        return (
+          obj?.object === "chat.completion.chunk" && obj?.choices?.[0]?.delta?.role === "assistant"
+        );
       } catch {
         return false;
       }
@@ -105,7 +107,8 @@ test("streaming emits role delta, content, and [DONE]", async ({ baseURL }) => {
       try {
         const obj = JSON.parse(d);
         return (
-          obj?.object === "chat.completion.chunk" && typeof obj?.choices?.[0]?.delta?.content === "string"
+          obj?.object === "chat.completion.chunk" &&
+          typeof obj?.choices?.[0]?.delta?.content === "string"
         );
       } catch {
         return false;
