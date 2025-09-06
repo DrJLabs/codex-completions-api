@@ -6,7 +6,7 @@ const BASE_HTTP = `http://${HOST}:${PORT}`;
 
 export default defineConfig({
   testDir: "tests",
-  testIgnore: ["tests/unit/**", "tests/integration/**"],
+  testIgnore: ["tests/unit/**", "tests/integration/**", "tests/live.*.spec.*"],
   timeout: 60_000,
   retries: process.env.CI ? 2 : 0,
   fullyParallel: true,
