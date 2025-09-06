@@ -66,9 +66,6 @@ services:
       - traefik.http.routers.codex-dev-health.service=codex-dev-api
       - traefik.http.routers.codex-dev-health.middlewares=codex-dev-headers
 
-networks:
-  traefik:
-    external: true
   auth-dev:
     image: node:18-alpine
     working_dir: /app
@@ -84,3 +81,7 @@ networks:
     networks:
       - traefik
     restart: unless-stopped
+
+networks:
+  traefik:
+    external: true
