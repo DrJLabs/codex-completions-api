@@ -19,6 +19,7 @@
     "format": "prettier -w .",
     "format:check": "prettier -c .",
     "prepare": "husky install",
+    "build:png": "node scripts/svg2png.playwright.mjs",
     "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
     "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
     "smoke": "bash scripts/smoke.sh",
@@ -35,7 +36,8 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "nanoid": "^5.0.7"
+    "nanoid": "^5.0.7",
+    "svg2png-wasm": "^1.4.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.45.0",
