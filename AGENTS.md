@@ -111,6 +111,12 @@ These directives are mandatory for agents operating in this repository. They pre
 - Only after dev passes and user confirms, propose the minimal production diff (usually `docker-compose.yml` changes). Do not modify prod files before dev is green.
 - After merge to main: instruct `docker compose up -d --build --force-recreate` on prod host, then run `npm run smoke:prod` and optional live E2E.
 
+10. Model IDs by environment (for client instructions)
+
+- PROD advertise: `codex-5`, `codex-5-{low,medium,high,minimal}`.
+- DEV advertise: `codev-5`, `codev-5-{low,medium,high,minimal}` (to avoid confusion with prod endpoints).
+- Both environments accept either prefix; agents should prefer the environment’s advertised prefix in examples and client setup steps.
+
 <!-- BEGIN: BMAD-AGENTS -->
 
 # BMAD-METHOD Agents and Tasks

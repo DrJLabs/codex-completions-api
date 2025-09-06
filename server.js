@@ -64,8 +64,12 @@ const CODEX_WORKDIR = process.env.PROXY_CODEX_WORKDIR || path.join(os.tmpdir(), 
 // const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
 const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
-const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-5-${v}`)];
-const ALLOWED_MODEL_IDS = new Set([...PUBLIC_MODEL_IDS, DEFAULT_MODEL]);
+const IS_DEV_ENV = (process.env.PROXY_ENV || "").toLowerCase() === "dev";
+const DEV_ADVERTISED_IDS = ["codev-5", ...REASONING_VARIANTS.map((v) => `codev-5-${v}`)];
+const PROD_ADVERTISED_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-5-${v}`)];
+const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
+// Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
+const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
@@ -271,7 +275,9 @@ app.post("/v1/chat/completions", (req, res) => {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL
+    body.model || DEFAULT_MODEL,
+    DEFAULT_MODEL,
+    Array.from(ACCEPTED_MODEL_IDS)
   );
   try {
     console.log(
@@ -279,7 +285,7 @@ app.post("/v1/chat/completions", (req, res) => {
     );
   } catch {}
   // Model allowlist with OpenAI-style not-found error
-  if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
+  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
     return res.status(404).json({
       error: {
@@ -839,14 +845,16 @@ app.post("/v1/completions", (req, res) => {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL
+    body.model || DEFAULT_MODEL,
+    DEFAULT_MODEL,
+    Array.from(ACCEPTED_MODEL_IDS)
   );
   try {
     console.log(
       `[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
+  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
     return res.status(404).json({
       error: {
