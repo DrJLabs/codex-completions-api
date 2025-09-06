@@ -67,6 +67,7 @@ Dev parity stack (public behind Traefik):
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
 
 Notes:
+
 - Dev config stays in `.codev/` (writable). Runtime writes are isolated under `PROXY_CODEX_WORKDIR`.
 - Prod config stays in `.codex-api/` (writable mount). Prod compose unchanged until you promote changes.
 
