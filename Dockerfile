@@ -11,7 +11,8 @@ WORKDIR /app
 
 # Install dependencies (prefer npm ci when lockfile exists)
 COPY package.json ./
-RUN npm ci --omit=dev || npm install --omit=dev
+# Avoid running dev lifecycle scripts (husky) during production install
+RUN npm ci --omit=dev --ignore-scripts || npm install --omit=dev --ignore-scripts
 
 # Copy application sources
 COPY server.js ./

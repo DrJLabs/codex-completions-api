@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" font-family="Inter,Segoe UI,Arial,Helvetica,sans-serif">
+  <defs>
+    <style>
+      .box { fill:#fff; stroke:#2c3e50; stroke-width:2; rx:8; ry:8; }
+      .title { font-weight:600; fill:#2c3e50; }
+      .label { fill:#2c3e50; font-size:14px; }
+      .small { fill:#34495e; font-size:12px; }
+      .arrow { stroke:#2c3e50; stroke-width:2; marker-end:url(#arrowhead); fill:none; }
+      .ok { fill:#2ecc71; }
+      .warn { fill:#f1c40f; }
+      .bad { fill:#e74c3c; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="560" fill="#f8fafc" />
+
+  <!-- Cloudflare -->
+  <rect class="box" x="60" y="60" width="200" height="80" />
+  <text class="title" x="160" y="92" text-anchor="middle">Cloudflare</text>
+  <text class="small" x="160" y="112" text-anchor="middle">codex-api.onemainarmy.com</text>
+  <text class="small" x="160" y="128" text-anchor="middle">TLS, CDN, WAF</text>
+
+  <!-- Traefik (Host) -->
+  <rect class="box" x="340" y="50" width="260" height="100" />
+  <text class="title" x="470" y="84" text-anchor="middle">Traefik (host service)</text>
+  <text class="small" x="470" y="106" text-anchor="middle">entrypoint: websecure :443</text>
+  <text class="small" x="470" y="124" text-anchor="middle">routers: codex-api, preflight, models, health</text>
+
+  <!-- ForwardAuth -->
+  <rect class="box" x="340" y="190" width="260" height="80" />
+  <text class="title" x="470" y="220" text-anchor="middle">ForwardAuth</text>
+  <text class="small" x="470" y="240" text-anchor="middle">http://127.0.0.1:18080/verify</text>
+
+  <!-- App container -->
+  <rect class="box" x="680" y="50" width="260" height="150" />
+  <text class="title" x="810" y="84" text-anchor="middle">codex-completions-api (app)</text>
+  <text class="small" x="810" y="106" text-anchor="middle">container port: 11435</text>
+  <text class="small" x="810" y="126" text-anchor="middle">labels: traefik.docker.network=traefik</text>
+  <text class="small" x="810" y="146" text-anchor="middle">service: codex-api → 11435</text>
+
+  <!-- Codex CLI -->
+  <rect class="box" x="720" y="250" width="180" height="80" />
+  <text class="title" x="810" y="282" text-anchor="middle">Codex CLI (proto)</text>
+  <text class="small" x="810" y="302" text-anchor="middle">CODEX_HOME=/home/node/.codex</text>
+
+  <!-- Auth container -->
+  <rect class="box" x="340" y="300" width="260" height="80" />
+  <text class="title" x="470" y="332" text-anchor="middle">auth (container)</text>
+  <text class="small" x="470" y="352" text-anchor="middle">8080 → host 127.0.0.1:18080</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M260,100 L340,100" />
+  <path class="arrow" d="M600,100 L680,100" />
+  <path class="arrow" d="M470,150 L470,190" />
+  <path class="arrow" d="M600,190 L680,190 L680,175" />
+  <path class="arrow" d="M810,200 L810,250" />
+  <path class="arrow" d="M470,270 L470,300" />
+
+  <!-- Legend -->
+  <rect x="60" y="420" width="880" height="110" class="box" />
+  <text class="title" x="100" y="448">Legend</text>
+  <circle cx="140" cy="470" r="6" class="ok" /><text class="label" x="155" y="474">Correct ForwardAuth (host‑mode Traefik) → 127.0.0.1:18080/verify</text>
+  <circle cx="140" cy="496" r="6" class="bad" /><text class="label" x="155" y="500">Incorrect for host‑mode: auth:8080 (only valid if Traefik runs as a container)</text>
+</svg>
+
