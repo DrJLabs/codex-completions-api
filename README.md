@@ -61,6 +61,8 @@ Dev parity stack (public behind Traefik):
 - Bring up: `npm run dev:stack:up`
   - Uses `docker-compose.dev.yml` + `docker-compose.dev.codex.yml` + `compose.dev.traefik.yml`
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
+- If local port 18000 is in use, override:
+  - `DEV_PORT=18010 docker compose -p codex-dev -f docker-compose.dev.yml -f docker-compose.dev.codex.yml -f compose.dev.traefik.yml up -d --build`
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). ForwardAuth remains host loopback: `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
@@ -70,6 +72,24 @@ Notes:
 
 - Dev config stays in `.codev/` (writable). Runtime writes are isolated under `PROXY_CODEX_WORKDIR`.
 - Prod config stays in `.codex-api/` (writable mount). Prod compose unchanged until you promote changes.
+
+### Dev → Prod Promotion Flow (authoritative)
+
+- Change only dev inputs first: `.codev/*`, `docker-compose.dev*.yml`, `compose.dev.traefik.yml`.
+- Validate locally (Node or container) and behind Traefik on `codex-dev…`:
+  - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
+  - Live E2E (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
+- When green, open a PR with the minimal prod diffs (e.g., `docker-compose.yml`).
+- After merge, rebuild prod and validate:
+  - `docker compose up -d --build --force-recreate`
+  - `DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod`
+  - Optional live E2E: `LIVE_BASE_URL=https://codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run test:live`
+
+Operational guarantees:
+
+- CODEX_HOME: dev `.codev/`, prod `.codex-api/` (both writable).
+- Runtime writes: use `PROXY_CODEX_WORKDIR` in both environments; do not rely on it to redirect Codex rollouts unless your CLI version supports it.
+- Traefik ForwardAuth: always host loopback `http://127.0.0.1:18080/verify` (prod and dev).
 
 Codex HOME (development):
 
