@@ -87,6 +87,10 @@ These directives are mandatory for agents operating in this repository. They pre
 - `docker-compose.yml` or Traefik‑related labels → after building, run `npm run smoke:prod` (on origin host) and E2E.
 - `Dockerfile` or runtime image changes → run container DEV smoke (`npm run dev:docker`) and E2E.
 
+8) Sandbox & workdir policy
+- Default to `PROXY_SANDBOX_MODE=danger-full-access` with `PROXY_CODEX_WORKDIR=/tmp/codex-work` to avoid IDE plugin confusion about read-only FS while keeping writes isolated from repo.
+- If a change proposes `read-only`, document client impact (possible "cannot write files" errors) and update README accordingly.
+
 5) Deployment guidance
 - For any change merged to `main` that affects compose labels or Dockerfile, prefer `docker compose up -d --build --force-recreate` followed by `npm run smoke:prod`.
 - Do not instruct users to change Cloudflare or Traefik static config unless requested.
