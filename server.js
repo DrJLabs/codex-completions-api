@@ -246,16 +246,14 @@ app.post("/v1/chat/completions", (req, res) => {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     applyCors(null, res);
-    return res
-      .status(400)
-      .json({
-        error: {
-          message: "messages[] required",
-          type: "invalid_request_error",
-          param: "messages",
-          code: "invalid_request_error",
-        },
-      });
+    return res.status(400).json({
+      error: {
+        message: "messages[] required",
+        type: "invalid_request_error",
+        param: "messages",
+        code: "invalid_request_error",
+      },
+    });
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
@@ -357,15 +355,13 @@ app.post("/v1/chat/completions", (req, res) => {
       } catch {}
     } else {
       applyCors(null, res);
-      res
-        .status(500)
-        .json({
-          error: {
-            message: e?.message || "spawn error",
-            type: "internal_server_error",
-            code: "spawn_error",
-          },
-        });
+      res.status(500).json({
+        error: {
+          message: e?.message || "spawn error",
+          type: "internal_server_error",
+          code: "spawn_error",
+        },
+      });
       appendUsage({
         ts: Date.now(),
         req_id: reqId,
@@ -411,11 +407,9 @@ app.post("/v1/chat/completions", (req, res) => {
         } catch {}
       } else {
         applyCors(null, res);
-        res
-          .status(504)
-          .json({
-            error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
-          });
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       }
       responded = true;
       try {
@@ -666,11 +660,9 @@ app.post("/v1/chat/completions", (req, res) => {
           child.kill("SIGTERM");
         } catch {}
         applyCors(null, res);
-        res
-          .status(504)
-          .json({
-            error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
-          });
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       }, PROTO_IDLE_MS);
     };
   })();
@@ -819,16 +811,14 @@ app.post("/v1/completions", (req, res) => {
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
   if (!prompt) {
     applyCors(null, res);
-    return res
-      .status(400)
-      .json({
-        error: {
-          message: "prompt required",
-          type: "invalid_request_error",
-          param: "prompt",
-          code: "invalid_request_error",
-        },
-      });
+    return res.status(400).json({
+      error: {
+        message: "prompt required",
+        type: "invalid_request_error",
+        param: "prompt",
+        code: "invalid_request_error",
+      },
+    });
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
@@ -920,15 +910,13 @@ app.post("/v1/completions", (req, res) => {
       } catch {}
     } else {
       applyCors(null, res);
-      res
-        .status(500)
-        .json({
-          error: {
-            message: e?.message || "spawn error",
-            type: "internal_server_error",
-            code: "spawn_error",
-          },
-        });
+      res.status(500).json({
+        error: {
+          message: e?.message || "spawn error",
+          type: "internal_server_error",
+          code: "spawn_error",
+        },
+      });
     }
   };
   child.on("error", onChildError);
@@ -959,11 +947,9 @@ app.post("/v1/completions", (req, res) => {
         } catch {}
       } else {
         applyCors(null, res);
-        res
-          .status(504)
-          .json({
-            error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
-          });
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       }
       responded = true;
       try {
