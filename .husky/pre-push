@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "[husky] Running format+lint checks before push..."
+npm run -s format:check || { echo "[husky] Prettier check failed. Run 'npm run format' to fix." >&2; exit 1; }
+npm run -s lint || { echo "[husky] ESLint failed. Run 'npm run lint:fix' to attempt fixes." >&2; exit 1; }
+
