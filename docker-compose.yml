@@ -12,7 +12,7 @@ services:
       - PROXY_CODEX_WORKDIR=${PROXY_CODEX_WORKDIR:-/tmp/codex-work}
       # Explicitly unset provider forcing; Codex will auto-select based on auth/config
       - CODEX_FORCE_PROVIDER=
-      - CODEX_HOME=/app/.codev
+      - CODEX_HOME=/app/.codex-api
       # App-level CORS is disabled; edge handles CORS
       - PROXY_ENABLE_CORS=false
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
@@ -24,6 +24,8 @@ services:
     # Optional: mount Codex CLI binary from host
     volumes:
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
+      # Mount production Codex HOME containing config/secrets (read-only)
+      - ./.codex-api:/app/.codex-api
     networks:
       - traefik
     # Expose app port locally for direct localhost integrations (e.g., Roo)

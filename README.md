@@ -22,6 +22,7 @@ auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
 scripts/                        # Dev + CI helpers (dev.sh, dev-docker.sh, prod-smoke.sh)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
+ .codex-api/                     # Production Codex HOME (secrets; writable mount in compose)
 .github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
 AGENTS.md                       # Agent directives (project‑specific rules included)
 ```
@@ -37,10 +38,30 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 - App attaches to Docker network `traefik` and is discovered via labels.
 - Edge is Cloudflare for `codex-api.onemainarmy.com`.
 
+Codex HOME (production):
+
+- The proxy sets `CODEX_HOME` to `/app/.codex-api` in the container.
+- `docker-compose.yml` bind-mounts the project’s `./.codex-api` into the container: `./.codex-api:/app/.codex-api` (writable).
+- Do not commit secrets. Only a placeholder `README.md` and optional `.gitkeep` are tracked; everything else under `.codex-api/` is ignored by Git and is also excluded from Docker build context via `.dockerignore`.
+- `.codex-api` MUST be writable in production because Codex persists rollout/session artifacts here (e.g., `rollouts/`). Mounting read-only can cause streaming/tool communication to fail.
+- On the production host, provision the following files under the project’s `.codex-api/` before `docker compose up`:
+  - `config.toml` (Codex client config)
+  - `AGENTS.md` (optional)
+  - `auth.json` and any other credentials required by Codex (if applicable)
+
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
 - Container dev: `npm run dev:docker` (also port 18000 by default) or `npm run dev:docker:codex` (uses host Codex CLI).
+
+Codex HOME (development):
+
+- Dev instances use the project-local `.codev/` as Codex HOME.
+- Scripts (`npm run dev`, `npm run dev:shim`) and dev compose map `.codev` appropriately; the dev launcher seeds `config.toml` and `AGENTS.md` into the runtime `CODEX_HOME` if missing.
+
+Build context hygiene:
+
+- `.dockerignore` excludes `.codex-api/**`, `.codev/**`, `.env*`, logs, and other local artifacts so secrets are never sent to the Docker daemon.
 
 ## Production Smoke
 
@@ -122,6 +143,18 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 - Command: `npm test`
 - Tip: set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` if you are only running API/SSE tests and do not want browsers downloaded.
 
+Live E2E (real Codex)
+
+- Purpose: run E2E against a live proxy (local compose or edge) using your `.env` key to catch issues that the proto shim cannot (e.g., writable `.codex-api` rollouts).
+- Command: `npm run test:live`
+- Env:
+  - `KEY` or `PROXY_API_KEY` (loaded from `.env`/`.env.secret` by the script)
+  - `LIVE_BASE_URL` (default `http://127.0.0.1:11435`)
+- What it checks:
+  - `/healthz`, `/v1/models` (200 or 401 when models are protected)
+  - Non‑stream chat returns content (no fallback message)
+  - Streaming emits role delta, at least one content delta, and `[DONE]`
+
 All together
 
 - `npm run test:all` — unit → integration → e2e in sequence. Useful before pushing.
@@ -146,7 +179,7 @@ Environment variables:
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (default: `incremental`) — proto‑based streaming emits deltas when available or an aggregated message; this knob is kept for compatibility.
 - `CODEX_BIN` (default: `codex`)
-- `CODEX_HOME` (default: `$PROJECT/.codev`) — path passed to Codex CLI for configuration. The repo includes `.codev/config.toml` so PROD and DEV both use project‑local config by default.
+- `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
