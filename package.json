@@ -63,9 +63,10 @@
   },
   "lint-staged": {
     "**/*.{js,mjs,cjs,ts,tsx,jsx}": [
+      "prettier -w",
       "ESLINT_USE_FLAT_CONFIG=false eslint --fix"
     ],
-    "**/*.{json,md,yml,yaml}": [
+    "**/*.{json,md,mdx,yml,yaml,css,scss,html,svg}": [
       "prettier -w"
     ]
   },
