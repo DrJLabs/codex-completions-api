@@ -55,6 +55,21 @@ Codex HOME (production):
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
 - Container dev: `npm run dev:docker` (also port 18000 by default) or `npm run dev:docker:codex` (uses host Codex CLI).
 
+Dev parity stack (public behind Traefik):
+
+- Purpose: exercise the proxy with a real Codex CLI behind Traefik and ForwardAuth, mirroring prod, without touching prod.
+- Bring up: `npm run dev:stack:up`
+  - Uses `docker-compose.dev.yml` + `docker-compose.dev.codex.yml` + `compose.dev.traefik.yml`
+  - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
+- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). ForwardAuth remains host loopback: `http://127.0.0.1:18080/verify`.
+- Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
+- Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
+- Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
+
+Notes:
+- Dev config stays in `.codev/` (writable). Runtime writes are isolated under `PROXY_CODEX_WORKDIR`.
+- Prod config stays in `.codex-api/` (writable mount). Prod compose unchanged until you promote changes.
+
 Codex HOME (development):
 
 - Dev instances use the project-local `.codev/` as Codex HOME.
