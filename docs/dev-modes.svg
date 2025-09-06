@@ -30,10 +30,10 @@
 
   <!-- Container Dev -->
   <rect class="box" x="680" y="50" width="260" height="260" />
-  <text class="title" x="810" y="82" text-anchor="middle">DEV — Container</text>
-  <text class="small" x="810" y="104" text-anchor="middle">dev:docker (port 18000)</text>
+  <text class="title" x="810" y="82" text-anchor="middle">DEV — Stack</text>
+  <text class="small" x="810" y="104" text-anchor="middle">dev:stack:up (port 18010)</text>
   <text class="small" x="810" y="124" text-anchor="middle">Shim by default</text>
-  <text class="small" x="810" y="144" text-anchor="middle">dev:docker:codex uses host CLI</text>
+  <text class="small" x="810" y="144" text-anchor="middle">CODEX_BIN=codex uses host CLI</text>
 
 </svg>
 
