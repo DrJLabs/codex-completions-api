@@ -20,7 +20,7 @@ server.js                       # Express API (OpenAI‑compatible routes)
 src/utils.js                    # Utilities (tokens, join/normalize, CORS helpers)
 auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
-scripts/                        # Dev + CI helpers (dev.sh, dev-docker.sh, prod-smoke.sh)
+scripts/                        # Dev + CI helpers (dev.sh, prod-smoke.sh)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
  .codex-api/                     # Production Codex HOME (secrets; writable mount in compose)
 .github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
@@ -53,7 +53,7 @@ Codex HOME (production):
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
-- Container dev: `npm run dev:docker` (also port 18000 by default) or `npm run dev:docker:codex` (uses host Codex CLI).
+- Dev stack: `npm run dev:stack:up` (port 18010 by default). Set `CODEX_BIN=codex` to use your host Codex CLI.
 
 Dev parity stack (public behind Traefik):
 
@@ -61,11 +61,11 @@ Dev parity stack (public behind Traefik):
 - Bring up: `npm run dev:stack:up`
   - Uses a single file: `compose.dev.stack.yml` (self-contained dev app + dev auth)
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
-  - If local port 18000 is in use, override:
-    - `DEV_PORT=18010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
+  - If local port 18010 is in use, override:
+    - `DEV_PORT=19010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
+  - Use your host Codex CLI by setting `CODEX_BIN=codex` (requires `~/.cargo/bin/codex`)
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
-- ForwardAuth (dev) now uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
@@ -216,7 +216,7 @@ Suggested dev loop
 - Changed `src/utils.js` only → run unit: `npm run test:unit`.
 - Changed `server.js` routing/handlers/streaming → run integration: `npm run test:integration`, then E2E: `npm test`.
 - Changed `docker-compose.yml` (labels/ports/ForwardAuth) or Traefik‑related behavior → run production smoke: `npm run smoke:prod` (on the origin host) and E2E.
-- Changed `Dockerfile` → build and run container DEV smoke (`npm run dev:docker`), then E2E.
+- Changed `Dockerfile` → build and run dev stack (`npm run dev:stack:up`), then E2E.
 
 Environment variables:
 
@@ -364,26 +364,24 @@ Options:
 
 The launcher never prints secrets and prefers project-local `.codev` config via `CODEX_HOME=.codev`.
 
-### Container dev (Compose)
+### Dev stack (Compose)
 
-Convenience scripts manage a dev container that mirrors production but runs on a local port and uses project‑local config:
+Convenience scripts manage a self-contained dev stack that mirrors production behind Traefik:
 
-- `npm run dev:docker` — build and start on `http://127.0.0.1:18000/v1` using the proto shim
-- `npm run dev:docker:codex` — same but uses your host Codex CLI (requires `~/.cargo/bin/codex`)
-- `npm run dev:docker:logs` — follow logs
-- `npm run dev:docker:down` — stop and remove
+- `npm run dev:stack:up` — build and start on `http://127.0.0.1:18010/v1` using the proto shim
+- `npm run dev:stack:logs` — follow logs
+- `npm run dev:stack:down` — stop and remove (prunes volumes)
 
 Notes:
 
-- Compose reads `PROXY_API_KEY` from your `.env`.
-- Override port: `DEV_PORT=19000 npm run dev:docker`
-- Files:
-  - `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, exposes `127.0.0.1:${DEV_PORT:-18010}:11435`, defaults to the proto shim at `/app/scripts/fake-codex-proto.js`, and configures ForwardAuth dev at `127.0.0.1:18081`.
+- Compose reads `PROXY_API_KEY` from `.env.dev`.
+- Override port: `DEV_PORT=19010 npm run dev:stack:up`
+- Set `CODEX_BIN=codex` to use your host Codex CLI (requires `~/.cargo/bin/codex`).
+- File: `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, defaults to the proto shim at `/app/scripts/fake-codex-proto.js`, and configures ForwardAuth dev at `127.0.0.1:18081`.
 
 ## Notes and troubleshooting
 
 - Approval flag: `codex proto` does not accept `--ask-for-approval`.
--
 - Port already in use: If `11435` is busy, launch with `PORT=18000 npm run start` and run acceptance with `BASE_URL=http://127.0.0.1:18000/v1`.
 - Streaming shape: First SSE chunk sets the role; subsequent chunks are deltas when proto emits them; `[DONE]` terminates the stream.
 - Auth: Ensure Codex CLI is logged in (e.g., `codex login`) if you are not using the test shim.

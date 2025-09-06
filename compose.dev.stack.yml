@@ -25,6 +25,9 @@ services:
       - ./.codev:/home/node/.codex
       # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
       - ./scripts:/app/scripts:ro
+      # When using CODEX_BIN=codex, provide the host CLI binary (optional)
+      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
+    restart: unless-stopped
     networks:
       - traefik
     labels:
