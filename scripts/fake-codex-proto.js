@@ -44,11 +44,15 @@ const main = async () => {
   await delay(5);
   write({ type: "agent_message", msg: { message } });
   await delay(5);
-  write({ type: "token_count", msg: { prompt_tokens: 8, completion_tokens: Math.ceil(message.length / 4) } });
+  write({
+    type: "token_count",
+    msg: { prompt_tokens: 8, completion_tokens: Math.ceil(message.length / 4) },
+  });
   await delay(5);
   write({ type: "task_complete" });
-  try { process.stdout.end?.(); } catch {}
+  try {
+    process.stdout.end?.();
+  } catch {}
 };
 
 main().catch(() => process.exit(0));
-

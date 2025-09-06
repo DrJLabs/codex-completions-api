@@ -52,8 +52,6 @@ services:
       - traefik.http.routers.codex-preflight.middlewares=codex-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-preflight.service=noop@internal
 
-      
-
       # ForwardAuth middleware (edge bearer auth)
       - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
