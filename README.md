@@ -186,7 +186,7 @@ Live E2E (real Codex)
 - Purpose: run E2E against a live proxy (local compose or edge) using your `.env` key to catch issues that the proto shim cannot (e.g., writable `.codex-api` rollouts).
 - Command: `npm run test:live`
 - Env:
-  - `KEY` or `PROXY_API_KEY` (loaded from `.env`/`.env.secret` by the script)
+- `KEY` or `PROXY_API_KEY` (loaded from `.env` or environment)
   - `LIVE_BASE_URL` (default `http://127.0.0.1:11435`)
 - What it checks:
   - `/healthz`, `/v1/models` (200 or 401 when models are protected)
@@ -343,7 +343,7 @@ Behavior:
 
 ### Simplest dev start (loads `.env` automatically)
 
-Use the helper launcher which sources `.env` (and `.env.secret` if present) and runs on port 18000 by default:
+Use the helper launcher which sources `.env` and runs on port 18000 by default:
 
 ```
 npm run dev
