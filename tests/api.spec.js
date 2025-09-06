@@ -30,7 +30,9 @@ test.describe("API smoke", () => {
     });
     if (!res.ok()) {
       console.error("Non-stream response status:", res.status());
-      try { console.error(await res.text()); } catch {}
+      try {
+        console.error(await res.text());
+      } catch {}
     }
     expect(res.ok()).toBeTruthy();
     const body = await res.json();

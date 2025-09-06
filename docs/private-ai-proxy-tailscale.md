@@ -17,6 +17,7 @@ Audience: internal services and teammates who can run the Tailscale client. If y
 - MagicDNS enabled (recommended) for stable `hostname.ts.net` names.
 
 References (doc‑first):
+
 - Tailscale Docker setup and Compose patterns: https://tailscale.com/kb/1282/docker and https://tailscale.com/kb/1453/quick-guide-docker
 - Tailscale Serve reference and examples: https://tailscale.com/kb/1312/serve and https://tailscale.com/kb/1242/tailscale-serve
 - Serve config file (`TS_SERVE_CONFIG`): https://tailscale.com/kb/1282/docker
@@ -28,6 +29,7 @@ References (doc‑first):
 This pattern keeps the API fully private. The API process listens only inside the container; the `tailscale` sidecar joins the tailnet and makes the service reachable to allowed users/devices. No public ports are published.
 
 docker-compose.yml
+
 ```
 services:
   ai-proxy:
@@ -70,10 +72,12 @@ services:
 ```
 
 How it works
+
 - The `tailscale` container joins your tailnet and becomes `ai-proxy.ts.net` (MagicDNS).
 - `ai-proxy` shares the network namespace (`network_mode: service:tailscale`), so it’s reachable only via the tailnet IP/hostname. No host ports are published.
 
 Login & run
+
 ```
 docker compose up -d
 # First run may require auth if key is missing/invalid.
@@ -81,6 +85,7 @@ docker logs -f ai-proxy-ts   # shows login URL if not using TS_AUTHKEY
 ```
 
 Test from a tailnet device
+
 ```
 curl -sS https://ai-proxy.ts.net/healthz   # your app’s health endpoint (example)
 curl -sS -H "Authorization: Bearer <token>" \
@@ -88,10 +93,15 @@ curl -sS -H "Authorization: Bearer <token>" \
 ```
 
 ACL example (tailnet policy)
+
 ```json
 {
   "acls": [
-    { "action": "accept", "src": ["group:devs", "tag:ci"], "dst": ["tag:ai-proxy:443", "tag:ai-proxy:80"] }
+    {
+      "action": "accept",
+      "src": ["group:devs", "tag:ci"],
+      "dst": ["tag:ai-proxy:443", "tag:ai-proxy:80"]
+    }
   ],
   "tagOwners": {
     "tag:ai-proxy": ["group:infra-admins"]
@@ -100,6 +110,7 @@ ACL example (tailnet policy)
 ```
 
 Notes
+
 - Prefer reusable, tagged Auth keys; for disposable nodes, append `?ephemeral=true` to the key.
 - Health/metrics endpoints are local to the container (`TS_LOCAL_ADDR_PORT`); scrape from sidecars/host if needed.
 
@@ -109,29 +120,34 @@ Notes
 
 Bind your API to localhost and expose it privately with `tailscale serve`. Tailscale handles certificates and user identity headers inside the tailnet.
 
-1) Install and bring up Tailscale on the host, enable MagicDNS.
+1. Install and bring up Tailscale on the host, enable MagicDNS.
+
 ```
 sudo tailscale up --accept-dns=true --hostname=$(hostname)
 ```
 
-2) Start your API bound to localhost only (example: port 8080).
+2. Start your API bound to localhost only (example: port 8080).
+
 ```
 PORT=8080 node server.js  # or your process manager
 ```
 
-3) Expose it to the tailnet over HTTPS with Serve.
+3. Expose it to the tailnet over HTTPS with Serve.
+
 ```
 sudo tailscale serve 8080
 # Accessible at: https://<host>.ts.net
 ```
 
-4) Verify
+4. Verify
+
 ```
 curl -L https://<host>.ts.net
 tailscale serve status
 ```
 
 Serve config file (optional, Docker‑friendly)
+
 ```
 {
   "TCP": {},
@@ -140,6 +156,7 @@ Serve config file (optional, Docker‑friendly)
   }
 }
 ```
+
 Use with the container image via `TS_SERVE_CONFIG` (see Docker docs cited above).
 
 Identity headers
@@ -159,6 +176,7 @@ When proxying HTTP, `tailscale serve` injects identity headers (e.g., `Tailscale
 - Rate limiting/quotas: enforce per‑caller limits to protect from abuse/costs.
 
 ## Minimal .env example (do not commit real secrets)
+
 ```
 # Tailscale (sidecar pattern)
 TS_AUTHKEY=
@@ -172,18 +190,21 @@ PORT=8080
 
 ## Smoke checks
 
-1) Container up and in tailnet
+1. Container up and in tailnet
+
 ```
 docker compose ps
 tailscale status | grep ai-proxy
 ```
 
-2) Health
+2. Health
+
 ```
 curl -f https://ai-proxy.ts.net/healthz
 ```
 
-3) API
+3. API
+
 ```
 curl -sS -H "Authorization: Bearer <token>" \
   https://ai-proxy.ts.net/v1/completions \
@@ -206,4 +227,3 @@ curl -sS -H "Authorization: Bearer <token>" \
 - No public DNS or open inbound ports; access is restricted to authenticated tailnet devices.
 - Per‑user identity and audit via Tailscale; optional auth at the app layer.
 - Works for HTTP and non‑HTTP protocols; no additional reverse proxy required.
-
