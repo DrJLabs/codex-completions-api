@@ -2,24 +2,18 @@
 set -Eeuo pipefail
 
 # Simple dev launcher that:
-# - Loads secrets from .env (and .env.secret if present)
+# - Loads env from .env
 # - Defaults to port 18000
 # - Uses project-local Codev config at .codev
 # - Optional --shim to run without a real Codex CLI
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Load env from .env (and .env.secret if present) without echoing secrets
+# Load env from .env without echoing secrets
 if [[ -f "$ROOT_DIR/.env" ]]; then
   set -a
   # shellcheck disable=SC1090
   . "$ROOT_DIR/.env"
-  set +a
-fi
-if [[ -f "$ROOT_DIR/.env.secret" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ROOT_DIR/.env.secret"
   set +a
 fi
 

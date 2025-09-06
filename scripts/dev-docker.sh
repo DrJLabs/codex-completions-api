@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Dev Docker launcher
-# - Sources .env and .env.secret for PROXY_API_KEY and other overrides
+# - Sources .env for PROXY_API_KEY and other overrides
 # - Uses docker-compose.dev.yml by default
 # - Supports --codex to use the real Codex CLI via an override file
 # - Supports --port/-p to set host port (default 18000)
@@ -15,7 +15,6 @@ USE_CODEX=0
 DEV_PORT="${DEV_PORT:-18000}"
 
 if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
-if [[ -f .env.secret ]]; then set -a; . ./.env.secret; set +a; fi
 if [[ -z "${PROXY_API_KEY:-}" && -f .env ]]; then PROXY_API_KEY="$(sed -n 's/^PROXY_API_KEY=//p' .env | head -n1)"; fi
 
 while [[ $# -gt 0 ]]; do
@@ -50,4 +49,3 @@ case "$CMD" in
 esac
 
 echo "Dev container is managed with: docker compose ${FILES[*]} $CMD (DEV_PORT=$DEV_PORT)"
-
