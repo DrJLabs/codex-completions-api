@@ -47,7 +47,8 @@ if [[ "$USE_SHIM" == "1" && -z "$CODEX_BIN" ]]; then
   CODEX_BIN="$ROOT_DIR/scripts/fake-codex-proto.js"
 fi
 
-export PORT PROXY_API_KEY CODEX_HOME
+export PORT PROXY_API_KEY CODEX_HOME PROXY_ENV
+PROXY_ENV="${PROXY_ENV:-dev}"
 if [[ -n "$CODEX_BIN" ]]; then export CODEX_BIN; fi
 
 mkdir -p "$CODEX_HOME"
