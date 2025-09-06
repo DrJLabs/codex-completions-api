@@ -190,6 +190,19 @@ PROXY_API_KEY=<your-dev-key> npm run start:codev:shim
 
 Both commands serve at `http://127.0.0.1:18000/v1`.
 
+### Prod Smoke
+
+Use the production smoke script to verify the edge (Cloudflare) and the origin (Traefik) without relying on any IDE:
+
+```
+DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
+```
+
+Behavior:
+- Checks origin via `https://127.0.0.1` with `Host: $DOMAIN` for `/healthz` and `/v1/models` (skippable with `SKIP_ORIGIN=1`).
+- Checks Cloudflare for the same endpoints.
+- If `KEY` is provided, issues a non‑stream chat completion and validates a text response.
+
 ### Simplest dev start (loads `.env` automatically)
 
 Use the helper launcher which sources `.env` (and `.env.secret` if present) and runs on port 18000 by default:
