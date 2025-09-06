@@ -27,7 +27,7 @@
     "@playwright/test": "^1.45.0",
     "get-port": "^7.0.0",
     "node-fetch": "^3.3.2",
-    "vitest": "^1.6.0"
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18"
