@@ -3,31 +3,36 @@
 This playbook documents how to manage Cloudflare Response Header Transform rules to keep CORS working for clients like Obsidian Copilot and Stainless SDKs.
 
 Scope
+
 - Zone: your domain’s zone (for example: `65b4db3dea0fa79913f7eb1c2a0d9788`).
 - Phase: `http_response_headers_transform` (zone level).
 - Rule ref: `cors_set_headers` (idempotent; safe to re-run).
 - Match: `host = codex-api.onemainarmy.com` AND `path starts_with /v1/` AND `method in {OPTIONS, GET, POST, HEAD}`.
 
 Headers we set
+
 - `Access-Control-Allow-Origin`: `*` (no cookies; bearer-only auth).
 - `Access-Control-Allow-Methods`: `GET, POST, HEAD, OPTIONS`.
-- `Access-Control-Allow-Headers`: allowlist including Stainless and Obsidian headers: 
+- `Access-Control-Allow-Headers`: allowlist including Stainless and Obsidian headers:
   `Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count, dangerously-allow-browser`.
 - `Access-Control-Max-Age`: `600` seconds.
 
 Prereqs
+
 - Cloudflare User API token with scopes: Zone Rulesets Read + Zone Rulesets Edit.
 - Env vars:
   - `CLOUDFLARE_API_TOKEN` (or `CF_API_TOKEN`).
   - `ZONE_ID`.
 
 ## Verify token
+
 ```bash
 curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   https://api.cloudflare.com/client/v4/user/tokens/verify | jq .
 ```
 
 ## Find or create the Response Header Transform ruleset
+
 ```bash
 # Get entrypoint ruleset id for the phase
 curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -39,7 +44,9 @@ curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
 ```
 
 ## Upsert the CORS rule
+
 Create `cors_rule.json` (adjust host/path as needed):
+
 ```json
 {
   "action": "rewrite",
@@ -49,16 +56,20 @@ Create `cors_rule.json` (adjust host/path as needed):
   "expression": "(http.host eq \"codex-api.onemainarmy.com\") and (http.request.method in {\"OPTIONS\",\"GET\",\"POST\",\"HEAD\"}) and starts_with(http.request.uri.path, \"/v1/\")",
   "action_parameters": {
     "headers": {
-      "Access-Control-Allow-Origin":  { "operation": "set", "value": "*" },
+      "Access-Control-Allow-Origin": { "operation": "set", "value": "*" },
       "Access-Control-Allow-Methods": { "operation": "set", "value": "GET, POST, HEAD, OPTIONS" },
-      "Access-Control-Allow-Headers": { "operation": "set", "value": "Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count, dangerously-allow-browser" },
-      "Access-Control-Max-Age":      { "operation": "set", "value": "600" }
+      "Access-Control-Allow-Headers": {
+        "operation": "set",
+        "value": "Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count, dangerously-allow-browser"
+      },
+      "Access-Control-Max-Age": { "operation": "set", "value": "600" }
     }
   }
 }
 ```
 
 Fetch the current ruleset, then either create or update:
+
 ```bash
 # Get phase ruleset id
 RULESET_ID=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -85,7 +96,9 @@ fi
 ```
 
 ## Add/remove a header from Allow-Headers (on demand)
+
 Append a new header (e.g., `dangerously-allow-browser`) to the allowlist value:
+
 ```bash
 curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/rulesets/$RULESET_ID" > rht.json
@@ -97,6 +110,7 @@ curl -sS -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Typ
 ```
 
 ## Verify preflight
+
 ```bash
 curl -i -X OPTIONS "https://codex-api.onemainarmy.com/v1/chat/completions" \
   -H 'Origin: app://obsidian.md' \
@@ -105,6 +119,7 @@ curl -i -X OPTIONS "https://codex-api.onemainarmy.com/v1/chat/completions" \
 ```
 
 Expected headers:
+
 - `Access-Control-Allow-Origin: *`
 - `Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS`
 - `Access-Control-Allow-Headers` includes `dangerously-allow-browser`
@@ -122,4 +137,3 @@ Expected headers:
   - Sensitive endpoints (`/v1/chat/completions`) still require a valid Bearer token and are protected upstream (Traefik ForwardAuth) and in-app (defense in depth).
 
 In short: the presence of `dangerously-allow-browser` in the allowlist is not itself dangerous; it simply accommodates a client that now sends this header. The main risk area would be exposing sensitive unauthenticated data combined with `Access-Control-Allow-Credentials: true`, which we explicitly avoid.
-

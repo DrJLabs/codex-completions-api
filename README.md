@@ -3,6 +3,7 @@
 OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE streaming compatibility and minimal output shaping. An OpenAI Chat Completions‑compatible HTTP proxy that invokes the Codex CLI in "proto" mode. It provides a drop‑in /v1/chat/completions endpoint with Server‑Sent Events (SSE) streaming and minimal output shaping so that any OpenAI‑style client (SDKs, tools, curl) can talk to Codex as if it were a standard model API.
 
 ## Features
+
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
 - Streaming via Codex proto events: first SSE chunk sets `delta.role=assistant`, then incremental deltas when proto emits them; otherwise a full message arrives once available. The stream always ends with `[DONE]`. Periodic `: keepalive` SSE comments keep intermediaries from timing out.
 - Minimal output shaping: ANSI is stripped; additional heuristics exist but are conservative by default to avoid dropping valid content.
@@ -15,6 +16,7 @@ OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE
 - Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
 
 Option A — Node (local):
+
 ```bash
 npm install
 PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
@@ -29,6 +31,7 @@ curl -s http://127.0.0.1:11435/v1/chat/completions \
 ```
 
 Option B — Docker Compose:
+
 ```bash
 docker compose up -d --build
 curl -s http://127.0.0.1:11435/healthz | jq .
@@ -42,33 +45,38 @@ Use the curl snippets above to validate endpoints while `npm run start` is runni
 
 This repo uses a three-layer testing setup optimized for fast inner-loop feedback while coding:
 
-1) Unit (Vitest, fast, watchable)
+1. Unit (Vitest, fast, watchable)
+
 - Scope: pure helpers in `src/utils.js` (model normalization, token heuristics, message joining, time/usage math, CORS header logic, text filtering).
 - Commands:
   - `npm run test:unit` — run once
   - `npm run test:unit:watch` — watch mode during development
   - `npm run coverage:unit` — unit test coverage (v8)
 
-2) Integration (Vitest, real server, no external deps)
+2. Integration (Vitest, real server, no external deps)
+
 - Scope: Express endpoints with a deterministic Codex "proto" shim; exercises auth, error codes, non‑stream chat, and usage endpoints.
 - Notes: spawns `node server.js` on a random port and sets `CODEX_BIN=scripts/fake-codex-proto.js`, so no Codex installation is required.
 - Command: `npm run test:integration`
 
-3) End‑to‑End API/SSE (Playwright Test)
+3. End‑to‑End API/SSE (Playwright Test)
+
 - Scope: verifies `/v1/models`, non‑stream chat, and streaming SSE (`role` delta and `[DONE]`).
 - Command: `npm test`
 - Tip: set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` if you are only running API/SSE tests and do not want browsers downloaded.
 
 All together
+
 - `npm run test:all` — unit → integration → e2e in sequence. Useful before pushing.
 
 Suggested dev loop
+
 - Working on pure helpers? Start `npm run test:unit:watch` and code in `src/utils.js`.
 - Changing route logic or request/response shapes? Run `npm run test:integration` frequently.
 - Touching streaming behavior? Validate with `npm test` (Playwright SSE) or the curl snippet in “Manual checks (SSE)”.
 
-
 Environment variables:
+
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
@@ -76,7 +84,7 @@ Environment variables:
 - `CODEX_BIN` (default: `codex`)
 - `CODEX_HOME` (default: `$HOME/.codex-api`) — overrides HOME for the Codex child process. Codex then reads config from `$CODEX_HOME/.codex/config.toml`, isolating proxy config from your interactive CLI (`~/.codex`).
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
- - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
+- `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `300000`) — overall request timeout (5 minutes).
 - `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
@@ -85,11 +93,12 @@ Environment variables:
 - `PROXY_KILL_ON_DISCONNECT` (default: `false`) — if true, terminate Codex when client disconnects.
 - `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
 - `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).
- - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
+- `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
 
 ## Roo Code configuration
 
 Use OpenAI-Compatible provider:
+
 - Any OpenAI‑style Chat Completions client can talk to this proxy by setting the base URL and API key. Example: `http://127.0.0.1:11435/v1`
 - API Key: `codex-local-secret`
 - Model: `gpt-5`
@@ -125,10 +134,12 @@ An example file is in `config/roo-openai-compatible.json`.
 The proxy estimates tokens using a simple heuristic (~1 token per 4 characters) and logs each `/v1/chat/completions` call to an NDJSON file. For most operational trending this is sufficient; it does not reflect provider billing.
 
 Endpoints (protected by the same edge auth as other `/v1/*` routes):
+
 - `GET /v1/usage?start=<iso|epoch>&end=<iso|epoch>&group=<hour|day>` → aggregated counts
 - `GET /v1/usage/raw?limit=100` → last N raw events
 
 Event fields:
+
 - `ts` (ms since epoch), `route`, `method`, `requested_model`, `effective_model`, `stream`, `prompt_tokens_est`, `completion_tokens_est`, `total_tokens_est`, `duration_ms`, `status`, `user_agent`.
 
 ### Reasoning variants
@@ -141,6 +152,7 @@ The proxy advertises additional model ids that all map to GPT‑5 but set the re
 - `codex-5-minimal`
 
 Behavior:
+
 - Selection sets `--config model_reasoning_effort="<level>"` (and a legacy `--config reasoning.effort="<level>"` for older CLIs).
 - If `body.reasoning.effort` is present in the incoming request, it takes precedence over the implied level.
 - The underlying `-m` remains the effective model (default: `gpt-5`).
@@ -187,6 +199,7 @@ npm run dev
 ```
 
 Options:
+
 - `npm run dev -- -p 19000` — change port
 - `npm run dev:shim` — run without Codex CLI, using the built-in proto shim
 
@@ -202,6 +215,7 @@ Convenience scripts manage a dev container that mirrors production but runs on a
 - `npm run dev:docker:down` — stop and remove
 
 Notes:
+
 - Compose reads `PROXY_API_KEY` from your `.env`.
 - Override port: `DEV_PORT=19000 npm run dev:docker`
 - Files:
@@ -210,8 +224,8 @@ Notes:
 
 ## Notes and troubleshooting
 
-- Approval flag: `codex proto` does not accept `--ask-for-approval`. 
-- 
+- Approval flag: `codex proto` does not accept `--ask-for-approval`.
+-
 - Port already in use: If `11435` is busy, launch with `PORT=18000 npm run start` and run acceptance with `BASE_URL=http://127.0.0.1:18000/v1`.
 - Streaming shape: First SSE chunk sets the role; subsequent chunks are deltas when proto emits them; `[DONE]` terminates the stream.
 - Auth: Ensure Codex CLI is logged in (e.g., `codex login`) if you are not using the test shim.
@@ -221,6 +235,7 @@ Notes:
 ### Writable `CODEX_HOME` and rollouts
 
 The Codex CLI persists lightweight session artifacts ("rollouts") to its home directory. These rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from the proto session. They enable:
+
 - Debugging and reproducibility of agent behavior
 - Auditability/telemetry for long‑running sessions
 - Optional offline analysis or redaction pipelines
@@ -228,6 +243,7 @@ The Codex CLI persists lightweight session artifacts ("rollouts") to its home di
 Because rollouts are written by the Codex process, the directory pointed to by `CODEX_HOME` must be writable from inside the container. If it is read‑only, Codex fails at startup and the proxy may fall back to the placeholder response "No output from backend.".
 
 Symptoms of a read‑only `CODEX_HOME`:
+
 - App logs show: `failed to initialize rollout recorder: Read-only file system (os error 30)`
 - Client sees minimal placeholder output despite a 200 status, or stream closes early.
 
@@ -239,11 +255,12 @@ services:
     environment:
       - CODEX_HOME=/home/node/.codex
     volumes:
-      - ~/.codex-api:/home/node/.codex        # RW (no :ro)
+      - ~/.codex-api:/home/node/.codex # RW (no :ro)
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
 ```
 
 Notes:
+
 - Keep `~/.codex-api` separate from your interactive `~/.codex` to avoid cross‑contamination of configs.
 - If your security posture requires tighter control, mount configs as read‑only but provide a separate writable subdirectory for rollouts, and point Codex to it via its config. The proxy only requires that Codex can write its rollout/session artifacts somewhere under `CODEX_HOME`.
 
@@ -264,13 +281,17 @@ Sensitive files such as `.env`, `.npmrc`, and any Codex cache directory (`.codex
 ## Manual checks (SSE)
 
 Validate streaming with curl:
+
 ```bash
 curl -sN http://127.0.0.1:11435/v1/chat/completions \
   -H "Authorization: Bearer $PROXY_API_KEY" -H 'Content-Type: application/json' \
   -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' | sed -n '1,30p'
 ```
+
 Expect an initial role delta, one or more `data: {"..."}` chunks, then `data: [DONE]`.
+
 ## Client compatibility quickstart
+
 - Any OpenAI‑style Chat Completions client can talk to this proxy by setting the base URL and API key. Example: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
 - API Key: same value as `PROXY_API_KEY`.
 - Model: select `codex-5` (proxy normalizes to effective `gpt-5`).
@@ -287,23 +308,27 @@ UNLICENSED (see repository terms). Do not redistribute without permission.
 This section deploys the API behind Traefik with HTTPS handled by cloudflared and Bearer auth enforced at the edge via Traefik ForwardAuth. The service itself already checks Bearer tokens internally in [app.post()](server.js:46). Public health probe is served at [app.get()](server.js:39).
 
 Prerequisites
+
 - Traefik v3 running as a host service with Docker provider enabled and an external Docker network named `traefik`.
 - Entrypoint `websecure` is active in Traefik. Certificates are handled by your cloudflared tunnel + Traefik; no ACME changes required.
 - Domain: `codex-api.onemainarmy.com` is routed via cloudflared to Traefik.
 - Docker Compose v2.
 
 Files in this repo
+
 - Build image: [Dockerfile](Dockerfile)
 - Compose stack: [docker-compose.yml](docker-compose.yml)
 - ForwardAuth microservice: [auth/server.js](auth/server.js)
 - Main API server: [server.js](server.js)
 
 Edge authentication model
+
 - Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (implemented by [auth/server.js](auth/server.js:1)).
 - The auth service validates the `Authorization: Bearer &lt;token&gt;` header equals the shared secret `PROXY_API_KEY`. On mismatch it returns 401 with a `WWW-Authenticate: Bearer realm=api` header.
 - On success, Traefik forwards the request to the app container service port 11435, preserving the original `Authorization` header so the in-app check still applies (defense in depth).
 
 Containerization
+
 - The app image is defined in [Dockerfile](Dockerfile) and launches the proxy with `node server.js`.
 - Codex CLI availability inside the container:
   - Option A (mount from host, recommended initially): By default the app runs Codex with `HOME=/home/node` and expects config under `/home/node/.codex/config.toml`. The Compose file mounts your host `~/.codex-api` into the container at `/home/node/.codex` and binds the `codex` binary:
@@ -313,6 +338,7 @@ Containerization
   - Option B (bake into image): Extend the Dockerfile to install `codex` and copy credentials during build (ensure no secrets end up in the image layers).
 
 Configuration
+
 - Create an environment file from the example:
   - `cp .env.example .env`
   - Set `PROXY_API_KEY` to the shared secret (used by both the auth service and the app).
@@ -322,6 +348,7 @@ Configuration
   - `docker compose up -d --build`
 
 Traefik labels overview (see [docker-compose.yml](docker-compose.yml))
+
 - Protected API:
   - Router: `Host('codex-api.onemainarmy.com') && PathPrefix('/v1')`
   - EntryPoints: `websecure`, `tls=true`
@@ -333,6 +360,7 @@ Traefik labels overview (see [docker-compose.yml](docker-compose.yml))
   - Service: same as API service
 
 Smoke tests
+
 - Health (public):
   - `curl -i https://codex-api.onemainarmy.com/healthz`
 - Protected route (no token → 401):
@@ -347,6 +375,7 @@ Smoke tests
   - `  https://codex-api.onemainarmy.com/v1/chat/completions`
 
 Notes
+
 - The app already sets headers for SSE in [streaming branch](server.js:120) and disables buffering with `X-Accel-Buffering: no`. Traefik streams by default.
 - Do not expose the app’s container port on the host. Traefik connects via the Docker network `traefik`.
 - Keep `PROXY_API_KEY` out of images and source control. Provide via environment or a Docker secret.
@@ -361,6 +390,7 @@ This repository ships an edge-first security posture when deployed via Traefik a
 - Rate limiting: `codex-ratelimit` applied before ForwardAuth to shield the auth service.
 
 Cloudflare Response Header Transform (dashboard)
+
 - Rules → Transform Rules → Response Header Modification → Create
   - When: Host equals your domain + Path starts with `/v1/` + Method in OPTIONS, GET, POST, HEAD
   - Set headers:
@@ -370,6 +400,7 @@ Cloudflare Response Header Transform (dashboard)
     - Access-Control-Max-Age: `600`
 
 Preflight smoke test
+
 ```bash
 curl -i -X OPTIONS 'https://codex-api.onemainarmy.com/v1/chat/completions' \
   -H 'Origin: app://obsidian.md' \
@@ -379,6 +410,7 @@ curl -i -X OPTIONS 'https://codex-api.onemainarmy.com/v1/chat/completions' \
 ```
 
 Tightening origins
+
 - Default is `Access-Control-Allow-Origin: *` (safe with bearer tokens; no cookies). To restrict:
   - Set a Traefik allowlist via `accessControlAllowOriginList[...]` and regex entries (include `app://obsidian.md`, localhost, and trusted web origins).
   - Update the Cloudflare transform rule to either reflect the request `Origin` (Worker) or set an explicit allowlist value.
@@ -388,6 +420,7 @@ Tightening origins
 ## Branch status
 
 This branch (`main-p`) uses one Codex proto process per request (stateless). Feature branches exist but are not merged:
+
 - `feat/playwright-tests`: Playwright API/SSE tests with a deterministic shim.
 - `feat/prompt-cache-resume`: experimental, feature-gated caching hooks.
 - `feat/proto-continuous-sessions`: continuous proto sessions keyed by `session_id`.

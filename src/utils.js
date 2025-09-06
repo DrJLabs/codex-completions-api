@@ -5,20 +5,25 @@ export const stripAnsi = (s = "") => String(s).replace(/\x1B\[[0-?]*[ -/]*[@-~]|
 
 export const toStringContent = (c) => {
   if (typeof c === "string") return c;
-  try { return JSON.stringify(c); } catch { return String(c); }
+  try {
+    return JSON.stringify(c);
+  } catch {
+    return String(c);
+  }
 };
 
 export const joinMessages = (messages = []) =>
-  (messages || []).map(m => `[${m?.role || "user"}] ${toStringContent(m?.content)}`).join("\n");
+  (messages || []).map((m) => `[${m?.role || "user"}] ${toStringContent(m?.content)}`).join("\n");
 
 export const estTokens = (s = "") => Math.ceil(String(s).length / 4);
 
 export const estTokensForMessages = (msgs = []) => {
   let chars = 0;
-  for (const m of (msgs || [])) {
+  for (const m of msgs || []) {
     if (!m) continue;
     const c = m.content;
-    if (Array.isArray(c)) chars += c.map(x => (typeof x === "string" ? x : JSON.stringify(x))).join("").length;
+    if (Array.isArray(c))
+      chars += c.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join("").length;
     else chars += String(c || "").length;
   }
   return Math.ceil(chars / 4);
@@ -33,8 +38,13 @@ export const parseTime = (v) => {
 };
 
 export const aggregateUsage = (events = [], start = 0, end = Date.now() + 1, group = "") => {
-  const filtered = (events || []).filter(e => (e?.ts || 0) >= start && (e?.ts || 0) < end);
-  const agg = { total_requests: 0, prompt_tokens_est: 0, completion_tokens_est: 0, total_tokens_est: 0 };
+  const filtered = (events || []).filter((e) => (e?.ts || 0) >= start && (e?.ts || 0) < end);
+  const agg = {
+    total_requests: 0,
+    prompt_tokens_est: 0,
+    completion_tokens_est: 0,
+    total_tokens_est: 0,
+  };
   const buckets = {};
   for (const e of filtered) {
     agg.total_requests += 1;
@@ -43,14 +53,27 @@ export const aggregateUsage = (events = [], start = 0, end = Date.now() + 1, gro
     agg.total_tokens_est += e.total_tokens_est || 0;
     if (group === "hour" || group === "day") {
       const d = new Date(e.ts || 0);
-      const key = group === "hour" ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).toISOString() : new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-      buckets[key] ||= { ts: key, requests: 0, prompt_tokens_est: 0, completion_tokens_est: 0, total_tokens_est: 0 };
+      const key =
+        group === "hour"
+          ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).toISOString()
+          : new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+      buckets[key] ||= {
+        ts: key,
+        requests: 0,
+        prompt_tokens_est: 0,
+        completion_tokens_est: 0,
+        total_tokens_est: 0,
+      };
       const b = buckets[key];
-      b.requests += 1; b.prompt_tokens_est += e.prompt_tokens_est || 0; b.completion_tokens_est += e.completion_tokens_est || 0; b.total_tokens_est += e.total_tokens_est || 0;
+      b.requests += 1;
+      b.prompt_tokens_est += e.prompt_tokens_est || 0;
+      b.completion_tokens_est += e.completion_tokens_est || 0;
+      b.total_tokens_est += e.total_tokens_est || 0;
     }
   }
   const out = { start, end, group: group || undefined, ...agg };
-  if (group === "hour" || group === "day") out.buckets = Object.values(buckets).sort((a,b)=>a.ts.localeCompare(b.ts));
+  if (group === "hour" || group === "day")
+    out.buckets = Object.values(buckets).sort((a, b) => a.ts.localeCompare(b.ts));
   return out;
 };
 
@@ -59,10 +82,20 @@ export const isModelText = (line) => {
   if (!l) return false;
   if (/^(diff --git|\+\+\+ |--- |@@ )/.test(l)) return false; // diff headers
   if (/^\*\*\* (Begin|End) Patch/.test(l)) return false; // apply_patch envelopes
-  if (/^(running:|command:|applying patch|reverted|workspace|approval|sandbox|tool:|mcp:|file:|path:)/i.test(l)) return false; // runner logs
+  if (
+    /^(running:|command:|applying patch|reverted|workspace|approval|sandbox|tool:|mcp:|file:|path:)/i.test(
+      l
+    )
+  )
+    return false; // runner logs
   if (/^\[\d{4}-\d{2}-\d{2}T/.test(l)) return false; // timestamped log lines
   if (/^[-]{6,}$/.test(l)) return false; // separators
-  if (/^(workdir|model|provider|approval|sandbox|reasoning effort|reasoning summaries|tokens used):/i.test(l)) return false;
+  if (
+    /^(workdir|model|provider|approval|sandbox|reasoning effort|reasoning summaries|tokens used):/i.test(
+      l
+    )
+  )
+    return false;
   if (/^user instructions:/i.test(l)) return false;
   if (/^codex$/i.test(l)) return false;
   return true;
@@ -70,12 +103,16 @@ export const isModelText = (line) => {
 
 export const impliedEffortForModel = (requestedModel) => {
   const m = String(requestedModel || "").toLowerCase();
-  const variants = ["low","medium","high","minimal"];
+  const variants = ["low", "medium", "high", "minimal"];
   for (const v of variants) if (m === `codex-5-${v}`) return v;
   return "";
 };
 
-export const normalizeModel = (name, defaultModel = "gpt-5", publicIds = ["codex-5","codex-5-low","codex-5-medium","codex-5-high","codex-5-minimal"]) => {
+export const normalizeModel = (
+  name,
+  defaultModel = "gpt-5",
+  publicIds = ["codex-5", "codex-5-low", "codex-5-medium", "codex-5-high", "codex-5-minimal"]
+) => {
   const raw = String(name || "").trim();
   if (!raw) return { requested: "codex-5", effective: defaultModel };
   const lower = raw.toLowerCase();
@@ -99,4 +136,3 @@ export const applyCors = (req, res, enabled = true) => {
   res.setHeader?.("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
   res.setHeader?.("Access-Control-Max-Age", "600");
 };
-
