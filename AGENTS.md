@@ -62,7 +62,7 @@ These directives are mandatory for agents operating in this repository. They pre
 1. Environment boundaries
 
 - PRODUCTION is defined by this repo’s `docker-compose.yml` and a host/system Traefik instance fronted by Cloudflare.
-- DEV is either Node (`npm run dev` / `dev:shim`) or container dev (`npm run dev:docker`). DEV compose is not Traefik/Cloudflare facing.
+- DEV is either Node (`npm run dev` / `dev:shim`) or the dev stack (`npm run dev:stack:up`).
 
 2. Traefik ForwardAuth — DO NOT flip modes silently
 
@@ -80,7 +80,7 @@ These directives are mandatory for agents operating in this repository. They pre
 - `src/utils.js` only → run unit tests (`npm run test:unit`).
 - `server.js` (routes/handlers/streaming) → run integration (`npm run test:integration`) and then E2E (`npm test`).
 - `docker-compose.yml` or Traefik‑related labels → after building, run `npm run smoke:prod` (on origin host) and E2E.
-- `Dockerfile` or runtime image changes → run container DEV smoke (`npm run dev:docker`) and E2E.
+- `Dockerfile` or runtime image changes → run the dev stack (`npm run dev:stack:up`) and E2E.
 
 5. Deployment guidance
 
