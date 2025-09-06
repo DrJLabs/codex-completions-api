@@ -63,7 +63,9 @@ Dev parity stack (public behind Traefik):
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
 - If local port 18000 is in use, override:
   - `DEV_PORT=18010 docker compose -p codex-dev -f docker-compose.dev.yml -f docker-compose.dev.codex.yml -f compose.dev.traefik.yml up -d --build`
-- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). ForwardAuth remains host loopback: `http://127.0.0.1:18080/verify`.
+- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
+- ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.traefik.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
+- ForwardAuth (dev) now uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.traefik.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
