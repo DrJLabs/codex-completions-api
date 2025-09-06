@@ -1,7 +1,0 @@
-services:
-  app-dev:
-    environment:
-      - CODEX_BIN=codex
-    volumes:
-      # Mount Codex CLI from host (read-only). Requires the binary to exist at this path.
-      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro

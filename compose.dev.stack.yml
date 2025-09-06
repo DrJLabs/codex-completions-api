@@ -1,5 +1,33 @@
 services:
   app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: codex-completions-api:dev
+    environment:
+      - PORT=11435
+      - PROXY_ENV=dev
+      - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
+      - CODEX_HOME=/home/node/.codex
+      - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
+      - CODEX_FORCE_PROVIDER=
+      - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
+      - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
+      - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
+      - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
+      - PROXY_SSE_KEEPALIVE_MS=${PROXY_SSE_KEEPALIVE_MS:-15000}
+      # Default to proto shim for easy local testing; override with env CODEX_BIN=codex when using real CLI
+      - CODEX_BIN=${CODEX_BIN:-/app/scripts/fake-codex-proto.js}
+    ports:
+      - 127.0.0.1:${DEV_PORT:-18010}:11435
+    volumes:
+      # Project-local Codex config; writable for rollouts/sessions
+      - ./.codev:/home/node/.codex
+      # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
+      - ./scripts:/app/scripts:ro
+      # When using CODEX_BIN=codex, provide the host CLI binary (optional)
+      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
+    restart: unless-stopped
     networks:
       - traefik
     labels:
@@ -72,7 +100,7 @@ services:
     command: node server.mjs
     environment:
       - PORT=8080
-      - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
+      - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - AUTH_REALM=api-dev
     volumes:
       - ./auth:/app:ro
