@@ -13,6 +13,7 @@
     "dev:docker:codex": "bash scripts/dev-docker.sh up --codex",
     "dev:docker:down": "bash scripts/dev-docker.sh down",
     "dev:docker:logs": "bash scripts/dev-docker.sh logs",
+    "smoke:prod": "bash scripts/prod-smoke.sh",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
     "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --fix",
     "format": "prettier -w .",
