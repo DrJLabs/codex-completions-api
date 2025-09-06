@@ -24,7 +24,7 @@ services:
     # Optional: mount Codex CLI binary from host
     volumes:
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
-      # Mount production Codex HOME containing config/secrets (read-only)
+      # Mount production Codex HOME containing config/secrets (must be writable for rollouts)
       - ./.codex-api:/app/.codex-api
     networks:
       - traefik

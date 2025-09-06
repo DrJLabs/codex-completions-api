@@ -43,7 +43,8 @@ Codex HOME (production):
 - The proxy sets `CODEX_HOME` to `/app/.codex-api` in the container.
 - `docker-compose.yml` bind-mounts the project’s `./.codex-api` into the container: `./.codex-api:/app/.codex-api` (writable).
 - Do not commit secrets. Only a placeholder `README.md` and optional `.gitkeep` are tracked; everything else under `.codex-api/` is ignored by Git and is also excluded from Docker build context via `.dockerignore`.
-- `.codex-api` MUST be writable in production because Codex persists rollout/session artifacts here (e.g., `rollouts/`). Mounting read-only can cause streaming/tool communication to fail.
+- `.codex-api` MUST be writable in production because Codex CLI persists rollout/session artifacts under its home on some versions. Mounting read-only has caused streaming/tool communication to fail in production.
+  - Note: The proxy also sets `PROXY_CODEX_WORKDIR` (default `/tmp/codex-work`) as the child process working directory to isolate ephemeral writes. However, do not rely on this to redirect Codex’s own rollout/session files away from `CODEX_HOME` unless your Codex CLI version explicitly supports that.
 - On the production host, provision the following files under the project’s `.codex-api/` before `docker compose up`:
   - `config.toml` (Codex client config)
   - `AGENTS.md` (optional)
