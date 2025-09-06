@@ -50,11 +50,17 @@ const PORT = Number(process.env.PORT || 11435);
 const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
+const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
+  ? CODEX_BIN
+  : CODEX_BIN.includes(path.sep)
+    ? path.join(process.cwd(), CODEX_BIN)
+    : CODEX_BIN;
 // Allow isolating Codex CLI configuration per deployment. When set, child processes
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
-const CODEX_HOME =
-  process.env.CODEX_HOME || path.join(os.homedir?.() || process.env.HOME || "", ".codex-api");
+const CODEX_HOME = process.env.CODEX_HOME || path.join(process.cwd(), ".codex-api");
+const SANDBOX_MODE = (process.env.PROXY_SANDBOX_MODE || "danger-full-access").toLowerCase();
+const CODEX_WORKDIR = process.env.PROXY_CODEX_WORKDIR || path.join(os.tmpdir(), "codex-work");
 // const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
 const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
@@ -90,7 +96,15 @@ const appendUsage = (obj = {}) => {
 
 // helper definitions moved to src/utils.js
 
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
+try {
+  fs.mkdirSync(CODEX_WORKDIR, { recursive: true });
+} catch (e) {
+  try {
+    console.error(`[proxy] failed to create CODEX_WORKDIR at ${CODEX_WORKDIR}:`, e);
+  } catch {}
+}
+
+app.get("/healthz", (_req, res) => res.json({ ok: true, sandbox_mode: SANDBOX_MODE }));
 
 // Usage query support (file-backed NDJSON aggregates)
 const loadUsageEvents = () => {
@@ -302,6 +316,8 @@ app.post("/v1/chat/completions", (req, res) => {
     "--config",
     "tools.web_search=false",
     "--config",
+    `sandbox_mode="${SANDBOX_MODE}"`,
+    "--config",
     `model="${effectiveModel}"`,
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
@@ -318,15 +334,16 @@ app.post("/v1/chat/completions", (req, res) => {
   try {
     console.log(
       "[proxy] spawning (proto):",
-      CODEX_BIN,
+      RESOLVED_CODEX_BIN,
       args.join(" "),
       " prompt_len=",
       prompt.length
     );
   } catch {}
-  const child = spawn(CODEX_BIN, args, {
+  const child = spawn(RESOLVED_CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
+    cwd: CODEX_WORKDIR,
   });
   try {
     child.stdout.setEncoding && child.stdout.setEncoding("utf8");
@@ -867,6 +884,8 @@ app.post("/v1/completions", (req, res) => {
     "--config",
     "tools.web_search=false",
     "--config",
+    `sandbox_mode="${SANDBOX_MODE}"`,
+    "--config",
     `model="${effectiveModel}"`,
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
@@ -882,15 +901,16 @@ app.post("/v1/completions", (req, res) => {
   try {
     console.log(
       "[proxy] spawning (proto completions):",
-      CODEX_BIN,
+      RESOLVED_CODEX_BIN,
       args.join(" "),
       " prompt_len=",
       toSend.length
     );
   } catch {}
-  const child = spawn(CODEX_BIN, args, {
+  const child = spawn(RESOLVED_CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
+    cwd: CODEX_WORKDIR,
   });
   const onChildError = (e) => {
     try {

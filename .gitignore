@@ -16,3 +16,13 @@ blob-report/
 !.codev/
 !.codev/**
 !.env.example
+
+# But ignore runtime artifacts under .codev
+.codev/sessions/
+.codev/rollouts/
+.codev/*.log
+
+# Production Codex HOME (contains secrets) — ignore all except safe placeholders
+.codex-api/*
+!.codex-api/.gitkeep
+!.codex-api/README.md

@@ -22,6 +22,7 @@ auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
 scripts/                        # Dev + CI helpers (dev.sh, dev-docker.sh, prod-smoke.sh)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
+ .codex-api/                     # Production Codex HOME (secrets; writable mount in compose)
 .github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
 AGENTS.md                       # Agent directives (project‑specific rules included)
 ```
@@ -37,10 +38,31 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 - App attaches to Docker network `traefik` and is discovered via labels.
 - Edge is Cloudflare for `codex-api.onemainarmy.com`.
 
+Codex HOME (production):
+
+- The proxy sets `CODEX_HOME` to `/app/.codex-api` in the container.
+- `docker-compose.yml` bind-mounts the project’s `./.codex-api` into the container: `./.codex-api:/app/.codex-api` (writable).
+- Do not commit secrets. Only a placeholder `README.md` and optional `.gitkeep` are tracked; everything else under `.codex-api/` is ignored by Git and is also excluded from Docker build context via `.dockerignore`.
+- `.codex-api` MUST be writable in production because Codex CLI persists rollout/session artifacts under its home on some versions. Mounting read-only has caused streaming/tool communication to fail in production.
+  - Note: The proxy also sets `PROXY_CODEX_WORKDIR` (default `/tmp/codex-work`) as the child process working directory to isolate ephemeral writes. However, do not rely on this to redirect Codex’s own rollout/session files away from `CODEX_HOME` unless your Codex CLI version explicitly supports that.
+- On the production host, provision the following files under the project’s `.codex-api/` before `docker compose up`:
+  - `config.toml` (Codex client config)
+  - `AGENTS.md` (optional)
+  - `auth.json` and any other credentials required by Codex (if applicable)
+
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
 - Container dev: `npm run dev:docker` (also port 18000 by default) or `npm run dev:docker:codex` (uses host Codex CLI).
+
+Codex HOME (development):
+
+- Dev instances use the project-local `.codev/` as Codex HOME.
+- Scripts (`npm run dev`, `npm run dev:shim`) and dev compose map `.codev` appropriately; the dev launcher seeds `config.toml` and `AGENTS.md` into the runtime `CODEX_HOME` if missing.
+
+Build context hygiene:
+
+- `.dockerignore` excludes `.codex-api/**`, `.codev/**`, `.env*`, logs, and other local artifacts so secrets are never sent to the Docker daemon.
 
 ## Production Smoke
 
@@ -51,6 +73,7 @@ DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
 ```
 
 Behavior:
+
 - Origin (host only): checks `https://127.0.0.1/healthz` and `/v1/models` with `Host: $DOMAIN`.
 - Edge (Cloudflare): checks `/healthz`, `/v1/models`, and an optional authenticated non‑stream chat.
 
@@ -122,6 +145,18 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 - Command: `npm test`
 - Tip: set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` if you are only running API/SSE tests and do not want browsers downloaded.
 
+Live E2E (real Codex)
+
+- Purpose: run E2E against a live proxy (local compose or edge) using your `.env` key to catch issues that the proto shim cannot (e.g., writable `.codex-api` rollouts).
+- Command: `npm run test:live`
+- Env:
+  - `KEY` or `PROXY_API_KEY` (loaded from `.env`/`.env.secret` by the script)
+  - `LIVE_BASE_URL` (default `http://127.0.0.1:11435`)
+- What it checks:
+  - `/healthz`, `/v1/models` (200 or 401 when models are protected)
+  - Non‑stream chat returns content (no fallback message)
+  - Streaming emits role delta, at least one content delta, and `[DONE]`
+
 All together
 
 - `npm run test:all` — unit → integration → e2e in sequence. Useful before pushing.
@@ -146,7 +181,9 @@ Environment variables:
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (default: `incremental`) — proto‑based streaming emits deltas when available or an aggregated message; this knob is kept for compatibility.
 - `CODEX_BIN` (default: `codex`)
-- `CODEX_HOME` (default: `$HOME/.codex-api`) — overrides HOME for the Codex child process. Codex then reads config from `$CODEX_HOME/.codex/config.toml`, isolating proxy config from your interactive CLI (`~/.codex`).
+- `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
+- `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
+- `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
 - `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
@@ -263,6 +300,7 @@ DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
 ```
 
 Behavior:
+
 - Checks origin via `https://127.0.0.1` with `Host: $DOMAIN` for `/healthz` and `/v1/models` (skippable with `SKIP_ORIGIN=1`).
 - Checks Cloudflare for the same endpoints.
 - If `KEY` is provided, issues a non‑stream chat completion and validates a text response.
@@ -309,37 +347,20 @@ Notes:
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
 - Project docs are disabled for proxy runs: the proxy passes `--config project_doc_max_bytes=0` so the Codex backend behaves like a pure model API and does not ingest the app repo. The global `AGENTS.md` under `CODEX_HOME` still applies.
 
-### Writable `CODEX_HOME` and rollouts
+### Writable state and rollouts
 
-The Codex CLI persists lightweight session artifacts ("rollouts") to its home directory. These rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from the proto session. They enable:
+The Codex CLI persists lightweight session artifacts ("rollouts"). Use `PROXY_CODEX_WORKDIR` (default `/tmp/codex-work`) to isolate runtime writes from configuration. Rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from the proto session. They enable:
 
 - Debugging and reproducibility of agent behavior
 - Auditability/telemetry for long‑running sessions
 - Optional offline analysis or redaction pipelines
 
-Because rollouts are written by the Codex process, the directory pointed to by `CODEX_HOME` must be writable from inside the container. If it is read‑only, Codex fails at startup and the proxy may fall back to the placeholder response "No output from backend.".
-
-Symptoms of a read‑only `CODEX_HOME`:
+If the working area is read‑only, Codex may fail at startup or fall back to placeholder responses. Symptoms:
 
 - App logs show: `failed to initialize rollout recorder: Read-only file system (os error 30)`
 - Client sees minimal placeholder output despite a 200 status, or stream closes early.
 
-Fix (Docker Compose): mount the Codex home read‑write.
-
-```yaml
-services:
-  app:
-    environment:
-      - CODEX_HOME=/home/node/.codex
-    volumes:
-      - ~/.codex-api:/home/node/.codex # RW (no :ro)
-      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
-```
-
-Notes:
-
-- Keep `~/.codex-api` separate from your interactive `~/.codex` to avoid cross‑contamination of configs.
-- If your security posture requires tighter control, mount configs as read‑only but provide a separate writable subdirectory for rollouts, and point Codex to it via its config. The proxy only requires that Codex can write its rollout/session artifacts somewhere under `CODEX_HOME`.
+Fix: ensure `PROXY_CODEX_WORKDIR` is present and writable (default `/tmp/codex-work`). The repo‑local `.codev` holds configuration; runtime writes should target the workdir, not configuration.
 
 ### Long-running tasks and stable streaming
 
