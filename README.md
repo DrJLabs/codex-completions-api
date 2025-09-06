@@ -11,6 +11,63 @@ OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Safety: Codex runs read‑only; the proxy does not read project files. One proto process per request on this branch (stateless).
 
+## Project Structure (high‑level)
+
+```
+docker-compose.yml              # PRODUCTION compose and Traefik labels (source of truth)
+Dockerfile                      # App image (production build)
+server.js                       # Express API (OpenAI‑compatible routes)
+src/utils.js                    # Utilities (tokens, join/normalize, CORS helpers)
+auth/server.mjs                 # Traefik ForwardAuth microservice
+tests/                          # Unit, integration, Playwright E2E
+scripts/                        # Dev + CI helpers (dev.sh, dev-docker.sh, prod-smoke.sh)
+.codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
+.github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
+AGENTS.md                       # Agent directives (project‑specific rules included)
+```
+
+## Environments: PROD vs DEV
+
+### Production
+
+- This repo’s `docker-compose.yml` is the production deployment spec.
+- Traefik runs as a host/system service (not a container).
+- ForwardAuth MUST use host loopback:
+  - `traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify`
+- App attaches to Docker network `traefik` and is discovered via labels.
+- Edge is Cloudflare for `codex-api.onemainarmy.com`.
+
+### Development
+
+- Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
+- Container dev: `npm run dev:docker` (also port 18000 by default) or `npm run dev:docker:codex` (uses host Codex CLI).
+
+## Production Smoke
+
+Run a minimal end‑to‑end check of origin (Traefik) and edge (Cloudflare):
+
+```
+DOMAIN=codex-api.onemainarmy.com KEY=$PROXY_API_KEY npm run smoke:prod
+```
+
+Behavior:
+- Origin (host only): checks `https://127.0.0.1/healthz` and `/v1/models` with `Host: $DOMAIN`.
+- Edge (Cloudflare): checks `/healthz`, `/v1/models`, and an optional authenticated non‑stream chat.
+
+## Diagrams
+
+Architecture (PROD routing & components):
+
+![Architecture](docs/architecture.png)
+
+Development modes (Node vs Container):
+
+![Dev Modes](docs/dev-modes.png)
+
+Request Flow (Auth, Routers, SSE):
+
+![Request Flow](docs/request-flow.png)
+
 ## Quick start
 
 - Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
@@ -74,6 +131,13 @@ Suggested dev loop
 - Working on pure helpers? Start `npm run test:unit:watch` and code in `src/utils.js`.
 - Changing route logic or request/response shapes? Run `npm run test:integration` frequently.
 - Touching streaming behavior? Validate with `npm test` (Playwright SSE) or the curl snippet in “Manual checks (SSE)”.
+
+### Which tests to run when
+
+- Changed `src/utils.js` only → run unit: `npm run test:unit`.
+- Changed `server.js` routing/handlers/streaming → run integration: `npm run test:integration`, then E2E: `npm test`.
+- Changed `docker-compose.yml` (labels/ports/ForwardAuth) or Traefik‑related behavior → run production smoke: `npm run smoke:prod` (on the origin host) and E2E.
+- Changed `Dockerfile` → build and run container DEV smoke (`npm run dev:docker`), then E2E.
 
 Environment variables:
 

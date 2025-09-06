@@ -8,6 +8,7 @@ const __dirname = dirname(__filename);
 const svgs = [
   resolve(__dirname, '../docs/architecture.svg'),
   resolve(__dirname, '../docs/dev-modes.svg'),
+  resolve(__dirname, '../docs/request-flow.svg'),
 ];
 
 const browser = await chromium.launch();
