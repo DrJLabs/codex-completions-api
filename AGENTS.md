@@ -52,7 +52,7 @@ Branch: main-p (proxy is stateless; one Codex proto process per request). Featur
 - Codex sandbox: proxy invokes `codex exec --sandbox read-only`; avoid writing to project files.
 - Codex HOME directories:
   - DEV uses project-local `.codev/` (tracked for templates only; runtime artifacts under `.codev/sessions` are ignored).
-  - PROD uses project-root `.codex-api/` (contains secrets) which is not committed; only placeholder files are tracked. IMPORTANT: `.codex-api` MUST be writable in production because Codex persists rollout/session state here. Do NOT mount it read-only.
+  - PROD uses project-root `.codex-api/` (contains secrets) which is not committed; only placeholder files are tracked. IMPORTANT: `.codex-api` MUST be writable in production because current Codex CLI persists rollout/session state under its home.
   - `.dockerignore` excludes both `.codex-api/**` and `.codev/**` so secrets are never sent in build context.
 
 # Project-Specific Rules (Codex Completions API)

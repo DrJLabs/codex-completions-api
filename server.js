@@ -96,7 +96,11 @@ const appendUsage = (obj = {}) => {
 
 try {
   fs.mkdirSync(CODEX_WORKDIR, { recursive: true });
-} catch {}
+} catch (e) {
+  try {
+    console.error(`[proxy] failed to create CODEX_WORKDIR at ${CODEX_WORKDIR}:`, e);
+  } catch {}
+}
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, sandbox_mode: SANDBOX_MODE }));
 
