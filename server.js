@@ -52,7 +52,9 @@ const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
 const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
   ? CODEX_BIN
-  : (CODEX_BIN.includes(path.sep) ? path.join(process.cwd(), CODEX_BIN) : CODEX_BIN);
+  : CODEX_BIN.includes(path.sep)
+    ? path.join(process.cwd(), CODEX_BIN)
+    : CODEX_BIN;
 // Allow isolating Codex CLI configuration per deployment. When set, child processes
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
