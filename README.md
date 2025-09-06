@@ -59,12 +59,12 @@ Dev parity stack (public behind Traefik):
 
 - Purpose: exercise the proxy with a real Codex CLI behind Traefik and ForwardAuth, mirroring prod, without touching prod.
 - Bring up: `npm run dev:stack:up`
-  - Uses `docker-compose.dev.yml` + `docker-compose.dev.codex.yml` + `compose.dev.traefik.yml`
+  - Uses a single file: `compose.dev.stack.yml` (self-contained dev app + dev auth)
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
-- If local port 18000 is in use, override:
-  - `DEV_PORT=18010 docker compose -p codex-dev -f docker-compose.dev.yml -f docker-compose.dev.codex.yml -f compose.dev.traefik.yml up -d --build`
+  - If local port 18000 is in use, override:
+    - `DEV_PORT=18010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
-- ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.traefik.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
+- ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - ForwardAuth (dev) now uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.traefik.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
