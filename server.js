@@ -56,7 +56,7 @@ const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
 // Allow isolating Codex CLI configuration per deployment. When set, child processes
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
-const CODEX_HOME = process.env.CODEX_HOME || path.join(process.cwd(), ".codev");
+const CODEX_HOME = process.env.CODEX_HOME || path.join(process.cwd(), ".codex-api");
 const SANDBOX_MODE = (process.env.PROXY_SANDBOX_MODE || "danger-full-access").toLowerCase();
 const CODEX_WORKDIR = process.env.PROXY_CODEX_WORKDIR || path.join(os.tmpdir(), "codex-work");
 // const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
