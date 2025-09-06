@@ -1,5 +1,6 @@
 .env.secret
 .env
+.env.dev
 local-server.log
 .server.pid
 .server.log

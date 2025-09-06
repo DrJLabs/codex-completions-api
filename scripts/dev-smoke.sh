@@ -39,7 +39,7 @@ if [[ -n "$KEY" ]]; then
   SSE_OUT=$(mktemp)
   curl -sN -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' \
-    "$BASE_CF/v1/chat/completions" | head -n 80 > "$SSE_OUT" || true
+    "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \
      grep -q '"delta":{' "$SSE_OUT"; then
