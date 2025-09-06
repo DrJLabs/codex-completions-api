@@ -10,6 +10,7 @@ web-bundles
 # Env and local logs
 .env
 .env.secret
+.env.dev
 *.log
 *.pid
 
