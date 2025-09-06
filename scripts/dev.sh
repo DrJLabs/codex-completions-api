@@ -23,11 +23,6 @@ if [[ -f "$ROOT_DIR/.env.secret" ]]; then
   set +a
 fi
 
-# Fallback: if PROXY_API_KEY still empty, try parsing from .env explicitly
-if [[ -z "${PROXY_API_KEY:-}" && -f "$ROOT_DIR/.env" ]]; then
-  PROXY_API_KEY="$(sed -n 's/^PROXY_API_KEY=//p' "$ROOT_DIR/.env" | head -n1)"
-fi
-
 # Defaults (can be overridden by env or flags)
 # Force dev default port unless overridden by flag or env at invocation
 PORT="${PORT:-18000}"
@@ -62,13 +57,9 @@ export PORT PROXY_API_KEY CODEX_HOME
 if [[ -n "$CODEX_BIN" ]]; then export CODEX_BIN; fi
 
 mkdir -p "$CODEX_HOME"
-# Seed local CODEX_HOME with project .codev config if missing
-if [[ ! -f "$CODEX_HOME/config.toml" && -f "$ROOT_DIR/.codev/config.toml" ]]; then
-  cp -n "$ROOT_DIR/.codev/config.toml" "$CODEX_HOME/config.toml"
-fi
-if [[ ! -f "$CODEX_HOME/AGENTS.md" && -f "$ROOT_DIR/.codev/AGENTS.md" ]]; then
-  cp -n "$ROOT_DIR/.codev/AGENTS.md" "$CODEX_HOME/AGENTS.md"
-fi
+# Seed local CODEX_HOME with project .codev config
+cp -n "$ROOT_DIR/.codev/config.toml" "$CODEX_HOME/config.toml"
+cp -n "$ROOT_DIR/.codev/AGENTS.md" "$CODEX_HOME/AGENTS.md"
 
 echo "Dev server: http://127.0.0.1:$PORT/v1 (CODEX_HOME=$CODEX_HOME)"
 exec node "$ROOT_DIR/server.js"
