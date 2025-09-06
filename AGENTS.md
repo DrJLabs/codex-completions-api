@@ -103,6 +103,14 @@ These directives are mandatory for agents operating in this repository. They pre
 - `CODEX_HOME` defaults to the project `.codex-api/` in this repo; dev launchers override to `.codev/`.
 - `.codex-api` MUST remain writable in PROD so Codex can create `rollouts/` and `sessions/` files. Mounting it read-only can break streaming and tool communication.
 
+9. Dev → Prod flow (agents must follow)
+
+- Implement and validate changes in the dev stack first: `.codev/*`, `docker-compose.dev*.yml`, `compose.dev.traefik.yml`.
+- Bring up public dev stack: `npm run dev:stack:up` (Traefik host, dev domain `codex-dev…`).
+- Validate: `npm run smoke:dev` and `npm run test:live:dev` with a dev API key.
+- Only after dev passes and user confirms, propose the minimal production diff (usually `docker-compose.yml` changes). Do not modify prod files before dev is green.
+- After merge to main: instruct `docker compose up -d --build --force-recreate` on prod host, then run `npm run smoke:prod` and optional live E2E.
+
 <!-- BEGIN: BMAD-AGENTS -->
 
 # BMAD-METHOD Agents and Tasks
