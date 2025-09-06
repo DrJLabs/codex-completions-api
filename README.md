@@ -65,7 +65,7 @@ Dev parity stack (public behind Traefik):
     - `DEV_PORT=18010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
-- ForwardAuth (dev) now uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.traefik.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
+- ForwardAuth (dev) now uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
@@ -83,7 +83,7 @@ Notes:
 
 ### Dev → Prod Promotion Flow (authoritative)
 
-- Change only dev inputs first: `.codev/*`, `docker-compose.dev*.yml`, `compose.dev.traefik.yml`.
+- Change only dev inputs first: `.codev/*`, `compose.dev.stack.yml`.
 - Validate locally (Node or container) and behind Traefik on `codex-dev…`:
   - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
   - Live E2E (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
@@ -378,8 +378,7 @@ Notes:
 - Compose reads `PROXY_API_KEY` from your `.env`.
 - Override port: `DEV_PORT=19000 npm run dev:docker`
 - Files:
-  - `docker-compose.dev.yml` — base dev service (`app-dev`), maps `./.codev` to `/home/node/.codex`, exposes `127.0.0.1:${DEV_PORT:-18000}:11435` and defaults to the proto shim at `/app/scripts/fake-codex-proto.js`.
-  - `docker-compose.dev.codex.yml` — optional override to mount `~/.cargo/bin/codex` and set `CODEX_BIN=codex`.
+  - `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, exposes `127.0.0.1:${DEV_PORT:-18010}:11435`, defaults to the proto shim at `/app/scripts/fake-codex-proto.js`, and configures ForwardAuth dev at `127.0.0.1:18081`.
 
 ## Notes and troubleshooting
 
