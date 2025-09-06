@@ -6,6 +6,7 @@ services:
     image: codex-completions-api:dev
     environment:
       - PORT=11435
+      - PROXY_ENV=dev
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env}
       - CODEX_HOME=/home/node/.codex
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
