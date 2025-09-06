@@ -3,9 +3,8 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Load env quietly
+# Load env quietly from .env
 if [[ -f "$ROOT_DIR/.env" ]]; then set -a; . "$ROOT_DIR/.env"; set +a; fi
-if [[ -f "$ROOT_DIR/.env.secret" ]]; then set -a; . "$ROOT_DIR/.env.secret"; set +a; fi
 
 # Defaults
 export LIVE_BASE_URL="${LIVE_BASE_URL:-http://127.0.0.1:11435}"
@@ -19,4 +18,3 @@ fi
 
 echo "Live E2E against: $LIVE_BASE_URL"
 exec npx playwright test -c "$ROOT_DIR/playwright.live.config.ts"
-
