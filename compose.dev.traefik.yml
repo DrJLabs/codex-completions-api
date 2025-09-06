@@ -24,7 +24,7 @@ services:
       - traefik.http.routers.codex-dev-preflight.service=noop@internal
 
       # ForwardAuth middleware (edge bearer auth)
-      - traefik.http.middlewares.codex-dev-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
+      - traefik.http.middlewares.codex-dev-forwardauth.forwardauth.address=http://127.0.0.1:18081/verify
       - traefik.http.middlewares.codex-dev-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-dev-forwardauth.forwardauth.authRequestHeaders=Authorization
 
@@ -69,3 +69,18 @@ services:
 networks:
   traefik:
     external: true
+  auth-dev:
+    image: node:18-alpine
+    working_dir: /app
+    command: node server.mjs
+    environment:
+      - PORT=8080
+      - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
+      - AUTH_REALM=api-dev
+    volumes:
+      - ./auth:/app:ro
+    ports:
+      - 127.0.0.1:18081:8080
+    networks:
+      - traefik
+    restart: unless-stopped
