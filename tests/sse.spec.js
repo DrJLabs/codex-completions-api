@@ -65,8 +65,7 @@ test("chat completions streaming yields role + DONE", async ({ baseURL }) => {
     try {
       const obj = JSON.parse(d);
       return (
-        obj?.object === "chat.completion.chunk" &&
-        obj?.choices?.[0]?.delta?.role === "assistant"
+        obj?.object === "chat.completion.chunk" && obj?.choices?.[0]?.delta?.role === "assistant"
       );
     } catch {
       return false;

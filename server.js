@@ -4,7 +4,17 @@ import { nanoid } from "nanoid";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { stripAnsi, estTokens, estTokensForMessages, joinMessages, parseTime, aggregateUsage, isModelText, impliedEffortForModel, normalizeModel, applyCors as applyCorsUtil } from "./src/utils.js";
+import {
+  stripAnsi,
+  estTokens,
+  estTokensForMessages,
+  joinMessages,
+  parseTime,
+  aggregateUsage,
+  impliedEffortForModel,
+  normalizeModel,
+  applyCors as applyCorsUtil,
+} from "./src/utils.js";
 // Simple CORS without extra dependency
 const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
@@ -28,7 +38,9 @@ app.use((req, res, next) => {
       const ua = req.headers["user-agent"] || "";
       const auth = req.headers.authorization ? "present" : "none";
       const dur = Date.now() - start;
-      console.log(`[http] ${req.method} ${req.originalUrl} -> ${res.statusCode} auth=${auth} ua="${ua}" dur_ms=${dur}`);
+      console.log(
+        `[http] ${req.method} ${req.originalUrl} -> ${res.statusCode} auth=${auth} ua="${ua}" dur_ms=${dur}`
+      );
     } catch {}
   });
   next();
@@ -41,18 +53,20 @@ const CODEX_BIN = process.env.CODEX_BIN || "codex";
 // Allow isolating Codex CLI configuration per deployment. When set, child processes
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
-const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir?.() || process.env.HOME || "", ".codex-api");
-const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
+const CODEX_HOME =
+  process.env.CODEX_HOME || path.join(os.homedir?.() || process.env.HOME || "", ".codex-api");
+// const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
 const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
-const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map(v => `codex-5-${v}`)];
+const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-5-${v}`)];
 const ALLOWED_MODEL_IDS = new Set([...PUBLIC_MODEL_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
 // Default to not killing Codex on disconnect to better match typical OpenAI clients
-const KILL_ON_DISCONNECT = (process.env.PROXY_KILL_ON_DISCONNECT || "false").toLowerCase() !== "false";
+const KILL_ON_DISCONNECT =
+  (process.env.PROXY_KILL_ON_DISCONNECT || "false").toLowerCase() !== "false";
 // Idle timeout when waiting for backend output.
 const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
 // Separate idle timeout for streaming responses (allow much longer lulls between chunks)
@@ -65,9 +79,13 @@ const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 
 // Approximate token usage logging (default to writable tmpdir inside container)
 const TOKEN_LOG_PATH = process.env.TOKEN_LOG_PATH || path.join(os.tmpdir(), "codex-usage.ndjson");
-try { fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true }); } catch {}
+try {
+  fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true });
+} catch {}
 const appendUsage = (obj = {}) => {
-  try { fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" }); } catch {}
+  try {
+    fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
+  } catch {}
 };
 
 // helper definitions moved to src/utils.js
@@ -79,8 +97,18 @@ const loadUsageEvents = () => {
   try {
     if (!fs.existsSync(TOKEN_LOG_PATH)) return [];
     const lines = fs.readFileSync(TOKEN_LOG_PATH, "utf8").split(/\n+/).filter(Boolean);
-    return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-  } catch { return []; }
+    return lines
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 };
 // aggregateUsage available from utils
 app.get("/v1/usage", (req, res) => {
@@ -102,7 +130,10 @@ app.get("/v1/usage/raw", (req, res) => {
 
 // Models router implementing GET/HEAD/OPTIONS with canonical headers
 const modelsRouter = express.Router();
-const modelsPayload = { object: "list", data: PUBLIC_MODEL_IDS.map(id => ({ id, object: "model", owned_by: "codex", created: 0 })) };
+const modelsPayload = {
+  object: "list",
+  data: PUBLIC_MODEL_IDS.map((id) => ({ id, object: "model", owned_by: "codex", created: 0 })),
+};
 const sendModels = (res) => {
   applyCors(null, res);
   res.set("Content-Type", "application/json; charset=utf-8");
@@ -110,7 +141,9 @@ const sendModels = (res) => {
   res.status(200).send(JSON.stringify(modelsPayload));
 };
 modelsRouter.get("/v1/models", (req, res) => {
-  try { console.log("[models] GET /v1/models"); } catch {}
+  try {
+    console.log("[models] GET /v1/models");
+  } catch {}
   if (PROTECT_MODELS) {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -119,13 +152,17 @@ modelsRouter.get("/v1/models", (req, res) => {
       return res
         .status(401)
         .set("WWW-Authenticate", "Bearer realm=api")
-        .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+        .json({
+          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
+        });
     }
   }
   sendModels(res);
 });
 modelsRouter.get("/v1/models/", (req, res) => {
-  try { console.log("[models] GET /v1/models/"); } catch {}
+  try {
+    console.log("[models] GET /v1/models/");
+  } catch {}
   if (PROTECT_MODELS) {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -134,7 +171,9 @@ modelsRouter.get("/v1/models/", (req, res) => {
       return res
         .status(401)
         .set("WWW-Authenticate", "Bearer realm=api")
-        .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+        .json({
+          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
+        });
     }
   }
   sendModels(res);
@@ -145,13 +184,11 @@ modelsRouter.head("/v1/models", (req, res) => {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .end();
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").end();
     }
   }
-  res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end();
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.status(200).end();
 });
 modelsRouter.head("/v1/models/", (req, res) => {
   applyCors(null, res);
@@ -159,16 +196,20 @@ modelsRouter.head("/v1/models/", (req, res) => {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .end();
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").end();
     }
   }
-  res.set("Content-Type", "application/json; charset=utf-8"); res.status(200).end();
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.status(200).end();
 });
-modelsRouter.options("/v1/models", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
-modelsRouter.options("/v1/models/", (req, res) => { res.set("Allow", "GET,HEAD,OPTIONS"); res.status(200).end(); });
+modelsRouter.options("/v1/models", (req, res) => {
+  res.set("Allow", "GET,HEAD,OPTIONS");
+  res.status(200).end();
+});
+modelsRouter.options("/v1/models/", (req, res) => {
+  res.set("Allow", "GET,HEAD,OPTIONS");
+  res.status(200).end();
+});
 app.use(modelsRouter);
 
 // Alias for clients that call baseURL without trailing /v1 and then /models
@@ -196,18 +237,33 @@ app.post("/v1/chat/completions", (req, res) => {
     return res
       .status(401)
       .set("WWW-Authenticate", "Bearer realm=api")
-      .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+      .json({
+        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
+      });
   }
 
   const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     applyCors(null, res);
-    return res.status(400).json({ error: { message: "messages[] required", type: "invalid_request_error", param: "messages", code: "invalid_request_error" } });
+    return res.status(400).json({
+      error: {
+        message: "messages[] required",
+        type: "invalid_request_error",
+        param: "messages",
+        code: "invalid_request_error",
+      },
+    });
   }
 
-  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(body.model || DEFAULT_MODEL);
-  try { console.log(`[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`); } catch {}
+  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
+    body.model || DEFAULT_MODEL
+  );
+  try {
+    console.log(
+      `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
+    );
+  } catch {}
   // Model allowlist with OpenAI-style not-found error
   if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
@@ -216,15 +272,18 @@ app.post("/v1/chat/completions", (req, res) => {
         message: `The model ${requestedModel} does not exist or you do not have access to it.`,
         type: "invalid_request_error",
         param: "model",
-        code: "model_not_found"
-      }
+        code: "model_not_found",
+      },
     });
   }
   let reasoningEffort = (
-    (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
-      .toString()
-      .toLowerCase()
-  );
+    body.reasoning?.effort ||
+    body.reasoning_effort ||
+    body.reasoningEffort ||
+    ""
+  )
+    .toString()
+    .toLowerCase();
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
   if (!reasoningEffort) {
     const implied = impliedEffortForModel(requestedModel);
@@ -234,11 +293,16 @@ app.post("/v1/chat/completions", (req, res) => {
   const isStreamingReq = !!body.stream;
   const args = [
     "proto",
-    "--config", 'preferred_auth_method="chatgpt"',
-    "--config", "project_doc_max_bytes=0",
-    "--config", 'history.persistence="none"',
-    "--config", 'tools.web_search=false',
-    "--config", `model="${effectiveModel}"`
+    "--config",
+    'preferred_auth_method="chatgpt"',
+    "--config",
+    "project_doc_max_bytes=0",
+    "--config",
+    'history.persistence="none"',
+    "--config",
+    "tools.web_search=false",
+    "--config",
+    `model="${effectiveModel}"`,
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
   // Attempt to set reasoning via config if supported
@@ -251,65 +315,122 @@ app.post("/v1/chat/completions", (req, res) => {
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
 
-  try { console.log("[proxy] spawning (proto):", CODEX_BIN, args.join(" "), " prompt_len=", prompt.length); } catch {}
+  try {
+    console.log(
+      "[proxy] spawning (proto):",
+      CODEX_BIN,
+      args.join(" "),
+      " prompt_len=",
+      prompt.length
+    );
+  } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
   });
-  try { child.stdout.setEncoding && child.stdout.setEncoding("utf8"); } catch {}
-  try { child.stderr.setEncoding && child.stderr.setEncoding("utf8"); } catch {}
-  const onDone = () => { responded = true; };
+  try {
+    child.stdout.setEncoding && child.stdout.setEncoding("utf8");
+  } catch {}
+  try {
+    child.stderr.setEncoding && child.stderr.setEncoding("utf8");
+  } catch {}
+  // onDone was unused; responded is managed inline in handlers
   const onChildError = (e) => {
-    try { console.log("[proxy] child error:", e?.message || String(e)); } catch {}
+    try {
+      console.log("[proxy] child error:", e?.message || String(e));
+    } catch {}
     if (responded) return;
     responded = true;
     if (isStreamingReq) {
       // If streaming has begun, send an error note and terminate stream
       try {
         // headers are set below before streaming branches
-        res.write(`data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`
+        );
       } catch {}
-      try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+      try {
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } catch {}
     } else {
       applyCors(null, res);
-      res.status(500).json({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } });
-      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: !!isStreamingReq, prompt_tokens_est: promptTokensEst, completion_tokens_est: 0, total_tokens_est: promptTokensEst, duration_ms: Date.now()-started, status: 500, user_agent: req.headers["user-agent"] || "" });
+      res.status(500).json({
+        error: {
+          message: e?.message || "spawn error",
+          type: "internal_server_error",
+          code: "spawn_error",
+        },
+      });
+      appendUsage({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        method: "POST",
+        requested_model: requestedModel,
+        effective_model: effectiveModel,
+        stream: !!isStreamingReq,
+        prompt_tokens_est: promptTokensEst,
+        completion_tokens_est: 0,
+        total_tokens_est: promptTokensEst,
+        duration_ms: Date.now() - started,
+        status: 500,
+        user_agent: req.headers["user-agent"] || "",
+      });
     }
   };
   child.on("error", onChildError);
   const timeout = setTimeout(() => {
     if (responded) return;
     onChildError(new Error("request timeout"));
-    try { child.kill("SIGKILL"); } catch {}
+    try {
+      child.kill("SIGKILL");
+    } catch {}
   }, REQ_TIMEOUT_MS);
   let idleTimer;
   const resetIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       if (responded) return;
-      try { console.log("[proxy] idle timeout reached; terminating child"); } catch {}
+      try {
+        console.log("[proxy] idle timeout reached; terminating child");
+      } catch {}
       if (isStreamingReq) {
         try {
-          res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`
+          );
         } catch {}
-        try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+        try {
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } catch {}
       } else {
         applyCors(null, res);
-        res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } });
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       }
       responded = true;
-      try { child.kill("SIGTERM"); } catch {}
+      try {
+        child.kill("SIGTERM");
+      } catch {}
     }, IDLE_TIMEOUT_MS);
   };
   resetIdle();
   req.on("close", () => {
     if (responded) return;
-    if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
+    if (KILL_ON_DISCONNECT) {
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+    }
   });
 
   // Defer writing submission until after listeners are attached
 
-  let out = "", err = "";
+  let out = "",
+    err = "";
 
   const sendSSE = (payload) => {
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -322,13 +443,14 @@ app.post("/v1/chat/completions", (req, res) => {
   const sendRoleOnce = (() => {
     let sent = false;
     return () => {
-      if (sent) return; sent = true;
+      if (sent) return;
+      sent = true;
       sendSSE({
         id: `chatcmpl-${nanoid()}`,
         object: "chat.completion.chunk",
         created: Math.floor(Date.now() / 1000),
         model: requestedModel,
-        choices: [{ index: 0, delta: { role: "assistant" } }]
+        choices: [{ index: 0, delta: { role: "assistant" } }],
       });
     };
   })();
@@ -344,21 +466,54 @@ app.post("/v1/chat/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-    if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
-    let keepalive; if (SSE_KEEPALIVE_MS > 0) keepalive = setInterval(() => { try { sendSSEKeepalive(); } catch {} }, SSE_KEEPALIVE_MS);
+    if (idleTimer) {
+      try {
+        clearTimeout(idleTimer);
+      } catch {}
+    }
+    let keepalive;
+    if (SSE_KEEPALIVE_MS > 0)
+      keepalive = setInterval(() => {
+        try {
+          sendSSEKeepalive();
+        } catch {}
+      }, SSE_KEEPALIVE_MS);
     sendRoleOnce();
-    let buf = ""; let sentAny = false; let emitted = ""; const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-    let ptCount = 0, ctCount = 0;
-    const resetStreamIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, STREAM_IDLE_TIMEOUT_MS); }; })();
+    let buf = "";
+    let sentAny = false;
+    let emitted = "";
+    const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+    let ptCount = 0,
+      ctCount = 0;
+    const resetStreamIdle = (() => {
+      let t;
+      return () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => {
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+        }, STREAM_IDLE_TIMEOUT_MS);
+      };
+    })();
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
-      resetStreamIdle(); const s = chunk.toString("utf8"); out += s; buf += s;
-      let idx; while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx); buf = buf.slice(idx+1);
-        const trimmed = line.trim(); if (!trimmed) continue;
+      resetStreamIdle();
+      const s = chunk.toString("utf8");
+      out += s;
+      buf += s;
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        const trimmed = line.trim();
+        if (!trimmed) continue;
         try {
-          const evt = JSON.parse(trimmed); const t = (evt && (evt.msg?.type || evt.type)) || "";
-          if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") { continue; }
+          const evt = JSON.parse(trimmed);
+          const t = (evt && (evt.msg?.type || evt.type)) || "";
+          if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") {
+            continue;
+          }
           if (t === "agent_message_delta") {
             const d = String((evt.msg?.delta ?? evt.delta) || "");
             if (d) {
@@ -368,7 +523,13 @@ app.post("/v1/chat/completions", (req, res) => {
               if (suffix) {
                 sentAny = true;
                 emitted += suffix;
-                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: suffix } }] });
+                sendSSE({
+                  id: `chatcmpl-${nanoid()}`,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, delta: { content: suffix } }],
+                });
               }
             }
           } else if (t === "agent_message") {
@@ -380,88 +541,238 @@ app.post("/v1/chat/completions", (req, res) => {
               if (suffix) {
                 sentAny = true;
                 emitted += suffix;
-                sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content: suffix } }] });
+                sendSSE({
+                  id: `chatcmpl-${nanoid()}`,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, delta: { content: suffix } }],
+                });
               }
             }
           } else if (t === "token_count") {
             ptCount = Number(evt.msg?.prompt_tokens || 0);
             ctCount = Number(evt.msg?.completion_tokens || 0);
             if (includeUsage) {
-              sendSSE({ event: "usage", usage: { prompt_tokens: ptCount, completion_tokens: ctCount, total_tokens: ptCount + ctCount } });
+              sendSSE({
+                event: "usage",
+                usage: {
+                  prompt_tokens: ptCount,
+                  completion_tokens: ctCount,
+                  total_tokens: ptCount + ctCount,
+                },
+              });
             }
           } else if (t === "task_complete") {
             // Finish stream immediately on task completion
             try {
-              appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: ptCount || promptTokensEst, completion_tokens_est: ctCount || Math.ceil(emitted.length/4), total_tokens_est: (ptCount || promptTokensEst) + (ctCount || Math.ceil(emitted.length/4)), duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+              appendUsage({
+                ts: Date.now(),
+                req_id: reqId,
+                route: "/v1/chat/completions",
+                method: "POST",
+                requested_model: requestedModel,
+                effective_model: effectiveModel,
+                stream: true,
+                prompt_tokens_est: ptCount || promptTokensEst,
+                completion_tokens_est: ctCount || Math.ceil(emitted.length / 4),
+                total_tokens_est:
+                  (ptCount || promptTokensEst) + (ctCount || Math.ceil(emitted.length / 4)),
+                duration_ms: Date.now() - started,
+                status: 200,
+                user_agent: req.headers["user-agent"] || "",
+              });
             } catch {}
-            try { finishSSE(); } catch {}
-            try { child.kill("SIGTERM"); } catch {}
+            try {
+              finishSSE();
+            } catch {}
+            try {
+              child.kill("SIGTERM");
+            } catch {}
             return;
           } else if (t === "error") {
-            if (process.env.PROXY_DEBUG_PROTO) try { console.log("[proto] error event"); } catch {}
+            if (process.env.PROXY_DEBUG_PROTO)
+              try {
+                console.log("[proto] error event");
+              } catch {}
           }
-        } catch (e) { if (process.env.PROXY_DEBUG_PROTO) try { console.log("[proto] parse error line:", trimmed); } catch {} }
+        } catch (e) {
+          if (process.env.PROXY_DEBUG_PROTO)
+            try {
+              console.log("[proto] parse error line:", trimmed);
+            } catch {}
+        }
       }
     });
-    child.stderr.on("data", () => { resetStreamIdle(); });
+    child.stderr.on("data", () => {
+      resetStreamIdle();
+    });
     // Write submission after listeners are attached
     try {
-      const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
+      const submission = {
+        id: reqId,
+        op: { type: "user_input", items: [{ type: "text", text: prompt }] },
+      };
       child.stdin.write(JSON.stringify(submission) + "\n");
     } catch {}
-    child.on("close", () => { if (keepalive) clearInterval(keepalive); if (!sentAny) { const content = stripAnsi(out).trim() || "No output from backend."; sendSSE({ id: `chatcmpl-${nanoid()}`, object: "chat.completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, delta: { content } }] }); } finishSSE(); });
+    child.on("close", () => {
+      if (keepalive) clearInterval(keepalive);
+      if (!sentAny) {
+        const content = stripAnsi(out).trim() || "No output from backend.";
+        sendSSE({
+          id: `chatcmpl-${nanoid()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: requestedModel,
+          choices: [{ index: 0, delta: { content } }],
+        });
+      }
+      finishSSE();
+    });
     return;
   }
 
   // Non-streaming (proto): assemble content until task completion
-  if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
+  if (idleTimer) {
+    try {
+      clearTimeout(idleTimer);
+    } catch {}
+  }
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  if (idleTimer) { try { clearTimeout(idleTimer); } catch {} }
-  let buf2 = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0; let done = false;
-  const resetProtoIdle = (() => { let t; return () => { if (t) clearTimeout(t); t = setTimeout(() => { if (responded) return; responded = true; try { child.kill("SIGTERM"); } catch {}; applyCors(null, res); res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } }); }, PROTO_IDLE_MS); }; })();
+  if (idleTimer) {
+    try {
+      clearTimeout(idleTimer);
+    } catch {}
+  }
+  let buf2 = "";
+  let content = "";
+  let prompt_tokens = 0;
+  let completion_tokens = 0;
+  let done = false;
+  const resetProtoIdle = (() => {
+    let t;
+    return () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => {
+        if (responded) return;
+        responded = true;
+        try {
+          child.kill("SIGTERM");
+        } catch {}
+        applyCors(null, res);
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
+      }, PROTO_IDLE_MS);
+    };
+  })();
   resetProtoIdle();
   child.stdout.on("data", (d) => {
-    resetProtoIdle(); const s= typeof d === "string" ? d : d.toString("utf8"); out += s; buf2 += s;
-    let idx; while ((idx = buf2.indexOf("\n")) >= 0) {
-      const line = buf2.slice(0, idx); buf2 = buf2.slice(idx+1);
-      const t = line.trim(); if (!t) continue;
+    resetProtoIdle();
+    const s = typeof d === "string" ? d : d.toString("utf8");
+    out += s;
+    buf2 += s;
+    let idx;
+    while ((idx = buf2.indexOf("\n")) >= 0) {
+      const line = buf2.slice(0, idx);
+      buf2 = buf2.slice(idx + 1);
+      const t = line.trim();
+      if (!t) continue;
       try {
-        const evt = JSON.parse(t); const tp = (evt && (evt.msg?.type || evt.type)) || "";
-        if (DEBUG_PROTO) try { console.log("[proto] evt:", tp); } catch {}
+        const evt = JSON.parse(t);
+        const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        if (DEBUG_PROTO)
+          try {
+            console.log("[proto] evt:", tp);
+          } catch {}
         if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
-        else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
-        else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
-        else if (tp === "task_complete") {
+        else if (tp === "agent_message")
+          content = String((evt.msg?.message ?? evt.message) || content);
+        else if (tp === "token_count") {
+          prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens);
+          completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens);
+        } else if (tp === "task_complete") {
           done = true;
           if (!responded) {
             responded = true;
             applyCors(null, res);
-            const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
-            res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: "stop" }] });
-            try { child.stdin.write(JSON.stringify({ id: nanoid(), op: { type: "shutdown" } }) + "\n"); } catch {}
-            try { child.kill("SIGTERM"); } catch {}
+            const final =
+              content ||
+              stripAnsi(out).trim() ||
+              stripAnsi(err).trim() ||
+              "No output from backend.";
+            res.json({
+              id: `chatcmpl-${nanoid()}`,
+              object: "chat.completion",
+              created: Math.floor(Date.now() / 1000),
+              model: requestedModel,
+              choices: [
+                { index: 0, message: { role: "assistant", content: final }, finish_reason: "stop" },
+              ],
+            });
+            try {
+              child.stdin.write(JSON.stringify({ id: nanoid(), op: { type: "shutdown" } }) + "\n");
+            } catch {}
+            try {
+              child.kill("SIGTERM");
+            } catch {}
           }
         }
       } catch {}
     }
   });
-  child.stderr.on("data", () => { resetProtoIdle(); });
+  child.stderr.on("data", () => {
+    resetProtoIdle();
+  });
   // Write submission after listeners are attached
   try {
-    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: prompt }] } };
+    const submission = {
+      id: reqId,
+      op: { type: "user_input", items: [{ type: "text", text: prompt }] },
+    };
     child.stdin.write(JSON.stringify(submission) + "\n");
   } catch {}
   child.on("close", () => {
-    if (responded) return; responded = true;
+    if (responded) return;
+    responded = true;
     clearTimeout(timeout);
     if (idleTimer) clearTimeout(idleTimer);
-    const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
+    const final =
+      content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
-    const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(final);
+    const pt = prompt_tokens || promptTokensEst;
+    const ct = completion_tokens || estTokens(final);
     try {
-      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: pt, completion_tokens_est: ct, total_tokens_est: pt + ct, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+      appendUsage({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        method: "POST",
+        requested_model: requestedModel,
+        effective_model: effectiveModel,
+        stream: false,
+        prompt_tokens_est: pt,
+        completion_tokens_est: ct,
+        total_tokens_est: pt + ct,
+        duration_ms: Date.now() - started,
+        status: 200,
+        user_agent: req.headers["user-agent"] || "",
+      });
     } catch {}
-    res.json({ id: `chatcmpl-${nanoid()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, message: { role: "assistant", content: final }, finish_reason: done ? "stop" : "length" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+    res.json({
+      id: `chatcmpl-${nanoid()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: requestedModel,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: final },
+          finish_reason: done ? "stop" : "length",
+        },
+      ],
+      usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
+    });
   });
 });
 
@@ -475,7 +786,11 @@ app.head("/v1/completions", (_req, res) => {
   res.status(200).end();
 });
 app.post("/v1/completions", (req, res) => {
-  try { console.log("[completions] POST /v1/completions received"); } catch {}
+  try {
+    console.log("[completions] POST /v1/completions received");
+  } catch {}
+  const reqId = nanoid();
+  const started = Date.now();
   let responded = false;
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -484,19 +799,36 @@ app.post("/v1/completions", (req, res) => {
     return res
       .status(401)
       .set("WWW-Authenticate", "Bearer realm=api")
-      .json({ error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" } });
+      .json({
+        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
+      });
   }
 
   const body = req.body || {};
-  try { console.log("[completions] body keys=", Object.keys(body || {})); } catch {}
-  const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : (body.prompt || "");
+  try {
+    console.log("[completions] body keys=", Object.keys(body || {}));
+  } catch {}
+  const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
   if (!prompt) {
     applyCors(null, res);
-    return res.status(400).json({ error: { message: "prompt required", type: "invalid_request_error", param: "prompt", code: "invalid_request_error" } });
+    return res.status(400).json({
+      error: {
+        message: "prompt required",
+        type: "invalid_request_error",
+        param: "prompt",
+        code: "invalid_request_error",
+      },
+    });
   }
 
-  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(body.model || DEFAULT_MODEL);
-  try { console.log(`[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`); } catch {}
+  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
+    body.model || DEFAULT_MODEL
+  );
+  try {
+    console.log(
+      `[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
+    );
+  } catch {}
   if (body.model && !ALLOWED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
     return res.status(404).json({
@@ -504,16 +836,19 @@ app.post("/v1/completions", (req, res) => {
         message: `The model ${requestedModel} does not exist or you do not have access to it.`,
         type: "invalid_request_error",
         param: "model",
-        code: "model_not_found"
-      }
+        code: "model_not_found",
+      },
     });
   }
 
   let reasoningEffort = (
-    (body.reasoning?.effort || body.reasoning_effort || body.reasoningEffort || "")
-      .toString()
-      .toLowerCase()
-  );
+    body.reasoning?.effort ||
+    body.reasoning_effort ||
+    body.reasoningEffort ||
+    ""
+  )
+    .toString()
+    .toLowerCase();
   const allowEffort = new Set(["low", "medium", "high", "minimal"]);
   if (!reasoningEffort) {
     const implied = impliedEffortForModel(requestedModel);
@@ -523,11 +858,16 @@ app.post("/v1/completions", (req, res) => {
   const isStreamingReq = !!body.stream;
   const args = [
     "proto",
-    "--config", 'preferred_auth_method="chatgpt"',
-    "--config", "project_doc_max_bytes=0",
-    "--config", 'history.persistence="none"',
-    "--config", 'tools.web_search=false',
-    "--config", `model="${effectiveModel}"`
+    "--config",
+    'preferred_auth_method="chatgpt"',
+    "--config",
+    "project_doc_max_bytes=0",
+    "--config",
+    'history.persistence="none"',
+    "--config",
+    "tools.web_search=false",
+    "--config",
+    `model="${effectiveModel}"`,
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
   if (allowEffort.has(reasoningEffort)) {
@@ -537,64 +877,112 @@ app.post("/v1/completions", (req, res) => {
 
   const messages = [{ role: "user", content: prompt }];
   const toSend = joinMessages(messages);
+  const promptTokensEst = estTokensForMessages(messages);
 
-  try { console.log("[proxy] spawning (proto completions):", CODEX_BIN, args.join(" "), " prompt_len=", toSend.length); } catch {}
+  try {
+    console.log(
+      "[proxy] spawning (proto completions):",
+      CODEX_BIN,
+      args.join(" "),
+      " prompt_len=",
+      toSend.length
+    );
+  } catch {}
   const child = spawn(CODEX_BIN, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME },
   });
   const onChildError = (e) => {
-    try { console.log("[proxy] child error (completions):", e?.message || String(e)); } catch {}
+    try {
+      console.log("[proxy] child error (completions):", e?.message || String(e));
+    } catch {}
     if (responded) return;
     responded = true;
     if (isStreamingReq) {
       try {
-        res.write(`data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`
+        );
       } catch {}
-      try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+      try {
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } catch {}
     } else {
       applyCors(null, res);
-      res.status(500).json({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } });
+      res.status(500).json({
+        error: {
+          message: e?.message || "spawn error",
+          type: "internal_server_error",
+          code: "spawn_error",
+        },
+      });
     }
   };
   child.on("error", onChildError);
   const timeout = setTimeout(() => {
     if (responded) return;
     onChildError(new Error("request timeout"));
-    try { child.kill("SIGKILL"); } catch {}
+    try {
+      child.kill("SIGKILL");
+    } catch {}
   }, REQ_TIMEOUT_MS);
   let idleTimerCompletions;
   const resetIdleCompletions = () => {
     if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
     idleTimerCompletions = setTimeout(() => {
       if (responded) return;
-      try { console.log("[proxy] completions idle timeout; terminating child"); } catch {}
+      try {
+        console.log("[proxy] completions idle timeout; terminating child");
+      } catch {}
       if (isStreamingReq) {
         try {
-          res.write(`data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`
+          );
         } catch {}
-        try { res.write("data: [DONE]\n\n"); res.end(); } catch {}
+        try {
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } catch {}
       } else {
         applyCors(null, res);
-        res.status(504).json({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } });
+        res.status(504).json({
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       }
       responded = true;
-      try { child.kill("SIGTERM"); } catch {}
+      try {
+        child.kill("SIGTERM");
+      } catch {}
     }, IDLE_TIMEOUT_MS);
   };
   resetIdleCompletions();
   req.on("close", () => {
     if (responded) return;
-    if (KILL_ON_DISCONNECT) { try { child.kill("SIGTERM"); } catch {} }
+    if (KILL_ON_DISCONNECT) {
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+    }
   });
   try {
-    const submission = { id: reqId, op: { type: "user_input", items: [{ type: "text", text: toSend }] } };
+    const submission = {
+      id: reqId,
+      op: { type: "user_input", items: [{ type: "text", text: toSend }] },
+    };
     child.stdin.write(JSON.stringify(submission) + "\n");
   } catch {}
 
-  let out = "", err = "";
-  const sendSSE = (payload) => { res.write(`data: ${JSON.stringify(payload)}\n\n`); };
-  const finishSSE = () => { res.write("data: [DONE]\n\n"); res.end(); };
+  let out = "",
+    err = "";
+  const sendSSE = (payload) => {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  const finishSSE = () => {
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
 
   if (isStreamingReq) {
     res.setHeader("Content-Type", "text/event-stream");
@@ -602,13 +990,21 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders?.();
-    let buf = ""; let sentAny = false; let completionChars = 0; let emitted = "";
+    let buf = "";
+    let sentAny = false;
+    let completionChars = 0;
+    let emitted = "";
     child.stdout.on("data", (chunk) => {
       resetIdleCompletions();
-      const text = chunk.toString("utf8"); out += text; buf += text;
-      let idx; while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
-        const trimmed = line.trim(); if (!trimmed) continue;
+      const text = chunk.toString("utf8");
+      out += text;
+      buf += text;
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        const trimmed = line.trim();
+        if (!trimmed) continue;
         try {
           const evt = JSON.parse(trimmed);
           const t = (evt && (evt.msg?.type || evt.type)) || "";
@@ -618,8 +1014,16 @@ app.post("/v1/completions", (req, res) => {
               let suffix = delta;
               if (delta.startsWith(emitted)) suffix = delta.slice(emitted.length);
               if (suffix) {
-                sentAny = true; emitted += suffix; completionChars += suffix.length;
-                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: suffix }] });
+                sentAny = true;
+                emitted += suffix;
+                completionChars += suffix.length;
+                sendSSE({
+                  id: `cmpl-${nanoid()}`,
+                  object: "text_completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, text: suffix }],
+                });
               }
             }
           } else if (t === "agent_message") {
@@ -629,56 +1033,131 @@ app.post("/v1/completions", (req, res) => {
               if (message.startsWith(emitted)) suffix = message.slice(emitted.length);
               else if (!sentAny) suffix = message;
               if (suffix) {
-                sentAny = true; emitted += suffix; completionChars += suffix.length;
-                sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: suffix }] });
+                sentAny = true;
+                emitted += suffix;
+                completionChars += suffix.length;
+                sendSSE({
+                  id: `cmpl-${nanoid()}`,
+                  object: "text_completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: requestedModel,
+                  choices: [{ index: 0, text: suffix }],
+                });
               }
             }
           }
         } catch {}
       }
     });
-    child.stderr.on("data", (e) => { resetIdleCompletions(); const s=e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-    child.on("close", (code) => {
+    child.stderr.on("data", (e) => {
+      resetIdleCompletions();
+      const s = e.toString("utf8");
+      err += s;
+      try {
+        console.log("[proxy] child stderr:", s.trim());
+      } catch {}
+    });
+    child.on("close", (_code) => {
       clearTimeout(timeout);
       if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
-        sendSSE({ id: `cmpl-${nanoid()}`, object: "text_completion.chunk", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: content }] });
+        sendSSE({
+          id: `cmpl-${nanoid()}`,
+          object: "text_completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: requestedModel,
+          choices: [{ index: 0, text: content }],
+        });
       }
       const completion_tokens_est = Math.ceil(completionChars / 4);
-      appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: true, prompt_tokens_est: promptTokensEst, completion_tokens_est, total_tokens_est: promptTokensEst + completion_tokens_est, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
+      appendUsage({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        method: "POST",
+        requested_model: requestedModel,
+        effective_model: effectiveModel,
+        stream: true,
+        prompt_tokens_est: promptTokensEst,
+        completion_tokens_est,
+        total_tokens_est: promptTokensEst + completion_tokens_est,
+        duration_ms: Date.now() - started,
+        status: 200,
+        user_agent: req.headers["user-agent"] || "",
+      });
       finishSSE();
     });
     return;
   }
-  
 
   // Non-streaming (proto): accumulate text
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  let bufN = ""; let content = ""; let prompt_tokens = 0; let completion_tokens = 0;
+  let bufN = "";
+  let content = "";
+  let prompt_tokens = 0;
+  let completion_tokens = 0;
   child.stdout.on("data", (d) => {
-    resetIdleCompletions(); const s=d.toString("utf8"); out += s; bufN += s;
-    let idx; while ((idx = bufN.indexOf("\n")) >= 0) {
-      const line = bufN.slice(0, idx); bufN = bufN.slice(idx+1);
-      const t = line.trim(); if (!t) continue;
+    resetIdleCompletions();
+    const s = d.toString("utf8");
+    out += s;
+    bufN += s;
+    let idx;
+    while ((idx = bufN.indexOf("\n")) >= 0) {
+      const line = bufN.slice(0, idx);
+      bufN = bufN.slice(idx + 1);
+      const t = line.trim();
+      if (!t) continue;
       try {
-        const evt = JSON.parse(t); const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        const evt = JSON.parse(t);
+        const tp = (evt && (evt.msg?.type || evt.type)) || "";
         if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
-        else if (tp === "agent_message") content = String((evt.msg?.message ?? evt.message) || content);
-        else if (tp === "token_count") { prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens); completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens); }
+        else if (tp === "agent_message")
+          content = String((evt.msg?.message ?? evt.message) || content);
+        else if (tp === "token_count") {
+          prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens);
+          completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens);
+        }
       } catch {}
     }
   });
-  child.stderr.on("data", (d) => { resetIdleCompletions(); err += d.toString("utf8"); });
+  child.stderr.on("data", (d) => {
+    resetIdleCompletions();
+    err += d.toString("utf8");
+  });
   child.on("close", () => {
-    if (responded) return; responded = true;
+    if (responded) return;
+    responded = true;
     clearTimeout(timeout);
     if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
-    const textOut = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
+    const textOut =
+      content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
     applyCors(null, res);
-    const pt = prompt_tokens || promptTokensEst; const ct = completion_tokens || estTokens(textOut);
-    appendUsage({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", method: "POST", requested_model: requestedModel, effective_model: effectiveModel, stream: false, prompt_tokens_est: pt, completion_tokens_est: ct, total_tokens_est: pt + ct, duration_ms: Date.now()-started, status: 200, user_agent: req.headers["user-agent"] || "" });
-    res.json({ id: `cmpl-${nanoid()}`, object: "text_completion", created: Math.floor(Date.now()/1000), model: requestedModel, choices: [{ index: 0, text: textOut, logprobs: null, finish_reason: "stop" }], usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct } });
+    const pt = prompt_tokens || promptTokensEst;
+    const ct = completion_tokens || estTokens(textOut);
+    appendUsage({
+      ts: Date.now(),
+      req_id: reqId,
+      route: "/v1/chat/completions",
+      method: "POST",
+      requested_model: requestedModel,
+      effective_model: effectiveModel,
+      stream: false,
+      prompt_tokens_est: pt,
+      completion_tokens_est: ct,
+      total_tokens_est: pt + ct,
+      duration_ms: Date.now() - started,
+      status: 200,
+      user_agent: req.headers["user-agent"] || "",
+    });
+    res.json({
+      id: `cmpl-${nanoid()}`,
+      object: "text_completion",
+      created: Math.floor(Date.now() / 1000),
+      model: requestedModel,
+      choices: [{ index: 0, text: textOut, logprobs: null, finish_reason: "stop" }],
+      usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
+    });
   });
 });
 
