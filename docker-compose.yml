@@ -12,7 +12,7 @@ services:
       - PROXY_CODEX_WORKDIR=${PROXY_CODEX_WORKDIR:-/tmp/codex-work}
       # Explicitly unset provider forcing; Codex will auto-select based on auth/config
       - CODEX_FORCE_PROVIDER=
-      - CODEX_HOME=/home/node/.codex
+      - CODEX_HOME=/app/.codev
       # App-level CORS is disabled; edge handles CORS
       - PROXY_ENABLE_CORS=false
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
@@ -21,11 +21,8 @@ services:
       - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
       - PROXY_SSE_KEEPALIVE_MS=${PROXY_SSE_KEEPALIVE_MS:-15000}
       - CODEX_BIN=${CODEX_BIN:-codex}
-    # Mount Codex CLI + credentials from host for in-container use
+    # Optional: mount Codex CLI binary from host
     volumes:
-      # Mount Codex config + state. Must be writable so Codex can record rollouts/sessions.
-      - ~/.codex-api:/home/node/.codex
-      # Codex CLI binary (read-only is fine)
       - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
     networks:
       - traefik
