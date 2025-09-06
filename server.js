@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { stripAnsi, estTokens, estTokensForMessages, joinMessages, parseTime, aggregateUsage, isModelText, impliedEffortForModel, normalizeModel, applyCors as applyCorsUtil } from "./src/utils.js";
+import { stripAnsi, estTokens, estTokensForMessages, joinMessages, parseTime, aggregateUsage, impliedEffortForModel, normalizeModel, applyCors as applyCorsUtil } from "./src/utils.js";
 // Simple CORS without extra dependency
 const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
@@ -42,7 +42,7 @@ const CODEX_BIN = process.env.CODEX_BIN || "codex";
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir?.() || process.env.HOME || "", ".codex-api");
-const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
+// const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
 const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
 const PUBLIC_MODEL_IDS = ["codex-5", ...REASONING_VARIANTS.map(v => `codex-5-${v}`)];
@@ -258,7 +258,7 @@ app.post("/v1/chat/completions", (req, res) => {
   });
   try { child.stdout.setEncoding && child.stdout.setEncoding("utf8"); } catch {}
   try { child.stderr.setEncoding && child.stderr.setEncoding("utf8"); } catch {}
-  const onDone = () => { responded = true; };
+  // onDone was unused; responded is managed inline in handlers
   const onChildError = (e) => {
     try { console.log("[proxy] child error:", e?.message || String(e)); } catch {}
     if (responded) return;
@@ -638,7 +638,7 @@ app.post("/v1/completions", (req, res) => {
       }
     });
     child.stderr.on("data", (e) => { resetIdleCompletions(); const s=e.toString("utf8"); err += s; try { console.log("[proxy] child stderr:", s.trim()); } catch {} });
-    child.on("close", (code) => {
+    child.on("close", (_code) => {
       clearTimeout(timeout);
       if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
       if (!sentAny) {

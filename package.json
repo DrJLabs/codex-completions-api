@@ -17,6 +17,7 @@
     "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --fix",
     "format": "prettier -w .",
     "format:check": "prettier -c .",
+    "prepare": "husky install",
     "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
     "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
     "smoke": "bash scripts/smoke.sh",
@@ -45,9 +46,19 @@
     "eslint-plugin-promise": "^6.5.1",
     "eslint-plugin-security": "^3.0.1",
     "get-port": "^7.0.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
     "node-fetch": "^3.3.2",
     "prettier": "^3.3.3",
     "vitest": "^3.2.4"
+  },
+  "lint-staged": {
+    "**/*.{js,mjs,cjs,ts,tsx,jsx}": [
+      "ESLINT_USE_FLAT_CONFIG=false eslint --fix"
+    ],
+    "**/*.{json,md,yml,yaml}": [
+      "prettier -w"
+    ]
   },
   "engines": {
     "node": ">=18"
