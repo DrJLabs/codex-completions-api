@@ -53,7 +53,8 @@ services:
       - traefik.http.routers.codex-preflight.service=noop@internal
 
       # ForwardAuth middleware (edge bearer auth)
-      - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify
+      # Use service name on the Docker network so containerized Traefik can reach it
+      - traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://auth:8080/verify
       - traefik.http.middlewares.codex-forwardauth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.codex-forwardauth.forwardauth.authRequestHeaders=Authorization
 
