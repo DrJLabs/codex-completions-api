@@ -16,3 +16,8 @@ blob-report/
 !.codev/
 !.codev/**
 !.env.example
+
+# But ignore runtime artifacts under .codev
+.codev/sessions/
+.codev/rollouts/
+.codev/*.log
