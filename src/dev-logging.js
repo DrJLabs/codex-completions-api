@@ -17,25 +17,19 @@ export const LOG_PROTO =
 try {
   fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true });
   fs.mkdirSync(path.dirname(PROTO_LOG_PATH), { recursive: true });
-} catch (e) {
-  if (IS_DEV_ENV) console.error("[dev-logging] failed to ensure log directories:", e);
-}
+} catch {}
 
 export const appendUsage = (obj = {}) => {
   try {
     fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
-  } catch (e) {
-    if (IS_DEV_ENV) console.error("[dev-logging] failed to append usage event:", e);
-  }
+  } catch {}
 };
 
 export const appendProtoEvent = (obj = {}) => {
   if (!LOG_PROTO) return;
   try {
     fs.appendFileSync(PROTO_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
-  } catch (e) {
-    if (IS_DEV_ENV) console.error("[dev-logging] failed to append proto event:", e);
-  }
+  } catch {}
 };
 
 // Lightweight parser for <use_tool ...>...</use_tool> blocks
@@ -45,7 +39,7 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
   let pos = Math.max(0, Number(startAt) || 0);
   const openTag = "<use_tool"; // allow attributes
   const closeTag = "</use_tool>";
-  while (pos < text.length) {
+  while (true) {
     const open = text.indexOf(openTag, pos);
     if (open < 0) break;
     const close = text.indexOf(closeTag, open);
@@ -64,9 +58,7 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
         const mAttr = head.match(/name\s*=\s*"([^"]+)"|name\s*=\s*'([^']+)'/);
         name = (mAttr && (mAttr[1] || mAttr[2])) || "";
       }
-    } catch (e) {
-      if (IS_DEV_ENV) console.error("[dev-logging] error parsing tool name attribute:", e);
-    }
+    } catch {}
     let pathStr = getInner("path");
     let queryStr = getInner("query");
     try {
@@ -82,9 +74,7 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
           }
         }
       }
-    } catch (e) {
-      if (IS_DEV_ENV) console.error("[dev-logging] error parsing tool block content:", e);
-    }
+    } catch {}
     blocks.push({ raw, start: open, end, name, path: pathStr, query: queryStr });
     pos = end;
   }

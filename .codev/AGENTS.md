@@ -22,5 +22,5 @@
   <salientTerms>["term1","term2"]</salientTerms>
   </use_tool>
 - Parameters: Use exact tag names the client expects (`name`, `query`, `chatHistory`, `salientTerms`, `timeRange`, `path`, `content`, `diff`).
-- Multi-tool in one message is allowed, but ensure the first non‑whitespace content is `<use_tool>`. Separate blocks with a blank line. No code fences around the XML.
+- Multi-tool in one message is allowedi , but ensure the first non‑whitespace content is `<use_tool>`. Separate blocks with a blank line. No code fences around the XML.
 - After you receive tool results (as user messages), you may produce more tool calls or provide the final answer. Never place substantial content after tool calls in the same message.
