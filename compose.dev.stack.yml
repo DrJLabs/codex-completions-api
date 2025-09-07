@@ -9,6 +9,8 @@ services:
       - PROXY_ENV=dev
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - CODEX_HOME=/home/node/.codex
+      - PROXY_LOG_PROTO=${PROXY_LOG_PROTO:-true}
+      - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - CODEX_FORCE_PROVIDER=
       - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
