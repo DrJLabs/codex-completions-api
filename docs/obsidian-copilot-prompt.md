@@ -196,7 +196,7 @@ Example usage:
 - John Smith
 - Jane Doe
 - Bob Johnson
-++++++ REPLACE
++++++++ REPLACE
 </diff>
 </use_tool>
 
