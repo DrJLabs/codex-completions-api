@@ -1,7 +1,33 @@
 #!/usr/bin/env sh
 set -eu
 
-# Husky v9+: no `_` shim
-echo "[husky] Running format+lint checks before push..."
-npm run -s format:check || { echo "[husky] Prettier check failed. Run 'npm run format' to fix." >&2; exit 1; }
-npm run -s lint || { echo "[husky] ESLint failed. Run 'npm run lint:fix' to attempt fixes." >&2; exit 1; }
+# Fast gate before CI: formatting + lint
+echo "[husky][pre-push] running format:check and lint"
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[husky][pre-push] npm not found" >&2
+  exit 1
+fi
+
+# 1) Ensure Prettier formatting matches repo rules
+if ! npm run -s format:check; then
+  cat <<'EOF' >&2
+[husky][pre-push] Prettier check failed.
+Run: npm run format
+Then re-stage and push again.
+EOF
+  exit 1
+fi
+
+# 2) Lint JS files (fast)
+if ! npm run -s lint; then
+  cat <<'EOF' >&2
+[husky][pre-push] ESLint failed.
+Run: npm run lint:fix
+Then re-stage and push again.
+EOF
+  exit 1
+fi
+
+echo "[husky][pre-push] ok"
+
