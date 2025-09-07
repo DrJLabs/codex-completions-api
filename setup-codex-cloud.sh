@@ -117,12 +117,14 @@ fi
 
 # Optionally seed Codex HOME with safe dev config so the server can run easily without secrets
 if [ "$SEED_DEV" = true ]; then
-  if [ -f ./.codev/config.toml ]; then
-    cp -n ./.codev/config.toml ./.codex-api/config.toml || true
-  fi
-  if [ -f ./.codev/AGENTS.md ]; then
-    cp -n ./.codev/AGENTS.md ./.codex-api/AGENTS.md || true
-  fi
+  for file in config.toml AGENTS.md; do
+    src_file="./.codev/$file"
+    dest_file="./.codex-api/$file"
+    # Only copy if source exists and destination does not, to avoid `cp -n` portability issues.
+    if [ -f "$src_file" ] && [ ! -e "$dest_file" ]; then
+      cp "$src_file" "$dest_file"
+    fi
+  done
   echo "[setup] Seeded .codex-api with .codev config where missing."
 fi
 
