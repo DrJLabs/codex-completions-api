@@ -12,12 +12,13 @@ cd "$PROJECT_ROOT"
 
 usage() {
   cat <<'USAGE'
-Usage: ./setup-codex-cloud.sh [--verify] [--skip-browsers] [--no-ci]
+Usage: ./setup-codex-cloud.sh [--verify] [--skip-browsers] [--no-ci] [--seed-dev-config]
 
 Options:
   --verify         Run tests after setup (unit → integration → e2e)
   --skip-browsers  Do not install Playwright browsers/OS deps
   --no-ci          Use `npm install` instead of `npm ci`
+  --seed-dev-config  Copy .codev/{config.toml,AGENTS.md} into .codex-api if missing
 
 Environment:
   CI                When set, Playwright uses list reporter (recommended in CI)
@@ -33,6 +34,7 @@ USAGE
 VERIFY=false
 SKIP_BROWSERS=${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-}
 USE_NPM_CI=true
+SEED_DEV=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -40,6 +42,7 @@ for arg in "$@"; do
     --verify) VERIFY=true ;;
     --skip-browsers) SKIP_BROWSERS=1 ;;
     --no-ci) USE_NPM_CI=false ;;
+    --seed-dev-config) SEED_DEV=true ;;
     *) echo "Unknown option: $arg" >&2; usage; exit 2 ;;
   esac
 done
@@ -110,6 +113,17 @@ if [ -w ./.codex-api ]; then
   echo "[setup] ./.codex-api is writable ✅"
 else
   echo "[setup] WARNING: ./.codex-api is not writable; some Codex versions write rollout/session state here." >&2
+fi
+
+# Optionally seed Codex HOME with safe dev config so the server can run easily without secrets
+if [ "$SEED_DEV" = true ]; then
+  if [ -f ./.codev/config.toml ]; then
+    cp -n ./.codev/config.toml ./.codex-api/config.toml || true
+  fi
+  if [ -f ./.codev/AGENTS.md ]; then
+    cp -n ./.codev/AGENTS.md ./.codex-api/AGENTS.md || true
+  fi
+  echo "[setup] Seeded .codex-api with .codev config where missing."
 fi
 
 # 5) Playwright setup (browsers + OS deps when possible)
