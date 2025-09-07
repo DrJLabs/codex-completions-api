@@ -17,19 +17,25 @@ export const LOG_PROTO =
 try {
   fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true });
   fs.mkdirSync(path.dirname(PROTO_LOG_PATH), { recursive: true });
-} catch {}
+} catch (e) {
+  if (IS_DEV_ENV) console.error("[dev-logging] failed to ensure log directories:", e);
+}
 
 export const appendUsage = (obj = {}) => {
   try {
     fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
-  } catch {}
+  } catch (e) {
+    if (IS_DEV_ENV) console.error("[dev-logging] failed to append usage event:", e);
+  }
 };
 
 export const appendProtoEvent = (obj = {}) => {
   if (!LOG_PROTO) return;
   try {
     fs.appendFileSync(PROTO_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
-  } catch {}
+  } catch (e) {
+    if (IS_DEV_ENV) console.error("[dev-logging] failed to append proto event:", e);
+  }
 };
 
 // Lightweight parser for <use_tool ...>...</use_tool> blocks
@@ -58,7 +64,9 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
         const mAttr = head.match(/name\s*=\s*"([^"]+)"|name\s*=\s*'([^']+)'/);
         name = (mAttr && (mAttr[1] || mAttr[2])) || "";
       }
-    } catch {}
+    } catch (e) {
+      if (IS_DEV_ENV) console.error("[dev-logging] error parsing tool name attribute:", e);
+    }
     let pathStr = getInner("path");
     let queryStr = getInner("query");
     try {
@@ -74,7 +82,9 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
           }
         }
       }
-    } catch {}
+    } catch (e) {
+      if (IS_DEV_ENV) console.error("[dev-logging] error parsing tool block content:", e);
+    }
     blocks.push({ raw, start: open, end, name, path: pathStr, query: queryStr });
     pos = end;
   }
