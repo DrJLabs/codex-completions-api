@@ -620,7 +620,13 @@ app.post("/v1/chat/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: suffix } }],
                 });
-                scanAndLogToolBlocks(emitted, toolState, reqId, "/v1/chat/completions", "chat_stream");
+                scanAndLogToolBlocks(
+                  emitted,
+                  toolState,
+                  reqId,
+                  "/v1/chat/completions",
+                  "chat_stream"
+                );
               }
             }
           } else if (t === "agent_message") {
@@ -639,7 +645,13 @@ app.post("/v1/chat/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: suffix } }],
                 });
-                scanAndLogToolBlocks(emitted, toolState, reqId, "/v1/chat/completions", "chat_stream");
+                scanAndLogToolBlocks(
+                  emitted,
+                  toolState,
+                  reqId,
+                  "/v1/chat/completions",
+                  "chat_stream"
+                );
               }
             }
           } else if (t === "token_count") {
@@ -1230,7 +1242,13 @@ app.post("/v1/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
-                scanAndLogToolBlocks(emitted, toolStateC, reqId, "/v1/chat/completions", "completions_stream");
+                scanAndLogToolBlocks(
+                  emitted,
+                  toolStateC,
+                  reqId,
+                  "/v1/chat/completions",
+                  "completions_stream"
+                );
               }
             }
           } else if (t === "agent_message") {
@@ -1250,7 +1268,13 @@ app.post("/v1/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
-                scanAndLogToolBlocks(emitted, toolStateC, reqId, "/v1/chat/completions", "completions_stream");
+                scanAndLogToolBlocks(
+                  emitted,
+                  toolStateC,
+                  reqId,
+                  "/v1/chat/completions",
+                  "completions_stream"
+                );
               }
             }
           }
@@ -1323,10 +1347,7 @@ app.post("/v1/completions", (req, res) => {
           }
         } catch (e) {
           if (IS_DEV_ENV) {
-            console.error(
-              "[dev][response][completions][stream] tool block error:",
-              e
-            );
+            console.error("[dev][response][completions][stream] tool block error:", e);
           }
         }
       }
