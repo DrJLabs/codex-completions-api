@@ -22,7 +22,7 @@ blob-report/
 .codev/sessions/
 .codev/rollouts/
 .codev/*.log
-.codev/proto-events.ndjson
+.codev/*.ndjson
 .codev/auth.json
 
 # Production Codex HOME (contains secrets) — ignore all except safe placeholders
