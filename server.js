@@ -78,6 +78,15 @@ const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
 // Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
 const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+// Opt-in guard: end the stream after tools to avoid confusing clients that expect
+// tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
+// When enabled, mode can be:
+//  - "first": cut immediately after the first complete <use_tool> block
+//  - "burst": cut after a short grace window to allow multiple back-to-back tool blocks
+const STOP_AFTER_TOOLS = (process.env.PROXY_STOP_AFTER_TOOLS || "").toLowerCase() === "true";
+const STOP_AFTER_TOOLS_MODE = (process.env.PROXY_STOP_AFTER_TOOLS_MODE || "burst").toLowerCase();
+const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
+const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -551,8 +560,11 @@ app.post("/v1/chat/completions", (req, res) => {
     let buf = "";
     let sentAny = false;
     let emitted = "";
+    let stoppedAfterTools = false; // if STOP_AFTER_TOOLS is on, we may cut stream early
     // Dev-only: track tool blocks as they appear in streamed content
     const toolState = { pos: 0, idx: 0 };
+    let lastToolIdx = 0;
+    let cutTimer = null;
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
@@ -627,6 +639,50 @@ app.post("/v1/chat/completions", (req, res) => {
                   "/v1/chat/completions",
                   "chat_stream"
                 );
+                // Optional early-cut behavior to avoid post-tool narration confusing clients.
+                if (STOP_AFTER_TOOLS && !stoppedAfterTools) {
+                  const blocksSeen = Number(toolState.idx || 0);
+                  const newBlocks = blocksSeen - lastToolIdx;
+                  if (newBlocks > 0) {
+                    lastToolIdx = blocksSeen;
+                    const cutNow = () => {
+                      if (stoppedAfterTools) return;
+                      stoppedAfterTools = true;
+                      try {
+                        if (LOG_PROTO) {
+                          appendProtoEvent({
+                            ts: Date.now(),
+                            req_id: reqId,
+                            route: "/v1/chat/completions",
+                            mode: "chat_stream",
+                            kind: "stream_cut_after_tool",
+                            tool_blocks_seen: blocksSeen,
+                            cut_mode: STOP_AFTER_TOOLS_MODE,
+                            grace_ms: STOP_AFTER_TOOLS_GRACE_MS,
+                          });
+                        }
+                      } catch {}
+                      try {
+                        finishSSE();
+                      } catch {}
+                      try {
+                        child.kill("SIGTERM");
+                      } catch {}
+                    };
+                    // Respect max blocks guard (0 = unlimited)
+                    if (STOP_AFTER_TOOLS_MAX > 0 && blocksSeen >= STOP_AFTER_TOOLS_MAX) {
+                      cutNow();
+                      return;
+                    }
+                    if (STOP_AFTER_TOOLS_MODE === "first") {
+                      cutNow();
+                      return;
+                    }
+                    // burst mode (default): wait for a short grace period and reset if more blocks arrive
+                    try { if (cutTimer) clearTimeout(cutTimer); } catch {}
+                    cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+                  }
+                }
               }
             }
           } else if (t === "agent_message") {
@@ -741,6 +797,11 @@ app.post("/v1/chat/completions", (req, res) => {
       child.stdin.write(JSON.stringify(submission) + "\n");
     } catch {}
     child.on("close", () => {
+      // If we already cut the stream after tools, avoid double-ending SSE here
+      if (stoppedAfterTools) {
+        try { if (cutTimer) clearTimeout(cutTimer); } catch {}
+        return;
+      }
       if (keepalive) clearInterval(keepalive);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";

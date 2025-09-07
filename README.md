@@ -170,6 +170,21 @@ Request Flow (Auth, Routers, SSE):
 - Client Tool Integration Findings (root cause + plan): `docs/client-tool-integration-findings.md`
 - Obsidian Copilot Tool Parsing (how the client runs tools): `docs/obsidian-copilot-tool-parsing.md`
 
+### Streaming guards for tool-heavy clients
+
+For clients that expect the assistant to stop immediately after emitting `<use_tool>` blocks (e.g., Obsidian Copilot), you can opt-in to cutting the stream after tools:
+
+Environment variables:
+
+- `PROXY_STOP_AFTER_TOOLS=true` — enable early-cut behavior.
+- `PROXY_STOP_AFTER_TOOLS_MODE=burst|first` —
+  - `burst` (default): allow multiple back-to-back tool blocks to arrive within a short grace window, then cut.
+  - `first`: cut immediately after the first complete tool block.
+- `PROXY_STOP_AFTER_TOOLS_GRACE_MS=300` — grace window for `burst` mode.
+- `PROXY_TOOL_BLOCK_MAX=0` — optional cap on tool blocks before cutting (0 = unlimited).
+
+This only ends the assistant’s SSE; client-side tools still run as usual.
+
 ## Quick start
 
 - Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
