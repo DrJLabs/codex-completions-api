@@ -255,6 +255,16 @@ Notes
 - Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
 - Tests use a deterministic proto shim and do not require a real Codex binary.
 
+### Environment variables (Codex Cloud)
+
+These are optional for CI/Codex Cloud. The default test configs work without secrets.
+
+- PROXY_API_KEY: Only needed when you run the server yourself or for live tests; not required for unit/integration/local E2E.
+- LIVE_BASE_URL: Override base URL for `npm run test:live` (default `http://127.0.0.1:11435`).
+- KEY: Alternative to `PROXY_API_KEY` for `test:live` bearer.
+- PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: Set to `1` to skip downloading browsers if preinstalled.
+- HTTP_PROXY / HTTPS_PROXY: Use standard proxy env vars if your environment requires outbound proxying. The setup script normalizes legacy npm proxy keys to avoid warnings.
+
 ### Which tests to run when
 
 - Changed `src/utils.js` only → run unit: `npm run test:unit`.
