@@ -345,7 +345,14 @@ app.post("/v1/chat/completions", (req, res) => {
     try {
       console.log("[dev][prompt][chat] messages=", JSON.stringify(messages));
       console.log("[dev][prompt][chat] joined=\n" + prompt);
-      appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat", kind: "submission", payload: { messages, joined: prompt } });
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "chat",
+        kind: "submission",
+        payload: { messages, joined: prompt },
+      });
     } catch {}
   }
 
@@ -542,7 +549,14 @@ app.post("/v1/chat/completions", (req, res) => {
       buf += s;
       if (LOG_PROTO) {
         // Raw line capture for correlation if JSON parsing ever fails upstream
-        appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat_stream", kind: "stdout", chunk: s });
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_stream",
+          kind: "stdout",
+          chunk: s,
+        });
       }
       let idx;
       while ((idx = buf.indexOf("\n")) >= 0) {
@@ -553,7 +567,14 @@ app.post("/v1/chat/completions", (req, res) => {
         try {
           const evt = JSON.parse(trimmed);
           const t = (evt && (evt.msg?.type || evt.type)) || "";
-          appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat_stream", kind: "event", event: evt });
+          appendProtoEvent({
+            ts: Date.now(),
+            req_id: reqId,
+            route: "/v1/chat/completions",
+            mode: "chat_stream",
+            kind: "event",
+            event: evt,
+          });
           if (t === "session_configured" || t === "task_started" || t === "agent_reasoning_delta") {
             continue;
           }
@@ -703,7 +724,15 @@ app.post("/v1/chat/completions", (req, res) => {
     });
     child.stderr.on("data", (e) => {
       resetStreamIdle();
-      if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat_stream", kind: "stderr", chunk: e.toString("utf8") });
+      if (LOG_PROTO)
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_stream",
+          kind: "stderr",
+          chunk: e.toString("utf8"),
+        });
     });
     // Write submission after listeners are attached
     try {
@@ -775,7 +804,15 @@ app.post("/v1/chat/completions", (req, res) => {
     const s = typeof d === "string" ? d : d.toString("utf8");
     out += s;
     buf2 += s;
-    if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat_nonstream", kind: "stdout", chunk: s });
+    if (LOG_PROTO)
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "chat_nonstream",
+        kind: "stdout",
+        chunk: s,
+      });
     let idx;
     while ((idx = buf2.indexOf("\n")) >= 0) {
       const line = buf2.slice(0, idx);
@@ -785,7 +822,14 @@ app.post("/v1/chat/completions", (req, res) => {
       try {
         const evt = JSON.parse(t);
         const tp = (evt && (evt.msg?.type || evt.type)) || "";
-        appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "chat_nonstream", kind: "event", event: evt });
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_nonstream",
+          kind: "event",
+          event: evt,
+        });
         if (DEBUG_PROTO)
           try {
             console.log("[proto] evt:", tp);
@@ -950,7 +994,14 @@ app.post("/v1/completions", (req, res) => {
   if (IS_DEV_ENV) {
     try {
       console.log("[dev][prompt][completions] prompt=\n" + prompt);
-      appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions", kind: "submission", payload: { prompt } });
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "completions",
+        kind: "submission",
+        payload: { prompt },
+      });
     } catch {}
   }
   if (!prompt) {
@@ -1151,7 +1202,15 @@ app.post("/v1/completions", (req, res) => {
       const text = chunk.toString("utf8");
       out += text;
       buf += text;
-      if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_stream", kind: "stdout", chunk: text });
+      if (LOG_PROTO)
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "completions_stream",
+          kind: "stdout",
+          chunk: text,
+        });
       let idx;
       while ((idx = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, idx);
@@ -1161,7 +1220,14 @@ app.post("/v1/completions", (req, res) => {
         try {
           const evt = JSON.parse(trimmed);
           const t = (evt && (evt.msg?.type || evt.type)) || "";
-          appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_stream", kind: "event", event: evt });
+          appendProtoEvent({
+            ts: Date.now(),
+            req_id: reqId,
+            route: "/v1/chat/completions",
+            mode: "completions_stream",
+            kind: "event",
+            event: evt,
+          });
           if (t === "agent_message_delta") {
             const delta = String((evt.msg?.delta ?? evt.delta) || "");
             if (delta) {
@@ -1257,7 +1323,15 @@ app.post("/v1/completions", (req, res) => {
       try {
         console.log("[proxy] child stderr:", s.trim());
       } catch {}
-      if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_stream", kind: "stderr", chunk: s });
+      if (LOG_PROTO)
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "completions_stream",
+          kind: "stderr",
+          chunk: s,
+        });
     });
     child.on("close", (_code) => {
       clearTimeout(timeout);
@@ -1335,7 +1409,15 @@ app.post("/v1/completions", (req, res) => {
     const s = d.toString("utf8");
     out += s;
     bufN += s;
-    if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_nonstream", kind: "stdout", chunk: s });
+    if (LOG_PROTO)
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "completions_nonstream",
+        kind: "stdout",
+        chunk: s,
+      });
     let idx;
     while ((idx = bufN.indexOf("\n")) >= 0) {
       const line = bufN.slice(0, idx);
@@ -1345,7 +1427,14 @@ app.post("/v1/completions", (req, res) => {
       try {
         const evt = JSON.parse(t);
         const tp = (evt && (evt.msg?.type || evt.type)) || "";
-        appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_nonstream", kind: "event", event: evt });
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "completions_nonstream",
+          kind: "event",
+          event: evt,
+        });
         if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
         else if (tp === "agent_message")
           content = String((evt.msg?.message ?? evt.message) || content);
@@ -1359,7 +1448,15 @@ app.post("/v1/completions", (req, res) => {
   child.stderr.on("data", (d) => {
     resetIdleCompletions();
     err += d.toString("utf8");
-    if (LOG_PROTO) appendProtoEvent({ ts: Date.now(), req_id: reqId, route: "/v1/chat/completions", mode: "completions_nonstream", kind: "stderr", chunk: d.toString("utf8") });
+    if (LOG_PROTO)
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "completions_nonstream",
+        kind: "stderr",
+        chunk: d.toString("utf8"),
+      });
   });
   child.on("close", () => {
     if (responded) return;
