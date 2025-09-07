@@ -64,7 +64,38 @@ fi
 echo "[setup] Node: $(node -v)"
 echo "[setup] npm:  $(npm -v)"
 
-# 2) Install npm deps
+# 2) Sanitize npm proxy config (project-scoped, no secrets)
+# - Some environments inject legacy/misnamed keys like `http-proxy` which npm warns about.
+# - We map any `http-proxy` value to `proxy` and then delete `http-proxy` at project scope.
+# - We also neutralize accidental env-based overrides like `npm_config_http_proxy` without
+#   touching standard `HTTP_PROXY`/`HTTPS_PROXY` that users may rely on.
+{
+  # Capture value if set; avoid printing secrets
+  set +e
+  HPV=$(npm config get http-proxy 2>/dev/null || true)
+  set -e
+  # npm may coerce valueless env to 'true'; treat that as invalid
+  if [ -n "${HPV:-}" ] && [ "${HPV}" != "null" ] && [ "${HPV}" != "undefined" ] && [ "${HPV}" != "true" ]; then
+    echo "[setup] Detected legacy npm 'http-proxy' config (project). Migrating to 'proxy'."
+    npm config set proxy "$HPV" --location=project || true
+    npm config delete http-proxy --location=project || true
+  else
+    # Ensure no stray project-level http-proxy remains
+    npm config delete http-proxy --location=project >/dev/null 2>&1 || true
+  fi
+  # Misnamed env mapping can sneak in as lowercase underscore vars; clear only npm-scoped ones
+  if env | grep -qi '^npm_config_http-proxy='; then
+    # shellcheck disable=SC2016
+    echo "[setup] WARNING: Found invalid env 'npm_config_http-proxy'; unsetting for this process."
+    unset npm_config_http-proxy || true
+  fi
+  if env | grep -qi '^npm_config_http_proxy=true$'; then
+    echo "[setup] NOTE: Clearing valueless npm_config_http_proxy=true to avoid warnings."
+    unset npm_config_http_proxy || true
+  fi
+}
+
+# 3) Install npm deps
 if [ -f package-lock.json ] && [ "$USE_NPM_CI" = true ]; then
   echo "[setup] Installing dependencies via npm ci…"
   npm ci || { echo "[setup] npm ci failed; trying npm install…"; npm install; }
@@ -73,7 +104,7 @@ else
   npm install
 fi
 
-# 3) Prepare writable Codex homes used by server/test harness
+# 4) Prepare writable Codex homes used by server/test harness
 mkdir -p ./.codex-api ./.codev
 if [ -w ./.codex-api ]; then
   echo "[setup] ./.codex-api is writable ✅"
@@ -81,7 +112,7 @@ else
   echo "[setup] WARNING: ./.codex-api is not writable; some Codex versions write rollout/session state here." >&2
 fi
 
-# 4) Playwright setup (browsers + OS deps when possible)
+# 5) Playwright setup (browsers + OS deps when possible)
 if [ -n "$SKIP_BROWSERS" ]; then
   echo "[setup] Skipping Playwright browser install (requested)."
 else
@@ -97,7 +128,7 @@ else
   fi
 fi
 
-# 5) Optional verification run
+# 6) Optional verification run
 if [ "$VERIFY" = true ]; then
   echo "[setup] Running tests: unit → integration → e2e…"
   # Use deterministic Playwright reporter when CI is set by caller
@@ -122,4 +153,3 @@ NEXT
 fi
 
 exit 0
-
