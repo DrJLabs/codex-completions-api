@@ -164,7 +164,9 @@ const scanAndLogToolBlocks = (emitted, state, reqId, route, mode) => {
       }
       state.pos = nextPos;
     }
-  } catch {}
+  } catch (e) {
+    if (IS_DEV_ENV) console.error("[dev][scanAndLogToolBlocks] error:", e);
+  }
 };
 
 // Normalize/alias model names. Accepts custom prefixes like "codex/<model>".
@@ -374,7 +376,9 @@ app.post("/v1/chat/completions", (req, res) => {
         kind: "submission",
         payload: { messages, joined: prompt },
       });
-    } catch {}
+    } catch (e) {
+      console.error("[dev][prompt][chat] error:", e);
+    }
   }
 
   try {
@@ -656,7 +660,9 @@ app.post("/v1/chat/completions", (req, res) => {
               if (IS_DEV_ENV) {
                 try {
                   console.log("[dev][response][chat][stream] content=\n" + emitted);
-                } catch {}
+                } catch (e) {
+                  console.error("[dev][response][chat][stream] error:", e);
+                }
               }
               appendUsage({
                 ts: Date.now(),
@@ -674,7 +680,10 @@ app.post("/v1/chat/completions", (req, res) => {
                 status: 200,
                 user_agent: req.headers["user-agent"] || "",
               });
-            } catch {}
+            } catch (e) {
+              if (IS_DEV_ENV)
+                console.error("[dev][response][chat][stream] usage error:", e);
+            }
             try {
               finishSSE();
             } catch {}
@@ -730,7 +739,9 @@ app.post("/v1/chat/completions", (req, res) => {
         if (IS_DEV_ENV) {
           try {
             console.log("[dev][response][chat][stream] content=\n" + content);
-          } catch {}
+          } catch (e) {
+            console.error("[dev][response][chat][stream] error:", e);
+          }
         }
       }
       finishSSE(); // always end with [DONE]
@@ -907,7 +918,9 @@ app.post("/v1/chat/completions", (req, res) => {
     if (IS_DEV_ENV) {
       try {
         console.log("[dev][response][chat][nonstream] content=\n" + final);
-      } catch {}
+      } catch (e) {
+        console.error("[dev][response][chat][nonstream] error:", e);
+      }
     }
     res.json({
       id: `chatcmpl-${nanoid()}`,
@@ -971,7 +984,9 @@ app.post("/v1/completions", (req, res) => {
         kind: "submission",
         payload: { prompt },
       });
-    } catch {}
+    } catch (e) {
+      console.error("[dev][prompt][completions] error:", e);
+    }
   }
   if (!prompt) {
     applyCors(null, res);
@@ -1271,13 +1286,17 @@ app.post("/v1/completions", (req, res) => {
         if (IS_DEV_ENV) {
           try {
             console.log("[dev][response][completions][stream] content=\n" + content);
-          } catch {}
+          } catch (e) {
+            console.error("[dev][response][completions][stream] error:", e);
+          }
         }
       }
-      if (IS_DEV_ENV) {
+      if (IS_DEV_ENV && sentAny) {
         try {
           console.log("[dev][response][completions][stream] content=\n" + emitted);
-        } catch {}
+        } catch (e) {
+          console.error("[dev][response][completions][stream] error:", e);
+        }
       }
       const completion_tokens_est = Math.ceil(completionChars / 4);
       // Dev-only: emit any remaining tool blocks parsed from full emitted text
@@ -1299,7 +1318,13 @@ app.post("/v1/completions", (req, res) => {
               query: b.query,
             });
           }
-        } catch {}
+        } catch (e) {
+          if (IS_DEV_ENV)
+            console.error(
+              "[dev][response][completions][stream] tool block error:",
+              e
+            );
+        }
       }
       appendUsage({
         ts: Date.now(),
