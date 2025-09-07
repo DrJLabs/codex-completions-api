@@ -16,8 +16,8 @@ services:
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
       - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
       - PROXY_SSE_KEEPALIVE_MS=${PROXY_SSE_KEEPALIVE_MS:-15000}
-      # Default to proto shim for easy local testing; override with env CODEX_BIN=codex when using real CLI
-      - CODEX_BIN=${CODEX_BIN:-/app/scripts/fake-codex-proto.js}
+      # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
+      - CODEX_BIN=${CODEX_BIN:-codex}
     ports:
       - 127.0.0.1:${DEV_PORT:-18010}:11435
     volumes:
