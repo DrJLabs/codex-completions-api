@@ -22,6 +22,7 @@ blob-report/
 .codev/sessions/
 .codev/rollouts/
 .codev/*.log
+.codev/auth.json
 
 # Production Codex HOME (contains secrets) — ignore all except safe placeholders
 .codex-api/*
