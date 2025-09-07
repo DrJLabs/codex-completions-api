@@ -53,7 +53,35 @@ Codex HOME (production):
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
-- Dev stack: `npm run dev:stack:up` (port 18010 by default). Set `CODEX_BIN=codex` to use your host Codex CLI.
+- Dev stack: `npm run dev:stack:up` (port 18010 by default). By default the dev stack uses the real Codex CLI (`CODEX_BIN=codex`), mounting `~/.cargo/bin/codex` from the host. To use the lightweight proto shim instead, set `CODEX_BIN=/app/scripts/fake-codex-proto.js` in `.env.dev` and re‑up the stack.
+
+#### Model IDs and client compatibility
+
+- Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`.
+- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`.
+- The server accepts both prefixes everywhere, but many SDKs/tools validate against `GET /v1/models` and will reject an ID that isn’t advertised by that environment. Use the environment‑appropriate prefix, or specify `model: "gpt-5"` and set `reasoning.effort`.
+
+Examples
+
+```bash
+# Prod (non-stream)
+curl -s https://codex-api.onemainarmy.com/v1/chat/completions \
+  -H "Authorization: Bearer $PROD_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"codex-5-low","stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
+
+# Dev (non-stream)
+curl -s https://codex-dev.onemainarmy.com/v1/chat/completions \
+  -H "Authorization: Bearer $DEV_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"codev-5-low","stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
+
+# Prefix-agnostic alternative (works in both)
+# Let the proxy map to gpt-5 + reasoning effort
+curl -s https://$BASE/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-5","reasoning":{"effort":"low"},"stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
+```
+
+Note: `GET /v1/models` is unauthenticated in both envs for discovery unless `PROXY_PROTECT_MODELS=true`.
 
 Dev parity stack (public behind Traefik):
 
@@ -63,7 +91,7 @@ Dev parity stack (public behind Traefik):
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
   - If local port 18010 is in use, override:
     - `DEV_PORT=19010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
-  - Use your host Codex CLI by setting `CODEX_BIN=codex` (requires `~/.cargo/bin/codex`)
+  - Uses the host Codex CLI by default (`CODEX_BIN=codex`, requires `~/.cargo/bin/codex`)
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
@@ -224,7 +252,7 @@ Environment variables:
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (default: `incremental`) — proto‑based streaming emits deltas when available or an aggregated message; this knob is kept for compatibility.
-- `CODEX_BIN` (default: `codex`)
+- `CODEX_BIN` (default: `codex`) — set to `/app/scripts/fake-codex-proto.js` for the proto shim in dev.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
