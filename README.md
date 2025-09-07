@@ -74,8 +74,8 @@ curl -s https://codex-dev.onemainarmy.com/v1/chat/completions \
   -H "Authorization: Bearer $DEV_KEY" -H 'Content-Type: application/json' \
   -d '{"model":"codev-5-low","stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
 
-# Prefix-agnostic alternative (works in both)
-# Let the proxy map to gpt-5 + reasoning effort
+# Prefix-agnostic alternative (works in both, set BASE and KEY first)
+# e.g. BASE=codex-dev.onemainarmy.com KEY=$DEV_KEY
 curl -s https://$BASE/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5","reasoning":{"effort":"low"},"stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
