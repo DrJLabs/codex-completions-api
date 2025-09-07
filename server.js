@@ -165,7 +165,9 @@ const scanAndLogToolBlocks = (emitted, state, reqId, route, mode) => {
       state.pos = nextPos;
     }
   } catch (e) {
-    if (IS_DEV_ENV) console.error("[dev][scanAndLogToolBlocks] error:", e);
+    if (IS_DEV_ENV) {
+      console.error("[dev][scanAndLogToolBlocks] error:", e);
+    }
   }
 };
 
@@ -681,8 +683,9 @@ app.post("/v1/chat/completions", (req, res) => {
                 user_agent: req.headers["user-agent"] || "",
               });
             } catch (e) {
-              if (IS_DEV_ENV)
+              if (IS_DEV_ENV) {
                 console.error("[dev][response][chat][stream] usage error:", e);
+              }
             }
             try {
               finishSSE();
@@ -1319,11 +1322,12 @@ app.post("/v1/completions", (req, res) => {
             });
           }
         } catch (e) {
-          if (IS_DEV_ENV)
+          if (IS_DEV_ENV) {
             console.error(
               "[dev][response][completions][stream] tool block error:",
               e
             );
+          }
         }
       }
       appendUsage({
