@@ -13,7 +13,9 @@ blob-report/
 .bmad-core/
 .bmad-*/
 
-# Re-include tracked dev config and examples
+# Dev Codex HOME (.codev): track templates, ignore runtime artifacts below
+# We re-include .codev so its example config is versioned, then selectively ignore
+# transient files created during local runs.
 !.codev/
 !.codev/**
 !.env.example
@@ -25,7 +27,8 @@ blob-report/
 .codev/*.ndjson
 .codev/auth.json
 
-# Production Codex HOME (contains secrets) — ignore all except safe placeholders
+# Production Codex HOME (.codex-api): contains secrets at runtime
+# Ignore everything except placeholders so the path exists after checkout.
 .codex-api/*
 !.codex-api/.gitkeep
 !.codex-api/README.md
