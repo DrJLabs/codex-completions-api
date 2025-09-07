@@ -39,7 +39,7 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
   let pos = Math.max(0, Number(startAt) || 0);
   const openTag = "<use_tool"; // allow attributes
   const closeTag = "</use_tool>";
-  while (true) {
+  while (pos < text.length) {
     const open = text.indexOf(openTag, pos);
     if (open < 0) break;
     const close = text.indexOf(closeTag, open);
