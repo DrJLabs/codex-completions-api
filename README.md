@@ -163,6 +163,13 @@ Request Flow (Auth, Routers, SSE):
 
 ![Request Flow](docs/request-flow.png)
 
+### Prompt & Tooling References
+
+- Obsidian Copilot System Prompt (captured): `docs/obsidian-copilot-prompt.md`
+- Codex CLI System Prompt & Tools: `docs/codex-cli-prompt-and-tools.md`
+- Client Tool Integration Findings (root cause + plan): `docs/client-tool-integration-findings.md`
+- Obsidian Copilot Tool Parsing (how the client runs tools): `docs/obsidian-copilot-tool-parsing.md`
+
 ## Quick start
 
 - Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
