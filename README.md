@@ -239,6 +239,22 @@ Suggested dev loop
 - Changing route logic or request/response shapes? Run `npm run test:integration` frequently.
 - Touching streaming behavior? Validate with `npm test` (Playwright SSE) or the curl snippet in “Manual checks (SSE)”.
 
+## Codex Cloud Setup
+
+To prepare a fresh Codex Cloud (or any CI) environment with everything required to run this repo’s tests locally:
+
+```bash
+./setup-codex-cloud.sh           # installs deps, Playwright, prepares writable dirs
+./setup-codex-cloud.sh --verify  # does the above and runs unit→integration→e2e
+```
+
+Notes
+
+- Requires Node ≥ 18 and npm; does not touch your `.env` or secrets.
+- Ensures `.codex-api/` and `.codev/` exist and are writable.
+- Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
+- Tests use a deterministic proto shim and do not require a real Codex binary.
+
 ### Which tests to run when
 
 - Changed `src/utils.js` only → run unit: `npm run test:unit`.
