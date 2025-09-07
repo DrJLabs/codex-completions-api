@@ -141,6 +141,32 @@ app.get("/v1/usage/raw", (req, res) => {
   res.json({ count: Math.min(limit, events.length), events: events.slice(-limit) });
 });
 
+// Helper: scan emitted text for completed <use_tool> blocks and log them
+const scanAndLogToolBlocks = (emitted, state, reqId, route, mode) => {
+  if (!LOG_PROTO) return;
+  try {
+    const { blocks, nextPos } = extractUseToolBlocks(emitted, state.pos);
+    if (blocks && blocks.length) {
+      for (const b of blocks) {
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route,
+          mode,
+          kind: "tool_block",
+          idx: ++state.idx,
+          char_start: b.start,
+          char_end: b.end,
+          tool: b.name,
+          path: b.path,
+          query: b.query,
+        });
+      }
+      state.pos = nextPos;
+    }
+  } catch {}
+};
+
 // Normalize/alias model names. Accepts custom prefixes like "codex/<model>".
 // normalizeModel / impliedEffortForModel available from utils
 
@@ -249,11 +275,6 @@ app.post("/v1/chat/completions", (req, res) => {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
-    if (IS_DEV_ENV) {
-      try {
-        console.log("[dev][response][completions][nonstream] content=\n" + textOut);
-      } catch {}
-    }
     applyCors(null, res);
     return res
       .status(401)
@@ -525,8 +546,7 @@ app.post("/v1/chat/completions", (req, res) => {
     let sentAny = false;
     let emitted = "";
     // Dev-only: track tool blocks as they appear in streamed content
-    let toolScanPos = 0;
-    let toolIdx = 0;
+    const toolState = { pos: 0, idx: 0 };
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
@@ -594,30 +614,7 @@ app.post("/v1/chat/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: suffix } }],
                 });
-                // DEV LOGGING: scan emitted content for completed <use_tool> blocks
-                if (LOG_PROTO) {
-                  try {
-                    const { blocks, nextPos } = extractUseToolBlocks(emitted, toolScanPos);
-                    if (blocks && blocks.length) {
-                      for (const b of blocks) {
-                        appendProtoEvent({
-                          ts: Date.now(),
-                          req_id: reqId,
-                          route: "/v1/chat/completions",
-                          mode: "chat_stream",
-                          kind: "tool_block",
-                          idx: ++toolIdx,
-                          char_start: b.start,
-                          char_end: b.end,
-                          tool: b.name,
-                          path: b.path,
-                          query: b.query,
-                        });
-                      }
-                      toolScanPos = nextPos;
-                    }
-                  } catch {}
-                }
+                scanAndLogToolBlocks(emitted, toolState, reqId, "/v1/chat/completions", "chat_stream");
               }
             }
           } else if (t === "agent_message") {
@@ -636,30 +633,7 @@ app.post("/v1/chat/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: suffix } }],
                 });
-                // DEV LOGGING: scan emitted content for completed <use_tool> blocks
-                if (LOG_PROTO) {
-                  try {
-                    const { blocks, nextPos } = extractUseToolBlocks(emitted, toolScanPos);
-                    if (blocks && blocks.length) {
-                      for (const b of blocks) {
-                        appendProtoEvent({
-                          ts: Date.now(),
-                          req_id: reqId,
-                          route: "/v1/chat/completions",
-                          mode: "chat_stream",
-                          kind: "tool_block",
-                          idx: ++toolIdx,
-                          char_start: b.start,
-                          char_end: b.end,
-                          tool: b.name,
-                          path: b.path,
-                          query: b.query,
-                        });
-                      }
-                      toolScanPos = nextPos;
-                    }
-                  } catch {}
-                }
+                scanAndLogToolBlocks(emitted, toolState, reqId, "/v1/chat/completions", "chat_stream");
               }
             }
           } else if (t === "token_count") {
@@ -870,11 +844,6 @@ app.post("/v1/chat/completions", (req, res) => {
                     query: b.query,
                   });
                 }
-              } catch {}
-            }
-            if (IS_DEV_ENV) {
-              try {
-                console.log("[dev][response][chat][nonstream] content=\n" + final);
               } catch {}
             }
             res.json({
@@ -1195,8 +1164,7 @@ app.post("/v1/completions", (req, res) => {
     let completionChars = 0;
     let emitted = "";
     // Dev-only: track tool blocks in completions streaming content
-    let toolScanPosC = 0;
-    let toolIdxC = 0;
+    const toolStateC = { pos: 0, idx: 0 };
     child.stdout.on("data", (chunk) => {
       resetIdleCompletions();
       const text = chunk.toString("utf8");
@@ -1244,30 +1212,7 @@ app.post("/v1/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
-                // DEV LOGGING: scan emitted text for new <use_tool> blocks as they complete
-                if (LOG_PROTO) {
-                  try {
-                    const { blocks, nextPos } = extractUseToolBlocks(emitted, toolScanPosC);
-                    if (blocks && blocks.length) {
-                      for (const b of blocks) {
-                        appendProtoEvent({
-                          ts: Date.now(),
-                          req_id: reqId,
-                          route: "/v1/chat/completions",
-                          mode: "completions_stream",
-                          kind: "tool_block",
-                          idx: ++toolIdxC,
-                          char_start: b.start,
-                          char_end: b.end,
-                          tool: b.name,
-                          path: b.path,
-                          query: b.query,
-                        });
-                      }
-                      toolScanPosC = nextPos;
-                    }
-                  } catch {}
-                }
+                scanAndLogToolBlocks(emitted, toolStateC, reqId, "/v1/chat/completions", "completions_stream");
               }
             }
           } else if (t === "agent_message") {
@@ -1287,29 +1232,7 @@ app.post("/v1/completions", (req, res) => {
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
-                if (LOG_PROTO) {
-                  try {
-                    const { blocks, nextPos } = extractUseToolBlocks(emitted, toolScanPosC);
-                    if (blocks && blocks.length) {
-                      for (const b of blocks) {
-                        appendProtoEvent({
-                          ts: Date.now(),
-                          req_id: reqId,
-                          route: "/v1/chat/completions",
-                          mode: "completions_stream",
-                          kind: "tool_block",
-                          idx: ++toolIdxC,
-                          char_start: b.start,
-                          char_end: b.end,
-                          tool: b.name,
-                          path: b.path,
-                          query: b.query,
-                        });
-                      }
-                      toolScanPosC = nextPos;
-                    }
-                  } catch {}
-                }
+                scanAndLogToolBlocks(emitted, toolStateC, reqId, "/v1/chat/completions", "completions_stream");
               }
             }
           }
@@ -1360,7 +1283,7 @@ app.post("/v1/completions", (req, res) => {
       // Dev-only: emit any remaining tool blocks parsed from full emitted text
       if (LOG_PROTO) {
         try {
-          const { blocks } = extractUseToolBlocks(emitted, toolScanPosC);
+          const { blocks } = extractUseToolBlocks(emitted, toolStateC.pos);
           for (const b of blocks || []) {
             appendProtoEvent({
               ts: Date.now(),
@@ -1368,7 +1291,7 @@ app.post("/v1/completions", (req, res) => {
               route: "/v1/chat/completions",
               mode: "completions_stream",
               kind: "tool_block",
-              idx: ++toolIdxC,
+              idx: ++toolStateC.idx,
               char_start: b.start,
               char_end: b.end,
               tool: b.name,
