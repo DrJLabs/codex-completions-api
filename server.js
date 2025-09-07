@@ -663,6 +663,9 @@ app.post("/v1/chat/completions", (req, res) => {
                         }
                       } catch {}
                       try {
+                        if (keepalive) clearInterval(keepalive);
+                      } catch {}
+                      try {
                         finishSSE();
                       } catch {}
                       try {
