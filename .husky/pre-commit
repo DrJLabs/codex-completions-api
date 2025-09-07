@@ -1,5 +1,9 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+set -eu
 
-# Run lint-staged for changed files
+# Husky v9+: don't source _/husky.sh (deprecated; removed in v10)
+# Run lint-staged on staged files
+command -v npx >/dev/null 2>&1 || {
+  echo "[husky] npx not found; install Node/npm first" >&2; exit 1;
+}
 npx --no-install lint-staged
