@@ -583,10 +583,7 @@ app.post("/v1/chat/completions", (req, res) => {
       clearKeepalive();
       responseWritable = false;
       try {
-        if (typeof resetStreamIdle === "function") {
-          // resetStreamIdle returns a function creator; clear inner timeout if present
-          // Best effort: a separate timer variable guards inside closure
-        }
+        if (streamIdleTimer) clearTimeout(streamIdleTimer);
       } catch {}
       try {
         clearTimeout(timeout);
@@ -622,17 +619,16 @@ app.post("/v1/chat/completions", (req, res) => {
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
-    const resetStreamIdle = (() => {
-      let t;
-      return () => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => {
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-        }, STREAM_IDLE_TIMEOUT_MS);
-      };
-    })();
+    // Stream idle guard: expose timer so cleanupStream can clear it
+    let streamIdleTimer;
+    const resetStreamIdle = () => {
+      if (streamIdleTimer) clearTimeout(streamIdleTimer);
+      streamIdleTimer = setTimeout(() => {
+        try {
+          child.kill("SIGTERM");
+        } catch {}
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
       resetStreamIdle();
@@ -1523,6 +1519,9 @@ app.post("/v1/completions", (req, res) => {
       if (streamClosed) return;
       streamClosed = true;
       clearKeepalive();
+      try {
+        if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+      } catch {}
       try {
         clearTimeout(timeout);
       } catch {}
