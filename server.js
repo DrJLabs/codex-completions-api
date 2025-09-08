@@ -695,8 +695,10 @@ app.post("/v1/chat/completions", (req, res) => {
                       }
                     }
                   } catch {}
+                  let sentSomething = false;
                   if (toSend) {
                     sentAny = true;
+                    sentSomething = true;
                     sendSSE({
                       id: `chatcmpl-${nanoid()}`,
                       object: "chat.completion.chunk",
@@ -706,9 +708,22 @@ app.post("/v1/chat/completions", (req, res) => {
                     });
                   } else {
                     // No new blocks detected — fall back to normal segment forwarding
-                    const segment = emitted.slice(forwardedUpTo, allowUntil);
+                    let segmentEnd = allowUntil;
+                    // Partial-block guard: if we see an open <use_tool that doesn’t close
+                    // by allowUntil, do not forward into that partial block.
+                    try {
+                      const openIdx = emitted.indexOf("<use_tool", forwardedUpTo);
+                      if (openIdx >= 0 && openIdx < allowUntil) {
+                        const closeIdx = emitted.indexOf("</use_tool>", openIdx);
+                        if (closeIdx < 0 || closeIdx + "</use_tool>".length > allowUntil) {
+                          segmentEnd = Math.max(forwardedUpTo, openIdx);
+                        }
+                      }
+                    } catch {}
+                    const segment = emitted.slice(forwardedUpTo, segmentEnd);
                     if (segment) {
                       sentAny = true;
+                      sentSomething = true;
                       sendSSE({
                         id: `chatcmpl-${nanoid()}`,
                         object: "chat.completion.chunk",
@@ -718,7 +733,7 @@ app.post("/v1/chat/completions", (req, res) => {
                       });
                     }
                   }
-                  forwardedUpTo = allowUntil;
+                  if (sentSomething) forwardedUpTo = allowUntil;
                 } else {
                   const segment = emitted.slice(forwardedUpTo, allowUntil);
                   if (segment) {
