@@ -299,6 +299,7 @@ app.post("/v1/chat/completions", (req, res) => {
   const reqId = nanoid();
   const started = Date.now();
   let responded = false;
+  let responseWritable = true; // guard writes after client disconnect/end
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
@@ -525,7 +526,10 @@ app.post("/v1/chat/completions", (req, res) => {
     err = "";
 
   const sendSSE = (payload) => {
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    try {
+      if (!responseWritable) return;
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
   };
   const sendSSEKeepalive = () => {
     // SSE comment line; ignored by clients but keeps intermediaries from timing out
@@ -564,12 +568,42 @@ app.post("/v1/chat/completions", (req, res) => {
       } catch {}
     }
     let keepalive;
+    let streamClosed = false;
+    const clearKeepalive = () => {
+      if (keepalive) {
+        try {
+          clearInterval(keepalive);
+        } catch {}
+        keepalive = null;
+      }
+    };
+    const cleanupStream = () => {
+      if (streamClosed) return;
+      streamClosed = true;
+      clearKeepalive();
+      responseWritable = false;
+      try {
+        if (streamIdleTimer) clearTimeout(streamIdleTimer);
+      } catch {}
+      try {
+        clearTimeout(timeout);
+      } catch {}
+      try {
+        if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
+      } catch {}
+    };
     if (SSE_KEEPALIVE_MS > 0)
       keepalive = setInterval(() => {
         try {
-          sendSSEKeepalive();
+          if (!streamClosed) sendSSEKeepalive();
         } catch {}
       }, SSE_KEEPALIVE_MS);
+    // Ensure we stop emitting if client disconnects mid-stream
+    res.on("close", cleanupStream);
+    res.on("finish", cleanupStream);
+    // Some agents/SDKs trigger req 'aborted' on client-initiated cancel
+    req.on?.("aborted", cleanupStream);
+
     sendRoleOnce();
     let buf = "";
     let sentAny = false;
@@ -585,17 +619,16 @@ app.post("/v1/chat/completions", (req, res) => {
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
-    const resetStreamIdle = (() => {
-      let t;
-      return () => {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => {
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-        }, STREAM_IDLE_TIMEOUT_MS);
-      };
-    })();
+    // Stream idle guard: expose timer so cleanupStream can clear it
+    let streamIdleTimer;
+    const resetStreamIdle = () => {
+      if (streamIdleTimer) clearTimeout(streamIdleTimer);
+      streamIdleTimer = setTimeout(() => {
+        try {
+          child.kill("SIGTERM");
+        } catch {}
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
     resetStreamIdle();
     child.stdout.on("data", (chunk) => {
       resetStreamIdle();
@@ -1446,12 +1479,25 @@ app.post("/v1/completions", (req, res) => {
 
   let out = "",
     err = "";
+  let streamClosed = false;
+  let cleanupStream = () => {};
   const sendSSE = (payload) => {
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    try {
+      if (streamClosed) return;
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
   };
   const finishSSE = () => {
-    res.write("data: [DONE]\n\n");
-    res.end();
+    if (streamClosed) return;
+    try {
+      res.write("data: [DONE]\n\n");
+    } catch {}
+    try {
+      res.end();
+    } catch {}
+    try {
+      cleanupStream();
+    } catch {}
   };
 
   if (isStreamingReq) {
@@ -1460,6 +1506,39 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no"); // prevent proxy buffering of SSE
     res.flushHeaders?.();
+    let keepalive;
+    const clearKeepalive = () => {
+      if (keepalive) {
+        try {
+          clearInterval(keepalive);
+        } catch {}
+        keepalive = null;
+      }
+    };
+    cleanupStream = () => {
+      if (streamClosed) return;
+      streamClosed = true;
+      clearKeepalive();
+      try {
+        if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+      } catch {}
+      try {
+        clearTimeout(timeout);
+      } catch {}
+      try {
+        if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
+      } catch {}
+    };
+    if (SSE_KEEPALIVE_MS > 0) {
+      keepalive = setInterval(() => {
+        try {
+          if (!streamClosed) res.write(`: keepalive ${Date.now()}\n\n`);
+        } catch {}
+      }, SSE_KEEPALIVE_MS);
+    }
+    res.on("close", cleanupStream);
+    res.on("finish", cleanupStream);
+    req.on?.("aborted", cleanupStream);
     let buf = "";
     let sentAny = false;
     let completionChars = 0;

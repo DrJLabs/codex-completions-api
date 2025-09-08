@@ -1,15 +1,17 @@
-# Codex Completions API (OpenAI-compatible proxy)
+# Codex Completions API — OpenAI Chat Completions proxy for Codex CLI
 
-OpenAI Chat Completions-compatible HTTP proxy that shells to Codex CLI, with SSE streaming compatibility and minimal output shaping. An OpenAI Chat Completions‑compatible HTTP proxy that invokes the Codex CLI in "proto" mode. It provides a drop‑in /v1/chat/completions endpoint with Server‑Sent Events (SSE) streaming and minimal output shaping so that any OpenAI‑style client (SDKs, tools, curl) can talk to Codex as if it were a standard model API.
+Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CLI as if it were a standard model API. The proxy exposes `/v1/models` and `/v1/chat/completions`, streams with SSE (role-first delta, `[DONE]`), and keeps output shaping minimal so existing tools work without changes.
 
 ## Features
 
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
-- Streaming via Codex proto events: first SSE chunk sets `delta.role=assistant`, then incremental deltas when proto emits them; otherwise a full message arrives once available. The stream always ends with `[DONE]`. Periodic `: keepalive` SSE comments keep intermediaries from timing out.
-- Minimal output shaping: ANSI is stripped; additional heuristics exist but are conservative by default to avoid dropping valid content.
+- SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
+- Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
+- Dev vs Prod model IDs: advertises `codev-5*` in dev, `codex-5*` in prod; accepts both prefixes everywhere.
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
-- Safety: Codex runs read‑only; the proxy does not read project files. One proto process per request on this branch (stateless).
+- Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
+- Process model: one Codex proto process per request (stateless).
 
 ## Project Structure (high‑level)
 
@@ -275,7 +277,7 @@ To prepare a fresh Codex Cloud (or any CI) environment with everything required 
 
 Notes
 
-- Requires Node ≥ 22 and npm; does not touch your `.env` or secrets.
+- Requires Node ≥ 18 (22 recommended) and npm; does not touch your `.env` or secrets.
 - Ensures `.codex-api/` and `.codev/` exist and are writable.
 - Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
 - Tests use a deterministic proto shim and do not require a real Codex binary.
