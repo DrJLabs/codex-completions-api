@@ -16,11 +16,13 @@ Date: 2025-09-08
 
 ## Root Causes
 
-1) Hanging tools
+1. Hanging tools
+
 - Client parses the first `<use_tool>` and expects no substantive content after the last `</use_tool>`.
 - Post-tool narrative or incomplete XML can desynchronize the parser and tool-runner state.
 
-2) Iteration cap
+2. Iteration cap
+
 - The client counts iterations by assistant turn, not by tools per turn. If the model keeps issuing fine-grained edits, the cap is reached before a summary.
 
 ## Design Options Considered
@@ -65,4 +67,3 @@ Date: 2025-09-08
 ## Rollback
 
 - Disable `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` to return to pass-through streaming (or re-enable early-cut guard if needed).
-

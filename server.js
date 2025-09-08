@@ -690,7 +690,8 @@ app.post("/v1/chat/completions", (req, res) => {
                       for (let i = 0; i < newBlocks.length; i++) {
                         const { b, key } = newBlocks[i];
                         forwardedToolHashes.add(key);
-                        if (TOOL_BLOCK_DELIM && toSend && !toSend.endsWith("\n\n")) toSend += "\n\n";
+                        if (TOOL_BLOCK_DELIM && toSend && !toSend.endsWith("\n\n"))
+                          toSend += "\n\n";
                         toSend += b.raw;
                       }
                     }
@@ -818,7 +819,9 @@ app.post("/v1/chat/completions", (req, res) => {
                       return;
                     }
                     // burst mode (default): wait for a short grace period and reset if more blocks arrive
-                    try { if (cutTimer) clearTimeout(cutTimer); } catch {}
+                    try {
+                      if (cutTimer) clearTimeout(cutTimer);
+                    } catch {}
                     cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
                   }
                 }
@@ -935,10 +938,12 @@ app.post("/v1/chat/completions", (req, res) => {
       };
       child.stdin.write(JSON.stringify(submission) + "\n");
     } catch {}
-  child.on("close", () => {
+    child.on("close", () => {
       // If we already cut the stream after tools, avoid double-ending SSE here
       if (stoppedAfterTools) {
-        try { if (cutTimer) clearTimeout(cutTimer); } catch {}
+        try {
+          if (cutTimer) clearTimeout(cutTimer);
+        } catch {}
         return;
       }
       // If tail suppression was enabled and we withheld any content after tool blocks,
@@ -1067,7 +1072,11 @@ app.post("/v1/chat/completions", (req, res) => {
                       const key = `${b.name}~${b.path || ""}~${b.query || ""}~${String(b.raw || "").length}`;
                       if (!seen.has(key)) {
                         seen.add(key);
-                        if (TOOL_BLOCK_DELIM && parts.length && !parts[parts.length - 1].endsWith("\n\n"))
+                        if (
+                          TOOL_BLOCK_DELIM &&
+                          parts.length &&
+                          !parts[parts.length - 1].endsWith("\n\n")
+                        )
                           parts.push("\n\n");
                         parts.push(b.raw);
                       } else if (LOG_PROTO) {
