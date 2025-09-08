@@ -105,7 +105,7 @@ services:
       - traefik.http.routers.codex-dev-health.middlewares=codex-dev-headers
 
   auth-dev:
-    image: node:18-alpine
+    image: node:22-alpine
     working_dir: /app
     command: node server.mjs
     environment:
