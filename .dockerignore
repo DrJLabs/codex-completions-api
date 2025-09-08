@@ -11,6 +11,7 @@ web-bundles
 .env
 .env.secret
 .env.dev
+.npmrc
 *.log
 *.pid
 
