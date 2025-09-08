@@ -94,8 +94,8 @@ fi
 
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
 EXPECTED_NODE_MAJOR=22  # Aligns with Dockerfile/compose images (node:22-alpine)
-if [ "$NODE_MAJOR" -lt 22 ]; then
-  echo "[setup] ERROR: Node $(node -v) < 22 — please use Node >= 22." >&2
+if [ "$NODE_MAJOR" -lt "$EXPECTED_NODE_MAJOR" ]; then
+  echo "[setup] ERROR: Node $(node -v) < $EXPECTED_NODE_MAJOR — please use Node >= $EXPECTED_NODE_MAJOR." >&2
   exit 1
 fi
 echo "[setup] Node: $(node -v)"
