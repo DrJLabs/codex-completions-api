@@ -10,9 +10,10 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 # Enforce Node >= 22 at runtime
+EXPECTED_NODE_MAJOR=22
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
-if [ "$NODE_MAJOR" -lt 22 ]; then
-  echo "Node $(node -v) detected; please use Node >= 22 for this project." >&2
+if [ "$NODE_MAJOR" -lt "$EXPECTED_NODE_MAJOR" ]; then
+  echo "Node $(node -v) detected; please use Node >= $EXPECTED_NODE_MAJOR for this project." >&2
   exit 1
 fi
 
