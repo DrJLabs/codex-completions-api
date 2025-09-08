@@ -93,16 +93,14 @@ const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
 const SUPPRESS_TAIL_AFTER_TOOLS =
   (process.env.PROXY_SUPPRESS_TAIL_AFTER_TOOLS || "").toLowerCase() === "true";
 // Optional: de-duplicate repeated tool blocks and add simple delimiters between blocks
-const TOOL_BLOCK_DEDUP = String(
-  process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
-)
-  .toLowerCase()
-  === "true";
-const TOOL_BLOCK_DELIM = String(
-  process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
-)
-  .toLowerCase()
-  === "true";
+const TOOL_BLOCK_DEDUP =
+  String(
+    process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+  ).toLowerCase() === "true";
+const TOOL_BLOCK_DELIM =
+  String(
+    process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+  ).toLowerCase() === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -726,8 +724,7 @@ app.post("/v1/chat/completions", (req, res) => {
                         }
                       }
                     } catch (e) {
-                      if (IS_DEV_ENV)
-                        console.error("[dev][partial_block_guard] error:", e);
+                      if (IS_DEV_ENV) console.error("[dev][partial_block_guard] error:", e);
                     }
                     const segment = emitted.slice(forwardedUpTo, segmentEnd);
                     if (segment) {
@@ -776,8 +773,7 @@ app.post("/v1/chat/completions", (req, res) => {
                       });
                     }
                   } catch (e) {
-                    if (IS_DEV_ENV)
-                      console.error("[dev][suppress_tail_log] error:", e);
+                    if (IS_DEV_ENV) console.error("[dev][suppress_tail_log] error:", e);
                   }
                 }
                 scanAndLogToolBlocks(
