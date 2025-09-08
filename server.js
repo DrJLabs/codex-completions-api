@@ -1486,16 +1486,16 @@ app.post("/v1/completions", (req, res) => {
   const sendSSE = (payload) => {
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
-    const finishSSE = () => {
-      if (streamClosed) return;
-      try {
-        res.write("data: [DONE]\n\n");
-      } catch {}
-      try {
-        res.end();
-      } catch {}
-      cleanupStream();
-    };
+  const finishSSE = () => {
+    if (streamClosed) return;
+    try {
+      res.write("data: [DONE]\n\n");
+    } catch {}
+    try {
+      res.end();
+    } catch {}
+    cleanupStream();
+  };
 
   if (isStreamingReq) {
     res.setHeader("Content-Type", "text/event-stream");
