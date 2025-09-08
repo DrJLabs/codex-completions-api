@@ -39,13 +39,12 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
 
 ### Cloud/CI Consistency Protocol
 
-- Node version: use Node 22 everywhere (local via `.nvmrc`, CI via `actions/setup-node@v4`, cloud via `setup-codex-cloud.sh`).
 - Unified verification: run `npm run verify:all` to enforce formatting, lint, and all test layers.
 - Cloud agent steps (no secrets):
   - `HUSKY=0 npm ci --ignore-scripts` (or `npm install --ignore-scripts`)
   - `npx playwright install --with-deps chromium` (fallback to browser-only if OS deps not allowed)
   - `npm run verify:all`
-- Test selection policy still applies during development; cloud agents should default to `verify:all` before opening PRs.
+- Test selection policy still applies during development; cloud agents should default to `verify:all` before push.
 - Full suite: `npm run test:all` (unit → integration → e2e).
 - Curl smoke (quick manual checks):
   - Models: `curl -s $BASE/v1/models | jq .` → includes `codex-5`.
