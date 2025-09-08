@@ -97,12 +97,12 @@ const TOOL_BLOCK_DEDUP = String(
   process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
 )
   .toLowerCase()
-  .startsWith("t");
+  === "true";
 const TOOL_BLOCK_DELIM = String(
   process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
 )
   .toLowerCase()
-  .startsWith("t");
+  === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -646,14 +646,17 @@ app.post("/v1/chat/completions", (req, res) => {
                 // Determine how much of `emitted` we should forward, optionally suppressing
                 // any text after the last fully-closed <use_tool> block
                 let allowUntil = emitted.length;
+                let blocks;
                 if (SUPPRESS_TAIL_AFTER_TOOLS && Number(toolState.idx || 0) > 0) {
                   try {
-                    const { blocks } = extractUseToolBlocks(emitted, 0);
+                    ({ blocks } = extractUseToolBlocks(emitted, 0));
                     if (blocks && blocks.length) {
                       const last = blocks[blocks.length - 1];
-                      if (typeof last.end === "number") allowUntil = Math.max(allowUntil, last.end);
+                      if (typeof last.end === "number") allowUntil = last.end;
                     }
-                  } catch {}
+                  } catch (e) {
+                    if (IS_DEV_ENV) console.error("[dev][suppress_tail] parse error:", e);
+                  }
                 }
                 if (SUPPRESS_TAIL_AFTER_TOOLS && TOOL_BLOCK_DEDUP) {
                   // Forward preamble (if any) before the first new tool block, then forward
@@ -661,11 +664,11 @@ app.post("/v1/chat/completions", (req, res) => {
                   // narrative between or after tool blocks.
                   let toSend = "";
                   try {
-                    const { blocks } = extractUseToolBlocks(emitted, 0);
+                    if (!blocks) ({ blocks } = extractUseToolBlocks(emitted, 0));
                     const newBlocks = [];
                     for (const b of blocks || []) {
                       if (typeof b.end !== "number" || b.end > allowUntil) break;
-                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${String(b.raw || "").length}`;
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${b.raw || ""}`;
                       if (!forwardedToolHashes.has(key)) newBlocks.push({ b, key });
                       else if (LOG_PROTO) {
                         appendProtoEvent({
@@ -695,7 +698,9 @@ app.post("/v1/chat/completions", (req, res) => {
                         toSend += b.raw;
                       }
                     }
-                  } catch {}
+                  } catch (e) {
+                    if (IS_DEV_ENV) console.error("[dev][tool_dedup] parse error:", e);
+                  }
                   let sentSomething = false;
                   if (toSend) {
                     sentAny = true;
@@ -720,7 +725,10 @@ app.post("/v1/chat/completions", (req, res) => {
                           segmentEnd = Math.max(forwardedUpTo, openIdx);
                         }
                       }
-                    } catch {}
+                    } catch (e) {
+                      if (IS_DEV_ENV)
+                        console.error("[dev][partial_block_guard] error:", e);
+                    }
                     const segment = emitted.slice(forwardedUpTo, segmentEnd);
                     if (segment) {
                       sentAny = true;
@@ -767,7 +775,10 @@ app.post("/v1/chat/completions", (req, res) => {
                         suppressed_bytes: emitted.length - allowUntil,
                       });
                     }
-                  } catch {}
+                  } catch (e) {
+                    if (IS_DEV_ENV)
+                      console.error("[dev][suppress_tail_log] error:", e);
+                  }
                 }
                 scanAndLogToolBlocks(
                   emitted,
@@ -1069,7 +1080,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     // Preserve preamble before first block
                     if (blocks[0].start > 0) parts.push(final.slice(0, blocks[0].start));
                     for (const b of blocks) {
-                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${String(b.raw || "").length}`;
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${b.raw || ""}`;
                       if (!seen.has(key)) {
                         seen.add(key);
                         if (
@@ -1110,7 +1121,9 @@ app.post("/v1/chat/completions", (req, res) => {
                     }
                   }
                 }
-              } catch {}
+              } catch (e) {
+                if (IS_DEV_ENV) console.error("[dev][final_suppress_tail] parse error:", e);
+              }
             }
             // Dev-only: extract and log tool blocks from final content
             if (LOG_PROTO) {
