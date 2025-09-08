@@ -78,6 +78,29 @@ const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
 // Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
 const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
 const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+// Opt-in guard: end the stream after tools to avoid confusing clients that expect
+// tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
+// When enabled, mode can be:
+//  - "first": cut immediately after the first complete <use_tool> block
+//  - "burst": cut after a short grace window to allow multiple back-to-back tool blocks
+const STOP_AFTER_TOOLS = (process.env.PROXY_STOP_AFTER_TOOLS || "").toLowerCase() === "true";
+const STOP_AFTER_TOOLS_MODE = (process.env.PROXY_STOP_AFTER_TOOLS_MODE || "burst").toLowerCase();
+const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
+const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
+// New: suppress narrative/text after the last complete <use_tool>...</use_tool> block
+// without ending the stream early. This keeps the assistant message tool-only while
+// allowing the backend to run to normal completion. Default off.
+const SUPPRESS_TAIL_AFTER_TOOLS =
+  (process.env.PROXY_SUPPRESS_TAIL_AFTER_TOOLS || "").toLowerCase() === "true";
+// Optional: de-duplicate repeated tool blocks and add simple delimiters between blocks
+const TOOL_BLOCK_DEDUP =
+  String(
+    process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+  ).toLowerCase() === "true";
+const TOOL_BLOCK_DELIM =
+  String(
+    process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+  ).toLowerCase() === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -551,8 +574,14 @@ app.post("/v1/chat/completions", (req, res) => {
     let buf = "";
     let sentAny = false;
     let emitted = "";
+    let forwardedUpTo = 0; // index in `emitted` we've already forwarded to client
+    let stoppedAfterTools = false; // if STOP_AFTER_TOOLS is on, we may cut stream early
     // Dev-only: track tool blocks as they appear in streamed content
     const toolState = { pos: 0, idx: 0 };
+    let lastToolIdx = 0;
+    let cutTimer = null;
+    let tailSuppressed = false;
+    const forwardedToolHashes = new Set();
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
@@ -611,15 +640,142 @@ app.post("/v1/chat/completions", (req, res) => {
               if (d.startsWith(emitted)) suffix = d.slice(emitted.length);
               // If provider sends tiny incremental pieces, suffix may equal d and not start with emitted; append anyway
               if (suffix) {
-                sentAny = true;
                 emitted += suffix;
-                sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, delta: { content: suffix } }],
-                });
+                // Determine how much of `emitted` we should forward, optionally suppressing
+                // any text after the last fully-closed <use_tool> block
+                let allowUntil = emitted.length;
+                let blocks;
+                if (SUPPRESS_TAIL_AFTER_TOOLS && Number(toolState.idx || 0) > 0) {
+                  try {
+                    ({ blocks } = extractUseToolBlocks(emitted, 0));
+                    if (blocks && blocks.length) {
+                      const last = blocks[blocks.length - 1];
+                      if (typeof last.end === "number") allowUntil = last.end;
+                    }
+                  } catch (e) {
+                    if (IS_DEV_ENV) console.error("[dev][suppress_tail] parse error:", e);
+                  }
+                }
+                if (SUPPRESS_TAIL_AFTER_TOOLS && TOOL_BLOCK_DEDUP) {
+                  // Forward preamble (if any) before the first new tool block, then forward
+                  // only unique, fully-closed tool blocks up to allowUntil. Do NOT forward
+                  // narrative between or after tool blocks.
+                  let toSend = "";
+                  try {
+                    if (!blocks) ({ blocks } = extractUseToolBlocks(emitted, 0));
+                    const newBlocks = [];
+                    for (const b of blocks || []) {
+                      if (typeof b.end !== "number" || b.end > allowUntil) break;
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${b.raw || ""}`;
+                      if (!forwardedToolHashes.has(key)) newBlocks.push({ b, key });
+                      else if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_stream",
+                          kind: "tool_block_dedup_skip",
+                          tool: b.name,
+                          path: b.path,
+                          query: b.query,
+                        });
+                      }
+                    }
+                    if (newBlocks.length) {
+                      // Optional preamble before first new block
+                      const firstStart = newBlocks[0].b.start;
+                      if (forwardedUpTo < firstStart) {
+                        toSend += emitted.slice(forwardedUpTo, firstStart);
+                      }
+                      // Append unique blocks with optional delimiter
+                      for (let i = 0; i < newBlocks.length; i++) {
+                        const { b, key } = newBlocks[i];
+                        forwardedToolHashes.add(key);
+                        if (TOOL_BLOCK_DELIM && toSend && !toSend.endsWith("\n\n"))
+                          toSend += "\n\n";
+                        toSend += b.raw;
+                      }
+                    }
+                  } catch (e) {
+                    if (IS_DEV_ENV) console.error("[dev][tool_dedup] parse error:", e);
+                  }
+                  let sentSomething = false;
+                  if (toSend) {
+                    sentAny = true;
+                    sentSomething = true;
+                    sendSSE({
+                      id: `chatcmpl-${nanoid()}`,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: requestedModel,
+                      choices: [{ index: 0, delta: { content: toSend } }],
+                    });
+                  } else {
+                    // No new blocks detected — fall back to normal segment forwarding
+                    let segmentEnd = allowUntil;
+                    // Partial-block guard: if we see an open <use_tool that doesn’t close
+                    // by allowUntil, do not forward into that partial block.
+                    try {
+                      const openIdx = emitted.indexOf("<use_tool", forwardedUpTo);
+                      if (openIdx >= 0 && openIdx < allowUntil) {
+                        const closeIdx = emitted.indexOf("</use_tool>", openIdx);
+                        if (closeIdx < 0 || closeIdx + "</use_tool>".length > allowUntil) {
+                          segmentEnd = Math.max(forwardedUpTo, openIdx);
+                        }
+                      }
+                    } catch (e) {
+                      if (IS_DEV_ENV) console.error("[dev][partial_block_guard] error:", e);
+                    }
+                    const segment = emitted.slice(forwardedUpTo, segmentEnd);
+                    if (segment) {
+                      sentAny = true;
+                      sentSomething = true;
+                      sendSSE({
+                        id: `chatcmpl-${nanoid()}`,
+                        object: "chat.completion.chunk",
+                        created: Math.floor(Date.now() / 1000),
+                        model: requestedModel,
+                        choices: [{ index: 0, delta: { content: segment } }],
+                      });
+                    }
+                  }
+                  if (sentSomething) forwardedUpTo = allowUntil;
+                } else {
+                  const segment = emitted.slice(forwardedUpTo, allowUntil);
+                  if (segment) {
+                    sentAny = true;
+                    forwardedUpTo = allowUntil;
+                    sendSSE({
+                      id: `chatcmpl-${nanoid()}`,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: requestedModel,
+                      choices: [{ index: 0, delta: { content: segment } }],
+                    });
+                  }
+                }
+                if (
+                  SUPPRESS_TAIL_AFTER_TOOLS &&
+                  Number(toolState.idx || 0) > 0 &&
+                  allowUntil < emitted.length &&
+                  !tailSuppressed
+                ) {
+                  tailSuppressed = true;
+                  try {
+                    if (LOG_PROTO) {
+                      appendProtoEvent({
+                        ts: Date.now(),
+                        req_id: reqId,
+                        route: "/v1/chat/completions",
+                        mode: "chat_stream",
+                        kind: "tool_suppress_tail",
+                        suppressed_bytes: emitted.length - allowUntil,
+                      });
+                    }
+                  } catch (e) {
+                    if (IS_DEV_ENV) console.error("[dev][suppress_tail_log] error:", e);
+                  }
+                }
                 scanAndLogToolBlocks(
                   emitted,
                   toolState,
@@ -627,6 +783,55 @@ app.post("/v1/chat/completions", (req, res) => {
                   "/v1/chat/completions",
                   "chat_stream"
                 );
+                // Optional early-cut behavior to avoid post-tool narration confusing clients.
+                if (STOP_AFTER_TOOLS && !stoppedAfterTools) {
+                  const blocksSeen = Number(toolState.idx || 0);
+                  const newBlocks = blocksSeen - lastToolIdx;
+                  if (newBlocks > 0) {
+                    lastToolIdx = blocksSeen;
+                    const cutNow = () => {
+                      if (stoppedAfterTools) return;
+                      stoppedAfterTools = true;
+                      try {
+                        if (LOG_PROTO) {
+                          appendProtoEvent({
+                            ts: Date.now(),
+                            req_id: reqId,
+                            route: "/v1/chat/completions",
+                            mode: "chat_stream",
+                            kind: "stream_cut_after_tool",
+                            tool_blocks_seen: blocksSeen,
+                            cut_mode: STOP_AFTER_TOOLS_MODE,
+                            grace_ms: STOP_AFTER_TOOLS_GRACE_MS,
+                          });
+                        }
+                      } catch {}
+                      try {
+                        if (keepalive) clearInterval(keepalive);
+                      } catch {}
+                      try {
+                        finishSSE();
+                      } catch {}
+                      try {
+                        child.kill("SIGTERM");
+                      } catch {}
+                    };
+                    // Respect max blocks guard (0 = unlimited)
+                    if (STOP_AFTER_TOOLS_MAX > 0 && blocksSeen >= STOP_AFTER_TOOLS_MAX) {
+                      cutNow();
+                      return;
+                    }
+                    if (STOP_AFTER_TOOLS_MODE === "first") {
+                      cutNow();
+                      return;
+                    }
+                    // burst mode (default): wait for a short grace period and reset if more blocks arrive
+                    try {
+                      if (cutTimer) clearTimeout(cutTimer);
+                    } catch {}
+                    cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+                  }
+                }
               }
             }
           } else if (t === "agent_message") {
@@ -741,6 +946,16 @@ app.post("/v1/chat/completions", (req, res) => {
       child.stdin.write(JSON.stringify(submission) + "\n");
     } catch {}
     child.on("close", () => {
+      // If we already cut the stream after tools, avoid double-ending SSE here
+      if (stoppedAfterTools) {
+        try {
+          if (cutTimer) clearTimeout(cutTimer);
+        } catch {}
+        return;
+      }
+      // If tail suppression was enabled and we withheld any content after tool blocks,
+      // ensure we do not emit additional buffered text here. We already forwarded up to
+      // the last allowed index during streaming.
       if (keepalive) clearInterval(keepalive);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
@@ -845,11 +1060,67 @@ app.post("/v1/chat/completions", (req, res) => {
           if (!responded) {
             responded = true;
             applyCors(null, res);
-            const final =
+            let final =
               content ||
               stripAnsi(out).trim() ||
               stripAnsi(err).trim() ||
               "No output from backend.";
+            if (SUPPRESS_TAIL_AFTER_TOOLS) {
+              try {
+                const { blocks } = extractUseToolBlocks(final, 0);
+                if (blocks && blocks.length) {
+                  // Optionally de-duplicate and reassemble tool-only content
+                  if (TOOL_BLOCK_DEDUP) {
+                    const seen = new Set();
+                    const parts = [];
+                    // Preserve preamble before first block
+                    if (blocks[0].start > 0) parts.push(final.slice(0, blocks[0].start));
+                    for (const b of blocks) {
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${b.raw || ""}`;
+                      if (!seen.has(key)) {
+                        seen.add(key);
+                        if (
+                          TOOL_BLOCK_DELIM &&
+                          parts.length &&
+                          !parts[parts.length - 1].endsWith("\n\n")
+                        )
+                          parts.push("\n\n");
+                        parts.push(b.raw);
+                      } else if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_nonstream",
+                          kind: "tool_block_dedup_skip",
+                          tool: b.name,
+                          path: b.path,
+                          query: b.query,
+                        });
+                      }
+                    }
+                    final = parts.join("");
+                  } else {
+                    const last = blocks[blocks.length - 1];
+                    if (typeof last.end === "number" && last.end < final.length) {
+                      if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_nonstream",
+                          kind: "tool_suppress_tail",
+                          suppressed_bytes: final.length - last.end,
+                        });
+                      }
+                      final = final.slice(0, last.end);
+                    }
+                  }
+                }
+              } catch (e) {
+                if (IS_DEV_ENV) console.error("[dev][final_suppress_tail] parse error:", e);
+              }
+            }
             // Dev-only: extract and log tool blocks from final content
             if (LOG_PROTO) {
               try {
