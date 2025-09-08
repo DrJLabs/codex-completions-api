@@ -92,6 +92,17 @@ const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
 // allowing the backend to run to normal completion. Default off.
 const SUPPRESS_TAIL_AFTER_TOOLS =
   (process.env.PROXY_SUPPRESS_TAIL_AFTER_TOOLS || "").toLowerCase() === "true";
+// Optional: de-duplicate repeated tool blocks and add simple delimiters between blocks
+const TOOL_BLOCK_DEDUP = String(
+  process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+)
+  .toLowerCase()
+  .startsWith("t");
+const TOOL_BLOCK_DELIM = String(
+  process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
+)
+  .toLowerCase()
+  .startsWith("t");
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -572,6 +583,7 @@ app.post("/v1/chat/completions", (req, res) => {
     let lastToolIdx = 0;
     let cutTimer = null;
     let tailSuppressed = false;
+    const forwardedToolHashes = new Set();
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
@@ -643,17 +655,83 @@ app.post("/v1/chat/completions", (req, res) => {
                     }
                   } catch {}
                 }
-                const segment = emitted.slice(forwardedUpTo, allowUntil);
-                if (segment) {
-                  sentAny = true;
+                if (SUPPRESS_TAIL_AFTER_TOOLS && TOOL_BLOCK_DEDUP) {
+                  // Forward preamble (if any) before the first new tool block, then forward
+                  // only unique, fully-closed tool blocks up to allowUntil. Do NOT forward
+                  // narrative between or after tool blocks.
+                  let toSend = "";
+                  try {
+                    const { blocks } = extractUseToolBlocks(emitted, 0);
+                    const newBlocks = [];
+                    for (const b of blocks || []) {
+                      if (typeof b.end !== "number" || b.end > allowUntil) break;
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${String(b.raw || "").length}`;
+                      if (!forwardedToolHashes.has(key)) newBlocks.push({ b, key });
+                      else if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_stream",
+                          kind: "tool_block_dedup_skip",
+                          tool: b.name,
+                          path: b.path,
+                          query: b.query,
+                        });
+                      }
+                    }
+                    if (newBlocks.length) {
+                      // Optional preamble before first new block
+                      const firstStart = newBlocks[0].b.start;
+                      if (forwardedUpTo < firstStart) {
+                        toSend += emitted.slice(forwardedUpTo, firstStart);
+                      }
+                      // Append unique blocks with optional delimiter
+                      for (let i = 0; i < newBlocks.length; i++) {
+                        const { b, key } = newBlocks[i];
+                        forwardedToolHashes.add(key);
+                        if (TOOL_BLOCK_DELIM && toSend && !toSend.endsWith("\n\n")) toSend += "\n\n";
+                        toSend += b.raw;
+                      }
+                    }
+                  } catch {}
+                  if (toSend) {
+                    sentAny = true;
+                    sendSSE({
+                      id: `chatcmpl-${nanoid()}`,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: requestedModel,
+                      choices: [{ index: 0, delta: { content: toSend } }],
+                    });
+                  } else {
+                    // No new blocks detected — fall back to normal segment forwarding
+                    const segment = emitted.slice(forwardedUpTo, allowUntil);
+                    if (segment) {
+                      sentAny = true;
+                      sendSSE({
+                        id: `chatcmpl-${nanoid()}`,
+                        object: "chat.completion.chunk",
+                        created: Math.floor(Date.now() / 1000),
+                        model: requestedModel,
+                        choices: [{ index: 0, delta: { content: segment } }],
+                      });
+                    }
+                  }
                   forwardedUpTo = allowUntil;
-                  sendSSE({
-                    id: `chatcmpl-${nanoid()}`,
-                    object: "chat.completion.chunk",
-                    created: Math.floor(Date.now() / 1000),
-                    model: requestedModel,
-                    choices: [{ index: 0, delta: { content: segment } }],
-                  });
+                } else {
+                  const segment = emitted.slice(forwardedUpTo, allowUntil);
+                  if (segment) {
+                    sentAny = true;
+                    forwardedUpTo = allowUntil;
+                    sendSSE({
+                      id: `chatcmpl-${nanoid()}`,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: requestedModel,
+                      choices: [{ index: 0, delta: { content: segment } }],
+                    });
+                  }
                 }
                 if (
                   SUPPRESS_TAIL_AFTER_TOOLS &&
@@ -964,19 +1042,48 @@ app.post("/v1/chat/completions", (req, res) => {
               try {
                 const { blocks } = extractUseToolBlocks(final, 0);
                 if (blocks && blocks.length) {
-                  const last = blocks[blocks.length - 1];
-                  if (typeof last.end === "number" && last.end < final.length) {
-                    if (LOG_PROTO) {
-                      appendProtoEvent({
-                        ts: Date.now(),
-                        req_id: reqId,
-                        route: "/v1/chat/completions",
-                        mode: "chat_nonstream",
-                        kind: "tool_suppress_tail",
-                        suppressed_bytes: final.length - last.end,
-                      });
+                  // Optionally de-duplicate and reassemble tool-only content
+                  if (TOOL_BLOCK_DEDUP) {
+                    const seen = new Set();
+                    const parts = [];
+                    // Preserve preamble before first block
+                    if (blocks[0].start > 0) parts.push(final.slice(0, blocks[0].start));
+                    for (const b of blocks) {
+                      const key = `${b.name}~${b.path || ""}~${b.query || ""}~${String(b.raw || "").length}`;
+                      if (!seen.has(key)) {
+                        seen.add(key);
+                        if (TOOL_BLOCK_DELIM && parts.length && !parts[parts.length - 1].endsWith("\n\n"))
+                          parts.push("\n\n");
+                        parts.push(b.raw);
+                      } else if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_nonstream",
+                          kind: "tool_block_dedup_skip",
+                          tool: b.name,
+                          path: b.path,
+                          query: b.query,
+                        });
+                      }
                     }
-                    final = final.slice(0, last.end);
+                    final = parts.join("");
+                  } else {
+                    const last = blocks[blocks.length - 1];
+                    if (typeof last.end === "number" && last.end < final.length) {
+                      if (LOG_PROTO) {
+                        appendProtoEvent({
+                          ts: Date.now(),
+                          req_id: reqId,
+                          route: "/v1/chat/completions",
+                          mode: "chat_nonstream",
+                          kind: "tool_suppress_tail",
+                          suppressed_bytes: final.length - last.end,
+                        });
+                      }
+                      final = final.slice(0, last.end);
+                    }
                   }
                 }
               } catch {}
