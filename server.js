@@ -87,6 +87,11 @@ const STOP_AFTER_TOOLS = (process.env.PROXY_STOP_AFTER_TOOLS || "").toLowerCase(
 const STOP_AFTER_TOOLS_MODE = (process.env.PROXY_STOP_AFTER_TOOLS_MODE || "burst").toLowerCase();
 const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
 const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
+// New: suppress narrative/text after the last complete <use_tool>...</use_tool> block
+// without ending the stream early. This keeps the assistant message tool-only while
+// allowing the backend to run to normal completion. Default off.
+const SUPPRESS_TAIL_AFTER_TOOLS =
+  (process.env.PROXY_SUPPRESS_TAIL_AFTER_TOOLS || "").toLowerCase() === "true";
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
 const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
@@ -560,11 +565,13 @@ app.post("/v1/chat/completions", (req, res) => {
     let buf = "";
     let sentAny = false;
     let emitted = "";
+    let forwardedUpTo = 0; // index in `emitted` we've already forwarded to client
     let stoppedAfterTools = false; // if STOP_AFTER_TOOLS is on, we may cut stream early
     // Dev-only: track tool blocks as they appear in streamed content
     const toolState = { pos: 0, idx: 0 };
     let lastToolIdx = 0;
     let cutTimer = null;
+    let tailSuppressed = false;
     const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
     let ptCount = 0,
       ctCount = 0;
@@ -623,15 +630,51 @@ app.post("/v1/chat/completions", (req, res) => {
               if (d.startsWith(emitted)) suffix = d.slice(emitted.length);
               // If provider sends tiny incremental pieces, suffix may equal d and not start with emitted; append anyway
               if (suffix) {
-                sentAny = true;
                 emitted += suffix;
-                sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, delta: { content: suffix } }],
-                });
+                // Determine how much of `emitted` we should forward, optionally suppressing
+                // any text after the last fully-closed <use_tool> block
+                let allowUntil = emitted.length;
+                if (SUPPRESS_TAIL_AFTER_TOOLS && Number(toolState.idx || 0) > 0) {
+                  try {
+                    const { blocks } = extractUseToolBlocks(emitted, 0);
+                    if (blocks && blocks.length) {
+                      const last = blocks[blocks.length - 1];
+                      if (typeof last.end === "number") allowUntil = Math.max(allowUntil, last.end);
+                    }
+                  } catch {}
+                }
+                const segment = emitted.slice(forwardedUpTo, allowUntil);
+                if (segment) {
+                  sentAny = true;
+                  forwardedUpTo = allowUntil;
+                  sendSSE({
+                    id: `chatcmpl-${nanoid()}`,
+                    object: "chat.completion.chunk",
+                    created: Math.floor(Date.now() / 1000),
+                    model: requestedModel,
+                    choices: [{ index: 0, delta: { content: segment } }],
+                  });
+                }
+                if (
+                  SUPPRESS_TAIL_AFTER_TOOLS &&
+                  Number(toolState.idx || 0) > 0 &&
+                  allowUntil < emitted.length &&
+                  !tailSuppressed
+                ) {
+                  tailSuppressed = true;
+                  try {
+                    if (LOG_PROTO) {
+                      appendProtoEvent({
+                        ts: Date.now(),
+                        req_id: reqId,
+                        route: "/v1/chat/completions",
+                        mode: "chat_stream",
+                        kind: "tool_suppress_tail",
+                        suppressed_bytes: emitted.length - allowUntil,
+                      });
+                    }
+                  } catch {}
+                }
                 scanAndLogToolBlocks(
                   emitted,
                   toolState,
@@ -799,12 +842,15 @@ app.post("/v1/chat/completions", (req, res) => {
       };
       child.stdin.write(JSON.stringify(submission) + "\n");
     } catch {}
-    child.on("close", () => {
+  child.on("close", () => {
       // If we already cut the stream after tools, avoid double-ending SSE here
       if (stoppedAfterTools) {
         try { if (cutTimer) clearTimeout(cutTimer); } catch {}
         return;
       }
+      // If tail suppression was enabled and we withheld any content after tool blocks,
+      // ensure we do not emit additional buffered text here. We already forwarded up to
+      // the last allowed index during streaming.
       if (keepalive) clearInterval(keepalive);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
@@ -909,11 +955,32 @@ app.post("/v1/chat/completions", (req, res) => {
           if (!responded) {
             responded = true;
             applyCors(null, res);
-            const final =
+            let final =
               content ||
               stripAnsi(out).trim() ||
               stripAnsi(err).trim() ||
               "No output from backend.";
+            if (SUPPRESS_TAIL_AFTER_TOOLS) {
+              try {
+                const { blocks } = extractUseToolBlocks(final, 0);
+                if (blocks && blocks.length) {
+                  const last = blocks[blocks.length - 1];
+                  if (typeof last.end === "number" && last.end < final.length) {
+                    if (LOG_PROTO) {
+                      appendProtoEvent({
+                        ts: Date.now(),
+                        req_id: reqId,
+                        route: "/v1/chat/completions",
+                        mode: "chat_nonstream",
+                        kind: "tool_suppress_tail",
+                        suppressed_bytes: final.length - last.end,
+                      });
+                    }
+                    final = final.slice(0, last.end);
+                  }
+                }
+              } catch {}
+            }
             // Dev-only: extract and log tool blocks from final content
             if (LOG_PROTO) {
               try {
