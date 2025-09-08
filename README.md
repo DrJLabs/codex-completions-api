@@ -275,7 +275,7 @@ To prepare a fresh Codex Cloud (or any CI) environment with everything required 
 
 Notes
 
-- Requires Node ≥ 18 and npm; does not touch your `.env` or secrets.
+- Requires Node ≥ 22 and npm; does not touch your `.env` or secrets.
 - Ensures `.codex-api/` and `.codev/` exist and are writable.
 - Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
 - Tests use a deterministic proto shim and do not require a real Codex binary.

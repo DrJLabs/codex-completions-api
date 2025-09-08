@@ -2,10 +2,17 @@
 set -euo pipefail
 
 # One-shot installer for Codex OpenAI-compatible proxy with systemd user service.
-# Prereqs: Node >=18, npm, curl. Installs Codex CLI if missing.
+# Prereqs: Node >=22, npm, curl. Installs Codex CLI if missing.
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js >= 18 is required." >&2
+  echo "Node.js >= 22 is required." >&2
+  exit 1
+fi
+
+# Enforce Node >= 22 at runtime
+NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Node $(node -v) detected; please use Node >= 22 for this project." >&2
   exit 1
 fi
 
@@ -210,4 +217,3 @@ curl -sN http://127.0.0.1:11435/v1/chat/completions \
   -d '{"model":"gpt-5","stream":true,"reasoning":{"effort":"high"},"messages":[{"role":"user","content":"One sentence. No preamble."}]}' | head -n 10 || true
 echo
 echo "Proxy up at http://127.0.0.1:11435/v1"
-

@@ -25,7 +25,7 @@ Environment:
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1  Skip browser downloads entirely
 
 Notes:
-  - Requires Node >= 18 and npm.
+  - Requires Node >= 22 and npm.
   - Does NOT touch your .env or secrets.
   - Creates/ensures writable: ./.codex-api and ./.codev
 USAGE
@@ -51,7 +51,7 @@ echo "[setup] Project: $PROJECT_ROOT"
 
 # 1) Node/npm preflight
 if ! command -v node >/dev/null 2>&1; then
-  echo "[setup] ERROR: Node.js is required (>= 18)." >&2
+  echo "[setup] ERROR: Node.js is required (>= 22)." >&2
   exit 1
 fi
 if ! command -v npm >/dev/null 2>&1; then
@@ -93,12 +93,17 @@ if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "[setup] ERROR: Node $(node -v) < 18 — please use Node >= 18." >&2
+EXPECTED_NODE_MAJOR=22  # Aligns with Dockerfile/compose images (node:22-alpine)
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "[setup] ERROR: Node $(node -v) < 22 — please use Node >= 22." >&2
   exit 1
 fi
 echo "[setup] Node: $(node -v)"
 echo "[setup] npm:  $(npm -v)"
+if [ "$NODE_MAJOR" -ne "$EXPECTED_NODE_MAJOR" ]; then
+  echo "[setup] NOTE: Local Node major (${NODE_MAJOR}) differs from container/CI (${EXPECTED_NODE_MAJOR})." >&2
+  echo "        For parity with Docker/compose and CI, prefer Node ${EXPECTED_NODE_MAJOR}.x locally (e.g., 'nvm use ${EXPECTED_NODE_MAJOR}')." >&2
+fi
 
 # 2) Sanitize npm proxy config (project-scoped, no secrets)
 # - Some environments inject legacy/misnamed keys like `http-proxy` which npm warns about.
