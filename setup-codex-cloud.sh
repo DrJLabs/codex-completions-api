@@ -59,6 +59,39 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
+# Pre-sanitize misnamed npm proxy env to avoid early npm warnings
+SANITIZED_PROXY_ENV=false
+if env | grep -qi '^npm_config_http-proxy='; then
+  val="${npm_config_http-proxy:-}"
+  if [ -n "$val" ] && [ "$val" != "true" ]; then
+    echo "[setup] WARNING: Found env 'npm_config_http-proxy'; migrating to 'npm_config_proxy'."
+    export npm_config_proxy="$val"
+  else
+    echo "[setup] NOTE: Clearing valueless npm_config_http-proxy to avoid warnings."
+  fi
+  unset npm_config_http-proxy || true
+  SANITIZED_PROXY_ENV=true
+fi
+if env | grep -qi '^npm_config_http_proxy='; then
+  val="${npm_config_http_proxy:-}"
+  if [ -n "$val" ] && [ "$val" != "true" ]; then
+    echo "[setup] WARNING: Found env 'npm_config_http_proxy'; migrating to 'npm_config_proxy'."
+    export npm_config_proxy="$val"
+  else
+    echo "[setup] NOTE: Clearing valueless npm_config_http_proxy to avoid warnings."
+  fi
+  unset npm_config_http_proxy || true
+  SANITIZED_PROXY_ENV=true
+fi
+if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "[setup] NOTE: proxy env cleanup doesn't persist in the parent shell."
+  echo "       To avoid npm warnings in this session, run:"
+  echo "         unset npm_config_http_proxy npm_config_http-proxy"
+  if [ -n "${npm_config_proxy:-}" ]; then
+    echo "         export npm_config_proxy=\"$npm_config_proxy\""
+  fi
+fi
+
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
 if [ "$NODE_MAJOR" -lt 18 ]; then
   echo "[setup] ERROR: Node $(node -v) < 18 — please use Node >= 18." >&2
@@ -70,8 +103,7 @@ echo "[setup] npm:  $(npm -v)"
 # 2) Sanitize npm proxy config (project-scoped, no secrets)
 # - Some environments inject legacy/misnamed keys like `http-proxy` which npm warns about.
 # - We map any `http-proxy` value to `proxy` and then delete `http-proxy` at project scope.
-# - We also neutralize accidental env-based overrides like `npm_config_http_proxy` without
-#   touching standard `HTTP_PROXY`/`HTTPS_PROXY` that users may rely on.
+# - Environment variable misnames are handled earlier before invoking npm.
 {
   # Capture value if set; avoid printing secrets
   set +e
@@ -85,16 +117,6 @@ echo "[setup] npm:  $(npm -v)"
   else
     # Ensure no stray project-level http-proxy remains
     npm config delete http-proxy --location=project >/dev/null 2>&1 || true
-  fi
-  # Misnamed env mapping can sneak in as lowercase underscore vars; clear only npm-scoped ones
-  if env | grep -qi '^npm_config_http-proxy='; then
-    # shellcheck disable=SC2016
-    echo "[setup] WARNING: Found invalid env 'npm_config_http-proxy'; unsetting for this process."
-    unset npm_config_http-proxy || true
-  fi
-  if env | grep -qi '^npm_config_http_proxy=true$'; then
-    echo "[setup] NOTE: Clearing valueless npm_config_http_proxy=true to avoid warnings."
-    unset npm_config_http_proxy || true
   fi
 }
 

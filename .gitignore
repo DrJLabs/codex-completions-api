@@ -1,10 +1,13 @@
 .env.secret
 .env
 .env.dev
+.npmrc
 local-server.log
 .server.pid
 .server.log
 logs/
+# Dependencies
+node_modules/
 # Playwright artifacts
 test-results/
 playwright-report/
