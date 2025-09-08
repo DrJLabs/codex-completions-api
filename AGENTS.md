@@ -34,8 +34,18 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
     - Run: `npm run test:unit` (once) or `npm run test:unit:watch` (while editing utils).
   - **Integration (Vitest, real server)** — validates Express routes with the deterministic Codex shim.
     - Run: `npm run test:integration` (use after route/handler changes; no Docker/Codex needed).
-  - **E2E API/SSE (Playwright)** — verifies `/v1/models`, non‑stream chat, and streaming SSE contract.
-    - Run: `npm test` (before push or when touching streaming behavior).
+- **E2E API/SSE (Playwright)** — verifies `/v1/models`, non‑stream chat, and streaming SSE contract.
+  - Run: `npm test` (before push or when touching streaming behavior).
+
+### Cloud/CI Consistency Protocol
+
+- Node version: use Node 22 everywhere (local via `.nvmrc`, CI via `actions/setup-node@v4`, cloud via `setup-codex-cloud.sh`).
+- Unified verification: run `npm run verify:all` to enforce formatting, lint, and all test layers.
+- Cloud agent steps (no secrets):
+  - `HUSKY=0 npm ci --ignore-scripts` (or `npm install --ignore-scripts`)
+  - `npx playwright install --with-deps chromium` (fallback to browser-only if OS deps not allowed)
+  - `npm run verify:all`
+- Test selection policy still applies during development; cloud agents should default to `verify:all` before opening PRs.
 - Full suite: `npm run test:all` (unit → integration → e2e).
 - Curl smoke (quick manual checks):
   - Models: `curl -s $BASE/v1/models | jq .` → includes `codex-5`.

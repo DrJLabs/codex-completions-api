@@ -15,14 +15,14 @@ usage() {
 Usage: ./setup-codex-cloud.sh [--verify] [--skip-browsers] [--no-ci] [--seed-dev-config]
 
 Options:
-  --verify         Run tests after setup (unit → integration → e2e)
-  --skip-browsers  Do not install Playwright browsers/OS deps
-  --no-ci          Use `npm install` instead of `npm ci`
-  --seed-dev-config  Copy .codev/{config.toml,AGENTS.md} into .codex-api if missing
+  --verify            Run tests after setup (unit → integration → e2e)
+  --skip-browsers     Do not install Playwright browsers/OS deps
+  --no-ci             Use `npm install` instead of `npm ci`
+  --seed-dev-config   Copy .codev/{config.toml,AGENTS.md} into .codex-api if missing
 
 Environment:
-  CI                When set, Playwright uses list reporter (recommended in CI)
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1  Skip browser downloads entirely
+  CI                             When set, Playwright uses list reporter (recommended in CI)
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1   Skip browser downloads entirely
 
 Notes:
   - Requires Node >= 22 and npm.
@@ -59,23 +59,14 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-# Pre-sanitize misnamed npm proxy env to avoid early npm warnings
+# Pre-sanitize legacy npm proxy env to avoid early npm warnings
+# Prefer HTTP(S)_PROXY or `npm config set proxy/https-proxy` over legacy
 SANITIZED_PROXY_ENV=false
-if env | grep -qi '^npm_config_http-proxy='; then
-  val="${npm_config_http-proxy:-}"
-  if [ -n "$val" ] && [ "$val" != "true" ]; then
-    echo "[setup] WARNING: Found env 'npm_config_http-proxy'; migrating to 'npm_config_proxy'."
-    export npm_config_proxy="$val"
-  else
-    echo "[setup] NOTE: Clearing valueless npm_config_http-proxy to avoid warnings."
-  fi
-  unset npm_config_http-proxy || true
-  SANITIZED_PROXY_ENV=true
-fi
+# Legacy underscore variant (valid var name)
 if env | grep -qi '^npm_config_http_proxy='; then
-  val="${npm_config_http_proxy:-}"
+  val="$(printenv npm_config_http_proxy || true)"
   if [ -n "$val" ] && [ "$val" != "true" ]; then
-    echo "[setup] WARNING: Found env 'npm_config_http_proxy'; migrating to 'npm_config_proxy'."
+    echo "[setup] WARNING: Found legacy env 'npm_config_http_proxy'; mapping to 'npm_config_proxy'."
     export npm_config_proxy="$val"
   else
     echo "[setup] NOTE: Clearing valueless npm_config_http_proxy to avoid warnings."
@@ -83,13 +74,23 @@ if env | grep -qi '^npm_config_http_proxy='; then
   unset npm_config_http_proxy || true
   SANITIZED_PROXY_ENV=true
 fi
-if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  echo "[setup] NOTE: proxy env cleanup doesn't persist in the parent shell."
-  echo "       To avoid npm warnings in this session, run:"
-  echo "         unset npm_config_http_proxy npm_config_http-proxy"
-  if [ -n "${npm_config_proxy:-}" ]; then
-    echo "         export npm_config_proxy=\"$npm_config_proxy\""
+# Also map https variant if present
+if env | grep -qi '^npm_config_https_proxy='; then
+  val_https="$(printenv npm_config_https_proxy || true)"
+  if [ -n "$val_https" ] && [ "$val_https" != "true" ]; then
+    echo "[setup] WARNING: Found legacy env 'npm_config_https_proxy'; keeping as-is (modern key)."
+    export npm_config_https_proxy="$val_https"
+  else
+    echo "[setup] NOTE: Clearing valueless npm_config_https_proxy to avoid warnings."
+    unset npm_config_https_proxy || true
   fi
+  SANITIZED_PROXY_ENV=true
+fi
+if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "[setup] NOTE: Proxy env cleanup won't persist in the parent shell."
+  echo "       Prefer one of:" 
+  echo "         export HTTP_PROXY=\"http://host:port\"  HTTPS_PROXY=\"http://host:port\""
+  echo "         npm config set proxy \"http://host:port\"; npm config set https-proxy \"http://host:port\""
 fi
 
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
@@ -125,13 +126,15 @@ fi
   fi
 }
 
-# 3) Install npm deps
+# 3) Install npm deps (skip lifecycle scripts to avoid Husky and auto-installs)
+#    We'll install Playwright assets explicitly below.
+export HUSKY=0
 if [ -f package-lock.json ] && [ "$USE_NPM_CI" = true ]; then
-  echo "[setup] Installing dependencies via npm ci…"
-  npm ci || { echo "[setup] npm ci failed; trying npm install…"; npm install; }
+  echo "[setup] Installing dependencies via: HUSKY=0 npm ci --ignore-scripts …"
+  npm ci --ignore-scripts || { echo "[setup] npm ci failed; trying npm install…"; npm install --ignore-scripts; }
 else
-  echo "[setup] Installing dependencies via npm install…"
-  npm install
+  echo "[setup] Installing dependencies via: HUSKY=0 npm install --ignore-scripts …"
+  npm install --ignore-scripts
 fi
 
 # 4) Prepare writable Codex homes used by server/test harness
@@ -173,10 +176,11 @@ fi
 
 # 6) Optional verification run
 if [ "$VERIFY" = true ]; then
-  echo "[setup] Running tests: unit → integration → e2e…"
-  # Use deterministic Playwright reporter when CI is set by caller
+  echo "[setup] Running verify: format → lint → unit → integration → e2e…"
+  npm run format:check
+  npm run lint
   npm run test:all
-  echo "[setup] Tests completed. To open Playwright report: 'npm run test:report'"
+  echo "[setup] Verify completed. To open Playwright report: 'npm run test:report'"
 else
   cat <<'NEXT'
 [setup] Done.
