@@ -22,22 +22,13 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Prettier check
-        run: npm run format:check
+      - name: Verify (format+lint)
+        run: npm run verify:all --silent -- -s || npm run verify:all
 
       - name: Install Playwright deps
         run: npx playwright install --with-deps chromium
 
-      - name: Unit tests
-        run: npm run test:unit
-
-      - name: Integration tests
-        run: npm run test:integration
-
-      - name: E2E tests (Playwright)
+      - name: Run tests (unit+integration+e2e)
         env:
           PROXY_API_KEY: codex-ci
-        run: npm test
+        run: npm run test:all

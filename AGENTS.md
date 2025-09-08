@@ -1,6 +1,8 @@
-# Repository Guidelines
+# Codex Completions API — Agent/Contributor Guide
 
-Branch: main-p (proxy is stateless; one Codex proto process per request). Feature branches (`feat/playwright-tests`, `feat/prompt-cache-resume`, `feat/proto-continuous-sessions`) exist but are idle and not merged.
+Goal: provide an OpenAI Chat Completions‑compatible proxy over Codex CLI so existing clients (IDEs, SDKs, curl) can use Codex with minimal changes. The proxy exposes `/v1/models` and `/v1/chat/completions`, streams via SSE (role‑first delta, `[DONE]`), and keeps shaping conservative.
+
+Branch: `main-p` (stateless: one Codex proto process per request). Feature branches (`feat/playwright-tests`, `feat/prompt-cache-resume`, `feat/proto-continuous-sessions`) exist but are idle and not merged.
 
 ## Project Structure & Module Organization
 
@@ -21,9 +23,9 @@ Branch: main-p (proxy is stateless; one Codex proto process per request). Featur
 
 ## Coding Style & Naming Conventions
 
-- Language: ESM Node.js. Prefer `const/let`, 2-space indentation, and double quotes to match existing files.
-- Routes: keep OpenAI-compatible shapes under `/v1/*`. Set `Content-Type` precisely (`application/json; charset=utf-8` or `text/event-stream`).
-- Models: advertise only `codex-5`; normalize to effective `gpt-5` before spawning Codex.
+- Language: ESM Node.js. Prefer `const/let`, 2‑space indentation, and double quotes to match existing files.
+- Routes: keep OpenAI‑compatible shapes under `/v1/*`. Set `Content-Type` precisely (`application/json; charset=utf-8` or `text/event-stream`).
+- Models: advertise per environment — dev: `codev-5{,-low,-medium,-high,-minimal}`, prod: `codex-5{,-low,-medium,-high,-minimal}`; accept both prefixes everywhere; normalize to effective `gpt-5` before spawning Codex.
 
 ## Testing Guidelines
 
@@ -32,8 +34,17 @@ Branch: main-p (proxy is stateless; one Codex proto process per request). Featur
     - Run: `npm run test:unit` (once) or `npm run test:unit:watch` (while editing utils).
   - **Integration (Vitest, real server)** — validates Express routes with the deterministic Codex shim.
     - Run: `npm run test:integration` (use after route/handler changes; no Docker/Codex needed).
-  - **E2E API/SSE (Playwright)** — verifies `/v1/models`, non‑stream chat, and streaming SSE contract.
-    - Run: `npm test` (before push or when touching streaming behavior).
+- **E2E API/SSE (Playwright)** — verifies `/v1/models`, non‑stream chat, and streaming SSE contract.
+  - Run: `npm test` (before push or when touching streaming behavior).
+
+### Cloud/CI Consistency Protocol
+
+- Unified verification: run `npm run verify:all` to enforce formatting, lint, and all test layers.
+- Cloud agent steps (no secrets):
+  - `HUSKY=0 npm ci --ignore-scripts` (or `npm install --ignore-scripts`)
+  - `npx playwright install --with-deps chromium` (fallback to browser-only if OS deps not allowed)
+  - `npm run verify:all`
+- Test selection policy still applies during development; cloud agents should default to `verify:all` before push.
 - Full suite: `npm run test:all` (unit → integration → e2e).
 - Curl smoke (quick manual checks):
   - Models: `curl -s $BASE/v1/models | jq .` → includes `codex-5`.
@@ -47,13 +58,17 @@ Branch: main-p (proxy is stateless; one Codex proto process per request). Featur
 
 ## Security & Configuration Tips
 
-- Auth: All non-health routes require `Authorization: Bearer $PROXY_API_KEY`.
-- Secrets: Never commit `.env`; sample is `.env.example`. Rotate keys; OpenAI-style (`sk-...`) is supported.
-- Codex sandbox: proxy invokes `codex exec --sandbox read-only`; avoid writing to project files.
+- Auth: All non‑health routes require `Authorization: Bearer $PROXY_API_KEY` (except `/v1/models` when `PROXY_PROTECT_MODELS=false`).
+- Secrets: Never commit `.env`; sample is `.env.example`. Rotate keys; OpenAI‑style (`sk-...`) is supported.
+- Sandbox & workdir: default `PROXY_SANDBOX_MODE=danger-full-access` with `PROXY_CODEX_WORKDIR=/tmp/codex-work` to avoid IDE/plugin false positives on read‑only errors while keeping writes isolated from repo.
 - Codex HOME directories:
-  - DEV uses project-local `.codev/` (tracked for templates only; runtime artifacts under `.codev/sessions` are ignored).
-  - PROD uses project-root `.codex-api/` (contains secrets) which is not committed; only placeholder files are tracked. IMPORTANT: `.codex-api` MUST be writable in production because current Codex CLI persists rollout/session state under its home.
+  - DEV uses project‑local `.codev/` (tracked seed files only; runtime artifacts ignored).
+  - PROD uses project‑root `.codex-api/` (contains secrets) — MUST be writable in production because Codex CLI persists rollout/session state under its home.
   - `.dockerignore` excludes both `.codex-api/**` and `.codev/**` so secrets are never sent in build context.
+
+## Reliability & Streaming Notes
+
+- SSE cleanup: the proxy clears keepalives and stops writing on client disconnect/finish; `PROXY_KILL_ON_DISCONNECT=true` optionally terminates the child. This reduces client-side updates after unmount (e.g., React #409) without changing API shapes.
 
 # Project-Specific Rules (Codex Completions API)
 
