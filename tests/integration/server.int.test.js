@@ -17,7 +17,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function waitForHealth(timeoutMs = 5000) {
   const start = Date.now();
-  /* eslint-disable no-constant-condition */
+
   while (true) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
@@ -29,7 +29,9 @@ async function waitForHealth(timeoutMs = 5000) {
 }
 
 beforeAll(async () => {
-  PORT = await getPort({ port: 18080 });
+  // Use an ephemeral free port to avoid flakiness from collisions with
+  // other test runs or system services (e.g., ForwardAuth on 18080).
+  PORT = await getPort();
   BASE = `http://127.0.0.1:${PORT}/v1`;
   TOKEN_FILE = path.join(process.cwd(), ".tmp-usage.test.ndjson");
   try {
@@ -131,7 +133,6 @@ test("chat completions non-stream returns assistant text", async () => {
 test("usage endpoints produce aggregates", async () => {
   // Trigger a couple of requests to populate usage file
   for (let i = 0; i < 2; i++) {
-    // eslint-disable-next-line no-await-in-loop
     await fetch(`${BASE}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
