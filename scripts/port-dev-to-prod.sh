@@ -71,8 +71,9 @@ echo "Checking invariants…"
 
 # ForwardAuth address must be host loopback:18080 (prod)
 FA_LABEL=$(yq -r '.services.app.labels[]? | select(startswith("traefik.http.middlewares.codex-forwardauth.forwardauth.address="))' docker-compose.yml || true)
-if [[ -z "$FA_LABEL" ]]; then
-  echo "[FAIL] ForwardAuth label missing in docker-compose.yml" | tee "$ART_DIR/invariants.txt"
+if [[ -z "$FA_LABEL" ]] || [[ "$FA_LABEL" == *$'
+'* ]]; then
+  echo "[FAIL] Expected exactly one 'traefik.http.middlewares.codex-forwardauth.forwardauth.address' label in docker-compose.yml." | tee "$ART_DIR/invariants.txt"
   exit 3
 fi
 FA_ADDR=${FA_LABEL#*=}
