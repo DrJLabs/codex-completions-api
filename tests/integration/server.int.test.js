@@ -29,7 +29,9 @@ async function waitForHealth(timeoutMs = 5000) {
 }
 
 beforeAll(async () => {
-  PORT = await getPort({ port: 18080 });
+  // Use an ephemeral free port to avoid flakiness from collisions with
+  // other test runs or system services (e.g., ForwardAuth on 18080).
+  PORT = await getPort();
   BASE = `http://127.0.0.1:${PORT}/v1`;
   TOKEN_FILE = path.join(process.cwd(), ".tmp-usage.test.ndjson");
   try {
