@@ -24,11 +24,11 @@ while [[ $# -gt 0 ]]; do
     --to) DEST_HOME="$2"; shift 2;;
     --dry-run) DRY_RUN=1; shift;;
     --force) FORCE=1; shift;;
-    *) echo "Unknown arg: $1" >&2; exit 2;;
+      *) printf "Unknown arg: %s\n" "$1" >&2; exit 2;;
   esac
 done
 
-echo "Syncing Codex config: ${SOURCE_HOME} -> ${DEST_HOME}"
+printf "Syncing Codex config: %s -> %s\n" "$SOURCE_HOME" "$DEST_HOME"
 
 for f in config.toml AGENTS.md; do
   src="$SOURCE_HOME/$f"
@@ -40,25 +40,25 @@ for f in config.toml AGENTS.md; do
   mkdir -p "$DEST_HOME"
   if [[ -f "$dst" ]]; then
     if cmp -s "$src" "$dst"; then
-      echo "[OK] Up-to-date: $dst"
+      printf "[OK] Up-to-date: %s\n" "$dst"
       continue
     fi
     if [[ "$FORCE" != "1" ]]; then
-      echo "[DIFF] $dst differs. Use --force to overwrite or remove it first."
+      printf "[DIFF] %s differs. Use --force to overwrite or remove it first.\n" "$dst"
       continue
     fi
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "DRY RUN: would copy $src -> $dst"
+    printf "DRY RUN: would copy %s -> %s\n" "$src" "$dst"
   else
     if [[ -f "$dst" ]] && [[ "$FORCE" == "1" ]]; then
       bk="$dst.bak.$(date +%Y%m%d%H%M%S)"
       cp -p "$dst" "$bk"
-      echo "[BACKUP] Saved previous to $bk"
+      printf "[BACKUP] Saved previous to %s\n" "$bk"
     fi
     install -m 644 "$src" "$dst"
-    echo "[COPIED] $src -> $dst (644)"
+    printf "[COPIED] %s -> %s (644)\n" "$src" "$dst"
   fi
 done
 
-echo "Done. Note: secrets like auth.json are intentionally not copied."
+printf "Done. Note: secrets like auth.json are intentionally not copied.\n"
