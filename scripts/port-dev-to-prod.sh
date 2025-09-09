@@ -157,13 +157,17 @@ echo "Wrote next steps to: $ART_DIR/NEXT_STEPS.txt"
 
 # 5) Optional deploy (guarded)
 if [[ "$DEPLOY" == "1" ]]; then
-  if [[ "${CONFIRM_DEPLOY:-}" != "prod" ]]; then
-    echo "Refusing to deploy: set CONFIRM_DEPLOY=prod to proceed." >&2
-    exit 4
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "DRY RUN: would deploy: docker compose up -d --build --force-recreate" | tee -a "$ART_DIR/deploy.log"
+  else
+    if [[ "${CONFIRM_DEPLOY:-}" != "prod" ]]; then
+      echo "Refusing to deploy: set CONFIRM_DEPLOY=prod to proceed." >&2
+      exit 4
+    fi
+    echo "Deploying: docker compose up -d --build --force-recreate" | tee -a "$ART_DIR/deploy.log"
+    docker compose up -d --build --force-recreate 2>&1 | tee -a "$ART_DIR/deploy.log"
+    echo "Deployment complete. Run: DOMAIN=your.domain npm run smoke:prod"
   fi
-  echo "Deploying: docker compose up -d --build --force-recreate" | tee -a "$ART_DIR/deploy.log"
-  docker compose up -d --build --force-recreate 2>&1 | tee -a "$ART_DIR/deploy.log"
-  echo "Deployment complete. Run: DOMAIN=your.domain npm run smoke:prod"
 fi
 
 echo "All checks complete. Artifacts: $ART_DIR"
