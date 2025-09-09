@@ -34,7 +34,7 @@ for f in config.toml AGENTS.md; do
   src="$SOURCE_HOME/$f"
   dst="$DEST_HOME/$f"
   if [[ ! -f "$src" ]]; then
-    echo "[WARN] Missing source $src; skipping"
+    printf "[WARN] Missing source %s; skipping\n" "$src"
     continue
   fi
   mkdir -p "$DEST_HOME"
