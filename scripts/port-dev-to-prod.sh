@@ -72,7 +72,7 @@ fi
 required=(codex-api codex-preflight codex-models codex-health)
 missing=()
 for r in "${required[@]}"; do
-  if ! yq -e ".services.app.labels[]? | select(startswith("traefik.http.routers.${r}.rule="))" docker-compose.yml >/dev/null; then
+  if ! yq -e ".services.app.labels[]? | select(startswith(\"traefik.http.routers.${r}.rule=\"))" docker-compose.yml >/dev/null; then
     missing+=("$r")
   fi
 done
