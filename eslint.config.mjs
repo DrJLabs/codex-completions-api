@@ -53,9 +53,7 @@ export default [
         ...globals.node,
       },
     },
-    plugins: {
-      security,
-    },
+    plugins: { security },
     rules: {
       ...securityRules,
       "no-console": "off",
@@ -73,9 +71,7 @@ export default [
     name: "vitest-and-integration",
     files: ["tests/unit/**/*.js", "tests/integration/**/*.js"],
     languageOptions: {
-      globals: {
-        ...testGlobals,
-      },
+      globals: { ...testGlobals },
     },
     rules: commonTestRules,
   },
@@ -83,7 +79,8 @@ export default [
   {
     ...pwRecommended,
     name: "playwright-e2e",
-    files: ["tests/**/*.spec.{js,ts,tsx}"],
+    // Restrict Playwright rules to top-level specs only (not unit/*.spec.js)
+    files: ["tests/*.spec.{js,ts,tsx}"],
     languageOptions: {
       globals: {
         ...(pwRecommended.languageOptions?.globals || {}),
