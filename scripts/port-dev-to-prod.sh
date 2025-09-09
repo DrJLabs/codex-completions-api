@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Guarded Dev→Prod port helper.
-# - Default: non-destructive checks; also syncs Codex config + AGENTS by default.
+# - Default: non-destructive checks; sync runs in dry-run mode.
 # - Validates invariants (Traefik labels, ForwardAuth target, network), syncs `.codev → .codex-api`,
 #   optional deploy, optional smoke test.
 # - Creates artifacts under test-results/port-YYYYmmddHHMMSS.
@@ -24,11 +24,11 @@ mkdir -p "$ART_DIR"
 DEPLOY=0
 DO_SMOKE=0
 DO_SYNC=1
-DRY_RUN=0
+DRY_RUN=1
 DOMAIN="${DOMAIN:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --deploy) DEPLOY=1; shift;;
+    --deploy) DEPLOY=1; DRY_RUN=0; shift;;
     --smoke) DO_SMOKE=1; shift;;
     --sync) DO_SYNC=1; shift;;
     --no-sync) DO_SYNC=0; shift;;
@@ -42,6 +42,7 @@ echo "== Port Dev→Prod: checks (artifacts: ${ART_DIR}) =="
 
 need() { command -v "$1" >/dev/null || { echo "Missing: $1" >&2; exit 2; }; }
 need docker
+need yq
 
 # 1) Basic repo sanity
 if [[ ! -f docker-compose.yml ]] || [[ ! -f compose.dev.stack.yml ]]; then
@@ -56,11 +57,12 @@ docker compose config >> "$ART_DIR/docker-compose.config.yaml"
 echo "Checking invariants…"
 
 # ForwardAuth address must be host loopback:18080 (prod)
-FA_ADDR=$(grep -m 1 -E "^\s*-\s*traefik\.http\.middlewares\.codex-forwardauth\.forwardauth\.address=" docker-compose.yml | cut -d= -f2- || true)
-if [[ -z "$FA_ADDR" ]]; then
+FA_LABEL=$(yq -r '.services.app.labels[]? | select(startswith("traefik.http.middlewares.codex-forwardauth.forwardauth.address="))' docker-compose.yml || true)
+if [[ -z "$FA_LABEL" ]]; then
   echo "[FAIL] ForwardAuth label missing in docker-compose.yml" | tee "$ART_DIR/invariants.txt"
   exit 3
 fi
+FA_ADDR=${FA_LABEL#*=}
 if [[ "$FA_ADDR" != "http://127.0.0.1:18080/verify" ]]; then
   echo "[FAIL] ForwardAuth address in docker-compose.yml is not 127.0.0.1:18080/verify: $FA_ADDR" | tee "$ART_DIR/invariants.txt"
   exit 3
@@ -70,7 +72,9 @@ fi
 required=(codex-api codex-preflight codex-models codex-health)
 missing=()
 for r in "${required[@]}"; do
-  if ! grep -qE "^\s*-\s*traefik\.http\.routers\.${r}\.rule=" docker-compose.yml; then missing+=("$r"); fi
+  if ! yq -e ".services.app.labels[]? | select(startswith("traefik.http.routers.${r}.rule="))" docker-compose.yml >/dev/null; then
+    missing+=("$r")
+  fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
   echo "[FAIL] Missing routers: ${missing[*]}" | tee -a "$ART_DIR/invariants.txt"
@@ -78,7 +82,7 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 # Traefik network label present
-if ! grep -qE '^\s*-\s*traefik\.docker\.network=traefik' docker-compose.yml; then
+if ! yq -e '.services.app.labels[]? | . == "traefik.docker.network=traefik"' docker-compose.yml >/dev/null; then
   echo "[FAIL] traefik.docker.network=traefik not set on app service" | tee -a "$ART_DIR/invariants.txt"
   exit 3
 fi
@@ -89,7 +93,7 @@ if ! docker network ls --format '{{.Name}}' | grep -qx traefik; then
 fi
 
 # .codex-api mapped (writable by default)
-if ! grep -qE '^\s*-\s*\./\.codex-api:/app/\.codex-api' docker-compose.yml; then
+if ! yq -e '.services.app.volumes[]? | . == "./.codex-api:/app/.codex-api"' docker-compose.yml >/dev/null; then
   echo "[FAIL] .codex-api volume not mounted in prod compose" | tee -a "$ART_DIR/invariants.txt"
   exit 3
 fi
@@ -101,12 +105,12 @@ missing_seed=()
 for f in config.toml AGENTS.md; do
   [[ -f ".codex-api/$f" ]] || missing_seed+=("$f")
 done
-if ((${#missing_seed[@]})); then
+if [[ ${#missing_seed[@]} -gt 0 ]]; then
   echo "[WARN] Missing files in .codex-api/: ${missing_seed[*]}" | tee -a "$ART_DIR/invariants.txt"
   echo "      Hint: run 'npm run port:sync-config' to seed from .codev/." | tee -a "$ART_DIR/invariants.txt"
 fi
 
-# 3c) Sync Codex config + AGENTS from .codev to .codex-api (default on)
+# 3c) Sync Codex config + AGENTS from .codev to .codex-api (default on, dry-run)
 if [[ "$DO_SYNC" == "1" ]]; then
   echo "Syncing Codex HOME from .codev → .codex-api (config.toml, AGENTS.md)..."
   if [[ "$DRY_RUN" == "1" ]]; then
