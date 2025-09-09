@@ -33,7 +33,14 @@ while [[ $# -gt 0 ]]; do
     --sync) DO_SYNC=1; shift;;
     --no-sync) DO_SYNC=0; shift;;
     --dry-run) REQUESTED_DRY_RUN=1; shift;;
-    --domain) DOMAIN="$2"; shift 2;;
+    --domain)
+      if [[ -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        printf "Error: --domain requires a non-flag argument.\n" >&2
+        exit 2
+      fi
+      DOMAIN="$2"
+      shift 2
+      ;;
     *) printf "Unknown arg: %s\n" "$1" >&2; exit 2;;
   esac
 done
