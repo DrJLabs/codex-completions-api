@@ -24,19 +24,25 @@ mkdir -p "$ART_DIR"
 DEPLOY=0
 DO_SMOKE=0
 DO_SYNC=1
-DRY_RUN=1
+REQUESTED_DRY_RUN=0
 DOMAIN="${DOMAIN:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --deploy) DEPLOY=1; DRY_RUN=0; shift;;
+    --deploy) DEPLOY=1; shift;;
     --smoke) DO_SMOKE=1; shift;;
     --sync) DO_SYNC=1; shift;;
     --no-sync) DO_SYNC=0; shift;;
-    --dry-run) DRY_RUN=1; shift;;
+    --dry-run) REQUESTED_DRY_RUN=1; shift;;
     --domain) DOMAIN="$2"; shift 2;;
-    *) echo "Unknown arg: $1" >&2; exit 2;;
+    *) printf "Unknown arg: %s\n" "$1" >&2; exit 2;;
   esac
 done
+
+# Default to dry run; only flip off when --deploy is set without --dry-run
+DRY_RUN=1
+if [[ "$DEPLOY" == "1" && "$REQUESTED_DRY_RUN" == "0" ]]; then
+  DRY_RUN=0
+fi
 
 echo "== Port Dev→Prod: checks (artifacts: ${ART_DIR}) =="
 
@@ -116,7 +122,7 @@ if [[ "$DO_SYNC" == "1" ]]; then
   if [[ "$DRY_RUN" == "1" ]]; then
     bash "$ROOT_DIR/scripts/sync-codex-config.sh" --dry-run 2>&1 | tee "$ART_DIR/sync-dry-run.txt"
   else
-    bash "$ROOT_DIR/scripts/sync-codex-config.sh" --force | tee "$ART_DIR/sync.log"
+    bash "$ROOT_DIR/scripts/sync-codex-config.sh" --force 2>&1 | tee "$ART_DIR/sync.log"
   fi
 fi
 
@@ -148,7 +154,7 @@ if [[ "$DEPLOY" == "1" ]]; then
     exit 4
   fi
   echo "Deploying: docker compose up -d --build --force-recreate" | tee -a "$ART_DIR/deploy.log"
-  docker compose up -d --build --force-recreate | tee -a "$ART_DIR/deploy.log"
+  docker compose up -d --build --force-recreate 2>&1 | tee -a "$ART_DIR/deploy.log"
   echo "Deployment complete. Run: DOMAIN=your.domain npm run smoke:prod"
 fi
 
@@ -160,6 +166,6 @@ if [[ "$DO_SMOKE" == "1" ]]; then
     echo "Warning: --smoke set but no domain provided (use --domain or DOMAIN=...). Skipping smoke." | tee -a "$ART_DIR/smoke.txt"
   else
     echo "Running smoke against https://$DOMAIN ..." | tee -a "$ART_DIR/smoke.txt"
-    DOMAIN="$DOMAIN" KEY="${KEY:-}" bash "$ROOT_DIR/scripts/prod-smoke.sh" | tee -a "$ART_DIR/smoke.txt"
+    DOMAIN="$DOMAIN" KEY="${KEY:-}" bash "$ROOT_DIR/scripts/prod-smoke.sh" 2>&1 | tee -a "$ART_DIR/smoke.txt"
   fi
 fi
