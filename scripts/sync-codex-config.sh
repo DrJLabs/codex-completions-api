@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Sync Codex config files from a dev HOME (default .codev) to prod HOME (.codex-api).
+# Copies only: config.toml, AGENTS.md. Skips secrets (e.g., auth.json).
+#
+# Usage:
+#   bash scripts/sync-codex-config.sh [--from <src_home>] [--to <dest_home>] [--dry-run] [--force]
+# Examples:
+#   npm run port:sync-config                  # .codev → .codex-api on this machine
+#   SOURCE_HOME=.codev DEST_HOME=/srv/codex/.codex-api bash scripts/sync-codex-config.sh
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+SOURCE_HOME=".codev"
+DEST_HOME=".codex-api"
+DRY_RUN=0
+FORCE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from)
+      if [[ -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        printf "Error: --from requires a non-flag argument.\n" >&2
+        exit 2
+      fi
+      SOURCE_HOME="$2"
+      shift 2
+      ;;
+    --to)
+      if [[ -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        printf "Error: --to requires a non-flag argument.\n" >&2
+        exit 2
+      fi
+      DEST_HOME="$2"
+      shift 2
+      ;;
+    --dry-run) DRY_RUN=1; shift;;
+    --force) FORCE=1; shift;;
+      *) printf "Unknown arg: %s\n" "$1" >&2; exit 2;;
+  esac
+done
+
+printf "Syncing Codex config: %s -> %s\n" "$SOURCE_HOME" "$DEST_HOME"
+
+for f in config.toml AGENTS.md; do
+  src="$SOURCE_HOME/$f"
+  dst="$DEST_HOME/$f"
+  if [[ ! -f "$src" ]]; then
+    printf "[WARN] Missing source %s; skipping\n" "$src"
+    continue
+  fi
+  mkdir -p "$DEST_HOME"
+  if [[ -f "$dst" ]]; then
+    if cmp -s "$src" "$dst"; then
+      printf "[OK] Up-to-date: %s\n" "$dst"
+      continue
+    fi
+    if [[ "$FORCE" != "1" ]]; then
+      printf "[DIFF] %s differs. Use --force to overwrite or remove it first.\n" "$dst"
+      continue
+    fi
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf "DRY RUN: would copy %s -> %s\n" "$src" "$dst"
+  else
+    if [[ -f "$dst" ]] && [[ "$FORCE" == "1" ]]; then
+      bk="$dst.bak.$(date +%Y%m%d%H%M%S)"
+      cp -p "$dst" "$bk"
+      printf "[BACKUP] Saved previous to %s\n" "$bk"
+    fi
+    install -m 644 "$src" "$dst"
+    printf "[COPIED] %s -> %s (644)\n" "$src" "$dst"
+  fi
+done
+
+printf "Done. Note: secrets like auth.json are intentionally not copied.\n"
