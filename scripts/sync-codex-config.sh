@@ -20,8 +20,22 @@ FORCE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --from) SOURCE_HOME="$2"; shift 2;;
-    --to) DEST_HOME="$2"; shift 2;;
+    --from)
+      if [[ -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        printf "Error: --from requires a non-flag argument.\n" >&2
+        exit 2
+      fi
+      SOURCE_HOME="$2"
+      shift 2
+      ;;
+    --to)
+      if [[ -z "${2:-}" || "${2:0:1}" == "-" ]]; then
+        printf "Error: --to requires a non-flag argument.\n" >&2
+        exit 2
+      fi
+      DEST_HOME="$2"
+      shift 2
+      ;;
     --dry-run) DRY_RUN=1; shift;;
     --force) FORCE=1; shift;;
       *) printf "Unknown arg: %s\n" "$1" >&2; exit 2;;
