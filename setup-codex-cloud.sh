@@ -48,6 +48,7 @@ for arg in "$@"; do
 done
 
 echo "[setup] Project: $PROJECT_ROOT"
+QUIET=${QUIET:-1}
 
 # 1) Node/npm preflight
 if ! command -v node >/dev/null 2>&1; then
@@ -66,10 +67,10 @@ SANITIZED_PROXY_ENV=false
 if env | grep -qi '^npm_config_http_proxy='; then
   val="$(printenv npm_config_http_proxy || true)"
   if [ -n "$val" ] && [ "$val" != "true" ]; then
-    echo "[setup] WARNING: Found legacy env 'npm_config_http_proxy'; mapping to 'npm_config_proxy'."
+    [ "$QUIET" != "1" ] && echo "[setup] WARNING: Found legacy env 'npm_config_http_proxy'; mapping to 'npm_config_proxy'."
     export npm_config_proxy="$val"
   else
-    echo "[setup] NOTE: Clearing valueless npm_config_http_proxy to avoid warnings."
+    [ "$QUIET" != "1" ] && echo "[setup] NOTE: Clearing valueless npm_config_http_proxy to avoid warnings."
   fi
   unset npm_config_http_proxy || true
   SANITIZED_PROXY_ENV=true
@@ -78,15 +79,15 @@ fi
 if env | grep -qi '^npm_config_https_proxy='; then
   val_https="$(printenv npm_config_https_proxy || true)"
   if [ -n "$val_https" ] && [ "$val_https" != "true" ]; then
-    echo "[setup] WARNING: Found legacy env 'npm_config_https_proxy'; keeping as-is (modern key)."
+    [ "$QUIET" != "1" ] && echo "[setup] WARNING: Found legacy env 'npm_config_https_proxy'; keeping as-is (modern key)."
     export npm_config_https_proxy="$val_https"
   else
-    echo "[setup] NOTE: Clearing valueless npm_config_https_proxy to avoid warnings."
+    [ "$QUIET" != "1" ] && echo "[setup] NOTE: Clearing valueless npm_config_https_proxy to avoid warnings."
     unset npm_config_https_proxy || true
   fi
   SANITIZED_PROXY_ENV=true
 fi
-if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+if [ "$SANITIZED_PROXY_ENV" = true ] && [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$QUIET" != "1" ]; then
   echo "[setup] NOTE: Proxy env cleanup won't persist in the parent shell."
   echo "       Prefer one of:" 
   echo "         export HTTP_PROXY=\"http://host:port\"  HTTPS_PROXY=\"http://host:port\""
@@ -129,12 +130,14 @@ fi
 # 3) Install npm deps (skip lifecycle scripts to avoid Husky and auto-installs)
 #    We'll install Playwright assets explicitly below.
 export HUSKY=0
+NPM_LOGLEVEL="${NPM_LOGLEVEL:-error}"
+NPM_BASE_FLAGS=(--ignore-scripts --no-audit --no-fund --progress=false --loglevel=$NPM_LOGLEVEL)
 if [ -f package-lock.json ] && [ "$USE_NPM_CI" = true ]; then
-  echo "[setup] Installing dependencies via: HUSKY=0 npm ci --ignore-scripts …"
-  npm ci --ignore-scripts || { echo "[setup] npm ci failed; trying npm install…"; npm install --ignore-scripts; }
+  echo "[setup] Installing dependencies via: HUSKY=0 npm ci ${NPM_BASE_FLAGS[*]} …"
+  npm ci "${NPM_BASE_FLAGS[@]}" || { echo "[setup] npm ci failed; trying npm install…"; npm install "${NPM_BASE_FLAGS[@]}"; }
 else
-  echo "[setup] Installing dependencies via: HUSKY=0 npm install --ignore-scripts …"
-  npm install --ignore-scripts
+  echo "[setup] Installing dependencies via: HUSKY=0 npm install ${NPM_BASE_FLAGS[*]} …"
+  npm install "${NPM_BASE_FLAGS[@]}"
 fi
 
 # 4) Prepare writable Codex homes used by server/test harness
