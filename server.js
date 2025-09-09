@@ -1840,6 +1840,5 @@ app.post("/v1/completions", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
   console.log(`codex-openai-proxy listening on http://127.0.0.1:${PORT}/v1`);
 });
