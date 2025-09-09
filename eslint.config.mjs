@@ -83,7 +83,7 @@ export default [
   {
     ...pwRecommended,
     name: "playwright-e2e",
-    files: ["tests/*.spec.{js,ts,tsx}"],
+    files: ["tests/**/*.spec.{js,ts,tsx}"],
     languageOptions: {
       globals: {
         ...(pwRecommended.languageOptions?.globals || {}),
