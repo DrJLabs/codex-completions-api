@@ -31,6 +31,8 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 
 ## Environments: PROD vs DEV
 
+See docs/dev-to-prod-playbook.md for a step-by-step Dev → Prod method and invariants enforced by the checks.
+
 ### Production
 
 - This repo’s `docker-compose.yml` is the production deployment spec.
