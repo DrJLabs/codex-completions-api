@@ -56,7 +56,7 @@ docker compose config >> "$ART_DIR/docker-compose.config.yaml"
 echo "Checking invariants…"
 
 # ForwardAuth address must be host loopback:18080 (prod)
-FA_ADDR=$(grep -E "^\s*-\s*traefik\.http\.middlewares\.codex-forwardauth\.forwardauth\.address=" docker-compose.yml | head -n1 | cut -d= -f2- || true)
+FA_ADDR=$(grep -m 1 -E "^\s*-\s*traefik\.http\.middlewares\.codex-forwardauth\.forwardauth\.address=" docker-compose.yml | cut -d= -f2- || true)
 if [[ -z "$FA_ADDR" ]]; then
   echo "[FAIL] ForwardAuth label missing in docker-compose.yml" | tee "$ART_DIR/invariants.txt"
   exit 3
