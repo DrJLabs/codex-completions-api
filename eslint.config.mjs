@@ -74,7 +74,7 @@ export default [
   // Playwright E2E tests only
   {
     name: "playwright-e2e",
-    files: ["tests/*.spec.js"],
+    files: ["tests/*.spec.{js,ts,tsx}"],
     ...pwRecommended,
     languageOptions: {
       globals: {
@@ -92,6 +92,8 @@ export default [
       ...(pwRecommended.rules || {}),
       // mirror prior config: allow conditionals in tests
       "playwright/no-conditional-in-test": "off",
+      // parity with legacy config
+      "promise/param-names": "off",
       "no-console": "off",
     },
   },
