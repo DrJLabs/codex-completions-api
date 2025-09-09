@@ -53,11 +53,11 @@ for f in config.toml AGENTS.md; do
   else
     if [[ -f "$dst" ]] && [[ "$FORCE" == "1" ]]; then
       bk="$dst.bak.$(date +%Y%m%d%H%M%S)"
-      cp -p "$dst" "$bk" || true
+      cp -p "$dst" "$bk"
       echo "[BACKUP] Saved previous to $bk"
     fi
-    install -m 600 "$src" "$dst"
-    echo "[COPIED] $src -> $dst (600)"
+    install -m 644 "$src" "$dst"
+    echo "[COPIED] $src -> $dst (644)"
   fi
 done
 

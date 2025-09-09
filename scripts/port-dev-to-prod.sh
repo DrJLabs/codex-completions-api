@@ -41,7 +41,7 @@ done
 echo "== Port Dev→Prod: checks (artifacts: ${ART_DIR}) =="
 
 need() { command -v "$1" >/dev/null || { echo "Missing: $1" >&2; exit 2; }; }
-need docker; need jq; need awk; need sed
+need docker
 
 # 1) Basic repo sanity
 if [[ ! -f docker-compose.yml ]] || [[ ! -f compose.dev.stack.yml ]]; then
@@ -152,6 +152,6 @@ if [[ "$DO_SMOKE" == "1" ]]; then
     echo "Warning: --smoke set but no domain provided (use --domain or DOMAIN=...). Skipping smoke." | tee -a "$ART_DIR/smoke.txt"
   else
     echo "Running smoke against https://$DOMAIN ..." | tee -a "$ART_DIR/smoke.txt"
-    DOMAIN="$DOMAIN" KEY="${KEY:-}" bash "$ROOT_DIR/scripts/prod-smoke.sh" | tee -a "$ART_DIR/smoke.txt" || true
+    DOMAIN="$DOMAIN" KEY="${KEY:-}" bash "$ROOT_DIR/scripts/prod-smoke.sh" | tee -a "$ART_DIR/smoke.txt"
   fi
 fi
