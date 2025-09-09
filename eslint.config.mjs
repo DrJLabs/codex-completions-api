@@ -19,6 +19,12 @@ const testGlobals = {
   beforeAll: "readonly",
   afterAll: "readonly",
 };
+const commonTestRules = {
+  // Keep prior behavior from legacy config
+  "promise/param-names": "off",
+  "n/no-unsupported-features/node-builtins": "off",
+  "no-constant-condition": "off",
+};
 
 export default [
   {
@@ -71,12 +77,7 @@ export default [
         ...testGlobals,
       },
     },
-    rules: {
-      // Keep prior behavior from legacy config
-      "promise/param-names": "off",
-      "n/no-unsupported-features/node-builtins": "off",
-      "no-constant-condition": "off",
-    },
+    rules: commonTestRules,
   },
   // Playwright E2E tests only
   {
@@ -91,12 +92,9 @@ export default [
     },
     rules: {
       ...(pwRecommended.rules || {}),
-      "n/no-unsupported-features/node-builtins": "off",
-      "no-constant-condition": "off",
+      ...commonTestRules,
       // mirror prior config: allow conditionals in tests
       "playwright/no-conditional-in-test": "off",
-      // parity with legacy config
-      "promise/param-names": "off",
     },
   },
   // Keep Prettier as the last config to disable stylistic ESLint rules
