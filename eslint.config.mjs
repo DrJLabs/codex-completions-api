@@ -11,6 +11,14 @@ const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
 const pwConfig = playwright.configs?.recommended ?? {};
 const securityRules = security.configs?.recommended?.rules ?? {};
+const testGlobals = {
+  describe: "readonly",
+  it: "readonly",
+  test: "readonly",
+  expect: "readonly",
+  beforeAll: "readonly",
+  afterAll: "readonly",
+};
 
 export default [
   js.configs.recommended,
@@ -60,12 +68,7 @@ export default [
     languageOptions: {
       globals: {
         ...globals.node,
-        describe: "readonly",
-        it: "readonly",
-        test: "readonly",
-        expect: "readonly",
-        beforeAll: "readonly",
-        afterAll: "readonly",
+        ...testGlobals,
       },
     },
     rules: {
@@ -84,12 +87,7 @@ export default [
       globals: {
         ...globals.node,
         ...(playwright.environments?.playwright?.globals || {}),
-        describe: "readonly",
-        it: "readonly",
-        test: "readonly",
-        expect: "readonly",
-        beforeAll: "readonly",
-        afterAll: "readonly",
+        ...testGlobals,
       },
     },
     rules: {
