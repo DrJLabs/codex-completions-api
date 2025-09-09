@@ -15,12 +15,15 @@ export const LOG_PROTO =
 
 // Ensure directories exist on module load
 try {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- directories derived from env/tmpdir
   fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true });
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- directories derived from env/tmpdir
   fs.mkdirSync(path.dirname(PROTO_LOG_PATH), { recursive: true });
 } catch {}
 
 export const appendUsage = (obj = {}) => {
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
     fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
   } catch {}
 };
@@ -28,6 +31,7 @@ export const appendUsage = (obj = {}) => {
 export const appendProtoEvent = (obj = {}) => {
   if (!LOG_PROTO) return;
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
     fs.appendFileSync(PROTO_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
   } catch {}
 };
@@ -47,6 +51,7 @@ export const extractUseToolBlocks = (text = "", startAt = 0) => {
     const end = close + closeTag.length;
     const raw = text.slice(open, end);
     const getInner = (tag) => {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- pattern built from fixed tag names only
       const m = raw.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
       return (m && String(m[1] || "").trim()) || "";
     };

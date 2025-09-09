@@ -122,6 +122,7 @@ const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
 // helper definitions moved to src/utils.js
 
 try {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- CODEX_WORKDIR derives from env/tmpdir; not user input
   fs.mkdirSync(CODEX_WORKDIR, { recursive: true });
 } catch (e) {
   try {
@@ -134,7 +135,9 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, sandbox_mode: SANDBOX_MO
 // Usage query support (file-backed NDJSON aggregates)
 const loadUsageEvents = () => {
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal log path; controlled by env, not request data
     if (!fs.existsSync(TOKEN_LOG_PATH)) return [];
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal log path; controlled by env, not request data
     const lines = fs.readFileSync(TOKEN_LOG_PATH, "utf8").split(/\n+/).filter(Boolean);
     return lines
       .map((l) => {
@@ -722,6 +725,8 @@ app.post("/v1/chat/completions", (req, res) => {
                       }
                       // Append unique blocks with optional delimiter
                       for (let i = 0; i < newBlocks.length; i++) {
+                        // Loop index into local array; not user-controlled
+                        // eslint-disable-next-line security/detect-object-injection
                         const { b, key } = newBlocks[i];
                         forwardedToolHashes.add(key);
                         if (TOOL_BLOCK_DELIM && toSend && !toSend.endsWith("\n\n"))
