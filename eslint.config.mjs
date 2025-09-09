@@ -1,13 +1,24 @@
 import js from "@eslint/js";
 import globals from "globals";
-import importPlugin from "eslint-plugin-import";
-import nPlugin from "eslint-plugin-n";
-import promisePlugin from "eslint-plugin-promise";
 import playwright from "eslint-plugin-playwright";
 import security from "eslint-plugin-security";
+import { FlatCompat } from "@eslint/eslintrc";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const compat = new FlatCompat({ baseDirectory: __dirname });
+const pwRecommended = playwright.configs?.["flat/recommended"] ?? {};
 
 export default [
   js.configs.recommended,
+  // Bring back plugin recommended sets from legacy extends via compat
+  ...compat.extends(
+    "plugin:import/recommended",
+    "plugin:n/recommended",
+    "plugin:promise/recommended"
+  ),
   {
     name: "base",
     files: ["**/*.{js,mjs,cjs}"],
@@ -26,12 +37,8 @@ export default [
         ...globals.node,
       },
     },
-    plugins: {
-      import: importPlugin,
-      n: nPlugin,
-      promise: promisePlugin,
-      security,
-    },
+    // Plugins only needed here for additional rules beyond recommended
+    plugins: { security },
     rules: {
       "no-console": "off",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
@@ -43,10 +50,10 @@ export default [
       "n/hashbang": "off",
     },
   },
-  // Test files (JS only; TS tests are ignored by ESLint here)
+  // Vitest + integration tests (non-Playwright)
   {
-    name: "tests",
-    files: ["tests/**/*.js"],
+    name: "vitest-and-integration",
+    files: ["tests/unit/**/*.js", "tests/integration/**/*.js"],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -58,11 +65,36 @@ export default [
         afterAll: "readonly",
       },
     },
-    plugins: { playwright },
     rules: {
+      // Keep prior behavior from legacy config
+      "promise/param-names": "off",
+      "no-console": "off",
+    },
+  },
+  // Playwright E2E tests only
+  {
+    name: "playwright-e2e",
+    files: ["tests/*.spec.js"],
+    ...pwRecommended,
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...(playwright.environments?.playwright?.globals || {}),
+        describe: "readonly",
+        it: "readonly",
+        test: "readonly",
+        expect: "readonly",
+        beforeAll: "readonly",
+        afterAll: "readonly",
+      },
+    },
+    rules: {
+      ...(pwRecommended.rules || {}),
       // mirror prior config: allow conditionals in tests
       "playwright/no-conditional-in-test": "off",
       "no-console": "off",
     },
   },
+  // Keep Prettier as the last config to disable stylistic ESLint rules
+  ...compat.extends("prettier"),
 ];
