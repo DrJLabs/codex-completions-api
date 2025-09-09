@@ -10,7 +10,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
 const pwRecommended = playwright.configs?.["flat/recommended"] ?? {};
-const securityRules = security.configs?.recommended?.rules ?? {};
 const testGlobals = {
   describe: "readonly",
   it: "readonly",
@@ -55,7 +54,6 @@ export default [
     },
     plugins: { security },
     rules: {
-      ...securityRules,
       "no-console": "off",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "no-empty": "off",
@@ -82,6 +80,7 @@ export default [
     // Restrict Playwright rules to top-level specs only (not unit/*.spec.js)
     files: ["tests/*.spec.{js,ts,tsx}"],
     languageOptions: {
+      ...(pwRecommended.languageOptions || {}),
       globals: {
         ...(pwRecommended.languageOptions?.globals || {}),
         ...testGlobals,
