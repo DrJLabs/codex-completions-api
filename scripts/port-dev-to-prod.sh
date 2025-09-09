@@ -40,7 +40,7 @@ done
 
 echo "== Port Dev→Prod: checks (artifacts: ${ART_DIR}) =="
 
-need() { command -v "$1" >/dev/null || { echo "Missing: $1" >&2; exit 2; }; }
+need() { command -v "$1" >/dev/null || { printf "Missing: %s\n" "$1" >&2; exit 2; }; }
 need docker
 need yq
 
