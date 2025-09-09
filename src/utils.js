@@ -57,6 +57,8 @@ export const aggregateUsage = (events = [], start = 0, end = Date.now() + 1, gro
         group === "hour"
           ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).toISOString()
           : new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+      // Keys are ISO timestamps derived from Date; safe for object index.
+      // eslint-disable-next-line security/detect-object-injection
       buckets[key] ||= {
         ts: key,
         requests: 0,
@@ -64,6 +66,7 @@ export const aggregateUsage = (events = [], start = 0, end = Date.now() + 1, gro
         completion_tokens_est: 0,
         total_tokens_est: 0,
       };
+      // eslint-disable-next-line security/detect-object-injection
       const b = buckets[key];
       b.requests += 1;
       b.prompt_tokens_est += e.prompt_tokens_est || 0;
