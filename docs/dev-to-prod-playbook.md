@@ -81,7 +81,7 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 
 - Only `src/utils.js` → run unit tests: `npm run test:unit`.
 - `server.js` or streaming/route changes → run integration then E2E: `npm run test:integration && npm test`.
-- `docker-compose.yml` or Traefik labels → after build, run `npm run smoke:prod` (on origin host) and E2E.
+- `docker-compose.yml` or Traefik labels → after build, run `npm run smoke:prod` (on origin host) and `npm test` (E2E).
 - `Dockerfile` or runtime image changes → run dev stack and E2E: `npm run dev:stack:up && npm test`.
 
 ## Invariants the checks enforce
