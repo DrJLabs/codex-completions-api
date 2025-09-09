@@ -56,7 +56,11 @@ docker compose config >> "$ART_DIR/docker-compose.config.yaml"
 echo "Checking invariants…"
 
 # ForwardAuth address must be host loopback:18080 (prod)
-FA_ADDR=$(grep -Eo 'traefik\.http\.middlewares\.codex-forwardauth\.forwardauth\.address=.*' docker-compose.yml | head -n1 | cut -d= -f2)
+FA_ADDR=$(grep -E "^\s*-\s*traefik\.http\.middlewares\.codex-forwardauth\.forwardauth\.address=" docker-compose.yml | head -n1 | cut -d= -f2- || true)
+if [[ -z "$FA_ADDR" ]]; then
+  echo "[FAIL] ForwardAuth label missing in docker-compose.yml" | tee "$ART_DIR/invariants.txt"
+  exit 3
+fi
 if [[ "$FA_ADDR" != "http://127.0.0.1:18080/verify" ]]; then
   echo "[FAIL] ForwardAuth address in docker-compose.yml is not 127.0.0.1:18080/verify: $FA_ADDR" | tee "$ART_DIR/invariants.txt"
   exit 3
@@ -66,15 +70,15 @@ fi
 required=(codex-api codex-preflight codex-models codex-health)
 missing=()
 for r in "${required[@]}"; do
-  if ! grep -q "traefik.http.routers.${r}.rule=" docker-compose.yml; then missing+=("$r"); fi
+  if ! grep -qE "^\s*-\s*traefik\.http\.routers\.${r}\.rule=" docker-compose.yml; then missing+=("$r"); fi
 done
-if ((${#missing[@]})); then
+if [[ ${#missing[@]} -gt 0 ]]; then
   echo "[FAIL] Missing routers: ${missing[*]}" | tee -a "$ART_DIR/invariants.txt"
   exit 3
 fi
 
 # Traefik network label present
-if ! grep -q 'traefik.docker.network=traefik' docker-compose.yml; then
+if ! grep -qE '^\s*-\s*traefik\.docker\.network=traefik' docker-compose.yml; then
   echo "[FAIL] traefik.docker.network=traefik not set on app service" | tee -a "$ART_DIR/invariants.txt"
   exit 3
 fi
@@ -85,7 +89,7 @@ if ! docker network ls --format '{{.Name}}' | grep -qx traefik; then
 fi
 
 # .codex-api mapped (writable by default)
-if ! grep -q '/.codex-api' docker-compose.yml; then
+if ! grep -qE '^\s*-\s*\./\.codex-api:/app/\.codex-api' docker-compose.yml; then
   echo "[FAIL] .codex-api volume not mounted in prod compose" | tee -a "$ART_DIR/invariants.txt"
   exit 3
 fi
