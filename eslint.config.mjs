@@ -91,6 +91,7 @@ export default [
     rules: {
       ...(pwConfig.rules || {}),
       "n/no-unsupported-features/node-builtins": "off",
+      "no-constant-condition": "off",
       // mirror prior config: allow conditionals in tests
       "playwright/no-conditional-in-test": "off",
       // parity with legacy config
