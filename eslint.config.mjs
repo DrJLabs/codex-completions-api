@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import globals from "globals";
 import playwright from "eslint-plugin-playwright";
+import security from "eslint-plugin-security";
 import { FlatCompat } from "@eslint/eslintrc";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,8 +9,8 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
-const pwConfigRaw = playwright.configs?.["flat/recommended"];
-const pwConfig = Array.isArray(pwConfigRaw) ? pwConfigRaw[0] : (pwConfigRaw ?? {});
+const pwConfig = playwright.configs?.recommended ?? {};
+const securityRules = security.configs?.recommended?.rules ?? {};
 
 export default [
   js.configs.recommended,
@@ -17,8 +18,7 @@ export default [
   ...compat.extends(
     "plugin:import/recommended",
     "plugin:n/recommended",
-    "plugin:promise/recommended",
-    "plugin:security/recommended-legacy"
+    "plugin:promise/recommended"
   ),
   {
     name: "base",
@@ -38,7 +38,11 @@ export default [
         ...globals.node,
       },
     },
+    plugins: {
+      security,
+    },
     rules: {
+      ...securityRules,
       "no-console": "off",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "no-empty": "off",
