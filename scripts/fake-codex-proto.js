@@ -14,7 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const write = (obj) => {
   try {
     process.stdout.write(JSON.stringify(obj) + "\n");
-  } catch (_) {}
+  } catch {}
 };
 
 const main = async () => {

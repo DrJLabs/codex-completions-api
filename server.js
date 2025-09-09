@@ -950,7 +950,7 @@ app.post("/v1/chat/completions", (req, res) => {
                 console.log("[proto] error event");
               } catch {}
           }
-        } catch (e) {
+        } catch {
           if (process.env.PROXY_DEBUG_PROTO)
             try {
               console.log("[proto] parse error line:", trimmed);
