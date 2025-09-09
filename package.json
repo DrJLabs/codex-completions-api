@@ -35,7 +35,11 @@
     "test:report": "playwright show-report",
     "bmad:refresh": "bmad-method install -f -i codex",
     "bmad:list": "bmad-method list:agents",
-    "bmad:validate": "bmad-method validate"
+    "bmad:validate": "bmad-method validate",
+    "port:check": "bash scripts/port-dev-to-prod.sh",
+    "port:deploy": "bash scripts/port-dev-to-prod.sh --deploy",
+    "port:sync-config": "bash scripts/sync-codex-config.sh",
+    "port:prod": "CONFIRM_DEPLOY=prod DOMAIN=${DOMAIN:-codex-api.onemainarmy.com} bash scripts/port-dev-to-prod.sh --sync --deploy --smoke"
   },
   "dependencies": {
     "express": "^4.19.2",
