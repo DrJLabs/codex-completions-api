@@ -65,12 +65,12 @@ export default [
       "n/no-unsupported-features/es-syntax": "off",
       "n/no-process-exit": "off",
       "n/hashbang": "off",
-      // Soften a few security rules we intentionally rely on
-      "security/detect-child-process": "warn",
-      "security/detect-non-literal-regexp": "warn",
-      "security/detect-object-injection": "warn",
-      "security/detect-non-literal-fs-filename": "warn",
-      "security/detect-unsafe-regex": "warn",
+      // Keep major security rules as errors globally; disable inline with reasoning per occurrence
+      "security/detect-child-process": "error",
+      "security/detect-non-literal-regexp": "error",
+      "security/detect-object-injection": "error",
+      "security/detect-non-literal-fs-filename": "error",
+      "security/detect-unsafe-regex": "error",
     },
   },
   // Vitest + integration tests (non-Playwright)

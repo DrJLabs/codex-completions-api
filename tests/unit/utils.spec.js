@@ -88,6 +88,8 @@ describe("CORS utility", () => {
     const headers = {};
     const res = {
       setHeader: (k, v) => {
+        // test helper: dynamic header assignment
+        // eslint-disable-next-line security/detect-object-injection
         headers[k] = v;
       },
     };
@@ -100,6 +102,8 @@ describe("CORS utility", () => {
     const headers = {};
     const res = {
       setHeader: (k, v) => {
+        // test helper: dynamic header assignment
+        // eslint-disable-next-line security/detect-object-injection
         headers[k] = v;
       },
     };
