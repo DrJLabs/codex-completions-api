@@ -52,8 +52,11 @@ export default [
         ...globals.node,
       },
     },
+    // Pull in security ruleset for flat config by spreading the rules directly,
+    // then soften a few high-noise rules. Keep plugin registered for rule IDs.
     plugins: { security },
     rules: {
+      ...(security.configs?.recommended?.rules || {}),
       "no-console": "off",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "no-empty": "off",
@@ -62,6 +65,12 @@ export default [
       "n/no-unsupported-features/es-syntax": "off",
       "n/no-process-exit": "off",
       "n/hashbang": "off",
+      // Keep major security rules as errors globally; disable inline with reasoning per occurrence
+      "security/detect-child-process": "error",
+      "security/detect-non-literal-regexp": "error",
+      "security/detect-object-injection": "error",
+      "security/detect-non-literal-fs-filename": "error",
+      "security/detect-unsafe-regex": "error",
     },
   },
   // Vitest + integration tests (non-Playwright)

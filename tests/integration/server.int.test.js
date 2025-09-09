@@ -35,6 +35,7 @@ beforeAll(async () => {
   BASE = `http://127.0.0.1:${PORT}/v1`;
   TOKEN_FILE = path.join(process.cwd(), ".tmp-usage.test.ndjson");
   try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path under cwd
     if (existsSync(TOKEN_FILE)) unlinkSync(TOKEN_FILE);
   } catch {}
   child = spawn("node", ["server.js"], {
