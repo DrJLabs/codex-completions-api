@@ -1,7 +1,6 @@
 import js from "@eslint/js";
 import globals from "globals";
 import playwright from "eslint-plugin-playwright";
-import security from "eslint-plugin-security";
 import { FlatCompat } from "@eslint/eslintrc";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +8,8 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
-const pwRecommended = playwright.configs?.["flat/recommended"] ?? {};
+const pwConfigRaw = playwright.configs?.["flat/recommended"];
+const pwConfig = Array.isArray(pwConfigRaw) ? pwConfigRaw[0] : (pwConfigRaw ?? {});
 
 export default [
   js.configs.recommended,
@@ -17,7 +17,8 @@ export default [
   ...compat.extends(
     "plugin:import/recommended",
     "plugin:n/recommended",
-    "plugin:promise/recommended"
+    "plugin:promise/recommended",
+    "plugin:security/recommended-legacy"
   ),
   {
     name: "base",
@@ -37,8 +38,6 @@ export default [
         ...globals.node,
       },
     },
-    // Plugins only needed here for additional rules beyond recommended
-    plugins: { security },
     rules: {
       "no-console": "off",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
@@ -68,14 +67,15 @@ export default [
     rules: {
       // Keep prior behavior from legacy config
       "promise/param-names": "off",
-      "no-console": "off",
+      "n/no-unsupported-features/node-builtins": "off",
+      "no-constant-condition": "off",
     },
   },
   // Playwright E2E tests only
   {
     name: "playwright-e2e",
     files: ["tests/*.spec.{js,ts,tsx}"],
-    ...pwRecommended,
+    plugins: { playwright },
     languageOptions: {
       globals: {
         ...globals.node,
@@ -89,12 +89,12 @@ export default [
       },
     },
     rules: {
-      ...(pwRecommended.rules || {}),
+      ...(pwConfig.rules || {}),
+      "n/no-unsupported-features/node-builtins": "off",
       // mirror prior config: allow conditionals in tests
       "playwright/no-conditional-in-test": "off",
       // parity with legacy config
       "promise/param-names": "off",
-      "no-console": "off",
     },
   },
   // Keep Prettier as the last config to disable stylistic ESLint rules
