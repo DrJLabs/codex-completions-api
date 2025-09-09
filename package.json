@@ -39,8 +39,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "nanoid": "^5.0.7",
-    "svg2png-wasm": "^1.4.1"
+    "nanoid": "^5.0.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
