@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({ baseDirectory: __dirname });
-const pwConfig = playwright.configs?.recommended ?? {};
+const pwRecommended = playwright.configs?.["flat/recommended"] ?? {};
 const securityRules = security.configs?.recommended?.rules ?? {};
 const testGlobals = {
   describe: "readonly",
@@ -21,6 +21,15 @@ const testGlobals = {
 };
 
 export default [
+  {
+    ignores: [
+      "web-bundles/**",
+      "playwright-report/**",
+      "test-results/**",
+      ".codev/**",
+      ".codex-api/**",
+    ],
+  },
   js.configs.recommended,
   // Bring back plugin recommended sets from legacy extends via compat
   ...compat.extends(
@@ -31,14 +40,6 @@ export default [
   {
     name: "base",
     files: ["**/*.{js,mjs,cjs}"],
-    ignores: [
-      "node_modules/**",
-      "web-bundles/**",
-      "playwright-report/**",
-      "test-results/**",
-      ".codev/**",
-      ".codex-api/**",
-    ],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",
@@ -67,7 +68,6 @@ export default [
     files: ["tests/unit/**/*.js", "tests/integration/**/*.js"],
     languageOptions: {
       globals: {
-        ...globals.node,
         ...testGlobals,
       },
     },
@@ -80,18 +80,17 @@ export default [
   },
   // Playwright E2E tests only
   {
+    ...pwRecommended,
     name: "playwright-e2e",
     files: ["tests/*.spec.{js,ts,tsx}"],
-    plugins: { playwright },
     languageOptions: {
       globals: {
-        ...globals.node,
-        ...(playwright.environments?.playwright?.globals || {}),
+        ...(pwRecommended.languageOptions?.globals || {}),
         ...testGlobals,
       },
     },
     rules: {
-      ...(pwConfig.rules || {}),
+      ...(pwRecommended.rules || {}),
       "n/no-unsupported-features/node-builtins": "off",
       "no-constant-condition": "off",
       // mirror prior config: allow conditionals in tests
