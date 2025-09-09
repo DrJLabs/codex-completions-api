@@ -114,7 +114,7 @@ fi
 if [[ "$DO_SYNC" == "1" ]]; then
   echo "Syncing Codex HOME from .codev → .codex-api (config.toml, AGENTS.md)..."
   if [[ "$DRY_RUN" == "1" ]]; then
-    bash "$ROOT_DIR/scripts/sync-codex-config.sh" --dry-run | tee "$ART_DIR/sync-dry-run.txt"
+    bash "$ROOT_DIR/scripts/sync-codex-config.sh" --dry-run 2>&1 | tee "$ART_DIR/sync-dry-run.txt"
   else
     bash "$ROOT_DIR/scripts/sync-codex-config.sh" --force | tee "$ART_DIR/sync.log"
   fi
