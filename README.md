@@ -64,7 +64,7 @@ To port your dev Codex HOME config and agents into the production Codex HOME saf
   npm run port:sync-config
   ```
 
-  This copies `.codev/{config.toml,AGENTS.md}` → `.codex-api/` and makes a timestamped backup if overwriting.
+  This copies `.codev/{config.toml,AGENTS.md}` → `.codex-api/`. It will not overwrite existing files that differ; use the `--force` flag to overwrite and create a timestamped backup.
 
 - Explicit path override (e.g., remote home path):
 
