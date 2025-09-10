@@ -572,6 +572,13 @@ app.post("/v1/chat/completions", (req, res) => {
     }
     let keepalive;
     let streamClosed = false;
+    // Allow disabling keepalives for fragile clients (e.g., some Electron/Obsidian parsers)
+    const ua = String(req.headers["user-agent"] || "");
+    const disableKeepaliveUA = /Obsidian|Electron/i.test(ua);
+    const disableKeepaliveHeader = String(req.headers["x-no-keepalive"] || "").trim() === "1";
+    const disableKeepaliveQuery = String(req.query?.no_keepalive || "").trim() === "1";
+    const keepaliveMs =
+      disableKeepaliveUA || disableKeepaliveHeader || disableKeepaliveQuery ? 0 : SSE_KEEPALIVE_MS;
     const clearKeepalive = () => {
       if (keepalive) {
         try {
@@ -595,12 +602,12 @@ app.post("/v1/chat/completions", (req, res) => {
         if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
       } catch {}
     };
-    if (SSE_KEEPALIVE_MS > 0)
+    if (keepaliveMs > 0)
       keepalive = setInterval(() => {
         try {
           if (!streamClosed) sendSSEKeepalive();
         } catch {}
-      }, SSE_KEEPALIVE_MS);
+      }, keepaliveMs);
     // Ensure we stop emitting if client disconnects mid-stream
     res.on("close", cleanupStream);
     res.on("finish", cleanupStream);
@@ -901,8 +908,14 @@ app.post("/v1/chat/completions", (req, res) => {
             ptCount = Number(evt.msg?.prompt_tokens || 0);
             ctCount = Number(evt.msg?.completion_tokens || 0);
             if (includeUsage) {
+              // OpenAI spec: when include_usage=true, emit a final chat.completion.chunk
+              // with an empty choices array and a usage object.
               sendSSE({
-                event: "usage",
+                id: `chatcmpl-${nanoid()}`,
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model: requestedModel,
+                choices: [],
                 usage: {
                   prompt_tokens: ptCount,
                   completion_tokens: ctCount,
@@ -1512,6 +1525,15 @@ app.post("/v1/completions", (req, res) => {
     res.setHeader("X-Accel-Buffering", "no"); // prevent proxy buffering of SSE
     res.flushHeaders?.();
     let keepalive;
+    // Allow disabling keepalives for fragile clients (e.g., some Electron/Obsidian parsers)
+    const ua2 = String(req.headers["user-agent"] || "");
+    const disableKeepaliveUA2 = /Obsidian|Electron/i.test(ua2);
+    const disableKeepaliveHeader2 = String(req.headers["x-no-keepalive"] || "").trim() === "1";
+    const disableKeepaliveQuery2 = String(req.query?.no_keepalive || "").trim() === "1";
+    const keepaliveMs2 =
+      disableKeepaliveUA2 || disableKeepaliveHeader2 || disableKeepaliveQuery2
+        ? 0
+        : SSE_KEEPALIVE_MS;
     const clearKeepalive = () => {
       if (keepalive) {
         try {
@@ -1534,12 +1556,12 @@ app.post("/v1/completions", (req, res) => {
         if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
       } catch {}
     };
-    if (SSE_KEEPALIVE_MS > 0) {
+    if (keepaliveMs2 > 0) {
       keepalive = setInterval(() => {
         try {
           if (!streamClosed) res.write(`: keepalive ${Date.now()}\n\n`);
         } catch {}
-      }, SSE_KEEPALIVE_MS);
+      }, keepaliveMs2);
     }
     res.on("close", cleanupStream);
     res.on("finish", cleanupStream);
