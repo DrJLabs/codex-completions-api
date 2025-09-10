@@ -1524,7 +1524,7 @@ app.post("/v1/completions", (req, res) => {
 
   if (isStreamingReq) {
     // Stable id across stream to match OpenAI clients' expectations
-    const completionId2 = `cmpl-${nanoid()}`;
+    const completionId = `cmpl-${nanoid()}`;
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -1619,7 +1619,7 @@ app.post("/v1/completions", (req, res) => {
                 emitted += suffix;
                 completionChars += suffix.length;
                 sendSSE({
-                  id: completionId2,
+                  id: completionId,
                   object: "text_completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
@@ -1645,7 +1645,7 @@ app.post("/v1/completions", (req, res) => {
                 emitted += suffix;
                 completionChars += suffix.length;
                 sendSSE({
-                  id: completionId2,
+                  id: completionId,
                   object: "text_completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
@@ -1687,7 +1687,7 @@ app.post("/v1/completions", (req, res) => {
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
         sendSSE({
-          id: completionId2,
+          id: completionId,
           object: "text_completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model: requestedModel,
