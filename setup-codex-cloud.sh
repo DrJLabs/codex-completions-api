@@ -190,9 +190,11 @@ else
 
 Common next steps:
   - Unit tests:         npm run test:unit
+  - Unit coverage:      npm run coverage:unit
   - Integration tests:  npm run test:integration
   - E2E (API/SSE):      npm test
   - All layers:         npm run test:all
+  - Open e2e report:    npm run test:report
 
 Dev server (shim, no Codex needed):
   npm run dev:shim
