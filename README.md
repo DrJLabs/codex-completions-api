@@ -22,7 +22,10 @@ server.js                       # Express API (OpenAI‑compatible routes)
 src/utils.js                    # Utilities (tokens, join/normalize, CORS helpers)
 auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
+vitest.config.ts                # Unit test config + coverage thresholds (V8)
+playwright.config.ts            # E2E config (spawns server with proto shim)
 scripts/                        # Dev + CI helpers (dev.sh, prod-smoke.sh)
+scripts/setup-testing-ci.sh     # Idempotent test/CI scaffolder (useful for forks)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
  .codex-api/                     # Production Codex HOME (secrets; writable mount in compose)
 .github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
@@ -217,7 +220,7 @@ Environment variables:
 
 ## Quick start
 
-- Prereqs: Node ≥ 18, npm, curl (or Docker Compose).
+- Prereqs: Node ≥ 22, npm, curl (or Docker Compose).
 
 Option A — Node (local):
 
@@ -259,7 +262,7 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 2. Integration (Vitest, real server, no external deps)
 
-- Scope: Express endpoints with a deterministic Codex "proto" shim; exercises auth, error codes, non‑stream chat, and usage endpoints.
+- Scope: Express endpoints with a deterministic Codex "proto" shim; exercises auth, error codes, non‑stream chat, usage endpoints, plus HTTP verbs and CORS preflight for `/v1/chat/completions`.
 - Notes: spawns `node server.js` on a random port and sets `CODEX_BIN=scripts/fake-codex-proto.js`, so no Codex installation is required.
 - Command: `npm run test:integration`
 
@@ -284,6 +287,11 @@ Live E2E (real Codex)
 All together
 
 - `npm run test:all` — unit → integration → e2e in sequence. Useful before pushing.
+- `npm run test:report` — open the Playwright HTML report (after e2e has run).
+
+Scaffolding (for forks)
+
+- This repo already includes `vitest.config.ts` and the test suites. If you need to scaffold the same setup in a fork that lacks them, use the idempotent helper: `bash scripts/setup-testing-ci.sh`.
 
 Suggested dev loop
 
@@ -302,7 +310,7 @@ To prepare a fresh Codex Cloud (or any CI) environment with everything required 
 
 Notes
 
-- Requires Node ≥ 18 (22 recommended) and npm; does not touch your `.env` or secrets.
+- Requires Node ≥ 22 and npm; does not touch your `.env` or secrets.
 - Ensures `.codex-api/` and `.codev/` exist and are writable.
 - Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
 - Tests use a deterministic proto shim and do not require a real Codex binary.
@@ -329,7 +337,7 @@ Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
-- `PROXY_STREAM_MODE` (default: `incremental`) — proto‑based streaming emits deltas when available or an aggregated message; this knob is kept for compatibility.
+- `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
 - `CODEX_BIN` (default: `codex`) — set to `/app/scripts/fake-codex-proto.js` for the proto shim in dev.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
