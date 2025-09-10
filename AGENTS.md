@@ -123,6 +123,7 @@ These directives are mandatory for agents operating in this repository. They pre
 - Implement and validate changes in the dev stack first: `.codev/*`, `docker-compose.dev*.yml`, `compose.dev.traefik.yml`.
 - Bring up public dev stack: `npm run dev:stack:up` (Traefik host, dev domain `codex-dev…`).
 - Validate: `npm run smoke:dev` and `npm run test:live:dev` with a dev API key.
+- Sync Codex HOME to PROD: `npm run port:sync-config` on the production host to copy `.codev/{config.toml,AGENTS.md}` → `.codex-api/` (secrets like `auth.json` are not copied).
 - Only after dev passes and user confirms, propose the minimal production diff (usually `docker-compose.yml` changes). Do not modify prod files before dev is green.
 - After merge to main: instruct `docker compose up -d --build --force-recreate` on prod host, then run `npm run smoke:prod` and optional live E2E.
 
