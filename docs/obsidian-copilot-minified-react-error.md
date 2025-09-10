@@ -41,6 +41,26 @@ Captured: 2025-09-10
   - `npm run test:integration` → 9 tests passed
   - `npm test` → SSE tests pass; models/health OK
 
+## 2025-09-10 — Follow‑up Mitigation (stable chunk IDs)
+
+- Change: Streamed SSE chunks for `/v1/chat/completions` now reuse a single `id` for the entire stream (e.g., `chatcmpl_abc123` for role, content deltas, and final usage chunk when present) instead of generating a fresh id per chunk.
+- Rationale: Several OpenAI client SDKs assume a stable `id` across chunks to correlate a message; per‑chunk ids can cause client state mismatches that surface as opaque React errors.
+- Scope: Also applied to `/v1/completions` streaming (`cmpl_…`).
+- Status: Deployed to branch `fix/sse-stable-id-react-error-guard` for validation.
+
+### Next verification steps
+
+- Reproduce with the same Obsidian workspace and prompt; confirm that the error no longer appears.
+- If error persists, test with keepalives disabled: add header `X-No-Keepalive: 1` or `?no_keepalive=1`.
+- Capture the exact failing stream (save raw SSE frames) to determine whether the failure correlates with:
+  - keepalive comment lines,
+  - final usage chunk (`choices: []`), or
+  - early stream termination after `<use_tool>` blocks (when `PROXY_STOP_AFTER_TOOLS=true`).
+
+### Rollback plan
+
+- The stable‑id change is low risk and spec‑compatible; rollback by reverting branch if any regressions are observed.
+
 ## File Changes (reference)
 
 - `server.js`

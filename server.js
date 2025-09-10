@@ -539,20 +539,8 @@ app.post("/v1/chat/completions", (req, res) => {
     res.write(`: keepalive ${Date.now()}\n\n`);
   };
 
-  const sendRoleOnce = (() => {
-    let sent = false;
-    return () => {
-      if (sent) return;
-      sent = true;
-      sendSSE({
-        id: `chatcmpl-${nanoid()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model: requestedModel,
-        choices: [{ index: 0, delta: { role: "assistant" } }],
-      });
-    };
-  })();
+  // role-first emission helper is defined within the streaming branch so it can
+  // capture the per-stream completionId in scope
 
   const finishSSE = () => {
     res.write("data: [DONE]\n\n");
@@ -560,6 +548,22 @@ app.post("/v1/chat/completions", (req, res) => {
   };
 
   if (isStreamingReq) {
+    // Stable id across stream to match OpenAI clients' expectations
+    const completionId = `chatcmpl-${nanoid()}`;
+    const sendRoleOnce = (() => {
+      let sent = false;
+      return () => {
+        if (sent) return;
+        sent = true;
+        sendSSE({
+          id: completionId,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: requestedModel,
+          choices: [{ index: 0, delta: { role: "assistant" } }],
+        });
+      };
+    })();
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -749,7 +753,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     sentAny = true;
                     sentSomething = true;
                     sendSSE({
-                      id: `chatcmpl-${nanoid()}`,
+                      id: completionId,
                       object: "chat.completion.chunk",
                       created: Math.floor(Date.now() / 1000),
                       model: requestedModel,
@@ -776,7 +780,7 @@ app.post("/v1/chat/completions", (req, res) => {
                       sentAny = true;
                       sentSomething = true;
                       sendSSE({
-                        id: `chatcmpl-${nanoid()}`,
+                        id: completionId,
                         object: "chat.completion.chunk",
                         created: Math.floor(Date.now() / 1000),
                         model: requestedModel,
@@ -791,7 +795,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     sentAny = true;
                     forwardedUpTo = allowUntil;
                     sendSSE({
-                      id: `chatcmpl-${nanoid()}`,
+                      id: completionId,
                       object: "chat.completion.chunk",
                       created: Math.floor(Date.now() / 1000),
                       model: requestedModel,
@@ -889,7 +893,7 @@ app.post("/v1/chat/completions", (req, res) => {
                 sentAny = true;
                 emitted += suffix;
                 sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
+                  id: completionId,
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
@@ -911,7 +915,7 @@ app.post("/v1/chat/completions", (req, res) => {
               // OpenAI spec: when include_usage=true, emit a final chat.completion.chunk
               // with an empty choices array and a usage object.
               sendSSE({
-                id: `chatcmpl-${nanoid()}`,
+                id: completionId,
                 object: "chat.completion.chunk",
                 created: Math.floor(Date.now() / 1000),
                 model: requestedModel,
@@ -1011,7 +1015,7 @@ app.post("/v1/chat/completions", (req, res) => {
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
         sendSSE({
-          id: `chatcmpl-${nanoid()}`,
+          id: completionId,
           object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model: requestedModel,
@@ -1519,6 +1523,8 @@ app.post("/v1/completions", (req, res) => {
   };
 
   if (isStreamingReq) {
+    // Stable id across stream to match OpenAI clients' expectations
+    const completionId2 = `cmpl-${nanoid()}`;
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -1613,7 +1619,7 @@ app.post("/v1/completions", (req, res) => {
                 emitted += suffix;
                 completionChars += suffix.length;
                 sendSSE({
-                  id: `cmpl-${nanoid()}`,
+                  id: completionId2,
                   object: "text_completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
@@ -1639,7 +1645,7 @@ app.post("/v1/completions", (req, res) => {
                 emitted += suffix;
                 completionChars += suffix.length;
                 sendSSE({
-                  id: `cmpl-${nanoid()}`,
+                  id: completionId2,
                   object: "text_completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: requestedModel,
@@ -1681,7 +1687,7 @@ app.post("/v1/completions", (req, res) => {
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
         sendSSE({
-          id: `cmpl-${nanoid()}`,
+          id: completionId2,
           object: "text_completion.chunk",
           created: Math.floor(Date.now() / 1000),
           model: requestedModel,
