@@ -54,6 +54,29 @@ Codex HOME (production):
   - `AGENTS.md` (optional)
   - `auth.json` and any other credentials required by Codex (if applicable)
 
+#### Sync Dev Config → Prod (`.codev` → `.codex-api`)
+
+To port your dev Codex HOME config and agents into the production Codex HOME safely (without copying secrets):
+
+- Quick sync on the host running production:
+
+  ```bash
+  npm run port:sync-config
+  ```
+
+  This copies `.codev/{config.toml,AGENTS.md}` → `.codex-api/`. It will not overwrite existing files that differ; use the `--force` flag to overwrite and create a timestamped backup.
+
+- Explicit path override (e.g., remote home path):
+
+  ```bash
+  SOURCE_HOME=.codev DEST_HOME=/srv/codex/.codex-api bash scripts/sync-codex-config.sh --force
+  ```
+
+Notes:
+
+- The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
+- See `docs/dev-to-prod-playbook.md` for the full Dev → Prod procedure including optional checks (`npm run port:check`) and end‑to‑end smoke (`npm run port:prod`).
+
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
