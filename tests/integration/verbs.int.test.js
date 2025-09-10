@@ -41,8 +41,7 @@ test("HEAD /v1/chat/completions responds 200", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "HEAD",
   });
-  expect(r.status).toBeGreaterThanOrEqual(200);
-  expect(r.status).toBeLessThan(500);
+  expect(r.status).toBe(200);
 });
 
 test("OPTIONS /v1/chat/completions exposes CORS", async () => {
