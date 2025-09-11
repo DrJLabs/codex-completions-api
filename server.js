@@ -539,20 +539,8 @@ app.post("/v1/chat/completions", (req, res) => {
     res.write(`: keepalive ${Date.now()}\n\n`);
   };
 
-  const sendRoleOnce = (() => {
-    let sent = false;
-    return () => {
-      if (sent) return;
-      sent = true;
-      sendSSE({
-        id: `chatcmpl-${nanoid()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model: requestedModel,
-        choices: [{ index: 0, delta: { role: "assistant" } }],
-      });
-    };
-  })();
+  // role-first emission helper is defined within the streaming branch so it can
+  // capture the per-stream completionId in scope
 
   const finishSSE = () => {
     res.write("data: [DONE]\n\n");
@@ -560,6 +548,26 @@ app.post("/v1/chat/completions", (req, res) => {
   };
 
   if (isStreamingReq) {
+    // Stable id across stream to match OpenAI clients' expectations
+    const completionId = `chatcmpl-${nanoid()}`;
+    const created = Math.floor(Date.now() / 1000);
+    const sendChunk = (payload) => {
+      sendSSE({
+        id: completionId,
+        object: "chat.completion.chunk",
+        created,
+        model: requestedModel,
+        ...payload,
+      });
+    };
+    const sendRoleOnce = (() => {
+      let sent = false;
+      return () => {
+        if (sent) return;
+        sent = true;
+        sendChunk({ choices: [{ index: 0, delta: { role: "assistant" } }] });
+      };
+    })();
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -748,13 +756,7 @@ app.post("/v1/chat/completions", (req, res) => {
                   if (toSend) {
                     sentAny = true;
                     sentSomething = true;
-                    sendSSE({
-                      id: `chatcmpl-${nanoid()}`,
-                      object: "chat.completion.chunk",
-                      created: Math.floor(Date.now() / 1000),
-                      model: requestedModel,
-                      choices: [{ index: 0, delta: { content: toSend } }],
-                    });
+                    sendChunk({ choices: [{ index: 0, delta: { content: toSend } }] });
                   } else {
                     // No new blocks detected — fall back to normal segment forwarding
                     let segmentEnd = allowUntil;
@@ -775,13 +777,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     if (segment) {
                       sentAny = true;
                       sentSomething = true;
-                      sendSSE({
-                        id: `chatcmpl-${nanoid()}`,
-                        object: "chat.completion.chunk",
-                        created: Math.floor(Date.now() / 1000),
-                        model: requestedModel,
-                        choices: [{ index: 0, delta: { content: segment } }],
-                      });
+                      sendChunk({ choices: [{ index: 0, delta: { content: segment } }] });
                     }
                   }
                   if (sentSomething) forwardedUpTo = allowUntil;
@@ -790,13 +786,7 @@ app.post("/v1/chat/completions", (req, res) => {
                   if (segment) {
                     sentAny = true;
                     forwardedUpTo = allowUntil;
-                    sendSSE({
-                      id: `chatcmpl-${nanoid()}`,
-                      object: "chat.completion.chunk",
-                      created: Math.floor(Date.now() / 1000),
-                      model: requestedModel,
-                      choices: [{ index: 0, delta: { content: segment } }],
-                    });
+                    sendChunk({ choices: [{ index: 0, delta: { content: segment } }] });
                   }
                 }
                 if (
@@ -888,13 +878,7 @@ app.post("/v1/chat/completions", (req, res) => {
               if (suffix) {
                 sentAny = true;
                 emitted += suffix;
-                sendSSE({
-                  id: `chatcmpl-${nanoid()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, delta: { content: suffix } }],
-                });
+                sendChunk({ choices: [{ index: 0, delta: { content: suffix } }] });
                 scanAndLogToolBlocks(
                   emitted,
                   toolState,
@@ -910,11 +894,7 @@ app.post("/v1/chat/completions", (req, res) => {
             if (includeUsage) {
               // OpenAI spec: when include_usage=true, emit a final chat.completion.chunk
               // with an empty choices array and a usage object.
-              sendSSE({
-                id: `chatcmpl-${nanoid()}`,
-                object: "chat.completion.chunk",
-                created: Math.floor(Date.now() / 1000),
-                model: requestedModel,
+              sendChunk({
                 choices: [],
                 usage: {
                   prompt_tokens: ptCount,
@@ -1010,13 +990,7 @@ app.post("/v1/chat/completions", (req, res) => {
       if (keepalive) clearInterval(keepalive);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
-        sendSSE({
-          id: `chatcmpl-${nanoid()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: requestedModel,
-          choices: [{ index: 0, delta: { content } }],
-        });
+        sendChunk({ choices: [{ index: 0, delta: { content } }] });
         if (IS_DEV_ENV) {
           try {
             console.log("[dev][response][chat][stream] content=\n" + content);
@@ -1519,9 +1493,21 @@ app.post("/v1/completions", (req, res) => {
   };
 
   if (isStreamingReq) {
+    // Stable id across stream to match OpenAI clients' expectations
+    const completionId = `cmpl-${nanoid()}`;
+    const created = Math.floor(Date.now() / 1000);
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
+    const sendChunk = (payload) => {
+      sendSSE({
+        id: completionId,
+        object: "text_completion.chunk",
+        created,
+        model: requestedModel,
+        ...payload,
+      });
+    };
     res.setHeader("X-Accel-Buffering", "no"); // prevent proxy buffering of SSE
     res.flushHeaders?.();
     let keepalive;
@@ -1612,13 +1598,7 @@ app.post("/v1/completions", (req, res) => {
                 sentAny = true;
                 emitted += suffix;
                 completionChars += suffix.length;
-                sendSSE({
-                  id: `cmpl-${nanoid()}`,
-                  object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, text: suffix }],
-                });
+                sendChunk({ choices: [{ index: 0, text: suffix }] });
                 scanAndLogToolBlocks(
                   emitted,
                   toolStateC,
@@ -1638,13 +1618,7 @@ app.post("/v1/completions", (req, res) => {
                 sentAny = true;
                 emitted += suffix;
                 completionChars += suffix.length;
-                sendSSE({
-                  id: `cmpl-${nanoid()}`,
-                  object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model: requestedModel,
-                  choices: [{ index: 0, text: suffix }],
-                });
+                sendChunk({ choices: [{ index: 0, text: suffix }] });
                 scanAndLogToolBlocks(
                   emitted,
                   toolStateC,
@@ -1680,13 +1654,7 @@ app.post("/v1/completions", (req, res) => {
       if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
       if (!sentAny) {
         const content = stripAnsi(out).trim() || "No output from backend.";
-        sendSSE({
-          id: `cmpl-${nanoid()}`,
-          object: "text_completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: requestedModel,
-          choices: [{ index: 0, text: content }],
-        });
+        sendChunk({ choices: [{ index: 0, text: content }] });
         if (IS_DEV_ENV) {
           try {
             console.log("[dev][response][completions][stream] content=\n" + content);
