@@ -142,17 +142,17 @@ export const applyCors = (req, res, enabled = true) => {
   if (!enabled) return;
   const origin = req?.headers?.origin;
   if (origin) {
-    res.setHeader?("Access-Control-Allow-Origin", origin);
-    res.setHeader?("Vary", "Origin");
-    res.setHeader?("Access-Control-Allow-Credentials", "true");
+    res.setHeader?.("Access-Control-Allow-Origin", origin);
+    res.setHeader?.("Vary", "Origin");
+    res.setHeader?.("Access-Control-Allow-Credentials", "true");
   } else {
-    res.setHeader?("Access-Control-Allow-Origin", "*");
+    res.setHeader?.("Access-Control-Allow-Origin", "*");
   }
-  res.setHeader?("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
+  res.setHeader?.("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
 
   // Allow all headers requested by the browser during preflight, falling back to a
   // superset commonly used by OpenAI-compatible clients (Stainless SDKs, Obsidian, etc.).
-  const requested = (req?.headers?["access-control-request-headers"] || "").toString().trim();
+  const requested = (req?.headers?.["access-control-request-headers"] || "").toString().trim();
   const defaultAllowed =
     "Authorization, Content-Type, Accept, " +
     [
@@ -175,10 +175,10 @@ export const applyCors = (req, res, enabled = true) => {
       // Internal opt-out for SSE keepalives supported by this proxy
       "X-No-Keepalive",
     ].join(", ");
-  res.setHeader?(
+  res.setHeader?.(
     "Access-Control-Allow-Headers",
     requested && requested.length ? requested : defaultAllowed
   );
-  res.setHeader?("Access-Control-Expose-Headers", "Content-Type");
-  res.setHeader?("Access-Control-Max-Age", "600");
+  res.setHeader?.("Access-Control-Expose-Headers", "Content-Type");
+  res.setHeader?.("Access-Control-Max-Age", "600");
 };
