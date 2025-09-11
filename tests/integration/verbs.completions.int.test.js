@@ -8,14 +8,17 @@ let child;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitForHealth(timeoutMs = 5000) {
   const started = Date.now();
-  while (true) {
+  let lastError;
+  while (Date.now() - started < timeoutMs) {
     try {
       const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
       if (r.ok) return;
-    } catch {}
-    if (Date.now() - started > timeoutMs) throw new Error("health timeout");
+    } catch (e) {
+      lastError = e;
+    }
     await wait(100);
   }
+  throw new Error(`Health check timed out after ${timeoutMs}ms. Last error: ${lastError}`);
 }
 
 beforeAll(async () => {
@@ -36,7 +39,10 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     if (child && !child.killed) child.kill("SIGTERM");
-  } catch {}
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("Failed to terminate child process in afterAll:", e);
+  }
 });
 
 test("HEAD /v1/completions responds 200 with JSON content-type", async () => {
@@ -47,19 +53,12 @@ test("HEAD /v1/completions responds 200 with JSON content-type", async () => {
   expect(ct.toLowerCase()).toContain("charset=utf-8");
 });
 
-test("OPTIONS /v1/completions exposes Allow header", async () => {
+test("OPTIONS /v1/completions responds 204 preflight with CORS headers", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/v1/completions`, {
     method: "OPTIONS",
     headers: { Origin: "http://example.com", "Access-Control-Request-Method": "POST" },
   });
-  expect([200, 204]).toContain(r.status);
-  if (r.status === 200) {
-    const allow = (r.headers.get("allow") || "").toUpperCase();
-    expect(allow).toContain("POST");
-    expect(allow).toContain("HEAD");
-    expect(allow).toContain("OPTIONS");
-  } else {
-    const acao = r.headers.get("access-control-allow-origin");
-    expect(acao).toBeTruthy();
-  }
+  expect(r.status).toBe(204);
+  const acao = r.headers.get("access-control-allow-origin");
+  expect(acao).toBeTruthy();
 });
