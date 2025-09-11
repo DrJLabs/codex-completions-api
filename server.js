@@ -1,8 +1,6 @@
-import express from "express";
 import { spawn } from "node:child_process";
 import { nanoid } from "nanoid";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import {
   stripAnsi,
@@ -24,7 +22,7 @@ import {
 } from "./src/dev-logging.js";
 // Phase 1 modularization: introduce config/errors and structured access log
 import { config as CFG } from "./src/config/index.js";
-import { publicModelIds, acceptedModelIds } from "./src/config/models.js";
+import { acceptedModelIds } from "./src/config/models.js";
 import { authErrorBody, modelNotFoundBody } from "./src/lib/errors.js";
 import createApp from "./src/app.js";
 // Simple CORS helper for server-side error responses. Although global CORS is
@@ -55,9 +53,7 @@ const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 // const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
 const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
-const PUBLIC_MODEL_IDS = publicModelIds(IS_DEV_ENV);
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
-const PROTECT_MODELS = CFG.PROTECT_MODELS;
 // Opt-in guard: end the stream after tools to avoid confusing clients that expect
 // tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
 // When enabled, mode can be:
