@@ -24,6 +24,7 @@ import {
 } from "./src/dev-logging.js";
 // Phase 1 modularization: introduce config/errors and structured access log
 import { config as CFG } from "./src/config/index.js";
+import { publicModelIds, acceptedModelIds } from "./src/config/models.js";
 import { authErrorBody, modelNotFoundBody } from "./src/lib/errors.js";
 import accessLog from "./src/middleware/access-log.js";
 // Simple CORS without extra dependency
