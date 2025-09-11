@@ -1,6 +1,10 @@
 /* eslint-disable security/detect-object-injection */
 const str = (name, def) => String(process.env[name] ?? def);
-const num = (name, def) => Number(process.env[name] ?? def);
+const num = (name, def) => {
+  const raw = process.env[name];
+  const val = Number(raw);
+  return Number.isNaN(val) ? Number(def) : val;
+};
 const bool = (name, def) => String(process.env[name] ?? def).toLowerCase() === "true";
 
 export const config = {

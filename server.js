@@ -60,7 +60,7 @@ app.use((req, res, next) => {
 app.use(accessLog());
 
 const PORT = Number(process.env.PORT || 11435);
-const API_KEY = (CFG && CFG.API_KEY) || process.env.PROXY_API_KEY || "codex-local-secret";
+const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
 const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
@@ -83,10 +83,7 @@ const PROD_ADVERTISED_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-
 const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
 // Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
 const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
-const PROTECT_MODELS =
-  CFG && typeof CFG.PROTECT_MODELS === "boolean"
-    ? CFG.PROTECT_MODELS
-    : (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+const PROTECT_MODELS = CFG.PROTECT_MODELS;
 // Opt-in guard: end the stream after tools to avoid confusing clients that expect
 // tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
 // When enabled, mode can be:

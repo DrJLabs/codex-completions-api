@@ -13,7 +13,7 @@ export default function accessLog() {
         const ua = req.headers["user-agent"] || "";
         const auth = req.headers.authorization ? "present" : "none";
         const entry = {
-          ts: Date.now(),
+          ts: new Date(started).toISOString(),
           level: "info",
           req_id,
           method: req.method,
@@ -26,7 +26,10 @@ export default function accessLog() {
         };
         // JSON line for easy ingestion
         console.log(JSON.stringify(entry));
-      } catch {}
+      } catch (err) {
+        // Ensure logging failures are visible
+        console.error("Failed to write access log:", err);
+      }
     });
     next();
   };
