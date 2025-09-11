@@ -95,7 +95,9 @@ describe("CORS utility", () => {
     };
     applyCors({ headers: { origin: "http://x" } }, res, true);
     expect(headers["Access-Control-Allow-Origin"]).toBe("http://x");
-    expect(headers["Vary"]).toBe("Origin");
+    expect(headers["Vary"]).toBe(
+      "Origin, Access-Control-Request-Headers, Access-Control-Request-Method"
+    );
     expect(headers["Access-Control-Allow-Credentials"]).toBe("true");
   });
   it("sets wildcard origin when enabled and no origin present", () => {
