@@ -44,7 +44,7 @@ test.describe("Live E2E (real Codex)", () => {
     expect([200, 401]).toContain(status);
     const ids = status === 200 ? ((await m.json())?.data || []).map((x) => x.id) : [];
     // Single unconditional expect to satisfy playwright/no-conditional-expect
-    expect(status === 200 ? ids.includes("codex-5") : true).toBeTruthy();
+    expect(status !== 200 || ids.includes("codex-5")).toBeTruthy();
   });
 
   test("non-stream chat returns content", async ({ request }) => {
