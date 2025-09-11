@@ -2,23 +2,10 @@ import { beforeAll, afterAll, test, expect } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { waitForUrlOk } from "./helpers.js";
 
 let PORT;
 let child;
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function waitForHealth(timeoutMs = 5000) {
-  const start = Date.now();
-  // poll /healthz until ok
-  while (true) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (res.ok) return;
-    } catch {}
-    if (Date.now() - start > timeoutMs) throw new Error("health timeout");
-    await wait(100);
-  }
-}
 
 beforeAll(async () => {
   PORT = await getPort();
@@ -34,7 +21,7 @@ beforeAll(async () => {
   });
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
-  await waitForHealth();
+  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
 });
 
 afterAll(async () => {
