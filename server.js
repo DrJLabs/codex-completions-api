@@ -22,6 +22,10 @@ import {
   appendProtoEvent,
   extractUseToolBlocks,
 } from "./src/dev-logging.js";
+// Phase 1 modularization: introduce config/errors and structured access log
+import { config as CFG } from "./src/config/index.js";
+import { authErrorBody, modelNotFoundBody } from "./src/lib/errors.js";
+import accessLog from "./src/middleware/access-log.js";
 // Simple CORS without extra dependency
 const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
@@ -52,9 +56,11 @@ app.use((req, res, next) => {
   });
   next();
 });
+// Structured access log (JSON) with req_id; temporary duplication ok
+app.use(accessLog());
 
 const PORT = Number(process.env.PORT || 11435);
-const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
+const API_KEY = (CFG && CFG.API_KEY) || process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
 const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
@@ -77,7 +83,10 @@ const PROD_ADVERTISED_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-
 const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
 // Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
 const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
-const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+const PROTECT_MODELS =
+  CFG && typeof CFG.PROTECT_MODELS === "boolean"
+    ? CFG.PROTECT_MODELS
+    : (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
 // Opt-in guard: end the stream after tools to avoid confusing clients that expect
 // tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
 // When enabled, mode can be:
@@ -221,12 +230,7 @@ modelsRouter.get("/v1/models", (req, res) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
       applyCors(null, res);
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .json({
-          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-        });
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
     }
   }
   sendModels(res);
@@ -240,12 +244,7 @@ modelsRouter.get("/v1/models/", (req, res) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
       applyCors(null, res);
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .json({
-          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-        });
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
     }
   }
   sendModels(res);
@@ -307,12 +306,7 @@ app.post("/v1/chat/completions", (req, res) => {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
     applyCors(null, res);
-    return res
-      .status(401)
-      .set("WWW-Authenticate", "Bearer realm=api")
-      .json({
-        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-      });
+    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
 
   const body = req.body || {};
@@ -342,14 +336,7 @@ app.post("/v1/chat/completions", (req, res) => {
   // Model allowlist with OpenAI-style not-found error
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
-    return res.status(404).json({
-      error: {
-        message: `The model ${requestedModel} does not exist or you do not have access to it.`,
-        type: "invalid_request_error",
-        param: "model",
-        code: "model_not_found",
-      },
-    });
+    return res.status(404).json(modelNotFoundBody(requestedModel));
   }
   let reasoningEffort = (
     body.reasoning?.effort ||
@@ -1270,12 +1257,7 @@ app.post("/v1/completions", (req, res) => {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
     applyCors(null, res);
-    return res
-      .status(401)
-      .set("WWW-Authenticate", "Bearer realm=api")
-      .json({
-        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-      });
+    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
 
   const body = req.body || {};
