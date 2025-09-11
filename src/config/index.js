@@ -14,9 +14,9 @@ export const config = {
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
   CODEX_MODEL: str("CODEX_MODEL", "gpt-5"),
   CODEX_BIN: str("CODEX_BIN", "codex"),
-  CODEX_HOME: str("CODEX_HOME", ".codex-api"),
+  CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "danger-full-access").toLowerCase(),
-  PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", ""),
+  PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
   PROXY_SSE_KEEPALIVE_MS: num("PROXY_SSE_KEEPALIVE_MS", 15000),
