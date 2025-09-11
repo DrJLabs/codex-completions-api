@@ -143,12 +143,48 @@ export const applyCors = (req, res, enabled = true) => {
   const origin = req?.headers?.origin;
   if (origin) {
     res.setHeader?.("Access-Control-Allow-Origin", origin);
-    res.setHeader?.("Vary", "Origin");
+    // Responses vary on Origin and requested preflight headers/method
+    res.setHeader?.(
+      "Vary",
+      "Origin, Access-Control-Request-Headers, Access-Control-Request-Method"
+    );
     res.setHeader?.("Access-Control-Allow-Credentials", "true");
   } else {
     res.setHeader?.("Access-Control-Allow-Origin", "*");
+    // Still vary on requested preflight headers/method when echoing allow-headers
+    res.setHeader?.("Vary", "Access-Control-Request-Headers, Access-Control-Request-Method");
   }
   res.setHeader?.("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
-  res.setHeader?.("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+
+  // Allow all headers requested by the browser during preflight, falling back to a
+  // superset commonly used by OpenAI-compatible clients (Stainless SDKs, Obsidian, etc.).
+  const requested = (req?.headers?.["access-control-request-headers"] || "").toString().trim();
+  const defaultAllowed =
+    "Authorization, Content-Type, Accept, " +
+    [
+      // OpenAI/Stainless and common client headers
+      "OpenAI-Organization",
+      "OpenAI-Beta",
+      "OpenAI-Version",
+      "OpenAI-Project",
+      "X-Requested-With",
+      "X-Stainless-OS",
+      "X-Stainless-Lang",
+      "X-Stainless-Arch",
+      "X-Stainless-Runtime",
+      "X-Stainless-Runtime-Version",
+      "X-Stainless-Package-Version",
+      "X-Stainless-Timeout",
+      "X-Stainless-Retry-Count",
+      // Some clients send this to acknowledge browser usage
+      "dangerously-allow-browser",
+      // Internal opt-out for SSE keepalives supported by this proxy
+      "X-No-Keepalive",
+    ].join(", ");
+  res.setHeader?.(
+    "Access-Control-Allow-Headers",
+    requested && requested.length ? requested : defaultAllowed
+  );
+  res.setHeader?.("Access-Control-Expose-Headers", "Content-Type");
   res.setHeader?.("Access-Control-Max-Age", "600");
 };
