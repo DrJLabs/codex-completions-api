@@ -1,0 +1,88 @@
+schema: 1
+story: "1.4"
+story_title: "Story 1.4 — Phase 3: Chat Handlers Extraction"
+gate: CONCERNS
+status_reason: >-
+  Pre-implementation review: key risks identified (SSE semantics; tool-block cut/tail parity).
+  NFR shows Security and Performance concerns. Test design and trace are prepared.
+  Gate will move to PASS after implementation with green CI and smoke.
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-11T00:00:00Z"
+waiver: { active: false }
+top_issues:
+  - id: TECH-001
+    title: "SSE semantics regression (role-first delta, [DONE])"
+    severity: high
+    mitigation: >-
+      Preserve SSE helpers; assert role-first chunk and [DONE]; verify keepalive toggles.
+      E2E coverage: 1.4-E2E-001/002/003/004/005.
+  - id: TECH-002
+    title: "Tool-block cut/tail suppression parity"
+    severity: high
+    mitigation: >-
+      Reuse parser; add unit fixtures; verify dedup + delimiter and early cut/tail suppression.
+      Coverage: 1.4-UNIT-002, 1.4-E2E-006/007.
+risk_summary:
+  totals:
+    critical: 0
+    high: 2
+    medium: 3
+    low: 5
+  highest:
+    id: TECH-001
+    score: 6
+    title: "SSE semantics regression (role-first delta, [DONE])"
+  recommendations:
+    must_fix:
+      - "Add/verify E2E for role-first chunk and [DONE] terminator"
+      - "Unit-test tool-block cut/tail suppression and dedup logic"
+    monitor:
+      - "Watch SSE disconnects/timeouts and error rates post-deploy"
+      - "Compare TTFC/latency vs pre-refactor baselines"
+test_design:
+  scenarios_total: 18
+  by_level:
+    unit: 3
+    integration: 8
+    e2e: 7
+  by_priority:
+    p0: 7
+    p1: 7
+    p2: 4
+  coverage_gaps: []
+trace:
+  totals:
+    requirements: 7
+    full: 7
+    partial: 0
+    none: 0
+  planning_ref: "docs/bmad/qa/assessments/1.4-test-design-20250911.md"
+  uncovered: []
+  notes: "See docs/bmad/qa/assessments/1.4-trace-20250911.md"
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: CONCERNS
+    notes: "No app-level rate limiting; rely on edge. SSE abuse controls limited to idle timeouts."
+  performance:
+    status: CONCERNS
+    notes: "Targets undefined; add TTFC/p95 baselines and optional perf smoke."
+  reliability:
+    status: PASS
+    notes: "Timeouts, SSE contract, and disconnect handling in place."
+  maintainability:
+    status: PASS
+    notes: "Router/handler extraction improves structure; tests/docs planned."
+conditions_to_pass:
+  - "Extract chat/completions into handlers/router with zero external behavior change; remove inline routes from server.js."
+  - "Preserve SSE contract: role-first delta, stable id, [DONE]; keepalive toggles verified; E2E green."
+  - "Maintain tool-block behaviors: early cut and tail suppression; unit tests for parser/dedup."
+  - "Ensure HEAD/OPTIONS parity for /v1/chat/completions and /v1/completions."
+  - "Implement or document rate limiting (edge or app) for chat endpoints."
+  - "Define performance targets and optional perf smoke; verify locally."
+  - "Cleanup timers/intervals on disconnect; verify PROXY_KILL_ON_DISCONNECT semantics."
+artifacts:
+  risk: "docs/bmad/qa/assessments/1.4-risk-20250911.md"
+  test_design: "docs/bmad/qa/assessments/1.4-test-design-20250911.md"
+  trace: "docs/bmad/qa/assessments/1.4-trace-20250911.md"
+  nfr: "docs/bmad/qa/assessments/1.4-nfr-20250911.md"
