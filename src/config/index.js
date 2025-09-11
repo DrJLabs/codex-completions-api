@@ -1,4 +1,6 @@
 /* eslint-disable security/detect-object-injection */
+import os from "node:os";
+import path from "node:path";
 const str = (name, def) => String(process.env[name] ?? def);
 const num = (name, def) => {
   const raw = process.env[name];
