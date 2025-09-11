@@ -4,6 +4,7 @@ import { applyCors as applyCorsUtil } from "./utils.js";
 import { config as CFG } from "./config/index.js";
 import healthRouter from "./routes/health.js";
 import modelsRouter from "./routes/models.js";
+import chatRouter from "./routes/chat.js";
 
 export default function createApp() {
   const app = express();
@@ -42,6 +43,7 @@ export default function createApp() {
   // Mount routers
   app.use(healthRouter());
   app.use(modelsRouter());
+  app.use(chatRouter());
 
   return app;
 }
