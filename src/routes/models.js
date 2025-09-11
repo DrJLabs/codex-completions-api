@@ -6,7 +6,7 @@ import { applyCors as applyCorsUtil } from "../utils.js";
 
 export default function modelsRouter() {
   const router = express.Router();
-  const CORS_ENABLED = (CFG.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
+  const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
   const applyCors = (_req, res) => applyCorsUtil(_req, res, CORS_ENABLED);
 
   const isDev = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
