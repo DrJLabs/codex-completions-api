@@ -175,14 +175,7 @@ const scanAndLogToolBlocks = (emitted, state, reqId, route, mode) => {
 
 // OpenAI-compatible Chat Completions endpoint backed by Codex CLI
 // Minimal preflight/HEAD support for compatibility with some IDEs/SDKs
-app.options("/v1/chat/completions", (_req, res) => {
-  res.set("Allow", "POST,HEAD,OPTIONS");
-  res.status(200).end();
-});
-app.head("/v1/chat/completions", (_req, res) => {
-  res.set("Content-Type", "application/json; charset=utf-8");
-  res.status(200).end();
-});
+// HEAD/OPTIONS for chat completions are mounted via src/routes/chat.js
 
 app.post("/v1/chat/completions", (req, res) => {
   const reqId = nanoid();
@@ -1125,14 +1118,7 @@ app.post("/v1/chat/completions", (req, res) => {
 });
 
 // OpenAI-compatible Completions shim mapped to Chat backend
-app.options("/v1/completions", (_req, res) => {
-  res.set("Allow", "POST,HEAD,OPTIONS");
-  res.status(200).end();
-});
-app.head("/v1/completions", (_req, res) => {
-  res.set("Content-Type", "application/json; charset=utf-8");
-  res.status(200).end();
-});
+// HEAD/OPTIONS for legacy completions shim are mounted via src/routes/chat.js
 app.post("/v1/completions", (req, res) => {
   try {
     console.log("[completions] POST /v1/completions received");
