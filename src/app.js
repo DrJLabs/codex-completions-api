@@ -10,7 +10,7 @@ export default function createApp() {
   app.use(express.json({ limit: "16mb" }));
 
   // Global CORS
-  const CORS_ENABLED = (CFG.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
+  const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
   const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
   app.use((req, res, next) => {
     applyCors(req, res);
