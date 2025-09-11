@@ -2,38 +2,24 @@ import { beforeAll, afterAll, test, expect, describe } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { waitForUrlOk } from "./helpers.js";
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-async function waitFor(healthUrl, timeoutMs = 5000) {
-  const start = Date.now();
-  while (true) {
-    try {
-      const res = await fetch(healthUrl);
-      if (res.ok) return;
-    } catch {}
-    if (Date.now() - start > timeoutMs) throw new Error("health timeout");
-    await wait(100);
-  }
-}
-
-function startServer({ protect = false } = {}) {
-  return (async () => {
-    const PORT = await getPort();
-    const child = spawn("node", ["server.js"], {
-      env: {
-        ...process.env,
-        PORT: String(PORT),
-        PROXY_API_KEY: "test-sk-ci",
-        CODEX_BIN: "scripts/fake-codex-proto.js",
-        PROXY_PROTECT_MODELS: protect ? "true" : "false",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    await waitFor(`http://127.0.0.1:${PORT}/healthz`);
-    return { PORT, child };
-  })();
+async function startServer({ protect = false } = {}) {
+  const PORT = await getPort();
+  const child = spawn("node", ["server.js"], {
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      PROXY_API_KEY: "test-sk-ci",
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      PROXY_PROTECT_MODELS: protect ? "true" : "false",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
+  return { PORT, child };
 }
 
 describe("/v1/models without gating", () => {
@@ -42,9 +28,11 @@ describe("/v1/models without gating", () => {
     ctx = await startServer({ protect: false });
   });
   afterAll(async () => {
-    try {
-      ctx.child.kill("SIGTERM");
-    } catch {}
+    if (ctx?.child && !ctx.child.killed) {
+      try {
+        ctx.child.kill("SIGTERM");
+      } catch {}
+    }
   });
 
   test("GET returns list with headers", async () => {
@@ -83,9 +71,11 @@ describe("/v1/models with PROXY_PROTECT_MODELS=true", () => {
     ctx = await startServer({ protect: true });
   });
   afterAll(async () => {
-    try {
-      ctx.child.kill("SIGTERM");
-    } catch {}
+    if (ctx?.child && !ctx.child.killed) {
+      try {
+        ctx.child.kill("SIGTERM");
+      } catch {}
+    }
   });
 
   test("GET without bearer returns 401 with WWW-Authenticate", async () => {
