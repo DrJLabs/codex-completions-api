@@ -1,23 +1,26 @@
-version: 4.43.0
-installed_at: '2025-09-02T21:51:55.541Z'
+version: 4.43.1
+installed_at: "2025-09-11T05:45:05.333Z"
 install_type: full
 agent: null
 ides_setup:
   - codex
-expansion_packs:
-  - bmad-infrastructure-devops
+  - codex-web
+expansion_packs: []
 files:
   - path: .bmad-core/working-in-the-brownfield.md
-    hash: 2bf3551cbc498b47
+    hash: 07cc8eb6fc664bb8
     modified: false
   - path: .bmad-core/user-guide.md
     hash: fa8776b4e0bfa3f7
+    modified: false
+  - path: .bmad-core/install-manifest.yaml
+    hash: 7b44b830026d8ca2
     modified: false
   - path: .bmad-core/enhanced-ide-development-workflow.md
     hash: 39beb3516c070e2b
     modified: false
   - path: .bmad-core/core-config.yaml
-    hash: 073cf6d2527c545d
+    hash: 94ce5b2faad48235
     modified: false
   - path: .bmad-core/workflows/greenfield-ui.yaml
     hash: 2b595f235c095790
@@ -74,7 +77,7 @@ files:
     hash: 5b89b783cd2cacdb
     modified: false
   - path: .bmad-core/templates/brownfield-architecture-tmpl.yaml
-    hash: be2b8c7fa9e5864d
+    hash: ce6e86071a204d43
     modified: false
   - path: .bmad-core/templates/brainstorming-output-tmpl.yaml
     hash: ba806c97165c8178
@@ -83,7 +86,7 @@ files:
     hash: e66f63be1af30585
     modified: false
   - path: .bmad-core/tasks/validate-next-story.md
-    hash: a5a382fe9a8d9443
+    hash: 75e84133d364d973
     modified: false
   - path: .bmad-core/tasks/trace-requirements.md
     hash: cb3e06cc0b957948
@@ -209,7 +212,7 @@ files:
     hash: 374701173ce61d73
     modified: false
   - path: .bmad-core/agents/bmad-master.md
-    hash: 8f42dc6208abccab
+    hash: d344fb86fc65643c
     modified: false
   - path: .bmad-core/agents/architect.md
     hash: 4e7b28055a522dea
@@ -228,33 +231,4 @@ files:
     modified: false
   - path: .bmad-core/agent-teams/team-all.yaml
     hash: db5b0ff0a9c9c2e8
-    modified: false
-  - path: .bmad-infrastructure-devops/agents/infra-devops-platform.md
-    hash: 0b7299d557f98934
-    modified: false
-  - path: >-
-      .bmad-infrastructure-devops/templates/infrastructure-platform-from-arch-tmpl.yaml
-    hash: 2b82fcf5276cb9f4
-    modified: false
-  - path: >-
-      .bmad-infrastructure-devops/templates/infrastructure-architecture-tmpl.yaml
-    hash: 022365b3a233fe86
-    modified: false
-  - path: .bmad-infrastructure-devops/tasks/validate-infrastructure.md
-    hash: 5407dc43d8c3b8fe
-    modified: false
-  - path: .bmad-infrastructure-devops/tasks/review-infrastructure.md
-    hash: 6cbe269f9e54dd41
-    modified: false
-  - path: .bmad-infrastructure-devops/checklists/infrastructure-checklist.md
-    hash: fa0d68176739b616
-    modified: false
-  - path: .bmad-infrastructure-devops/data/bmad-kb.md
-    hash: 99b7a22acdfe9c68
-    modified: false
-  - path: .bmad-infrastructure-devops/config.yaml
-    hash: 377501855792eeef
-    modified: false
-  - path: .bmad-infrastructure-devops/README.md
-    hash: bb81a20324b3ffd6
     modified: false

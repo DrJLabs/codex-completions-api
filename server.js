@@ -22,8 +22,13 @@ import {
   appendProtoEvent,
   extractUseToolBlocks,
 } from "./src/dev-logging.js";
+// Phase 1 modularization: introduce config/errors and structured access log
+import { config as CFG } from "./src/config/index.js";
+import { publicModelIds, acceptedModelIds } from "./src/config/models.js";
+import { authErrorBody, modelNotFoundBody } from "./src/lib/errors.js";
+import accessLog from "./src/middleware/access-log.js";
 // Simple CORS without extra dependency
-const CORS_ENABLED = (process.env.PROXY_ENABLE_CORS || "true").toLowerCase() !== "false";
+const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 
 const app = express();
@@ -37,26 +42,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Minimal HTTP access logging to aid debugging integrations (e.g., Cursor)
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on("finish", () => {
-    try {
-      const ua = req.headers["user-agent"] || "";
-      const auth = req.headers.authorization ? "present" : "none";
-      const dur = Date.now() - start;
-      console.log(
-        `[http] ${req.method} ${req.originalUrl} -> ${res.statusCode} auth=${auth} ua="${ua}" dur_ms=${dur}`
-      );
-    } catch {}
-  });
-  next();
-});
+// Structured access log (JSON) with req_id
+app.use(accessLog());
 
-const PORT = Number(process.env.PORT || 11435);
-const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
-const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
-const CODEX_BIN = process.env.CODEX_BIN || "codex";
+const PORT = CFG.PORT;
+const API_KEY = CFG.API_KEY;
+const DEFAULT_MODEL = CFG.CODEX_MODEL;
+const CODEX_BIN = CFG.CODEX_BIN;
 const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
   ? CODEX_BIN
   : CODEX_BIN.includes(path.sep)
@@ -65,57 +57,45 @@ const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
 // Allow isolating Codex CLI configuration per deployment. When set, child processes
 // receive CODEX_HOME so Codex reads config from `${CODEX_HOME}/config.toml`.
 // Default to a dedicated directory `~/.codex-api` so interactive CLI (`~/.codex`) remains separate.
-const CODEX_HOME = process.env.CODEX_HOME || path.join(process.cwd(), ".codex-api");
-const SANDBOX_MODE = (process.env.PROXY_SANDBOX_MODE || "danger-full-access").toLowerCase();
-const CODEX_WORKDIR = process.env.PROXY_CODEX_WORKDIR || path.join(os.tmpdir(), "codex-work");
+const CODEX_HOME = CFG.CODEX_HOME;
+const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
+const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 // const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase(); // no longer used; streaming handled per-request
-const FORCE_PROVIDER = (process.env.CODEX_FORCE_PROVIDER || "").trim();
-const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
-const IS_DEV_ENV = (process.env.PROXY_ENV || "").toLowerCase() === "dev";
-const DEV_ADVERTISED_IDS = ["codev-5", ...REASONING_VARIANTS.map((v) => `codev-5-${v}`)];
-const PROD_ADVERTISED_IDS = ["codex-5", ...REASONING_VARIANTS.map((v) => `codex-5-${v}`)];
-const PUBLIC_MODEL_IDS = IS_DEV_ENV ? DEV_ADVERTISED_IDS : PROD_ADVERTISED_IDS;
-// Accept both codex-5* and codev-5* everywhere to reduce friction; advertise per env
-const ACCEPTED_MODEL_IDS = new Set([...DEV_ADVERTISED_IDS, ...PROD_ADVERTISED_IDS, DEFAULT_MODEL]);
-const PROTECT_MODELS = (process.env.PROXY_PROTECT_MODELS || "false").toLowerCase() === "true";
+const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
+const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
+const PUBLIC_MODEL_IDS = publicModelIds(IS_DEV_ENV);
+const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
+const PROTECT_MODELS = CFG.PROTECT_MODELS;
 // Opt-in guard: end the stream after tools to avoid confusing clients that expect
 // tool-first, stop-after-tools behavior (e.g., Obsidian Copilot). Default off.
 // When enabled, mode can be:
 //  - "first": cut immediately after the first complete <use_tool> block
 //  - "burst": cut after a short grace window to allow multiple back-to-back tool blocks
-const STOP_AFTER_TOOLS = (process.env.PROXY_STOP_AFTER_TOOLS || "").toLowerCase() === "true";
-const STOP_AFTER_TOOLS_MODE = (process.env.PROXY_STOP_AFTER_TOOLS_MODE || "burst").toLowerCase();
+const STOP_AFTER_TOOLS = CFG.PROXY_STOP_AFTER_TOOLS;
+const STOP_AFTER_TOOLS_MODE = CFG.PROXY_STOP_AFTER_TOOLS_MODE;
 const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
 const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
 // New: suppress narrative/text after the last complete <use_tool>...</use_tool> block
 // without ending the stream early. This keeps the assistant message tool-only while
 // allowing the backend to run to normal completion. Default off.
-const SUPPRESS_TAIL_AFTER_TOOLS =
-  (process.env.PROXY_SUPPRESS_TAIL_AFTER_TOOLS || "").toLowerCase() === "true";
+const SUPPRESS_TAIL_AFTER_TOOLS = CFG.PROXY_SUPPRESS_TAIL_AFTER_TOOLS;
 // Optional: de-duplicate repeated tool blocks and add simple delimiters between blocks
-const TOOL_BLOCK_DEDUP =
-  String(
-    process.env.PROXY_TOOL_BLOCK_DEDUP || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
-  ).toLowerCase() === "true";
-const TOOL_BLOCK_DELIM =
-  String(
-    process.env.PROXY_TOOL_BLOCK_DELIMITER || (SUPPRESS_TAIL_AFTER_TOOLS ? "true" : "")
-  ).toLowerCase() === "true";
+const TOOL_BLOCK_DEDUP = CFG.PROXY_TOOL_BLOCK_DEDUP || SUPPRESS_TAIL_AFTER_TOOLS;
+const TOOL_BLOCK_DELIM = CFG.PROXY_TOOL_BLOCK_DELIMITER || SUPPRESS_TAIL_AFTER_TOOLS;
 // Timeouts and connection stability
 // Overall request timeout (non-stream especially). For long tasks, raise via PROXY_TIMEOUT_MS.
-const REQ_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 300000); // default 5m
+const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS; // default 5m
 // Default to not killing Codex on disconnect to better match typical OpenAI clients
-const KILL_ON_DISCONNECT =
-  (process.env.PROXY_KILL_ON_DISCONNECT || "false").toLowerCase() !== "false";
+const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 // Idle timeout when waiting for backend output.
-const IDLE_TIMEOUT_MS = Number(process.env.PROXY_IDLE_TIMEOUT_MS || 15000);
+const IDLE_TIMEOUT_MS = CFG.PROXY_IDLE_TIMEOUT_MS;
 // Separate idle timeout for streaming responses (allow much longer lulls between chunks)
-const STREAM_IDLE_TIMEOUT_MS = Number(process.env.PROXY_STREAM_IDLE_TIMEOUT_MS || 300000); // default 5m
+const STREAM_IDLE_TIMEOUT_MS = CFG.PROXY_STREAM_IDLE_TIMEOUT_MS; // default 5m
 // Proto-specific idle for non-streaming aggregation before giving up (ms)
-const PROTO_IDLE_MS = Number(process.env.PROXY_PROTO_IDLE_MS || 120000);
-const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(process.env.PROXY_DEBUG_PROTO || ""));
+const PROTO_IDLE_MS = CFG.PROXY_PROTO_IDLE_MS;
+const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 // Periodic SSE keepalive to prevent intermediaries closing idle connections (ms)
-const SSE_KEEPALIVE_MS = Number(process.env.PROXY_SSE_KEEPALIVE_MS || 15000);
+const SSE_KEEPALIVE_MS = CFG.PROXY_SSE_KEEPALIVE_MS;
 
 // DEV logging and parser utilities imported from a separate module
 
@@ -221,12 +201,7 @@ modelsRouter.get("/v1/models", (req, res) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
       applyCors(null, res);
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .json({
-          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-        });
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
     }
   }
   sendModels(res);
@@ -240,12 +215,7 @@ modelsRouter.get("/v1/models/", (req, res) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token || token !== API_KEY) {
       applyCors(null, res);
-      return res
-        .status(401)
-        .set("WWW-Authenticate", "Bearer realm=api")
-        .json({
-          error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-        });
+      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
     }
   }
   sendModels(res);
@@ -307,12 +277,7 @@ app.post("/v1/chat/completions", (req, res) => {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
     applyCors(null, res);
-    return res
-      .status(401)
-      .set("WWW-Authenticate", "Bearer realm=api")
-      .json({
-        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-      });
+    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
 
   const body = req.body || {};
@@ -342,14 +307,7 @@ app.post("/v1/chat/completions", (req, res) => {
   // Model allowlist with OpenAI-style not-found error
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
     applyCors(null, res);
-    return res.status(404).json({
-      error: {
-        message: `The model ${requestedModel} does not exist or you do not have access to it.`,
-        type: "invalid_request_error",
-        param: "model",
-        code: "model_not_found",
-      },
-    });
+    return res.status(404).json(modelNotFoundBody(requestedModel));
   }
   let reasoningEffort = (
     body.reasoning?.effort ||
@@ -943,13 +901,13 @@ app.post("/v1/chat/completions", (req, res) => {
             } catch {}
             return;
           } else if (t === "error") {
-            if (process.env.PROXY_DEBUG_PROTO)
+            if (DEBUG_PROTO)
               try {
                 console.log("[proto] error event");
               } catch {}
           }
         } catch {
-          if (process.env.PROXY_DEBUG_PROTO)
+          if (DEBUG_PROTO)
             try {
               console.log("[proto] parse error line:", trimmed);
             } catch {}
@@ -1270,12 +1228,7 @@ app.post("/v1/completions", (req, res) => {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
     applyCors(null, res);
-    return res
-      .status(401)
-      .set("WWW-Authenticate", "Bearer realm=api")
-      .json({
-        error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
-      });
+    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
 
   const body = req.body || {};
