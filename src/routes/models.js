@@ -42,13 +42,7 @@ export default function modelsRouter() {
   });
 
   // HEAD
-  router.head("/v1/models", (req, res) => {
-    if (!gated(req, res)) return;
-    applyCors(null, res);
-    res.set("Content-Type", "application/json; charset=utf-8");
-    res.status(200).end();
-  });
-  router.head("/v1/models/", (req, res) => {
+  router.head(["/v1/models", "/v1/models/"], (req, res) => {
     if (!gated(req, res)) return;
     applyCors(null, res);
     res.set("Content-Type", "application/json; charset=utf-8");
