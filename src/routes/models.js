@@ -36,11 +36,7 @@ export default function modelsRouter() {
   }
 
   // GET
-  router.get("/v1/models", (req, res) => {
-    if (!gated(req, res)) return;
-    sendModels(res);
-  });
-  router.get("/v1/models/", (req, res) => {
+  router.get(["/v1/models", "/v1/models/"], (req, res) => {
     if (!gated(req, res)) return;
     sendModels(res);
   });
