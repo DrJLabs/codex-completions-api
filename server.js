@@ -550,6 +550,7 @@ app.post("/v1/chat/completions", (req, res) => {
   if (isStreamingReq) {
     // Stable id across stream to match OpenAI clients' expectations
     const completionId = `chatcmpl-${nanoid()}`;
+    const created = Math.floor(Date.now() / 1000);
     const sendRoleOnce = (() => {
       let sent = false;
       return () => {
@@ -558,7 +559,7 @@ app.post("/v1/chat/completions", (req, res) => {
         sendSSE({
           id: completionId,
           object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
+          created,
           model: requestedModel,
           choices: [{ index: 0, delta: { role: "assistant" } }],
         });
@@ -755,7 +756,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     sendSSE({
                       id: completionId,
                       object: "chat.completion.chunk",
-                      created: Math.floor(Date.now() / 1000),
+                      created,
                       model: requestedModel,
                       choices: [{ index: 0, delta: { content: toSend } }],
                     });
@@ -782,7 +783,7 @@ app.post("/v1/chat/completions", (req, res) => {
                       sendSSE({
                         id: completionId,
                         object: "chat.completion.chunk",
-                        created: Math.floor(Date.now() / 1000),
+                        created,
                         model: requestedModel,
                         choices: [{ index: 0, delta: { content: segment } }],
                       });
@@ -797,7 +798,7 @@ app.post("/v1/chat/completions", (req, res) => {
                     sendSSE({
                       id: completionId,
                       object: "chat.completion.chunk",
-                      created: Math.floor(Date.now() / 1000),
+                      created,
                       model: requestedModel,
                       choices: [{ index: 0, delta: { content: segment } }],
                     });
@@ -895,7 +896,7 @@ app.post("/v1/chat/completions", (req, res) => {
                 sendSSE({
                   id: completionId,
                   object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
+                  created,
                   model: requestedModel,
                   choices: [{ index: 0, delta: { content: suffix } }],
                 });
@@ -917,7 +918,7 @@ app.post("/v1/chat/completions", (req, res) => {
               sendSSE({
                 id: completionId,
                 object: "chat.completion.chunk",
-                created: Math.floor(Date.now() / 1000),
+                created,
                 model: requestedModel,
                 choices: [],
                 usage: {
@@ -1017,7 +1018,7 @@ app.post("/v1/chat/completions", (req, res) => {
         sendSSE({
           id: completionId,
           object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
+          created,
           model: requestedModel,
           choices: [{ index: 0, delta: { content } }],
         });
@@ -1525,6 +1526,7 @@ app.post("/v1/completions", (req, res) => {
   if (isStreamingReq) {
     // Stable id across stream to match OpenAI clients' expectations
     const completionId = `cmpl-${nanoid()}`;
+    const created = Math.floor(Date.now() / 1000);
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -1621,7 +1623,7 @@ app.post("/v1/completions", (req, res) => {
                 sendSSE({
                   id: completionId,
                   object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
+                  created,
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
@@ -1647,7 +1649,7 @@ app.post("/v1/completions", (req, res) => {
                 sendSSE({
                   id: completionId,
                   object: "text_completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
+                  created,
                   model: requestedModel,
                   choices: [{ index: 0, text: suffix }],
                 });
@@ -1689,7 +1691,7 @@ app.post("/v1/completions", (req, res) => {
         sendSSE({
           id: completionId,
           object: "text_completion.chunk",
-          created: Math.floor(Date.now() / 1000),
+          created,
           model: requestedModel,
           choices: [{ index: 0, text: content }],
         });
