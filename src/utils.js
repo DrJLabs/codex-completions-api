@@ -143,10 +143,16 @@ export const applyCors = (req, res, enabled = true) => {
   const origin = req?.headers?.origin;
   if (origin) {
     res.setHeader?.("Access-Control-Allow-Origin", origin);
-    res.setHeader?.("Vary", "Origin");
+    // Responses vary on Origin and requested preflight headers/method
+    res.setHeader?.(
+      "Vary",
+      "Origin, Access-Control-Request-Headers, Access-Control-Request-Method"
+    );
     res.setHeader?.("Access-Control-Allow-Credentials", "true");
   } else {
     res.setHeader?.("Access-Control-Allow-Origin", "*");
+    // Still vary on requested preflight headers/method when echoing allow-headers
+    res.setHeader?.("Vary", "Access-Control-Request-Headers, Access-Control-Request-Method");
   }
   res.setHeader?.("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
 
