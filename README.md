@@ -218,6 +218,12 @@ Environment variables:
 
 `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` keeps streaming open; `PROXY_STOP_AFTER_TOOLS` terminates the stream after tools. Client-side tools still run as usual.
 
+#### Client tool batching cap (important)
+
+- Policy: group at most 7 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
+- Rationale: some clients exhibit instability when 8+ tools are requested concurrently in one message. The cap avoids that glitch and aligns with `.codev/AGENTS.md` guidance.
+- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=7` to cut the stream after 7 tool blocks and prevent over‑batching at the transport layer.
+
 ## Quick start
 
 - Prereqs: Node ≥ 22, npm, curl (or Docker Compose).
