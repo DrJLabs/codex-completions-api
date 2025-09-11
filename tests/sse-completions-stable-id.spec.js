@@ -1,36 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
-
-async function collectSSE(url, init, { timeoutMs = 15000 } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    expect(res.ok).toBeTruthy();
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    const frames = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, idx);
-        buf = buf.slice(idx + 2);
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith(":")) continue; // keepalive
-          if (line.startsWith("data: ")) frames.push(line.slice(6));
-        }
-      }
-      if (frames.some((d) => d.trim() === "[DONE]")) break;
-    }
-    return frames;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { collectSSE } from "./test-utils.js";
 
 test("legacy completions stream uses a stable id across chunks", async ({ baseURL }) => {
   const url = new URL("v1/completions", baseURL).toString();
