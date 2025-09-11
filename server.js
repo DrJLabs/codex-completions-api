@@ -26,24 +26,16 @@ import {
 import { config as CFG } from "./src/config/index.js";
 import { publicModelIds, acceptedModelIds } from "./src/config/models.js";
 import { authErrorBody, modelNotFoundBody } from "./src/lib/errors.js";
-import accessLog from "./src/middleware/access-log.js";
-// Simple CORS without extra dependency
+import createApp from "./src/app.js";
+// Simple CORS helper for server-side error responses. Although global CORS is
+// applied in createApp(), some error responses call this explicitly to ensure
+// headers are present when returning early.
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 
-const app = express();
-app.use(express.json({ limit: "16mb" }));
-// Global CORS headers
-app.use((req, res, next) => {
-  applyCors(req, res);
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-  next();
-});
-
-// Structured access log (JSON) with req_id
-app.use(accessLog());
+// Use extracted app bootstrap (includes JSON body, CORS, access logs, and
+// mounts for health/models routers). Keep server.js as a thin bootstrap.
+const app = createApp();
 
 const PORT = CFG.PORT;
 const API_KEY = CFG.API_KEY;
@@ -110,7 +102,7 @@ try {
   } catch {}
 }
 
-app.get("/healthz", (_req, res) => res.json({ ok: true, sandbox_mode: SANDBOX_MODE }));
+// health route mounted by createApp()
 
 // Usage query support (file-backed NDJSON aggregates)
 const loadUsageEvents = () => {
@@ -180,79 +172,7 @@ const scanAndLogToolBlocks = (emitted, state, reqId, route, mode) => {
 // Normalize/alias model names. Accepts custom prefixes like "codex/<model>".
 // normalizeModel / impliedEffortForModel available from utils
 
-// Models router implementing GET/HEAD/OPTIONS with canonical headers
-const modelsRouter = express.Router();
-const modelsPayload = {
-  object: "list",
-  data: PUBLIC_MODEL_IDS.map((id) => ({ id, object: "model", owned_by: "codex", created: 0 })),
-};
-const sendModels = (res) => {
-  applyCors(null, res);
-  res.set("Content-Type", "application/json; charset=utf-8");
-  res.set("Cache-Control", "public, max-age=60");
-  res.status(200).send(JSON.stringify(modelsPayload));
-};
-modelsRouter.get("/v1/models", (req, res) => {
-  try {
-    console.log("[models] GET /v1/models");
-  } catch {}
-  if (PROTECT_MODELS) {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!token || token !== API_KEY) {
-      applyCors(null, res);
-      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-    }
-  }
-  sendModels(res);
-});
-modelsRouter.get("/v1/models/", (req, res) => {
-  try {
-    console.log("[models] GET /v1/models/");
-  } catch {}
-  if (PROTECT_MODELS) {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!token || token !== API_KEY) {
-      applyCors(null, res);
-      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-    }
-  }
-  sendModels(res);
-});
-modelsRouter.head("/v1/models", (req, res) => {
-  applyCors(null, res);
-  if (PROTECT_MODELS) {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!token || token !== API_KEY) {
-      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").end();
-    }
-  }
-  res.set("Content-Type", "application/json; charset=utf-8");
-  res.status(200).end();
-});
-modelsRouter.head("/v1/models/", (req, res) => {
-  applyCors(null, res);
-  if (PROTECT_MODELS) {
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!token || token !== API_KEY) {
-      return res.status(401).set("WWW-Authenticate", "Bearer realm=api").end();
-    }
-  }
-  res.set("Content-Type", "application/json; charset=utf-8");
-  res.status(200).end();
-});
-modelsRouter.options("/v1/models", (req, res) => {
-  res.set("Allow", "GET,HEAD,OPTIONS");
-  res.status(200).end();
-});
-modelsRouter.options("/v1/models/", (req, res) => {
-  res.set("Allow", "GET,HEAD,OPTIONS");
-  res.status(200).end();
-});
-app.use(modelsRouter);
+// models routes mounted by createApp()
 
 // Alias for clients that call baseURL without trailing /v1 and then /models
 // (Removed /models alias added for Cursor compatibility)
