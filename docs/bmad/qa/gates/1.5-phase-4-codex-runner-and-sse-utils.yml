@@ -12,6 +12,7 @@ gate:
     integration_tests: "22 passed, 2 skipped"
     e2e_tests: "9 passed"
     perf_smoke: "TTFC p95 < 2s; total p95 < 5s"
+    prod_smoke: "PASS — cf health/models/chat non-stream/stream (2025-09-12)"
   references:
     risk_profile: docs/bmad/qa/assessments/1.5-risk-20250912.md
     test_design: docs/bmad/qa/assessments/1.5-test-design-20250912.md
@@ -66,4 +67,5 @@ gate:
     - id: SMOKE-PRD
       title: "Run PRD smoke after merge"
       owner: maintainer
-      status: pending
+      status: done
+      notes: "Executed with KEY from .env; all checks passed (2025-09-12)"
