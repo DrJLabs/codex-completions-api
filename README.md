@@ -207,8 +207,6 @@ Some clients expect the assistant’s message to contain only `<use_tool>` block
 Environment variables:
 
 - `PROXY_SUPPRESS_TAIL_AFTER_TOOLS=true` — hide assistant narrative after the last complete tool block while allowing the backend to finish normally.
-- `PROXY_TOOL_BLOCK_DEDUP=true` — drop repeated tool blocks.
-- `PROXY_TOOL_BLOCK_DELIMITER=true` — insert a blank line between tool blocks.
 - `PROXY_STOP_AFTER_TOOLS=true` — enable early-cut behavior.
 - `PROXY_STOP_AFTER_TOOLS_MODE=burst|first` —
   - `burst` (default): allow multiple back-to-back tool blocks to arrive within a short grace window, then cut.
