@@ -19,6 +19,7 @@ import {
   extractUseToolBlocks,
   LOG_PROTO,
 } from "../../dev-logging.js";
+import { buildProtoArgs } from "./shared.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -96,26 +97,13 @@ export async function postChatNonStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = [
-    "proto",
-    "--config",
-    'preferred_auth_method="chatgpt"',
-    "--config",
-    "project_doc_max_bytes=0",
-    "--config",
-    'history.persistence="none"',
-    "--config",
-    "tools.web_search=false",
-    "--config",
-    `sandbox_mode="${SANDBOX_MODE}"`,
-    "--config",
-    `model="${effectiveModel}"`,
-  ];
-  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}` + `"`);
-  if (allowEffort.has(reasoningEffort)) {
-    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
-    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
-  }
+  const args = buildProtoArgs({
+    SANDBOX_MODE,
+    effectiveModel,
+    FORCE_PROVIDER,
+    reasoningEffort,
+    allowEffort,
+  });
 
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
@@ -371,26 +359,13 @@ export async function postCompletionsNonStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = [
-    "proto",
-    "--config",
-    'preferred_auth_method="chatgpt"',
-    "--config",
-    "project_doc_max_bytes=0",
-    "--config",
-    'history.persistence="none"',
-    "--config",
-    "tools.web_search=false",
-    "--config",
-    `sandbox_mode="${SANDBOX_MODE}"`,
-    "--config",
-    `model="${effectiveModel}"`,
-  ];
-  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}` + `"`);
-  if (allowEffort.has(reasoningEffort)) {
-    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
-    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
-  }
+  const args = buildProtoArgs({
+    SANDBOX_MODE,
+    effectiveModel,
+    FORCE_PROVIDER,
+    reasoningEffort,
+    allowEffort,
+  });
 
   const messages = [{ role: "user", content: prompt }];
   const toSend = joinMessages(messages);
@@ -429,7 +404,7 @@ export async function postCompletionsNonStream(req, res) {
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
+        route: "/v1/completions",
         mode: "completions_nonstream",
         kind: "stdout",
         chunk: s,
@@ -446,7 +421,7 @@ export async function postCompletionsNonStream(req, res) {
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
-          route: "/v1/chat/completions",
+          route: "/v1/completions",
           mode: "completions_nonstream",
           kind: "event",
           event: evt,
@@ -467,7 +442,7 @@ export async function postCompletionsNonStream(req, res) {
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
+        route: "/v1/completions",
         mode: "completions_nonstream",
         kind: "stderr",
         chunk: d.toString("utf8"),
@@ -490,7 +465,7 @@ export async function postCompletionsNonStream(req, res) {
           appendProtoEvent({
             ts: Date.now(),
             req_id: reqId,
-            route: "/v1/chat/completions",
+            route: "/v1/completions",
             mode: "completions_nonstream",
             kind: "tool_block",
             idx: ++idxTool,
@@ -506,7 +481,7 @@ export async function postCompletionsNonStream(req, res) {
     appendUsage({
       ts: Date.now(),
       req_id: reqId,
-      route: "/v1/chat/completions",
+      route: "/v1/completions",
       method: "POST",
       requested_model: requestedModel,
       effective_model: effectiveModel,

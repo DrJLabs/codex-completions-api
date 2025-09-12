@@ -51,6 +51,9 @@ export default function createApp() {
   );
   // Test-only endpoints (disabled by default)
   if (CFG.PROXY_TEST_ENDPOINTS) {
+    // NOTE: Test-only endpoint to expose current SSE concurrency count.
+    // Uses globalThis to avoid plumbing state; safe because PROXY_TEST_ENDPOINTS
+    // is disabled in production by default and only enabled for CI debugging.
     app.get("/__test/conc", (_req, res) => {
       const conc = Number(globalThis.__sseConcCount || 0);
       res.json({ conc });

@@ -18,6 +18,7 @@ import {
   appendProtoEvent,
   extractUseToolBlocks,
 } from "../../dev-logging.js";
+import { buildProtoArgs } from "./shared.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -64,19 +65,7 @@ export async function postChatStream(req, res) {
   // Global SSE concurrency guard (per-process). Simpler and more deterministic for tests
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
   globalThis.__sseConcCount = globalThis.__sseConcCount || 0;
-  if (MAX_CONC > 0) {
-    if (globalThis.__sseConcCount >= MAX_CONC) {
-      applyCors(null, res);
-      return res.status(429).json({
-        error: {
-          message: "too many concurrent streams",
-          type: "rate_limit_error",
-          code: "concurrency_exceeded",
-        },
-      });
-    }
-    globalThis.__sseConcCount += 1;
-  }
+  let acquiredConc = false;
 
   const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
@@ -120,26 +109,29 @@ export async function postChatStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = [
-    "proto",
-    "--config",
-    'preferred_auth_method="chatgpt"',
-    "--config",
-    "project_doc_max_bytes=0",
-    "--config",
-    'history.persistence="none"',
-    "--config",
-    "tools.web_search=false",
-    "--config",
-    `sandbox_mode="${SANDBOX_MODE}"`,
-    "--config",
-    `model="${effectiveModel}"`,
-  ];
-  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}` + `"`);
-  if (allowEffort.has(reasoningEffort)) {
-    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
-    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
+  // Acquire concurrency slot only after validations pass
+  if (MAX_CONC > 0) {
+    if (globalThis.__sseConcCount >= MAX_CONC) {
+      applyCors(null, res);
+      return res.status(429).json({
+        error: {
+          message: "too many concurrent streams",
+          type: "rate_limit_error",
+          code: "concurrency_exceeded",
+        },
+      });
+    }
+    globalThis.__sseConcCount += 1;
+    acquiredConc = true;
   }
+
+  const args = buildProtoArgs({
+    SANDBOX_MODE,
+    effectiveModel,
+    FORCE_PROVIDER,
+    reasoningEffort,
+    allowEffort,
+  });
 
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
@@ -277,7 +269,7 @@ export async function postChatStream(req, res) {
       if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
     } catch {}
     try {
-      if (MAX_CONC > 0)
+      if (MAX_CONC > 0 && acquiredConc)
         globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
     } catch {}
   };
@@ -556,6 +548,7 @@ export async function postCompletionsStream(req, res) {
   const reqId = nanoid();
   const started = Date.now();
   let responded = false;
+  let responseWritable = true;
 
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -563,6 +556,11 @@ export async function postCompletionsStream(req, res) {
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
+
+  // Concurrency guard for legacy completions stream as well
+  const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
+  globalThis.__sseConcCount = globalThis.__sseConcCount || 0;
+  let acquiredConc = false;
 
   const body = req.body || {};
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
@@ -572,7 +570,7 @@ export async function postCompletionsStream(req, res) {
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
+        route: "/v1/completions",
         mode: "completions",
         kind: "submission",
         payload: { prompt },
@@ -622,26 +620,13 @@ export async function postCompletionsStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = [
-    "proto",
-    "--config",
-    'preferred_auth_method="chatgpt"',
-    "--config",
-    "project_doc_max_bytes=0",
-    "--config",
-    'history.persistence="none"',
-    "--config",
-    "tools.web_search=false",
-    "--config",
-    `sandbox_mode="${SANDBOX_MODE}"`,
-    "--config",
-    `model="${effectiveModel}"`,
-  ];
-  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}` + `"`);
-  if (allowEffort.has(reasoningEffort)) {
-    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
-    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
-  }
+  const args = buildProtoArgs({
+    SANDBOX_MODE,
+    effectiveModel,
+    FORCE_PROVIDER,
+    reasoningEffort,
+    allowEffort,
+  });
 
   const messages = [{ role: "user", content: prompt }];
   const toSend = joinMessages(messages);
@@ -709,7 +694,7 @@ export async function postCompletionsStream(req, res) {
       try {
         child.kill("SIGTERM");
       } catch {}
-    }, CFG.PROXY_IDLE_TIMEOUT_MS);
+    }, STREAM_IDLE_TIMEOUT_MS);
   };
   resetIdleCompletions();
   req.on("close", () => {
@@ -734,6 +719,7 @@ export async function postCompletionsStream(req, res) {
   const created = Math.floor(Date.now() / 1000);
   const sendSSE = (payload) => {
     try {
+      if (!responseWritable) return;
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     } catch {}
   };
@@ -759,6 +745,49 @@ export async function postCompletionsStream(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
 
+  // Keepalives (parity with chat stream)
+  let keepalive;
+  let streamClosed = false;
+  const ua = String(req.headers["user-agent"] || "");
+  const disableKeepaliveUA = /Obsidian|Electron/i.test(ua);
+  const disableKeepaliveHeader = String(req.headers["x-no-keepalive"] || "").trim() === "1";
+  const disableKeepaliveQuery = String(req.query?.no_keepalive || "").trim() === "1";
+  const keepaliveMs =
+    disableKeepaliveUA || disableKeepaliveHeader || disableKeepaliveQuery ? 0 : SSE_KEEPALIVE_MS;
+  const clearKeepalive = () => {
+    if (keepalive) {
+      try {
+        clearInterval(keepalive);
+      } catch {}
+      keepalive = null;
+    }
+  };
+  const cleanupStream = () => {
+    if (streamClosed) return;
+    streamClosed = true;
+    clearKeepalive();
+    responseWritable = false;
+    try {
+      clearTimeout(timeout);
+    } catch {}
+    try {
+      if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
+    } catch {}
+    try {
+      if (MAX_CONC > 0 && acquiredConc)
+        globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
+    } catch {}
+  };
+  if (keepaliveMs > 0)
+    keepalive = setInterval(() => {
+      try {
+        if (!streamClosed) res.write(`: keepalive ${Date.now()}\n\n`);
+      } catch {}
+    }, keepaliveMs);
+  res.on("close", cleanupStream);
+  res.on("finish", cleanupStream);
+  req.on?.("aborted", cleanupStream);
+
   let buf = "";
   let sentAny = false;
   let emitted = "";
@@ -774,7 +803,7 @@ export async function postCompletionsStream(req, res) {
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
+        route: "/v1/completions",
         mode: "completions_stream",
         kind: "stdout",
         chunk: s,
@@ -791,7 +820,7 @@ export async function postCompletionsStream(req, res) {
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
-          route: "/v1/chat/completions",
+          route: "/v1/completions",
           mode: "completions_stream",
           kind: "event",
           event: evt,
@@ -811,7 +840,7 @@ export async function postCompletionsStream(req, res) {
                 appendProtoEvent({
                   ts: Date.now(),
                   req_id: reqId,
-                  route: "/v1/chat/completions",
+                  route: "/v1/completions",
                   mode: "completions_stream",
                   kind: "tool_block",
                   idx: ++toolStateC.idx,
@@ -841,7 +870,7 @@ export async function postCompletionsStream(req, res) {
                 appendProtoEvent({
                   ts: Date.now(),
                   req_id: reqId,
-                  route: "/v1/chat/completions",
+                  route: "/v1/completions",
                   mode: "completions_stream",
                   kind: "tool_block",
                   idx: ++toolStateC.idx,
@@ -877,7 +906,7 @@ export async function postCompletionsStream(req, res) {
                 appendProtoEvent({
                   ts: Date.now(),
                   req_id: reqId,
-                  route: "/v1/chat/completions",
+                  route: "/v1/completions",
                   mode: "completions_stream",
                   kind: "tool_block",
                   idx: ++toolStateC.idx,
@@ -893,7 +922,7 @@ export async function postCompletionsStream(req, res) {
           appendUsage({
             ts: Date.now(),
             req_id: reqId,
-            route: "/v1/chat/completions",
+            route: "/v1/completions",
             method: "POST",
             requested_model: requestedModel,
             effective_model: effectiveModel,
@@ -921,7 +950,7 @@ export async function postCompletionsStream(req, res) {
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
+        route: "/v1/completions",
         mode: "completions_stream",
         kind: "stderr",
         chunk: s,
@@ -936,5 +965,10 @@ export async function postCompletionsStream(req, res) {
       sendChunk({ choices: [{ index: 0, text: content }] });
     }
     finishSSE();
+    // release slot if acquired
+    try {
+      if (MAX_CONC > 0 && acquiredConc)
+        globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
+    } catch {}
   });
 }

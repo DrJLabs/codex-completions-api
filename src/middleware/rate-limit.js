@@ -7,6 +7,21 @@ export default function rateLimit(options = {}) {
   const enabled = String(options.enabled ?? "false").toLowerCase() === "true";
   const windowMs = Number(options.windowMs ?? 60_000);
   const max = Number(options.max ?? 60);
+  // Periodic cleanup to prevent buckets map from growing unbounded
+  // One cleaner per middleware instance (app-level), safe for typical usage
+  try {
+    if (!rateLimit.__cleanupStarted) {
+      rateLimit.__cleanupStarted = true;
+      setInterval(() => {
+        const now = Date.now();
+        for (const [key, bucket] of buckets.entries()) {
+          if (now - bucket.startedAt >= windowMs) {
+            buckets.delete(key);
+          }
+        }
+      }, windowMs).unref?.();
+    }
+  } catch {}
 
   return function rateLimitMiddleware(req, res, next) {
     if (!enabled) return next();

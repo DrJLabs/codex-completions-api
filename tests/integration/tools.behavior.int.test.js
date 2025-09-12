@@ -69,8 +69,8 @@ afterAll(async () => {
   } catch {}
 });
 
-// NOTE: Current implementation does not enforce stop-after-tools.
-// This test documents expected behavior and is skipped until implemented.
+// NOTE: stop-after-tools is enforced by the streaming handler.
+// This test validates early cut after the first complete <use_tool> block.
 test("early cut after first complete <use_tool> block", async () => {
   const frames = await collectSSE(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "POST",
