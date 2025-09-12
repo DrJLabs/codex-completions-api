@@ -20,7 +20,6 @@ async function loadUsageEvents() {
   } catch (err) {
     if (err && err.code === "ENOENT") return [];
     try {
-       
       console.error("[usage] failed to read TOKEN_LOG_PATH:", err);
     } catch {}
     return [];
