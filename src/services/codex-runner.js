@@ -19,12 +19,8 @@ export function spawnCodex(args = [], options = {}) {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- codexWorkdir from config, not request
     fs.mkdirSync(options.cwd || codexWorkdir, { recursive: true });
   } catch (e) {
-    try {
-      console.error(
-        `[codex-runner] failed to ensure workdir at ${options.cwd || codexWorkdir}:`,
-        e
-      );
-    } catch {}
+     
+    console.error(`[codex-runner] failed to ensure workdir at ${options.cwd || codexWorkdir}:`, e);
   }
   const child = spawn(resolvedCodexBin, args, {
     stdio: ["pipe", "pipe", "pipe"],

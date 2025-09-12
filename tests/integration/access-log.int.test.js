@@ -55,21 +55,31 @@ test("structured access log emits req_id, route, status, dur_ms and header is se
   expect(r.status).toBe(200);
   const reqIdHeader = r.headers.get("x-request-id");
   expect(typeof reqIdHeader).toBe("string");
-  await wait(150); // allow log flush
-  // Find the last JSON log entry with kind: 'access' and route '/healthz'
+  // Poll up to 2s for the log entry that matches this request id
   let entry = null;
-  // Iterate without index access to satisfy security lint rules
-  const tmp = lines.slice();
-  while (tmp.length) {
-    const ln = tmp.pop();
-    if (!ln || !ln.startsWith("{")) continue;
-    try {
-      const obj = JSON.parse(ln);
-      if (obj && obj.kind === "access" && obj.route === "/healthz") {
-        entry = obj;
-        break;
-      }
-    } catch {}
+  const start = Date.now();
+  while (Date.now() - start < 2000) {
+    const logLine = lines
+      .slice()
+      .reverse()
+      .find((ln) => {
+        if (!ln || !ln.startsWith("{")) return false;
+        try {
+          const obj = JSON.parse(ln);
+          return (
+            obj && obj.kind === "access" && obj.route === "/healthz" && obj.req_id === reqIdHeader
+          );
+        } catch {
+          return false;
+        }
+      });
+    if (logLine) {
+      try {
+        entry = JSON.parse(logLine);
+      } catch {}
+      break;
+    }
+    await wait(50);
   }
   expect(entry).toBeTruthy();
   expect(typeof entry.req_id).toBe("string");
