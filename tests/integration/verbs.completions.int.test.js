@@ -40,7 +40,6 @@ afterAll(async () => {
   try {
     if (child && !child.killed) child.kill("SIGTERM");
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.error("Failed to terminate child process in afterAll:", e);
   }
 });

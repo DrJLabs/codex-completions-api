@@ -5,6 +5,7 @@ import { config as CFG } from "./config/index.js";
 import healthRouter from "./routes/health.js";
 import modelsRouter from "./routes/models.js";
 import chatRouter from "./routes/chat.js";
+import rateLimit from "./middleware/rate-limit.js";
 
 export default function createApp() {
   const app = express();
@@ -41,6 +42,20 @@ export default function createApp() {
   app.use(accessLog());
 
   // Mount routers
+  app.use(
+    rateLimit({
+      enabled: CFG.PROXY_RATE_LIMIT_ENABLED,
+      windowMs: CFG.PROXY_RATE_LIMIT_WINDOW_MS,
+      max: CFG.PROXY_RATE_LIMIT_MAX,
+    })
+  );
+  // Test-only endpoints (disabled by default)
+  if (CFG.PROXY_TEST_ENDPOINTS) {
+    app.get("/__test/conc", (_req, res) => {
+      const conc = Number(globalThis.__sseConcCount || 0);
+      res.json({ conc });
+    });
+  }
   app.use(healthRouter());
   app.use(modelsRouter());
   app.use(chatRouter());
