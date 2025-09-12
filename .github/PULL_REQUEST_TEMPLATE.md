@@ -28,7 +28,7 @@ npm run verify:all
 - [ ] No secrets or machine paths in the diff
 
 ## Related Issues
-- Closes #61
+- Closes #<issue_number>
 
 ## Deployment Notes
 - [ ] No special steps
