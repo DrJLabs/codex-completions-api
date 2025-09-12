@@ -14,8 +14,12 @@ for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
     try {
       server.close?.(() => process.exit(0));
-    } catch {
-      process.exit(0);
+    } catch (err) {
+      try {
+         
+        console.error("Error during graceful shutdown:", err);
+      } catch {}
+      process.exit(1);
     }
   });
 }
