@@ -12,9 +12,14 @@ const main = async () => {
       const idx = buf.indexOf("\n");
       if (idx >= 0) break;
     }
-  } catch {}
+  } catch (e) {
+    console.error("[fake-codex-proto-hang] stdin read error:", e);
+  }
   // Keep process alive long enough for proxy to hit idle
   await delay(10_000);
 };
 
-main().catch(() => process.exit(0));
+main().catch((e) => {
+  console.error("[fake-codex-proto-hang] fatal:", e);
+  process.exit(0);
+});
