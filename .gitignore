@@ -33,3 +33,6 @@ blob-report/
 .codex-api/*
 !.codex-api/.gitkeep
 !.codex-api/README.md
+
+# Test temp artifacts
+.tmp-*.ndjson
