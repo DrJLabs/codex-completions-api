@@ -5,6 +5,7 @@ import { config as CFG } from "./config/index.js";
 import healthRouter from "./routes/health.js";
 import modelsRouter from "./routes/models.js";
 import chatRouter from "./routes/chat.js";
+import usageRouter from "./routes/usage.js";
 import rateLimit from "./middleware/rate-limit.js";
 
 export default function createApp() {
@@ -62,6 +63,7 @@ export default function createApp() {
   app.use(healthRouter());
   app.use(modelsRouter());
   app.use(chatRouter());
+  app.use(usageRouter());
 
   return app;
 }
