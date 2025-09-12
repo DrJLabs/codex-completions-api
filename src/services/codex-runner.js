@@ -20,7 +20,6 @@ export function spawnCodex(args = [], options = {}) {
     fs.mkdirSync(options.cwd || codexWorkdir, { recursive: true });
   } catch (e) {
     try {
-       
       console.error(
         `[codex-runner] failed to ensure workdir at ${options.cwd || codexWorkdir}:`,
         e
