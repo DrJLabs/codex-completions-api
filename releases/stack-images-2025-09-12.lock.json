@@ -1,0 +1,27 @@
+{
+  "_note": "Image snapshot created on 2025-09-12T23-57-31Z for rollback.",
+  "created_at": "2025-09-12T23-57-31Z",
+  "repo_head": "2653e9cdb90c",
+  "images": [
+    {
+      "env": "prod",
+      "compose_file": "/home/drj/projects/codex-completions-api/docker-compose.yml",
+      "service": "app",
+      "compose_image": "codex-completions-api:latest",
+      "snap_ts_utc": "2025-09-12T23-57-31Z",
+      "image_id": "sha256:444141784b678b6d033a3cc5906bd2c82ce8e749f4e8ee04127dd6e264a44764",
+      "archival_tag": "codex-completions-api:prod-20250912-235731Z",
+      "backup_tar": "/home/drj/.cache/codex-backups/codex-completions-api-prod-2025-09-12T23-57-31Z.tar"
+    },
+    {
+      "env": "dev",
+      "compose_file": "/home/drj/projects/codex-completions-api/compose.dev.stack.yml",
+      "service": "app-dev",
+      "compose_image": "codex-completions-api:dev",
+      "snap_ts_utc": "2025-09-12T23-57-31Z",
+      "image_id": "sha256:5a730d887189f797798aa470dc136bc35e15c6f422e32961b0badf770886e8f9",
+      "archival_tag": "codex-completions-api:dev-20250912-235734Z",
+      "backup_tar": "/home/drj/.cache/codex-backups/codex-completions-api-dev-2025-09-12T23-57-31Z.tar"
+    }
+  ]
+}
