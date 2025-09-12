@@ -1,5 +1,4 @@
-import { spawn } from "node:child_process";
-import path from "node:path";
+import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
 import { nanoid } from "nanoid";
 import {
   stripAnsi,
@@ -23,15 +22,7 @@ import { buildProtoArgs } from "./shared.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
-const CODEX_BIN = CFG.CODEX_BIN;
-const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
-  ? CODEX_BIN
-  : CODEX_BIN.includes(path.sep)
-    ? path.join(process.cwd(), CODEX_BIN)
-    : CODEX_BIN;
-const CODEX_HOME = CFG.CODEX_HOME;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
-const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
@@ -125,11 +116,7 @@ export async function postChatNonStream(req, res) {
     }
   }
 
-  const child = spawn(RESOLVED_CODEX_BIN, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CODEX_HOME },
-    cwd: CODEX_WORKDIR,
-  });
+  const child = spawnCodex(args);
   let out = "",
     err = "";
 
@@ -371,11 +358,7 @@ export async function postCompletionsNonStream(req, res) {
   const toSend = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
 
-  const child = spawn(RESOLVED_CODEX_BIN, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CODEX_HOME },
-    cwd: CODEX_WORKDIR,
-  });
+  const child = spawnCodex(args);
   let out = "",
     err = "";
 

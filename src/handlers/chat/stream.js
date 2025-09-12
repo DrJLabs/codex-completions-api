@@ -1,5 +1,11 @@
-import { spawn } from "node:child_process";
-import path from "node:path";
+import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
+import {
+  setSSEHeaders,
+  computeKeepaliveMs,
+  startKeepalives,
+  sendSSE as sendSSEUtil,
+  finishSSE as finishSSEUtil,
+} from "../../services/sse.js";
 import { nanoid } from "nanoid";
 import {
   stripAnsi,
@@ -22,15 +28,7 @@ import { buildProtoArgs } from "./shared.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
-const CODEX_BIN = CFG.CODEX_BIN;
-const RESOLVED_CODEX_BIN = path.isAbsolute(CODEX_BIN)
-  ? CODEX_BIN
-  : CODEX_BIN.includes(path.sep)
-    ? path.join(process.cwd(), CODEX_BIN)
-    : CODEX_BIN;
-const CODEX_HOME = CFG.CODEX_HOME;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
-const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
@@ -154,23 +152,13 @@ export async function postChatStream(req, res) {
   try {
     console.log(
       "[proxy] spawning (proto):",
-      RESOLVED_CODEX_BIN,
+      resolvedCodexBin,
       args.join(" "),
       " prompt_len=",
       prompt.length
     );
   } catch {}
-  const child = spawn(RESOLVED_CODEX_BIN, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CODEX_HOME },
-    cwd: CODEX_WORKDIR,
-  });
-  try {
-    child.stdout.setEncoding && child.stdout.setEncoding("utf8");
-  } catch {}
-  try {
-    child.stderr.setEncoding && child.stderr.setEncoding("utf8");
-  } catch {}
+  const child = spawnCodex(args);
 
   const onChildError = (e) => {
     try {
@@ -202,15 +190,14 @@ export async function postChatStream(req, res) {
   const sendSSE = (payload) => {
     try {
       if (!responseWritable) return;
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      sendSSEUtil(res, payload);
     } catch {}
   };
   const sendSSEKeepalive = () => {
     res.write(`: keepalive ${Date.now()}\n\n`);
   };
   const finishSSE = () => {
-    res.write("data: [DONE]\n\n");
-    res.end();
+    finishSSEUtil(res);
   };
 
   // Stable id across stream
@@ -233,24 +220,16 @@ export async function postChatStream(req, res) {
       sendChunk({ choices: [{ index: 0, delta: { role: "assistant" } }] });
     };
   })();
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders?.();
+  setSSEHeaders(res);
 
   let keepalive;
   let streamClosed = false;
-  const ua = String(req.headers["user-agent"] || "");
-  const disableKeepaliveUA = /Obsidian|Electron/i.test(ua);
-  const disableKeepaliveHeader = String(req.headers["x-no-keepalive"] || "").trim() === "1";
-  const disableKeepaliveQuery = String(req.query?.no_keepalive || "").trim() === "1";
-  const keepaliveMs =
-    disableKeepaliveUA || disableKeepaliveHeader || disableKeepaliveQuery ? 0 : SSE_KEEPALIVE_MS;
+  const keepaliveMs = computeKeepaliveMs(req);
   const clearKeepalive = () => {
     if (keepalive) {
       try {
-        clearInterval(keepalive);
+        if (typeof keepalive.stop === "function") keepalive.stop();
+        else clearInterval(keepalive);
       } catch {}
       keepalive = null;
     }
@@ -272,11 +251,11 @@ export async function postChatStream(req, res) {
     } catch {}
   };
   if (keepaliveMs > 0)
-    keepalive = setInterval(() => {
+    keepalive = startKeepalives(res, keepaliveMs, () => {
       try {
         if (!streamClosed) sendSSEKeepalive();
       } catch {}
-    }, keepaliveMs);
+    });
   res.on("close", cleanupStream);
   res.on("finish", cleanupStream);
   req.on?.("aborted", cleanupStream);
@@ -633,18 +612,14 @@ export async function postCompletionsStream(req, res) {
   try {
     console.log(
       "[proxy] spawning (proto completions):",
-      RESOLVED_CODEX_BIN,
+      resolvedCodexBin,
       args.join(" "),
       " prompt_len=",
       toSend.length
     );
   } catch {}
 
-  const child = spawn(RESOLVED_CODEX_BIN, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CODEX_HOME },
-    cwd: CODEX_WORKDIR,
-  });
+  const child = spawnCodex(args);
   const onChildError = (e) => {
     try {
       console.log("[proxy] child error (completions):", e?.message || String(e));
@@ -652,13 +627,16 @@ export async function postCompletionsStream(req, res) {
     if (responded) return;
     responded = true;
     try {
-      res.write(
-        `data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`
-      );
+      sendSSEUtil(res, {
+        error: {
+          message: e?.message || "spawn error",
+          type: "internal_server_error",
+          code: "spawn_error",
+        },
+      });
     } catch {}
     try {
-      res.write("data: [DONE]\n\n");
-      res.end();
+      finishSSEUtil(res);
     } catch {}
   };
   child.on("error", onChildError);
@@ -718,7 +696,7 @@ export async function postCompletionsStream(req, res) {
   const sendSSE = (payload) => {
     try {
       if (!responseWritable) return;
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      sendSSEUtil(res, payload);
     } catch {}
   };
   const sendChunk = (payload) => {
@@ -732,30 +710,21 @@ export async function postCompletionsStream(req, res) {
   };
   const finishSSE = () => {
     try {
-      res.write("data: [DONE]\n\n");
-      res.end();
+      finishSSEUtil(res);
     } catch {}
   };
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders?.();
+  setSSEHeaders(res);
 
   // Keepalives (parity with chat stream)
   let keepalive;
   let streamClosed = false;
-  const ua = String(req.headers["user-agent"] || "");
-  const disableKeepaliveUA = /Obsidian|Electron/i.test(ua);
-  const disableKeepaliveHeader = String(req.headers["x-no-keepalive"] || "").trim() === "1";
-  const disableKeepaliveQuery = String(req.query?.no_keepalive || "").trim() === "1";
-  const keepaliveMs =
-    disableKeepaliveUA || disableKeepaliveHeader || disableKeepaliveQuery ? 0 : SSE_KEEPALIVE_MS;
+  const keepaliveMs = computeKeepaliveMs(req);
   const clearKeepalive = () => {
     if (keepalive) {
       try {
-        clearInterval(keepalive);
+        if (typeof keepalive.stop === "function") keepalive.stop();
+        else clearInterval(keepalive);
       } catch {}
       keepalive = null;
     }
@@ -777,11 +746,11 @@ export async function postCompletionsStream(req, res) {
     } catch {}
   };
   if (keepaliveMs > 0)
-    keepalive = setInterval(() => {
+    keepalive = startKeepalives(res, keepaliveMs, () => {
       try {
         if (!streamClosed) res.write(`: keepalive ${Date.now()}\n\n`);
       } catch {}
-    }, keepaliveMs);
+    });
   res.on("close", cleanupStream);
   res.on("finish", cleanupStream);
   req.on?.("aborted", cleanupStream);

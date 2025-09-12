@@ -1,0 +1,69 @@
+gate:
+  story: "1.5 — Phase 4: Codex Runner & SSE Utilities"
+  file: docs/bmad/stories/1.5.phase-4-codex-runner-and-sse-utils.md
+  epic: docs/bmad/stories/epic-server-modularization-refactor.md
+  date: 2025-09-12
+  version: 1
+  decision: PASS
+  rationale: |
+    Services extracted with parity preserved. Integration and E2E green; perf smoke within thresholds.
+    Minor observability assertion gap noted (non-blocking). Risk posture Medium overall with mitigations.
+  evidence:
+    integration_tests: "22 passed, 2 skipped"
+    e2e_tests: "9 passed"
+    perf_smoke: "TTFC p95 < 2s; total p95 < 5s"
+  references:
+    risk_profile: docs/bmad/qa/assessments/1.5-risk-20250912.md
+    test_design: docs/bmad/qa/assessments/1.5-test-design-20250912.md
+    trace: docs/bmad/qa/assessments/1.5-trace-20250912.md
+    nfr: docs/bmad/qa/assessments/1.5-nfr-20250912.md
+  trace:
+    totals:
+      requirements: 6
+      full: 5
+      partial: 1
+      none: 0
+    uncovered: []
+  test_design:
+    scenarios_total: 10
+    by_level:
+      unit: 5
+      integration: 3
+      e2e: 2
+    by_priority:
+      p0: 5
+      p1: 3
+      p2: 2
+  nfr_validation:
+    _assessed: [security, performance, reliability, maintainability, compatibility, observability]
+    security:
+      status: PASS
+      notes: "Bearer auth, rate limit, SSE concurrency guard"
+    performance:
+      status: PASS
+      notes: "Perf smoke thresholds met"
+    reliability:
+      status: PASS
+      notes: "Timeouts honored; SSE invariants preserved"
+    maintainability:
+      status: PASS
+      notes: "Spawn/SSE centralized in services"
+    compatibility:
+      status: PASS
+      notes: "OpenAI shapes unchanged; legacy shim parity"
+    observability:
+      status: CONCERNS
+      notes: "No explicit assertions for structured access‑log fields"
+  actions:
+    - id: QA-OBS-LOG-ASSERT
+      title: "Add assertions for structured access‑log fields"
+      owner: qa
+      status: open
+    - id: QA-GOLDEN-RESPONSES
+      title: "Capture golden responses for non‑stream JSON and SSE sequence"
+      owner: qa
+      status: open
+    - id: SMOKE-PRD
+      title: "Run PRD smoke after merge"
+      owner: maintainer
+      status: pending
