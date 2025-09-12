@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an enhancement or parity improvement
+labels: [enhancement]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      placeholder: e.g., Add streaming finish_reason chunk for SSE parity
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / Why
+      description: What problem does this solve? Who benefits?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the desired behavior and API shape
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete, testable outcomes for done
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Compatibility
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: API change
+        - label: Docs update
+        - label: Tests required
+        - label: Backward compatible
