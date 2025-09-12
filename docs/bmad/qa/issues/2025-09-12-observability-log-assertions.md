@@ -1,7 +1,7 @@
 ---
 title: QA-OBS-LOG-ASSERT — Add assertions for structured access-log fields
 date: 2025-09-12
-status: open
+status: closed
 owner: qa
 related:
   gate: docs/bmad/qa/gates/1.5-phase-4-codex-runner-and-sse-utils.yml
@@ -25,10 +25,16 @@ Add a simple integration test to assert presence of structured JSON access-log f
 
 ## Tasks
 
-- [ ] Add or adjust logger to route logs to a test-capturable sink under test env if needed.
-- [ ] Write integration test to exercise `/v1/models` or `/healthz` and parse the last JSON log object.
-- [ ] Document result and update gate actions status.
+- [x] Add or adjust logger to route logs to a test-capturable sink under test env if needed.
+- [x] Write integration test to exercise `/v1/models` or `/healthz` and parse the last JSON log object.
+- [x] Document result and update gate actions status.
 
 ## Notes
 
 Keep the test lightweight and avoid coupling to log format beyond required fields.
+
+## Resolution
+
+- Implemented tests/integration/access-log.int.test.js asserting `req_id`, `route`, `status`, `dur_ms` and X-Request-Id correlation.
+- Integration suite green (23 passed, 2 skipped). Gate for Story 1.6 set to PASS.
+- See: docs/bmad/qa/gates/1.6-phase-5-cleanup-and-logging.yml

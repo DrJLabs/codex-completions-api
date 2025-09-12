@@ -96,6 +96,7 @@ Node/Express service that presents OpenAI‑compatible endpoints and forwards wo
 
 - Prefer structured JSON logs with fields: `ts`, `req_id`, `method`, `route`, `status`, `dur_ms`, `ua`, and auth presence.
 - Generate a stable `req_id` for correlation across logs and child process events.
+- Set `X-Request-Id` response header to the same `req_id` for client-side correlation.
 - Keep logs concise at info level; include debug streams only when `PROXY_DEBUG_PROTO` is enabled.
 
 # Diagrams

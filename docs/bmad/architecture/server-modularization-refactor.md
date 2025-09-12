@@ -29,6 +29,7 @@ Modularize the current monolithic `server.js` into focused modules to improve te
 - `src/routes/models.js`: `GET|HEAD|OPTIONS /v1/models` (optional gating).
 - `src/routes/chat.js`: `POST /v1/chat/completions` → delegates to handlers.
 - `src/routes/completions.js`: `POST /v1/completions` legacy shim.
+- `src/routes/usage.js`: `GET /v1/usage{,/raw}` dev usage aggregates (file‑backed NDJSON).
 - `src/handlers/chat/nonstream.js`: OpenAI‑shaped non‑stream response; usage calc; tool‑block post‑processing.
 - `src/handlers/chat/stream.js`: SSE framing (role‑first), keepalive, cut/tail suppression.
 - `src/services/codex-runner.js`: Spawn Codex; args building; env; error mapping.
@@ -71,8 +72,8 @@ Modularize the current monolithic `server.js` into focused modules to improve te
 
 ## Phase 5 — Cleanup & Logging
 
-- Remove deprecated inline code; gate dev proto logs; prefer structured JSON logs.
-  Exit: Smaller `server.js`; clearer module boundaries.
+- Remove deprecated inline code from `server.js` (no inline POST or spawn logic); gate dev proto logs; prefer structured JSON logs. Move usage helpers under `src/routes/usage.js`.
+  Exit: Thin `server.js` bootstrap; clear module boundaries; usage routes mounted via app.
 
 # Risks & Mitigations
 

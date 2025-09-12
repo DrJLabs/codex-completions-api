@@ -1,47 +1,34 @@
 ## Summary
 
-Describe the purpose of this PR in 1–2 sentences.
+- Purpose: <!-- brief purpose of the PR -->
+- Scope: <!-- files/areas touched -->
 
-## Changes
+## Change Details
 
--
+- Key changes:
+  - Thin bootstrap `server.js` (no inline POST/spawn)
+  - Add `src/routes/usage.js`; mount in `src/app.js`
+  - Add `tests/integration/access-log.int.test.js` (req_id/route/status/dur_ms + X-Request-Id)
+  - Update docs (architecture logging + modularization plan)
 
-## Breaking Changes
+## Verification
 
-- [ ] None
-- Details:
+- Integration: <!-- paste summary, e.g., 23 passed, 2 skipped -->
+- E2E: <!-- SSE parity green? -->
+- Smoke: <!-- optional -->
 
-## Tests
+## References
 
-- [ ] Unit
-- [ ] Integration
-- [ ] E2E/contract (SSE/streaming where applicable)
-
-How to run locally:
-
-```
-npm run verify:all
-```
-
-## Screenshots / Transcript (if applicable)
+- Story: docs/bmad/stories/1.6.phase-5-cleanup-and-logging.md
+- Gate: docs/bmad/qa/gates/1.6-phase-5-cleanup-and-logging.yml
+- Risk: docs/bmad/qa/assessments/1.6-risk-20250912.md
+- Test Design: docs/bmad/qa/assessments/1.6-test-design-20250912.md
+- Trace: docs/bmad/qa/assessments/1.6-trace-20250912.md
+- NFR: docs/bmad/qa/assessments/1.6-nfr-20250912.md
+- Closed Issue: docs/bmad/qa/issues/2025-09-12-observability-log-assertions.md
 
 ## Checklist
 
-- [ ] Conventional Commits subject (≤72 chars)
-- [ ] Updated docs (README, docs/\*) if behavior changed
-- [ ] Added/updated tests for changed code paths
-- [ ] No secrets or machine paths in the diff
-
-## Related Issues
-
-- Fixes/Closes <link or #id>
-
-## Deployment Notes
-
-- [ ] No special steps
-- Notes:
-
-## Security/Privacy
-
-- [ ] No new data flows
-- Notes:
+- [ ] Tests pass locally (integration/E2E)
+- [ ] No behavior/shape/header regressions
+- [ ] Docs updated
