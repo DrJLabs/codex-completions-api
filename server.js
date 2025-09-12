@@ -15,9 +15,7 @@ for (const sig of ["SIGTERM", "SIGINT"]) {
     try {
       server.close?.(() => process.exit(0));
     } catch (err) {
-      try {
-        console.error("Error during graceful shutdown:", err);
-      } catch {}
+      console.error("Error during graceful shutdown:", err);
       process.exit(1);
     }
   });
