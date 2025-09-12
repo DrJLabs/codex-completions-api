@@ -1,11 +1,16 @@
 name: Feature request
 description: Suggest an enhancement or parity improvement
+title: "[Feature]: "
 labels: [enhancement]
 body:
-  - type: input
-    id: title
+  - type: markdown
     attributes:
-      label: Title
+      value: |
+        Please describe the problem to solve and the value it provides.
+  - type: input
+    id: title_detail
+    attributes:
+      label: Short Title
       placeholder: e.g., Add streaming finish_reason chunk for SSE parity
     validations:
       required: true

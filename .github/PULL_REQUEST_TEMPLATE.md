@@ -1,6 +1,6 @@
 ## Summary
 
-Explain the purpose of this PR in 1–2 sentences.
+Describe the purpose of this PR in 1–2 sentences.
 
 ## Changes
 - 
@@ -28,7 +28,7 @@ npm run verify:all
 - [ ] No secrets or machine paths in the diff
 
 ## Related Issues
-- Closes #<issue_number>
+- Fixes/Closes <link or #id>
 
 ## Deployment Notes
 - [ ] No special steps

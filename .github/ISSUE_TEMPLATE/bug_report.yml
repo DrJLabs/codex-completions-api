@@ -1,7 +1,12 @@
 name: Bug report
 description: Report a problem with the Codex OpenAI-compatible proxy
+title: "[Bug]: "
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please provide enough detail to reproduce.
   - type: input
     id: summary
     attributes:
@@ -16,9 +21,9 @@ body:
       label: Steps to Reproduce
       description: Provide minimal reproduction steps and inputs (mask secrets)
       placeholder: |
-        1. Request
-        2. Response (headers/body)
-        3. Raw SSE transcript (if streaming)
+        1. Request (headers/body)
+        2. Response or raw SSE transcript
+        3. Observed behavior
     validations:
       required: true
   - type: textarea
