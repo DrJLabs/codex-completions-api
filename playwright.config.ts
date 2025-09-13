@@ -30,6 +30,8 @@ export default defineConfig({
       CODEX_BIN: process.env.CODEX_BIN || "scripts/fake-codex-proto.js",
       // Keep models public in tests
       PROXY_PROTECT_MODELS: "false",
+      // Allow higher parallel SSE to avoid spurious 429s in CI/local
+      PROXY_SSE_MAX_CONCURRENCY: process.env.PROXY_SSE_MAX_CONCURRENCY || "12",
     },
   },
 });

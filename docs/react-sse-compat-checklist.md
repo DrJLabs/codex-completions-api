@@ -28,16 +28,16 @@ data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"m
 data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[{"index":0,"delta":{"content":"…"}}] }
 ```
 
-3. Optional usage (only when requested):
+3. Finalizer chunk (finish_reason):
+
+```
+data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null }
+```
+
+4. Optional final usage (only when requested):
 
 ```
 data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[],"usage":{"prompt_tokens":X,"completion_tokens":Y,"total_tokens":Z} }
-```
-
-4. Finalizer chunk (finish_reason), then terminator:
-
-```
-data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[{"index":0,"delta":{},"finish_reason":"stop"}] }
 ```
 
 5. Terminator:
