@@ -17,7 +17,13 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
-import { authErrorBody, modelNotFoundBody } from "../../lib/errors.js";
+import {
+  authErrorBody,
+  modelNotFoundBody,
+  invalidRequestBody,
+  tokensExceededBody,
+  sseErrorBody,
+} from "../../lib/errors.js";
 import {
   LOG_PROTO,
   appendUsage,
@@ -76,6 +82,13 @@ export async function postChatStream(req, res) {
     });
   }
 
+  // n>1 not supported in this epic scope
+  const n = Number(body.n || 0);
+  if (n > 1) {
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("n", "n>1 is unsupported"));
+  }
+
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
     body.model || DEFAULT_MODEL,
     DEFAULT_MODEL,
@@ -104,7 +117,23 @@ export async function postChatStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  // Acquire concurrency slot only after validations pass
+  const args = buildProtoArgs({
+    SANDBOX_MODE,
+    effectiveModel,
+    FORCE_PROVIDER,
+    reasoningEffort,
+    allowEffort,
+  });
+
+  const prompt = joinMessages(messages);
+  const promptTokensEst = estTokensForMessages(messages);
+  const MAX_TOKENS = CFG.PROXY_MAX_PROMPT_TOKENS;
+  if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
+    applyCors(null, res);
+    return res.status(403).json(tokensExceededBody("messages"));
+  }
+
+  // Acquire concurrency slot only after validations pass AND after early-return token guard
   if (MAX_CONC > 0) {
     if (globalThis.__sseConcCount >= MAX_CONC) {
       applyCors(null, res);
@@ -119,17 +148,6 @@ export async function postChatStream(req, res) {
     globalThis.__sseConcCount += 1;
     acquiredConc = true;
   }
-
-  const args = buildProtoArgs({
-    SANDBOX_MODE,
-    effectiveModel,
-    FORCE_PROVIDER,
-    reasoningEffort,
-    allowEffort,
-  });
-
-  const prompt = joinMessages(messages);
-  const promptTokensEst = estTokensForMessages(messages);
 
   if (IS_DEV_ENV) {
     try {
@@ -166,9 +184,7 @@ export async function postChatStream(req, res) {
     if (responded) return;
     responded = true;
     try {
-      res.write(
-        `data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`
-      );
+      res.write(`data: ${JSON.stringify(sseErrorBody(e))}\n\n`);
     } catch {}
     try {
       res.write("data: [DONE]\n\n");
@@ -647,13 +663,7 @@ export async function postCompletionsStream(req, res) {
     if (responded) return;
     responded = true;
     try {
-      sendSSEUtil(res, {
-        error: {
-          message: e?.message || "spawn error",
-          type: "internal_server_error",
-          code: "spawn_error",
-        },
-      });
+      sendSSEUtil(res, sseErrorBody(e));
     } catch {}
     try {
       finishSSEUtil(res);

@@ -11,7 +11,12 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
-import { authErrorBody, modelNotFoundBody } from "../../lib/errors.js";
+import {
+  authErrorBody,
+  modelNotFoundBody,
+  invalidRequestBody,
+  tokensExceededBody,
+} from "../../lib/errors.js";
 import {
   appendUsage,
   appendProtoEvent,
@@ -59,6 +64,13 @@ export async function postChatNonStream(req, res) {
     });
   }
 
+  // n>1 not supported in this epic scope
+  const n = Number(body.n || 0);
+  if (n > 1) {
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("n", "n>1 is unsupported"));
+  }
+
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
     body.model || DEFAULT_MODEL,
     DEFAULT_MODEL,
@@ -98,6 +110,11 @@ export async function postChatNonStream(req, res) {
 
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
+  const MAX_TOKENS = CFG.PROXY_MAX_PROMPT_TOKENS;
+  if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
+    applyCors(null, res);
+    return res.status(403).json(tokensExceededBody("messages"));
+  }
 
   if (IS_DEV_ENV) {
     try {

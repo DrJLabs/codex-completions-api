@@ -25,3 +25,36 @@ export function invalidRequestBody(param, message) {
     },
   };
 }
+
+export function tokensExceededBody(param = "messages") {
+  return {
+    error: {
+      message: "context length exceeded",
+      type: "tokens_exceeded_error",
+      param,
+      code: "context_length_exceeded",
+    },
+  };
+}
+
+export function permissionErrorBody(message = "permission denied") {
+  return {
+    error: { message, type: "permission_error", code: "permission_denied" },
+  };
+}
+
+export function serverErrorBody(message = "internal server error") {
+  return { error: { message, type: "server_error", code: "internal_error" } };
+}
+
+export function sseErrorBody(e) {
+  const raw = (e && e.message) || "spawn error";
+  const isTimeout = /timeout/i.test(String(raw));
+  return {
+    error: {
+      message: isTimeout ? "request timeout" : raw,
+      type: isTimeout ? "timeout_error" : "server_error",
+      code: isTimeout ? "request_timeout" : "spawn_error",
+    },
+  };
+}

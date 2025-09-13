@@ -74,6 +74,7 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
 - [ ] Phase E — Error response parity
   - [ ] Add `param` in validation failures; normalize error `type`/`code` to OpenAI lexicon.
   - [ ] Align HTTP codes for auth/permission/rate‑limit/context‑length.
+  - [ ] Story 2.4 — Phase E: Error Response Parity (docs/bmad/stories/2.4.phase-e-error-response-parity.md)
 
 - [ ] Phase F — Non‑stream tidy
   - [ ] Double‑check `finish_reason` mapping and `usage` presence.
