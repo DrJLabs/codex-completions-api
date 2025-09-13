@@ -216,7 +216,10 @@ export async function postChatStream(req, res) {
     return () => {
       if (sent) return;
       sent = true;
-      sendChunk({ choices: [{ index: 0, delta: { role: "assistant" } }] });
+      sendChunk({
+        choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+        usage: null,
+      });
     };
   })();
   setSSEHeaders(res);
@@ -335,7 +338,10 @@ export async function postChatStream(req, res) {
             }
             const segment = emitted.slice(forwardedUpTo, allowUntil);
             if (segment) {
-              sendChunk({ choices: [{ index: 0, delta: { content: segment } }] });
+              sendChunk({
+                choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+                usage: null,
+              });
               sentAny = true;
               forwardedUpTo = allowUntil;
             }
@@ -389,7 +395,10 @@ export async function postChatStream(req, res) {
               }
               const segment = emitted.slice(forwardedUpTo, allowUntil);
               if (segment) {
-                sendChunk({ choices: [{ index: 0, delta: { content: segment } }] });
+                sendChunk({
+                  choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+                  usage: null,
+                });
                 sentAny = true;
                 forwardedUpTo = allowUntil;
               }
@@ -419,18 +428,10 @@ export async function postChatStream(req, res) {
             }
           }
         } else if (t === "token_count") {
+          // Record counts but do NOT emit usage yet; per OpenAI parity
+          // we send the finish_reason chunk first, then the final usage chunk.
           ptCount = Number(evt.msg?.prompt_tokens || 0);
           ctCount = Number(evt.msg?.completion_tokens || 0);
-          if (includeUsage) {
-            sendChunk({
-              choices: [],
-              usage: {
-                prompt_tokens: ptCount,
-                completion_tokens: ctCount,
-                total_tokens: ptCount + ctCount,
-              },
-            });
-          }
         } else if (t === "task_complete") {
           try {
             if (IS_DEV_ENV) {
@@ -459,8 +460,23 @@ export async function postChatStream(req, res) {
           } catch (e) {
             if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage error:", e);
           }
-          // Emit a finalizer chunk with finish_reason before closing the stream
-          sendChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+          // Emit a finalizer chunk with finish_reason, then optional usage chunk
+          sendChunk({
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          });
+          if (includeUsage) {
+            const p = ptCount || promptTokensEst;
+            const c = ctCount || Math.ceil(emitted.length / 4);
+            sendChunk({
+              choices: [],
+              usage: {
+                prompt_tokens: p,
+                completion_tokens: c,
+                total_tokens: p + c,
+              },
+            });
+          }
           try {
             finishSSE();
           } catch {}
@@ -504,7 +520,10 @@ export async function postChatStream(req, res) {
   child.on("close", () => {
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
-      sendChunk({ choices: [{ index: 0, delta: { content } }] });
+      sendChunk({
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
+        usage: null,
+      });
       if (IS_DEV_ENV) {
         try {
           console.log("[dev][response][chat][stream] content=\n" + content);
