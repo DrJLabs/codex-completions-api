@@ -1,0 +1,35 @@
+gate:
+  story: "2.3 — Phase C: Per‑Chunk Metadata Consistency"
+  file: docs/bmad/stories/2.3.phase-c-per-chunk-metadata-consistency.md
+  epic: docs/bmad/stories/epic-openai-chat-completions-parity.md
+  date: 2025-09-13
+  version: 1
+  decision: PASS
+  rationale: |
+    All streaming JSON frames now include the required envelope (id/object/created/model),
+    id/created remain stable across the stream, intermediate frames carry
+    finish_reason:null and usage:null, and finalizer precedes the optional usage
+    frame before [DONE]. Tests and docs were updated; full suite is green.
+  evidence:
+    unit_tests: "17 passed"
+    integration_tests: "25 passed, 2 skipped"
+    e2e_tests: "15 passed"
+  references:
+    risk_profile: docs/bmad/qa/assessments/2.3-risk-20250913.md
+    test_design: docs/bmad/qa/assessments/2.3-test-design-20250913.md
+    trace: docs/bmad/qa/assessments/2.3-trace-20250913.md
+    nfr: docs/bmad/qa/assessments/2.3-nfr-20250913.md
+    review: docs/bmad/qa/assessments/2.3-review-20250913.md
+    spec: docs/openai-chat-completions-parity.md
+  trace:
+    totals:
+      requirements: 5
+      full: 5
+      partial: 0
+      none: 0
+    uncovered: []
+  actions:
+    - id: OBS-METRIC-ENVELOPE
+      title: "Add metric for frames missing envelope (should remain zero)"
+      owner: dev
+      status: todo

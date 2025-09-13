@@ -60,6 +60,7 @@ Example (minimal):
 Notes:
 
 - Keepalive comment lines (": <ts>") may appear and should be ignored by clients.
+- No custom event frames are emitted; every JSON `data:` line uses the `chat.completion.chunk` envelope and includes `id/object/created/model`.
 - `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
 - All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
