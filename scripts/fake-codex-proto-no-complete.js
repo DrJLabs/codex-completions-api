@@ -8,7 +8,9 @@ import { setTimeout as delay } from "node:timers/promises";
 const write = (obj) => {
   try {
     process.stdout.write(JSON.stringify(obj) + "\n");
-  } catch {}
+  } catch (e) {
+    console.error("[fake-codex-proto-no-complete] write error:", e);
+  }
 };
 
 const main = async () => {
@@ -21,7 +23,9 @@ const main = async () => {
       const idx = buf.indexOf("\n");
       if (idx >= 0) break;
     }
-  } catch {}
+  } catch (e) {
+    console.error("[fake-codex-proto-no-complete] stdin read error:", e);
+  }
 
   write({ type: "session_configured" });
   write({ type: "task_started" });
@@ -32,7 +36,12 @@ const main = async () => {
   await delay(5);
   try {
     process.stdout.end?.();
-  } catch {}
+  } catch (e) {
+    console.error("[fake-codex-proto-no-complete] stdout end error:", e);
+  }
 };
 
-main().catch(() => process.exit(0));
+main().catch((err) => {
+  console.error("fake-codex-proto-no-complete script failed:", err);
+  process.exit(1);
+});
