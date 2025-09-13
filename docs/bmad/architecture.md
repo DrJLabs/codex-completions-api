@@ -13,7 +13,7 @@ Node/Express service exposing OpenAI‑compatible endpoints and brokering reques
 
 - Entry points
   - `GET /healthz` — liveness + sandbox mode (src/routes/health.js:6)
-  - `GET|HEAD /v1/models` — advertised IDs; gated when `PROXY_PROTECT_MODELS=true` (src/routes/models.js:38,45,26–36)
+  - `GET|HEAD /v1/models` — advertised IDs; gated when `PROXY_PROTECT_MODELS=true` (src/routes/models.js:26–36,39–50)
   - `POST /v1/chat/completions` — chat; stream and non‑stream (src/routes/chat.js:16–20)
   - `POST /v1/completions` — legacy shim to the same handlers (src/routes/chat.js:22–26)
   - `GET /v1/usage` and `GET /v1/usage/raw` — dev usage aggregation + raw events (src/routes/usage.js:31,40)
@@ -98,7 +98,7 @@ Mirrors chat behavior for both non‑stream and stream, mapping prompt↔message
 - Core/Env: see src/config/index.js:12–43
   - `PORT`, `PROXY_ENV`, `PROXY_API_KEY`, `PROXY_PROTECT_MODELS`
   - Codex: `CODEX_BIN`, `CODEX_HOME`, `CODEX_MODEL`, `CODEX_FORCE_PROVIDER`, `PROXY_CODEX_WORKDIR`
-  - Streaming/Tools: `PROXY_SSE_KEEPALIVE_MS`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_SSE_MAX_CONCURRENCY`
+  - Streaming/Tools: `PROXY_SSE_KEEPALIVE_MS`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_SSE_MAX_CONCURRENCY`
   - Timeouts: `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`
   - Security: `PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`
   - Misc: `PROXY_KILL_ON_DISCONNECT`, `PROXY_ENABLE_CORS`, `PROXY_DEBUG_PROTO`, `PROXY_TEST_ENDPOINTS`

@@ -39,20 +39,21 @@ sequenceDiagram
         H->>SSE: finish [DONE]
         H-xB: SIGTERM
         break
-      else SUPPRESS_TAIL AFTER_TOOLS
+      else SUPPRESS_TAIL_AFTER_TOOLS
         H->>H: suppress narrative after last tool
       end
     else token_count
       H->>H: update pt/ct estimates
+    else task_complete
+      H->>DL: appendUsage (prompt/completion/total tokens, duration)
+      H-->>C: [DONE]
+      H-xB: SIGTERM (if still running)
+      break
     end
     par keepalive
       SSE-->>C: ": keepalive <ts>" (every PROXY_SSE_KEEPALIVE_MS)
     end
   end
-  B-->>H: task_complete
-  H->>DL: appendUsage (prompt/completion/total tokens, duration)
-  H-->>C: [DONE]
-  H-xB: SIGTERM (if still running)
   deactivate P
 ```
 
