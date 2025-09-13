@@ -77,8 +77,9 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
   - [x] Story 2.4 — Phase E: Error Response Parity (docs/bmad/stories/2.4.phase-e-error-response-parity.md)
 
 - [ ] Phase F — Non‑stream tidy
-  - [ ] Double‑check `finish_reason` mapping and `usage` presence.
-  - [ ] Ensure the returned `model` string is consistent with streaming.
+  - [x] Double‑check `finish_reason` mapping and `usage` presence.
+  - [x] Ensure the returned `model` string is consistent with streaming.
+  - [ ] Story 2.5 — Phase F: Non‑Stream Tidy (docs/bmad/stories/2.5.phase-f-non-stream-tidy.md)
 
 - [x] Phase G — Tests & docs
   - [x] Unit/integration: shapes for non‑stream, error envelopes.
