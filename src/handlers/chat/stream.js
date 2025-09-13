@@ -40,7 +40,6 @@ const SUPPRESS_TAIL_AFTER_TOOLS = CFG.PROXY_SUPPRESS_TAIL_AFTER_TOOLS;
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const STREAM_IDLE_TIMEOUT_MS = CFG.PROXY_STREAM_IDLE_TIMEOUT_MS;
-const SSE_KEEPALIVE_MS = CFG.PROXY_SSE_KEEPALIVE_MS;
 const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
@@ -460,6 +459,10 @@ export async function postChatStream(req, res) {
           } catch (e) {
             if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage error:", e);
           }
+          // Emit a finalizer chunk with finish_reason before closing the stream
+          try {
+            sendChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+          } catch {}
           try {
             finishSSE();
           } catch {}

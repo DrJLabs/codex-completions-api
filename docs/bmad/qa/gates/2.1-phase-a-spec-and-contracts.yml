@@ -1,0 +1,61 @@
+gate:
+  story: "2.1 — Phase A: Spec Lock & Contract Fixtures"
+  file: docs/bmad/stories/2.1.phase-a-spec-and-contracts.md
+  epic: docs/bmad/stories/epic-openai-chat-completions-parity.md
+  date: 2025-09-13
+  version: 1
+  decision: PASS
+  rationale: |
+    Spec, goldens, and tests establish OpenAI-compatible contracts for non-stream and streaming.
+    Streaming now includes an explicit finish_reason finalizer prior to [DONE]; optional usage chunk
+    is emitted when requested. All validations (unit, integration, e2e, perf smoke) are green.
+  evidence:
+    integration_tests: "25 passed, 2 skipped"
+    e2e_tests: "9 passed"
+    perf_smoke: "TTFC p95 < 2s; total p95 < 5s"
+  references:
+    risk_profile: docs/bmad/qa/assessments/2.1-risk-20250913.md
+    test_design: docs/bmad/qa/assessments/2.1-test-design-20250913.md
+    trace: docs/bmad/qa/assessments/2.1-trace-20250913.md
+    nfr: docs/bmad/qa/assessments/2.1-nfr-20250913.md
+    spec: docs/openai-chat-completions-parity.md
+    goldens:
+      - test-results/examples/chat.nonstream.example.json
+      - test-results/examples/chat.stream.no-usage.ndjson
+      - test-results/examples/chat.stream.with-usage.ndjson
+  trace:
+    totals:
+      requirements: 4
+      full: 4
+      partial: 0
+      none: 0
+    uncovered: []
+  test_design:
+    scenarios_total: 8
+    by_level:
+      unit: 4
+      integration: 2
+      e2e: 2
+    by_priority:
+      p0: 4
+      p1: 3
+      p2: 1
+  nfr_validation:
+    _assessed: [security, performance, reliability, maintainability, compatibility, observability]
+    security:
+      status: PASS
+    performance:
+      status: PASS
+    reliability:
+      status: PASS
+    maintainability:
+      status: PASS
+    compatibility:
+      status: PASS
+    observability:
+      status: PASS
+  actions:
+    - id: QA-PERF-MONITOR
+      title: "Monitor CI TTFC/total p95 drift (>5–10%)"
+      owner: qa
+      status: advisory
