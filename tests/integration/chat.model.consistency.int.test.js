@@ -85,7 +85,7 @@ test("model string matches between stream and non-stream paths", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
-    body: JSON.stringify({ model: "codex-5", stream: false, messages: [{ role: "user", content: "hello" }] }),
+    body: JSON.stringify({ model: "codex-5", stream: false, messages: [{ role: "user", content: "hi" }] }),
   });
   expect(r.ok).toBeTruthy();
   const j = await r.json();
