@@ -47,6 +47,20 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - Bring up public dev stack: `npm run dev:stack:up`.
 - Validate edge path via Cloudflare: `npm run smoke:dev` with `DEV_DOMAIN` set.
 
+### Dev non-stream timeout note
+
+- On the dev domain (`codex-dev.onemainarmy.com`), the non-streaming aggregation path can exceed 10 seconds while the streaming path returns promptly.
+- The current dev smoke uses `curl -m 10` for the non-stream POST. If you see a timeout but streaming passes, increase the timeout for diagnosis, for example:
+
+  ```bash
+  DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY \
+    bash -c 'curl -s -m 60 -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+    -d '\''{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Say hello."}]}'\'' \
+    https://$DEV_DOMAIN/v1/chat/completions | jq .'
+  ```
+
+- If `stream:true` succeeds quickly but non-stream stalls only at the edge, verify Cloudflare/Traefik policies for dev POST requests; origin may still be healthy.
+
 2. Map DEV settings to PROD
 
 - Compare `compose.dev.stack.yml` to `docker-compose.yml`:
