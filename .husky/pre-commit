@@ -1,9 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-# Husky v9+: don't source _/husky.sh (deprecated; removed in v10)
-# Run lint-staged on staged files
-command -v npx >/dev/null 2>&1 || {
-  echo "[husky] npx not found; install Node/npm first" >&2; exit 1;
-}
-npx --no-install lint-staged
+# Husky v9+: don't source _/husky.sh (removed in v10)
+# Purpose: Run autofixers on staged files (Prettier + ESLint via lint-staged)
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "[husky][pre-commit] npx not found; install Node/npm first" >&2
+  exit 1
+fi
+
+echo "[husky][pre-commit] running lint-staged (autofix)"
+if ! npx --no-install lint-staged; then
+  echo "[husky][pre-commit] lint-staged failed. See output above." >&2
+  exit 1
+fi
+
+echo "[husky][pre-commit] ok"
