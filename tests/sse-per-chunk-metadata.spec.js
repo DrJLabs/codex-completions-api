@@ -15,26 +15,8 @@ function parseFrames(frames) {
     .filter((o) => o && typeof o === "object");
 }
 
-test("every JSON frame includes id/object/created/model (no usage)", async ({ baseURL }) => {
-  const url = new URL("v1/chat/completions", baseURL).toString();
-  const frames = await readSSE(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
-    body: JSON.stringify({
-      model: "codex-5",
-      stream: true,
-      messages: [{ role: "user", content: "Check envelope fields." }],
-    }),
-  });
-
-  expect(frames.some((d) => d.trim() === "[DONE]")).toBeTruthy();
-  const objs = parseFrames(frames).filter((o) => o.object === "chat.completion.chunk");
+function assertEnvelopeAndStability(objs) {
   expect(objs.length).toBeGreaterThan(0);
-
-  const first = objs[0];
-  expect(typeof first.id).toBe("string");
-  expect(typeof first.created).toBe("number");
-  expect(typeof first.model).toBe("string");
 
   for (const o of objs) {
     expect(o.object).toBe("chat.completion.chunk");
@@ -52,6 +34,23 @@ test("every JSON frame includes id/object/created/model (no usage)", async ({ ba
   expect(idSet.size).toBe(1);
   expect(createdSet.size).toBe(1);
   expect(modelSet.size).toBe(1);
+}
+
+test("every JSON frame includes id/object/created/model (no usage)", async ({ baseURL }) => {
+  const url = new URL("v1/chat/completions", baseURL).toString();
+  const frames = await readSSE(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: true,
+      messages: [{ role: "user", content: "Check envelope fields." }],
+    }),
+  });
+
+  expect(frames.some((d) => d.trim() === "[DONE]")).toBeTruthy();
+  const objs = parseFrames(frames).filter((o) => o.object === "chat.completion.chunk");
+  assertEnvelopeAndStability(objs);
 
   // Intermediate frames: finish_reason and usage are null when present
   // Finalizer has empty delta and a string finish_reason
@@ -94,20 +93,7 @@ test("usage chunk also has full envelope and order is finalizer → usage → [D
 
   expect(frames[frames.length - 1]?.trim()).toBe("[DONE]");
   const objs = parseFrames(frames).filter((o) => o.object === "chat.completion.chunk");
-  expect(objs.length).toBeGreaterThan(0);
-
-  // envelope present on all frames
-  const first = objs[0];
-  expect(typeof first.id).toBe("string");
-  expect(typeof first.created).toBe("number");
-  expect(typeof first.model).toBe("string");
-  for (const o of objs) {
-    expect(o.object).toBe("chat.completion.chunk");
-    expect(typeof o.id).toBe("string");
-    expect(typeof o.created).toBe("number");
-    expect(typeof o.model).toBe("string");
-    expect("event" in o).toBeFalsy();
-  }
+  assertEnvelopeAndStability(objs);
 
   // find finalizer and usage frames
   const finalizerIdx = objs.findIndex((o) => {
