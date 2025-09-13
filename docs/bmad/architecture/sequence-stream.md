@@ -39,7 +39,7 @@ sequenceDiagram
         H->>SSE: finish [DONE]
         H-xB: SIGTERM
         break
-      else SUPPRESS_TAIL_AFTER_TOOLS
+      else SUPPRESS_TAIL AFTER_TOOLS
         H->>H: suppress narrative after last tool
       end
     else token_count

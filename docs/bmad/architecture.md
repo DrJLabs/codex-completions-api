@@ -72,7 +72,7 @@ Mirrors chat behavior for both non‑stream and stream, mapping prompt↔message
 
 # Security Model
 
-- Bearer key required for chat/completions; models route optionally gated via `PROXY_PROTECT_MODELS` (src/routes/models.js:26–36; src/handlers/*: token checks near the top of each handler).
+- Bearer key required for chat/completions; models route optionally gated via `PROXY_PROTECT_MODELS` (src/routes/models.js:26–36; src/handlers/\*: token checks near the top of each handler).
 - ForwardAuth (Traefik) service validates bearer before requests reach app in PROD (auth/server.mjs:33–54).
 - CORS defaults enabled globally; preflight handled centrally (src/app.js:15–24; src/utils.js:140–189; auth/server.mjs:39–42 for sidecar).
 
@@ -117,9 +117,9 @@ Mirrors chat behavior for both non‑stream and stream, mapping prompt↔message
 
 # Tests & Coverage (high‑level)
 
-- Unit (Vitest): utilities and dev logging (tests/unit/*.spec.js)
-- Integration (Vitest): routes, headers, rate limit, idle/kill‑on‑disconnect, timeouts (tests/integration/*)
-- E2E (Playwright): `/v1/models`, non‑stream chat, streaming SSE contract (tests/e2e/*; playwright.config.ts)
+- Unit (Vitest): utilities and dev logging (tests/unit/\*.spec.js)
+- Integration (Vitest): routes, headers, rate limit, idle/kill‑on‑disconnect, timeouts (tests/integration/\*)
+- E2E (Playwright): `/v1/models`, non‑stream chat, streaming SSE contract (tests/e2e/\*; playwright.config.ts)
 
 # Deployment Invariants (prod)
 
