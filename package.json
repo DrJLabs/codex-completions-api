@@ -39,7 +39,11 @@
     "port:check": "bash scripts/port-dev-to-prod.sh",
     "port:deploy": "bash scripts/port-dev-to-prod.sh --deploy",
     "port:sync-config": "bash scripts/sync-codex-config.sh",
-    "port:prod": "CONFIRM_DEPLOY=prod DOMAIN=${DOMAIN:-codex-api.onemainarmy.com} bash scripts/port-dev-to-prod.sh --sync --deploy --smoke"
+    "port:prod": "CONFIRM_DEPLOY=prod DOMAIN=${DOMAIN:-codex-api.onemainarmy.com} bash scripts/port-dev-to-prod.sh --sync --deploy --smoke",
+    "ops:snapshot": "bash scripts/stack-snapshot.sh",
+    "ops:rollback": "bash scripts/stack-rollback.sh --env both",
+    "ops:rollback:prod": "bash scripts/stack-rollback.sh --env prod",
+    "ops:rollback:dev": "bash scripts/stack-rollback.sh --env dev"
   },
   "dependencies": {
     "express": "^4.19.2",

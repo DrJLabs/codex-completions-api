@@ -1,0 +1,27 @@
+{
+  "_note": "Image lock capturing dev/prod images used around the 2025-09-10 rebuilds to enable easy rollback before refactor rebuilds.",
+  "created_at": "2025-09-12T23:21:24Z",
+  "repo_head": "2653e9cdb90c",
+  "images": [
+    {
+      "env": "prod",
+      "compose_file": "docker-compose.yml",
+      "service": "app",
+      "compose_image": "codex-completions-api:latest",
+      "rebuilt_at_pt": "2025-09-10T19:28:31-07:00",
+      "rebuilt_at_utc": "2025-09-11T02:28:31Z",
+      "image_id": "sha256:444141784b678b6d033a3cc5906bd2c82ce8e749f4e8ee04127dd6e264a44764",
+      "repo_digests": []
+    },
+    {
+      "env": "dev",
+      "compose_file": "compose.dev.stack.yml",
+      "service": "app-dev",
+      "compose_image": "codex-completions-api:dev",
+      "rebuilt_at_pt": "2025-09-10T19:42:35-07:00",
+      "rebuilt_at_utc": "2025-09-11T02:42:35Z",
+      "image_id": "sha256:5a730d887189f797798aa470dc136bc35e15c6f422e32961b0badf770886e8f9",
+      "repo_digests": []
+    }
+  ]
+}
