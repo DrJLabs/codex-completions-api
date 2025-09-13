@@ -72,4 +72,20 @@ test("chat completions streaming yields role + DONE", async ({ baseURL }) => {
     }
   });
   expect(hasRoleDelta).toBeTruthy();
+
+  // Ensure we saw a finalizer with finish_reason
+  const hasFinishReason = events.some((d) => {
+    try {
+      const obj = JSON.parse(d);
+      const choice = obj?.choices?.[0];
+      return (
+        obj?.object === "chat.completion.chunk" &&
+        choice &&
+        typeof choice.finish_reason === "string"
+      );
+    } catch {
+      return false;
+    }
+  });
+  expect(hasFinishReason).toBeTruthy();
 });
