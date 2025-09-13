@@ -34,7 +34,13 @@ data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"m
 data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[],"usage":{"prompt_tokens":X,"completion_tokens":Y,"total_tokens":Z} }
 ```
 
-4. Terminator:
+4. Finalizer chunk (finish_reason), then terminator:
+
+```
+data: { "id":"chatcmpl_…","object":"chat.completion.chunk","created":<unix>,"model":"…","choices":[{"index":0,"delta":{},"finish_reason":"stop"}] }
+```
+
+5. Terminator:
 
 ```
 data: [DONE]
