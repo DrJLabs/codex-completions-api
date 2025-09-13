@@ -70,7 +70,7 @@ Notes:
 - On unrecoverable errors mid‑stream, the server sends a single JSON error frame:
 
   ```
-  data: {"error":{"message":"...","type":"server_error"|"timeout_error","code":"internal_error|request_timeout"}}
+  data: {"error":{"message":"...","type":"server_error"|"timeout_error","code":"spawn_error|request_timeout"}}
   data: [DONE]
   ```
 
