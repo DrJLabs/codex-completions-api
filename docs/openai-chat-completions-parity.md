@@ -61,6 +61,7 @@ Notes:
 
 - Keepalive comment lines (": <ts>") may appear and should be ignored by clients.
 - `stream_options.include_usage=true` adds a usage chunk just before finalization.
+- Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
 
 ## Error Envelope (non‑2xx)
 

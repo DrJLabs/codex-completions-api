@@ -460,9 +460,7 @@ export async function postChatStream(req, res) {
             if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage error:", e);
           }
           // Emit a finalizer chunk with finish_reason before closing the stream
-          try {
-            sendChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
-          } catch {}
+          sendChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
           try {
             finishSSE();
           } catch {}

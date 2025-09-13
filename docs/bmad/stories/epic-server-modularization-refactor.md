@@ -1,8 +1,8 @@
 ---
 title: Epic — Modularize server.js
-status: Draft
-version: 0.1
-updated: 2025-09-11
+status: Done
+version: 0.2
+updated: 2025-09-13
 ---
 
 # Epic
@@ -23,20 +23,20 @@ As a maintainer, I want `server.js` refactored into cohesive modules so that the
   - [ ] Add structured access‑log middleware (keep console logs temporarily)
   - [ ] Capture baseline p95 for non‑stream and TTFC for stream
 - [ ] Phase 1 — Config + Errors
-  - [ ] Extract `src/config/index.js` and `src/config/models.js`
-  - [ ] Add `src/lib/errors.js` and switch error envelopes
+- [x] Extract `src/config/index.js` and `src/config/models.js`
+- [x] Add `src/lib/errors.js` and switch error envelopes
 - [ ] Phase 2 — Health & Models routers
-  - [ ] `src/routes/health.js` + mount
-  - [ ] `src/routes/models.js` + mount; preserve gating in config
+- [x] `src/routes/health.js` + mount
+- [x] `src/routes/models.js` + mount; preserve gating in config
 - [ ] Phase 3 — Chat handlers
-  - [ ] `src/handlers/chat/nonstream.js`
-  - [ ] `src/handlers/chat/stream.js` (SSE framing, keepalive, cut/tail)
+- [x] `src/handlers/chat/nonstream.js`
+- [x] `src/handlers/chat/stream.js` (SSE framing, keepalive, cut/tail)
 - [ ] Phase 4 — Codex runner & SSE utils
-  - [ ] `src/services/codex-runner.js` (args/env/spawn)
-  - [ ] `src/services/sse.js` (send/keepalive/finish/cleanup)
+- [x] `src/services/codex-runner.js` (args/env/spawn)
+- [x] `src/services/sse.js` (send/keepalive/finish/cleanup)
 - [ ] Phase 5 — Cleanup & logging
-  - [ ] Remove dead code in `server.js`; prefer structured JSON logs
-  - [ ] Update docs with final module map
+- [x] Remove dead code in `server.js`; prefer structured JSON logs
+- [x] Update docs with final module map
 
 # Dev Notes
 
@@ -46,6 +46,7 @@ As a maintainer, I want `server.js` refactored into cohesive modules so that the
 
 # Change Log
 
-| Date       | Version | Description                      | Author |
-| ---------- | ------- | -------------------------------- | ------ |
-| 2025-09-11 | 0.1     | Initial epic + plan stub created | codex  |
+| Date       | Version | Description                            | Author |
+| ---------- | ------- | -------------------------------------- | ------ |
+| 2025-09-11 | 0.1     | Initial epic + plan stub created       | codex  |
+| 2025-09-13 | 0.2     | Phases 1–5 completed; epic marked Done | codex  |
