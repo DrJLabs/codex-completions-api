@@ -110,7 +110,7 @@ export async function postChatNonStream(req, res) {
 
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
-  const MAX_TOKENS = Number(CFG.PROXY_MAX_PROMPT_TOKENS || 0);
+  const MAX_TOKENS = CFG.PROXY_MAX_PROMPT_TOKENS;
   if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
     applyCors(null, res);
     return res.status(403).json(tokensExceededBody("messages"));
