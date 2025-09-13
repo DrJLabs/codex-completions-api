@@ -1,0 +1,36 @@
+gate:
+  story: "2.2 — Phase B: Streaming Finish-Reason Chunk"
+  file: docs/bmad/stories/2.2.phase-b-streaming-finish-reason-chunk.md
+  epic: docs/bmad/stories/epic-openai-chat-completions-parity.md
+  date: 2025-09-13
+  version: 1
+  decision: PASS
+  rationale: |
+    Streaming now emits an explicit finish_reason chunk followed by an optional
+    final usage chunk and then [DONE]. Intermediate chunks include finish_reason:null
+    and usage:null, and id/created remain stable across the stream. All validations
+    (unit, integration, e2e, perf smoke) are green and new E2E tests cover ordering
+    and negative paths.
+  evidence:
+    integration_tests: "25 passed, 2 skipped"
+    e2e_tests: "13 passed"
+    perf_smoke: "TTFC p95 < 2s; total p95 < 5s"
+  references:
+    risk_profile: docs/bmad/qa/assessments/2.2-risk-20250913.md
+    test_design: docs/bmad/qa/assessments/2.2-test-design-20250913.md
+    trace: docs/bmad/qa/assessments/2.2-trace-20250913.md
+    nfr: docs/bmad/qa/assessments/2.2-nfr-20250913.md
+    spec: docs/openai-chat-completions-parity.md
+  trace:
+    totals:
+      requirements: 5
+      full: 4
+      partial: 1
+      none: 0
+    uncovered:
+      - "Intermediate `finish_reason:null` explicit test existed; now covered by tests/sse-intermediate-nulls.spec.js"
+  actions:
+    - id: DOC-UPDATE-ORDERING
+      title: "Confirm external client docs highlight final finish_reason → usage ordering"
+      owner: dev
+      status: done

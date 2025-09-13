@@ -51,16 +51,17 @@ Example (minimal):
   - usage: optional object only when `stream_options.include_usage=true` and tokens are known
 
 - Required order:
-  1. Initial role delta: `choices[0].delta.role = "assistant"`.
-  2. Zero or more content delta chunks: `choices[0].delta.content`.
-  3. Optional usage chunk: `{ choices: [], usage: {...} }`.
-  4. Final chunk with `choices[0].finish_reason` and empty `delta`.
+  1. Initial role delta: `choices[0].delta.role = "assistant"`; `finish_reason:null`, `usage:null`.
+  2. Zero or more content delta chunks: `choices[0].delta.content`; `finish_reason:null`, `usage:null`.
+  3. Finalizer chunk: empty `delta`, `choices[0].finish_reason` populated; `usage:null`.
+  4. Optional final usage chunk (only when `stream_options.include_usage:true`): `{ choices: [], usage: {...} }`.
   5. Terminal sentinel line: `[DONE]`.
 
 Notes:
 
 - Keepalive comment lines (": <ts>") may appear and should be ignored by clients.
-- `stream_options.include_usage=true` adds a usage chunk just before finalization.
+- `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
+- All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
 
 ## Error Envelope (non‑2xx)
