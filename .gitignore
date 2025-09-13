@@ -42,6 +42,7 @@ blob-report/
 # Additional temp logs
 .tmp-*.log
 server.log
+npm-debug.log*
 
 # Coverage outputs (Vitest, others)
 coverage/
@@ -52,6 +53,7 @@ coverage/
 # Editor/OS cruft
 .DS_Store
 .idea/
+.vscode/
 
 # Release pointer files (host-specific paths)
 releases/*.latest.path
