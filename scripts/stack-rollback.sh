@@ -60,20 +60,28 @@ choose_envs() {
 
 iid_from_lock() {
   local env=$1 lock=$2
-  # crude JSON extraction without jq; expects exact key layout from stack-snapshot.sh
-  # finds the first matching env block and extracts image_id value
-  awk -v env="$env" '
-    $0 ~ "\"env\": \""env"\"" { f=1 }
-    f && $0 ~ /"image_id"/ { gsub(/[",]/, "", $2); print $2; exit }
-  ' "$lock"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg env "$env" '.images[] | select(.env == $env) | .image_id' "$lock"
+  else
+    warn "'jq' not found; falling back to brittle awk JSON parsing"
+    awk -v env="$env" '
+      $0 ~ "\"env\": \""env"\"" { f=1 }
+      f && $0 ~ /"image_id"/ { gsub(/[",]/, "", $2); print $2; exit }
+    ' "$lock"
+  fi
 }
 
 ts_from_lock() {
   local env=$1 lock=$2
-  awk -v env="$env" '
-    $0 ~ "\"env\": \""env"\"" { f=1 }
-    f && $0 ~ /"snap_ts_utc"/ { gsub(/[",]/, "", $2); print $2; exit }
-  ' "$lock"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg env "$env" '.images[] | select(.env == $env) | .snap_ts_utc' "$lock"
+  else
+    warn "'jq' not found; falling back to brittle awk JSON parsing"
+    awk -v env="$env" '
+      $0 ~ "\"env\": \""env"\"" { f=1 }
+      f && $0 ~ /"snap_ts_utc"/ { gsub(/[",]/, "", $2); print $2; exit }
+    ' "$lock"
+  fi
 }
 
 ensure_image_present() {
