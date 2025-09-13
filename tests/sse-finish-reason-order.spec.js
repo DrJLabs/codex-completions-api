@@ -1,38 +1,6 @@
 // @ts-check
 import { test, expect } from "@playwright/test";
-
-async function readSSE(url, init, opts = {}) {
-  const { timeoutMs = 15000 } = opts;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    expect(res.ok).toBeTruthy();
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    const frames = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, idx);
-        buf = buf.slice(idx + 2);
-        const lines = chunk.split(/\n/);
-        for (const l of lines) {
-          if (l.startsWith(":")) continue; // keepalive/comment
-          if (l.startsWith("data: ")) frames.push(l.slice(6));
-        }
-      }
-      if (frames.some((d) => d.trim() === "[DONE]")) break;
-    }
-    return frames;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { readSSE } from "./lib/sse-reader.js";
 
 test("finish_reason chunk precedes usage chunk when include_usage=true", async ({ baseURL }) => {
   const url = new URL("v1/chat/completions", baseURL).toString();
