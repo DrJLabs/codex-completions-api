@@ -60,10 +60,21 @@ Example (minimal):
 Notes:
 
 - Keepalive comment lines (": <ts>") may appear and should be ignored by clients.
-- No custom event frames are emitted; every JSON `data:` line uses the `chat.completion.chunk` envelope and includes `id/object/created/model`.
+- No custom event frames are emitted for normal output; every JSON `data:` line uses the `chat.completion.chunk` envelope and includes `id/object/created/model`.
 - `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
 - All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
+
+### Streaming Errors
+
+- On unrecoverable errors mid‑stream, the server sends a single JSON error frame:
+
+  ```
+  data: {"error":{"message":"...","type":"server_error"|"timeout_error","code":"spawn_error|request_timeout"}}
+  data: [DONE]
+  ```
+
+- The error frame is not a `chat.completion.chunk` envelope but maintains the standard error JSON. The stream always terminates with a separate `[DONE]` line.
 
 ## Error Envelope (non‑2xx)
 
@@ -71,7 +82,7 @@ Notes:
 {
   "error": {
     "message": "...",
-    "type": "invalid_request_error" | "timeout_error" | "rate_limit_error" | "internal_server_error",
+    "type": "invalid_request_error" | "authentication_error" | "permission_error" | "tokens_exceeded_error" | "rate_limit_error" | "timeout_error" | "server_error",
     "param": "<field>" | null,
     "code": "..."
   }
@@ -81,7 +92,10 @@ Notes:
 Examples:
 
 - Missing `messages[]` → `400` with `param: "messages"`.
+- `n>1` unsupported → `400` with `param: "n"`.
 - Model not accepted → `404` with descriptive code.
+- Tokens exceeded (context length) → `403` with `type: "tokens_exceeded_error"`.
+- Unauthorized (when protection enabled) → `401` with `type: "authentication_error"`.
 
 ## Parameters (subset)
 

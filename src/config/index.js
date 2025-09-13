@@ -40,4 +40,6 @@ export const config = {
   PROXY_RATE_LIMIT_MAX: num("PROXY_RATE_LIMIT_MAX", 60),
   PROXY_SSE_MAX_CONCURRENCY: num("PROXY_SSE_MAX_CONCURRENCY", 4),
   PROXY_TEST_ENDPOINTS: bool("PROXY_TEST_ENDPOINTS", "false"),
+  // Limits
+  PROXY_MAX_PROMPT_TOKENS: num("PROXY_MAX_PROMPT_TOKENS", 0), // 0 disables context-length guard
 };
