@@ -19,6 +19,11 @@ source-of-truth: This repository’s server behavior and tests
     - finish_reason: "stop" | "length"
   - usage: { prompt_tokens: number, completion_tokens: number, total_tokens: number }
 
+Verification: Covered by integration tests —
+- tests/integration/chat.nonstream.shape.int.test.js (shape + stop)
+- tests/integration/chat.nonstream.length.int.test.js (truncation → length)
+- tests/integration/chat.model.consistency.int.test.js (model string parity stream vs non‑stream)
+
 Example (minimal):
 
 ```json
