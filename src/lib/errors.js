@@ -25,3 +25,24 @@ export function invalidRequestBody(param, message) {
     },
   };
 }
+
+export function tokensExceededBody(param = "messages") {
+  return {
+    error: {
+      message: "context length exceeded",
+      type: "tokens_exceeded_error",
+      param,
+      code: "context_length_exceeded",
+    },
+  };
+}
+
+export function permissionErrorBody(message = "permission denied") {
+  return {
+    error: { message, type: "permission_error", code: "permission_denied" },
+  };
+}
+
+export function serverErrorBody(message = "internal server error") {
+  return { error: { message, type: "server_error", code: "internal_error" } };
+}

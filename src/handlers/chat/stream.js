@@ -17,7 +17,12 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
-import { authErrorBody, modelNotFoundBody } from "../../lib/errors.js";
+import {
+  authErrorBody,
+  modelNotFoundBody,
+  invalidRequestBody,
+  tokensExceededBody,
+} from "../../lib/errors.js";
 import {
   LOG_PROTO,
   appendUsage,
@@ -76,6 +81,13 @@ export async function postChatStream(req, res) {
     });
   }
 
+  // n>1 not supported in this epic scope
+  const n = Number(body.n || 0);
+  if (n > 1) {
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("n", "n>1 is unsupported"));
+  }
+
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
     body.model || DEFAULT_MODEL,
     DEFAULT_MODEL,
@@ -130,6 +142,11 @@ export async function postChatStream(req, res) {
 
   const prompt = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
+  const MAX_TOKENS = Number(CFG.PROXY_MAX_PROMPT_TOKENS || 0);
+  if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
+    applyCors(null, res);
+    return res.status(403).json(tokensExceededBody("messages"));
+  }
 
   if (IS_DEV_ENV) {
     try {
@@ -159,6 +176,18 @@ export async function postChatStream(req, res) {
   } catch {}
   const child = spawnCodex(args);
 
+  const sseErrorPayload = (e) => {
+    const raw = (e && e.message) || "spawn error";
+    const isTimeout = /timeout/i.test(raw);
+    return {
+      error: {
+        message: isTimeout ? "request timeout" : raw,
+        type: isTimeout ? "timeout_error" : "server_error",
+        code: isTimeout ? "request_timeout" : "spawn_error",
+      },
+    };
+  };
+
   const onChildError = (e) => {
     try {
       console.log("[proxy] child error:", e?.message || String(e));
@@ -166,9 +195,7 @@ export async function postChatStream(req, res) {
     if (responded) return;
     responded = true;
     try {
-      res.write(
-        `data: ${JSON.stringify({ error: { message: e?.message || "spawn error", type: "internal_server_error", code: "spawn_error" } })}\n\n`
-      );
+      res.write(`data: ${JSON.stringify(sseErrorPayload(e))}\n\n`);
     } catch {}
     try {
       res.write("data: [DONE]\n\n");
@@ -640,6 +667,17 @@ export async function postCompletionsStream(req, res) {
   } catch {}
 
   const child = spawnCodex(args);
+  const sseErrorPayload = (e) => {
+    const raw = (e && e.message) || "spawn error";
+    const isTimeout = /timeout/i.test(raw);
+    return {
+      error: {
+        message: isTimeout ? "request timeout" : raw,
+        type: isTimeout ? "timeout_error" : "server_error",
+        code: isTimeout ? "request_timeout" : "spawn_error",
+      },
+    };
+  };
   const onChildError = (e) => {
     try {
       console.log("[proxy] child error (completions):", e?.message || String(e));
@@ -647,13 +685,7 @@ export async function postCompletionsStream(req, res) {
     if (responded) return;
     responded = true;
     try {
-      sendSSEUtil(res, {
-        error: {
-          message: e?.message || "spawn error",
-          type: "internal_server_error",
-          code: "spawn_error",
-        },
-      });
+      sendSSEUtil(res, sseErrorPayload(e));
     } catch {}
     try {
       finishSSEUtil(res);
