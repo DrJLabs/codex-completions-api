@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     --env)
       shift; case "${1:-}" in prod|dev|both) ONLY_ENV="$1";; *) echo "--env must be prod|dev|both" >&2; exit 2;; esac; shift || true ;;
     --from-lock)
-      [[ -n "${2:-}" ]] || die "Missing argument for --from-lock"
+      [[ -n "${2:-}" && "${2:0:1}" != "-" ]] || die "Missing argument for --from-lock"
       LOCK_FROM="${2:-}"; shift 2 ;;
     --image-id)
       [[ -n "${2:-}" ]] || die "Missing argument for --image-id"
@@ -130,7 +130,11 @@ retag_and_redeploy() {
   log "$env: retagging $iid -> $base_tag"
   docker tag "$iid" "$base_tag"
   log "$env: redeploying with compose (no build)"
-  docker compose -f "$compose_file" up -d --no-build "$service"
+  if [[ "$env" == "dev" ]]; then
+    docker compose -p codex-dev --env-file .env.dev -f "$compose_file" up -d --no-build "$service"
+  else
+    docker compose -f "$compose_file" up -d --no-build "$service"
+  fi
 }
 
 choose_envs

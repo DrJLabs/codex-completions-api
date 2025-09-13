@@ -25,13 +25,15 @@ warn() { echo "[stack-snapshot][WARN] $*" >&2; }
 die() { echo "[stack-snapshot][ERROR] $*" >&2; exit 1; }
 
 have_container() {
-  local compose_file=$1 service=$2
-  docker compose -f "$compose_file" ps -q "$service" 2>/dev/null | grep -q . || return 1
+  local compose_file=$1 service=$2 compose_args=${3:-}
+  # shellcheck disable=SC2086
+  docker compose $compose_args -f "$compose_file" ps -q "$service" 2>/dev/null | grep -q . || return 1
 }
 
 container_id() {
-  local compose_file=$1 service=$2
-  docker compose -f "$compose_file" ps -q "$service" 2>/dev/null || true
+  local compose_file=$1 service=$2 compose_args=${3:-}
+  # shellcheck disable=SC2086
+  docker compose $compose_args -f "$compose_file" ps -q "$service" 2>/dev/null || true
 }
 
 image_id_from_container() {
@@ -46,10 +48,17 @@ image_id_from_tag() {
 
 snapshot_env() {
   local env=$1 compose_file=$2 service=$3 base_tag=$4
-  local cid iid tag new_tag backup_tar
+  local cid iid tag new_tag backup_tar compose_args
 
-  if have_container "$compose_file" "$service"; then
-    cid=$(container_id "$compose_file" "$service")
+  # Match how stacks are launched
+  if [[ "$env" == "dev" ]]; then
+    compose_args="-p codex-dev --env-file .env.dev"
+  else
+    compose_args=""
+  fi
+
+  if have_container "$compose_file" "$service" "$compose_args"; then
+    cid=$(container_id "$compose_file" "$service" "$compose_args")
     iid=$(image_id_from_container "$cid")
     log "$env: found container $cid with image $iid"
   else
