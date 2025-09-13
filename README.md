@@ -353,6 +353,7 @@ Environment variables:
 - `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
 - `PROXY_STREAM_IDLE_TIMEOUT_MS` (default: `300000`) — stream idle timeout between chunks (5 minutes).
 - `PROXY_PROTO_IDLE_MS` (default: `120000`) — non‑stream aggregation idle guard for proto mode.
+- `PROXY_MAX_PROMPT_TOKENS` (default: `0`) — when >0, rejects overlong prompts with `403 tokens_exceeded_error` based on the proxy’s rough token estimator (≈1 token per 4 chars).
 - `PROXY_KILL_ON_DISCONNECT` (default: `false`) — if true, terminate Codex when client disconnects.
 - `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
 - `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).

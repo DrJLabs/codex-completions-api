@@ -71,10 +71,10 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
   - [x] Include `id`, `object`, `created`, `model` on every chunk; keep `created` stable.
   - [x] Optionally include `system_fingerprint` when available.
 
-- [ ] Phase E — Error response parity
-  - [ ] Add `param` in validation failures; normalize error `type`/`code` to OpenAI lexicon.
-  - [ ] Align HTTP codes for auth/permission/rate‑limit/context‑length.
-  - [ ] Story 2.4 — Phase E: Error Response Parity (docs/bmad/stories/2.4.phase-e-error-response-parity.md)
+- [x] Phase E — Error response parity
+  - [x] Add `param` in validation failures; normalize error `type`/`code` to OpenAI lexicon.
+  - [x] Align HTTP codes for auth/permission/rate‑limit/context‑length.
+  - [x] Story 2.4 — Phase E: Error Response Parity (docs/bmad/stories/2.4.phase-e-error-response-parity.md)
 
 - [ ] Phase F — Non‑stream tidy
   - [ ] Double‑check `finish_reason` mapping and `usage` presence.
@@ -110,7 +110,8 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
 
 # Change Log
 
-| Date       | Version | Description                                    | Author     |
-| ---------- | ------- | ---------------------------------------------- | ---------- |
-| 2025-09-13 | 0.2     | Mark A, B, C, D, G complete; status InProgress | PM (codex) |
-| 2025-09-13 | 0.1     | Initial epic drafted (Proposed)                | PM (codex) |
+| Date       | Version | Description                                       | Author     |
+| ---------- | ------- | ------------------------------------------------- | ---------- |
+| 2025-09-13 | 0.3     | Mark E complete (error parity); status InProgress | PM (codex) |
+| 2025-09-13 | 0.2     | Mark A, B, C, D, G complete; status InProgress    | PM (codex) |
+| 2025-09-13 | 0.1     | Initial epic drafted (Proposed)                   | PM (codex) |
