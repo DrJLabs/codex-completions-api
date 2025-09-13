@@ -1,5 +1,5 @@
 title: Epic — OpenAI Chat Completions Parity
-status: Proposed
+status: InProgress
 version: 0.1
 updated: 2025-09-13
 owner: Product (PM)
@@ -55,21 +55,21 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
 
 # Phases & Tasks
 
-- [ ] Phase A — Spec lock & contracts
-  - [ ] Freeze expected JSON shapes in a short spec in `docs/` (non‑stream + streaming with finish‑reason + usage chunk).
-  - [ ] Add contract fixtures (golden transcripts) for a minimal prompt.
+- [x] Phase A — Spec lock & contracts
+  - [x] Freeze expected JSON shapes in a short spec in `docs/` (non‑stream + streaming with finish‑reason + usage chunk).
+  - [x] Add contract fixtures (golden transcripts) for a minimal prompt.
 
-- [ ] Phase B — Streaming finish‑reason chunk
-  - [ ] Emit explicit finish‑reason chunk with empty `delta` and populated `finish_reason` before the final usage chunk.
-  - [ ] Ensure preceding chunks carry `finish_reason:null` and `usage:null`.
+- [x] Phase B — Streaming finish‑reason chunk
+  - [x] Emit explicit finish‑reason chunk with empty `delta` and populated `finish_reason` before the final usage chunk.
+  - [x] Ensure preceding chunks carry `finish_reason:null` and `usage:null`.
 
-- [ ] Phase C — Usage chunk semantics
-  - [ ] Gate on `stream_options.include_usage:true` (and root `include_usage` for back‑compat).
-  - [ ] Make final chunk `choices:[]` with `usage:{…}`; send `[DONE]` separately.
+- [x] Phase C — Usage chunk semantics
+  - [x] Gate on `stream_options.include_usage:true` (and root `include_usage` for back‑compat).
+  - [x] Make final chunk `choices:[]` with `usage:{…}`; send `[DONE]` separately.
 
-- [ ] Phase D — Chunk metadata consistency
-  - [ ] Include `id`, `object`, `created`, `model` on every chunk; keep `created` stable.
-  - [ ] Optionally include `system_fingerprint` when available.
+- [x] Phase D — Chunk metadata consistency
+  - [x] Include `id`, `object`, `created`, `model` on every chunk; keep `created` stable.
+  - [x] Optionally include `system_fingerprint` when available.
 
 - [ ] Phase E — Error response parity
   - [ ] Add `param` in validation failures; normalize error `type`/`code` to OpenAI lexicon.
@@ -79,10 +79,10 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
   - [ ] Double‑check `finish_reason` mapping and `usage` presence.
   - [ ] Ensure the returned `model` string is consistent with streaming.
 
-- [ ] Phase G — Tests & docs
-  - [ ] Unit/integration: shapes for non‑stream, error envelopes.
-  - [ ] Playwright E2E: SSE order and fields; optional usage path.
-  - [ ] Update `docs/react-sse-compat-checklist.md` with finish‑reason.
+- [x] Phase G — Tests & docs
+  - [x] Unit/integration: shapes for non‑stream, error envelopes.
+  - [x] Playwright E2E: SSE order and fields; optional usage path.
+  - [x] Update `docs/react-sse-compat-checklist.md` with finish‑reason.
 
 - [ ] Phase H — Optional groundwork (future)
   - [ ] Add null placeholders for usage latency metrics (`time_to_first_token`, `throughput_after_first_token`) when `include_usage` is true.
@@ -109,6 +109,7 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
 
 # Change Log
 
-| Date       | Version | Description                     | Author     |
-| ---------- | ------- | ------------------------------- | ---------- |
-| 2025-09-13 | 0.1     | Initial epic drafted (Proposed) | PM (codex) |
+| Date       | Version | Description                                    | Author     |
+| ---------- | ------- | ---------------------------------------------- | ---------- |
+| 2025-09-13 | 0.2     | Mark A, B, C, D, G complete; status InProgress | PM (codex) |
+| 2025-09-13 | 0.1     | Initial epic drafted (Proposed)                | PM (codex) |
