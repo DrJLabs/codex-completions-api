@@ -18,6 +18,7 @@ SHORT_DATE="${TS_UTC%%T*}"
 
 LOCK_FILE="$ROOT_DIR/releases/stack-images-${SHORT_DATE}.lock.json"
 TMP_LOCK="$(mktemp)"
+trap 'rm -f "$TMP_LOCK"' EXIT
 
 log() { echo "[stack-snapshot] $*"; }
 warn() { echo "[stack-snapshot][WARN] $*" >&2; }
@@ -90,8 +91,8 @@ snapshot_env() {
     >> "$BACKUP_DIR/codex-image-history.jsonl"
 
   # Emit object to tmp lock for repo record
-  printf '  {"env":"%s","compose_file":"%s","service":"%s","compose_image":"%s","snap_ts_utc":"%s","image_id":"%s","archival_tag":"%s","backup_tar":"%s"},\n' \
-    "$env" "$compose_file" "$service" "$base_tag" "$TS_UTC" "$iid" "$new_tag" "${backup_tar:-}" \
+  printf '  {"env":"%s","compose_file":"%s","service":"%s","compose_image":"%s","snap_ts_utc":"%s","image_id":"%s","archival_tag":"%s"},\n' \
+    "$env" "${compose_file#$ROOT_DIR/}" "$service" "$base_tag" "$TS_UTC" "$iid" "$new_tag" \
     >> "$TMP_LOCK"
 }
 
@@ -117,5 +118,4 @@ else
   warn "No images captured (neither prod nor dev present)."
 fi
 
-rm -f "$TMP_LOCK"
 log "Done. History: $BACKUP_DIR/codex-image-history.jsonl"

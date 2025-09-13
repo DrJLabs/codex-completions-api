@@ -13,7 +13,7 @@
 - Command: `bash scripts/stack-snapshot.sh`
 - What it does:
   - Captures current image IDs for prod/dev if present.
-  - Tags timestamped archives: `codex-completions-api:prod-YYYY-MM-DDTHH-MM-SSZ` and/or `...:dev-...`.
+  - Tags timestamped archives: `codex-completions-api:prod-YYYYMMDD-HHMMSSZ` and/or `...:dev-...`.
   - Saves tar backups to `~/.cache/codex-backups/` (skip via `SNAPSHOT_SKIP_SAVE=1`).
   - Writes pointers for quick rollback:
     - `~/.cache/codex-backups/codex-latest-prod.iid` (and `dev.iid`)
@@ -44,5 +44,5 @@
 
 - Image not present and no tar: you can fetch from a registry if pushed, or rebuild from the matching commit and retag to the archived tag in `releases/*lock.json`.
 - Verify running versions:
-  - Prod: `docker compose -f docker-compose.yml ps; docker compose -f docker-compose.yml exec app node -v`
+  - Prod: `docker compose -f docker-compose.yml ps`
   - Dev: `docker compose -f compose.dev.stack.yml ps`
