@@ -1,6 +1,8 @@
 .env.secret
 .env
 .env.dev
+# Any other environment variants (keep example unignored below)
+.env.*
 .npmrc
 local-server.log
 .server.pid
@@ -36,3 +38,23 @@ blob-report/
 
 # Test temp artifacts
 .tmp-*.ndjson
+
+# Additional temp logs
+.tmp-*.log
+server.log
+
+# Coverage outputs (Vitest, others)
+coverage/
+
+# ESLint cache
+.eslintcache
+
+# Editor/OS cruft
+.DS_Store
+.idea/
+
+# Release pointer files (host-specific paths)
+releases/*.latest.path
+
+# Ensure example env remains tracked even with broader patterns above
+!.env.example
