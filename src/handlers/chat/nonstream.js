@@ -1,4 +1,4 @@
-import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
+import { spawnCodex } from "../../services/codex-runner.js";
 import { nanoid } from "nanoid";
 import {
   stripAnsi,
