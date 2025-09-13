@@ -19,6 +19,8 @@
     "format": "prettier -w .",
     "format:check": "prettier -c .",
     "prepare": "husky install",
+    "husky:enable": "husky install && chmod +x .husky/* || true",
+    "husky:fix-perms": "chmod +x .husky/* || true",
     "build:png": "node scripts/svg2png.playwright.mjs",
     "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
     "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
