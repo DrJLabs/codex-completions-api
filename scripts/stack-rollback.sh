@@ -32,9 +32,15 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --env)
       shift; case "${1:-}" in prod|dev|both) ONLY_ENV="$1";; *) echo "--env must be prod|dev|both" >&2; exit 2;; esac; shift || true ;;
-    --from-lock) LOCK_FROM="${2:-}"; shift 2 ;;
-    --image-id) IMAGE_ID_OVERRIDE="${2:-}"; shift 2 ;;
-    --tag) TAG_OVERRIDE="${2:-}"; shift 2 ;;
+    --from-lock)
+      [[ -n "${2:-}" ]] || die "Missing argument for --from-lock"
+      LOCK_FROM="${2:-}"; shift 2 ;;
+    --image-id)
+      [[ -n "${2:-}" ]] || die "Missing argument for --image-id"
+      IMAGE_ID_OVERRIDE="${2:-}"; shift 2 ;;
+    --tag)
+      [[ -n "${2:-}" ]] || die "Missing argument for --tag"
+      TAG_OVERRIDE="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
   esac
@@ -62,21 +68,36 @@ iid_from_lock() {
   ' "$lock"
 }
 
+ts_from_lock() {
+  local env=$1 lock=$2
+  awk -v env="$env" '
+    $0 ~ "\"env\": \""env"\"" { f=1 }
+    f && $0 ~ /"snap_ts_utc"/ { gsub(/[",]/, "", $2); print $2; exit }
+  ' "$lock"
+}
+
 ensure_image_present() {
-  local iid=$1 env=$2
+  local iid=$1 env=$2 lock=$3
   if docker image inspect "$iid" >/dev/null 2>&1; then
     return 0
   fi
-  # Try loading latest tar for this env
-  local tarpath="$BACKUP_DIR/codex-latest-${env}.tarpath"
-  if [[ -f "$tarpath" ]]; then
-    local tar
-    tar=$(cat "$tarpath")
-    if [[ -f "$tar" ]]; then
-      log "$env: loading image from $tar"
-      docker load -i "$tar"
-      return 0
+  # Prefer tar derived from lock timestamp if provided, else latest pointer
+  local tarpath=""
+  if [[ -n "$lock" ]]; then
+    local ts
+    ts=$(ts_from_lock "$env" "$lock" || true)
+    if [[ -n "$ts" ]]; then
+      tarpath="$BACKUP_DIR/${APP_IMAGE_BASENAME}-${env}-${ts}.tar"
     fi
+  fi
+  if [[ -z "$tarpath" ]] || [[ ! -f "$tarpath" ]]; then
+    tarpath="$BACKUP_DIR/codex-latest-${env}.tarpath"
+    [[ -f "$tarpath" ]] && tarpath="$(cat "$tarpath")" || tarpath=""
+  fi
+  if [[ -f "$tarpath" ]]; then
+    log "$env: loading image from $tarpath"
+    docker load -i "$tarpath"
+    return 0
   fi
   die "$env: image $iid not present and no backup tar available"
 }
@@ -121,9 +142,8 @@ for env in "${envs[@]}"; do
   fi
 
   [[ -n "$iid" ]] || die "$env: could not determine image id; use --from-lock or --image-id"
-  ensure_image_present "$iid" "$env"
+  ensure_image_present "$iid" "$env" "$LOCK_FROM"
   retag_and_redeploy "$env" "$iid"
 done
 
 log "Rollback complete."
-
