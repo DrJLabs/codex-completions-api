@@ -2,7 +2,7 @@
 title: Codex Completions API — Product Requirements (PRD)
 status: draft
 version: v1
-updated: 2025-09-11
+updated: 2025-09-14
 ---
 
 # Overview
@@ -18,10 +18,10 @@ An OpenAI Chat Completions–compatible proxy for Codex CLI. It exposes `GET /v1
 
 - Models listing
   - Route: `GET,HEAD,OPTIONS /v1/models` (JSON list)
-  - Advertises `codev-5*` in dev and `codex-5*` in prod; accepts both prefixes everywhere. Backed by `PUBLIC_MODEL_IDS` from `server.js`.
+  - Advertises `codev-5*` in dev and `codex-5*` in prod; accepts both prefixes everywhere. Implemented in `src/routes/models.js` using `publicModelIds()` from `src/config/models.js`.
   - Gating: `PROXY_PROTECT_MODELS=true` requires Bearer auth (same key as chat).
 - Chat Completions
-  - Route: `POST /v1/chat/completions`
+  - Route: `POST /v1/chat/completions` (also supports `HEAD` and `OPTIONS` for contract/CORS checks)
   - Auth: Bearer required (`Authorization: Bearer <PROXY_API_KEY>`).
   - Non‑stream (JSON): returns OpenAI‑shaped payload with `choices[0].message.content` and `usage`.
   - Stream (SSE): `Content-Type: text/event-stream` with role‑first delta chunks and terminating `[DONE]`.
@@ -34,12 +34,29 @@ An OpenAI Chat Completions–compatible proxy for Codex CLI. It exposes `GET /v1
 
 # Non‑Functional Requirements
 
-- CORS: Enabled by default (`PROXY_ENABLE_CORS`, OPTIONS handled globally).
+- CORS: Enabled by default (`PROXY_ENABLE_CORS`, preflight handled globally).
 - Stability: Respect timeouts (`PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`).
 - Streaming: Keepalives every `PROXY_SSE_KEEPALIVE_MS` ms; can be disabled via `User‑Agent` (Electron/Obsidian), `X-No-Keepalive: 1`, or `?no_keepalive=1`.
 - Security: Single bearer key (`PROXY_API_KEY`) for all protected routes.
-- Observability: Minimal HTTP access log; dev‑mode proto/tool logs gated by env.
+- Observability: Text access log plus structured JSON access log (`src/middleware/access-log.js`); dev‑mode proto/tool logs gated by env.
 - Sandbox/Workdir: Child process runs with `CODEX_HOME` and `PROXY_CODEX_WORKDIR` set.
+- Rate limiting: In‑process token bucket (`src/middleware/rate-limit.js`), intended as defense‑in‑depth; rely on edge for primary RL.
+
+## Business Goals & KPIs (SLIs/SLOs)
+
+Purpose: quantify success and guard reliability for the proxy. These targets are initial and should be tuned with production data.
+
+- Availability SLO: 99.9% monthly (excludes planned maintenance).
+- Non‑stream response p95: ≤ 5 s for short prompts (≤ 512 tokens joined).
+- Stream TTFC p95: ≤ 2 s; stream remains active with keepalives ≤ `PROXY_SSE_KEEPALIVE_MS`.
+- Error budget: 5xx rate < 1% of requests (auth errors excluded).
+- Concurrency envelope per replica: ≤ `PROXY_SSE_MAX_CONCURRENCY` active streams; ensure `ulimit -n` allows ≥ 32 × concurrency.
+- Edge health: Successful `GET /v1/models` and `POST /v1/chat/completions` (non‑stream) via edge smoke after each deploy.
+
+Measurement notes
+- Use structured access logs for p95 latency approximations (`dur_ms` field) and error rates; aggregate with your log pipeline.
+- For TTFC, use Playwright E2E or client metrics; optional lightweight server metric can be added later.
+- Maintain an incident log referencing the Operational Runbook.
 
 # Configuration (Key Env Vars)
 
@@ -51,9 +68,11 @@ An OpenAI Chat Completions–compatible proxy for Codex CLI. It exposes `GET /v1
 - `CODEX_BIN` path or name of Codex binary; `CODEX_HOME` for Codex runtime home
 - `PROXY_SANDBOX_MODE` (default `danger-full-access`)
 - `PROXY_CODEX_WORKDIR` working directory for child process
-- Streaming & tools behavior: `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_{DEDUP,DELIMITER}`
+- Streaming & tools behavior: `PROXY_STOP_AFTER_TOOLS` (boolean), `PROXY_STOP_AFTER_TOOLS_MODE` (`burst`|`first`), `PROXY_STOP_AFTER_TOOLS_GRACE_MS` (cut delay), `PROXY_TOOL_BLOCK_MAX` (max <use_tool> blocks before cut), `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` (boolean)
 - Timeouts: `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`
 - `PROXY_SSE_KEEPALIVE_MS`, `PROXY_KILL_ON_DISCONNECT`, `PROXY_DEBUG_PROTO`
+- Rate limiting: `PROXY_RATE_LIMIT_ENABLED` (boolean), `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`
+- Concurrency: `PROXY_SSE_MAX_CONCURRENCY` (limit concurrent streams; 0 disables)
 
 # API Details
 
@@ -71,7 +90,7 @@ An OpenAI Chat Completions–compatible proxy for Codex CLI. It exposes `GET /v1
 - Body (minimal): `{ "model": "gpt-5" | "codex-5-low" | "codev-5-low", "messages": [{"role":"user","content":"..."}], "stream": boolean }`
 - Auth: `Authorization: Bearer <PROXY_API_KEY>` required.
 - Non‑stream returns JSON with `choices[0].message.content` and `usage`.
-- Stream returns SSE events and final `data: [DONE]`.
+- Stream returns SSE events and final `data: [DONE]`. Stable `id` and `created` across all chunks; per‑chunk envelope includes `id/object/created/model`.
 
 ## POST /v1/completions (shim)
 
@@ -216,6 +235,35 @@ curl -s "$BASE/v1/completions" \
 - Long‑lived SSE connections: budget connections per replica; tune `PROXY_SSE_KEEPALIVE_MS` and idle timeouts to match ingress timeouts.
 - Ensure sufficient file descriptors (`ulimit -n`) for concurrent SSE clients.
 
+## Environment Profiles (Dev vs Prod)
+
+Recommended defaults per environment. Adjust as traffic and client mix evolve.
+
+| Setting | Dev (local/dev stack) | Prod |
+| --- | --- | --- |
+| `PROXY_ENV` | `dev` | `""` (non‑dev) |
+| Advertised models | `codev-5*` | `codex-5*` |
+| `PROXY_ENABLE_CORS` | `true` | `true` (or restrict at edge) |
+| `PROXY_PROTECT_MODELS` | `false` | `true` |
+| `PROXY_RATE_LIMIT_ENABLED` | `false` | `true` (window 60s, max 60 as baseline) |
+| `PROXY_RATE_LIMIT_WINDOW_MS` | `60000` | `60000` |
+| `PROXY_RATE_LIMIT_MAX` | `60` | `60` (tune with edge RL) |
+| `PROXY_SSE_KEEPALIVE_MS` | `15000` | `15000` (tune with ingress/edge timeouts) |
+| `PROXY_SSE_MAX_CONCURRENCY` | `4` | `16` (start small; scale replicas) |
+| `PROXY_KILL_ON_DISCONNECT` | `false` | `true` |
+| `PROXY_STOP_AFTER_TOOLS` | `false` | `false` (enable only for tool‑strict clients) |
+| `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` | `false` | `false` (enable per client need) |
+| `PROXY_STOP_AFTER_TOOLS_MODE` | `burst` | `burst` |
+| `PROXY_STOP_AFTER_TOOLS_GRACE_MS` | `300` | `300` |
+| `PROXY_TOOL_BLOCK_MAX` | `0` | `0` (cap only if needed) |
+| `CODEX_HOME` | `.codev/` | `.codex-api/` (writable) |
+| `PROXY_CODEX_WORKDIR` | `/tmp/codex-work` | `/tmp/codex-work` |
+
+Notes
+- Prefer rate limiting and strict CORS at the edge (Traefik/Cloudflare); keep origin permissive only when browser clients call it directly.
+- Keep `.codex-api/` writable in prod for rollout/session persistence.
+- After any compose/label change: rebuild with force‑recreate and run `npm run smoke:prod`.
+
 # Out of Scope (for now)
 
 - Files, images, and audio routes.
@@ -227,3 +275,7 @@ curl -s "$BASE/v1/completions" \
 - `docker-compose.yml`
 - `auth/server.mjs` (ForwardAuth)
 - `README.md`
+- `src/config/models.js`
+- `src/routes/chat.js`, `src/handlers/chat/*`
+- `src/middleware/access-log.js`, `src/middleware/rate-limit.js`
+- Operational Runbook: `docs/runbooks/operational.md`
