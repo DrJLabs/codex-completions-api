@@ -2,14 +2,19 @@
 set -Eeuo pipefail
 
 # Usage:
-#   DEV_DOMAIN=codex-dev.onemainarmy.com KEY=sk-dev-... bash scripts/dev-smoke.sh
+#   DEV_DOMAIN=codex-dev.onemainarmy.com [KEY=sk-dev-...] bash scripts/dev-smoke.sh
 # Optional:
 #   ORIGIN_HOST=127.0.0.1    # where Traefik listens (host loopback), default 127.0.0.1
 #   SKIP_ORIGIN=1            # only test via public domain
 
+# Load env quietly from repo `.env.dev` if present to populate KEY/PROXY_API_KEY
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$ROOT_DIR/.env.dev" ]]; then . "$ROOT_DIR/.env.dev"; fi
+
 DOMAIN="${DEV_DOMAIN:-${DOMAIN:-}}"; [[ -n "$DOMAIN" ]] || { echo "ERROR: DEV_DOMAIN or DOMAIN is required" >&2; exit 2; }
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
-KEY="${KEY:-}"
+# Prefer KEY, fall back to PROXY_API_KEY (from .env.dev or environment)
+KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
 
 pass() { printf "[PASS] %s\n" "$*"; }
@@ -54,4 +59,3 @@ else
 fi
 
 echo "All dev smoke checks passed."
-
