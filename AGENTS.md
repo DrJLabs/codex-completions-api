@@ -66,6 +66,17 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
   - PROD uses project‑root `.codex-api/` (contains secrets) — MUST be writable in production because Codex CLI persists rollout/session state under its home.
   - `.dockerignore` excludes both `.codex-api/**` and `.codev/**` so secrets are never sent in build context.
 
+### Keys for Smoke/E2E Tests
+
+- Source of truth for bearer keys used by smoke and live E2E tests:
+  - PROD: `.env` → variables `KEY` or `PROXY_API_KEY`.
+  - DEV: `.env.dev` → variables `KEY` or `PROXY_API_KEY`.
+- Scripts auto‑load and prefer `KEY`, falling back to `PROXY_API_KEY`:
+  - `scripts/prod-smoke.sh` reads `.env` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
+  - `scripts/dev-smoke.sh` reads `.env.dev` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
+  - `scripts/test-live.sh` already loads `.env` and prefers `KEY`, then `PROXY_API_KEY`.
+- If neither is set, auth‑required checks are skipped. To force auth tests locally, export `KEY=sk-...` or set it in the appropriate `.env*` file.
+
 ## Reliability & Streaming Notes
 
 - SSE cleanup: the proxy clears keepalives and stops writing on client disconnect/finish; `PROXY_KILL_ON_DISCONNECT=true` optionally terminates the child. This reduces client-side updates after unmount (e.g., React #409) without changing API shapes.
