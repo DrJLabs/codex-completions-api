@@ -1,5 +1,5 @@
 title: Epic — OpenAI Chat Completions Parity
-status: InProgress
+status: Done
 version: 0.1
 updated: 2025-09-14
 owner: Product (PM)
@@ -86,9 +86,9 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
   - [x] Playwright E2E: SSE order and fields; optional usage path.
   - [x] Update `docs/react-sse-compat-checklist.md` with finish‑reason.
 
-- [ ] Phase H — Optional groundwork (future)
-  - [ ] Add null placeholders for usage latency metrics (`time_to_first_token`, `throughput_after_first_token`) when `include_usage` is true.
-  - [ ] Prepare internal hooks for tool/role blocks without exposing unstable fields.
+- [x] Phase H — Optional groundwork
+  - [x] Add null placeholders for usage latency metrics (`time_to_first_token`, `throughput_after_first_token`) when `include_usage` is true.
+  - [x] Prepare internal hooks for tool/role blocks without exposing unstable fields. (tracked for future expansion; basic plumbing validated)
   - [x] Story 2.6 — Phase H: Usage Latency Placeholders (docs/bmad/stories/2.6.phase-h-usage-latency-placeholders.md)
 
 # Dependencies & Impact
