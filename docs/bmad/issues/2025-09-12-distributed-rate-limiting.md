@@ -1,12 +1,16 @@
-# Issue: Distributed Rate Limiting – Design & Test Plan
-
-Date: 2025-09-12
-Owner: Platform/QA
-Status: Open (Deferred)
+---
+title: Distributed Rate Limiting – Design & Test Plan
+date: 2025-09-12
+owner: Platform/QA
+status: open (deferred)
+priority: P3
+source: qa
+labels: [rate-limit, distributed, design]
+---
 
 ## Summary
 
-App-level rate limiting (in-memory token bucket) is now implemented as defense-in-depth. For multi-instance deployments, we should design and validate a distributed rate limiting strategy (edge/CDN or Redis-backed) to enforce global limits across replicas.
+App-level rate limiting (in-memory token bucket) is now implemented as defense-in-depth. For multi-instance deployments, design and validate a distributed rate limiting strategy (edge/CDN or Redis-backed) to enforce global limits across replicas.
 
 ## Proposed Approaches
 

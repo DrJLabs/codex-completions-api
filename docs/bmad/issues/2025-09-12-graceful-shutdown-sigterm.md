@@ -3,6 +3,8 @@ title: QA-GRACEFUL-SHUTDOWN — Add SIGTERM graceful shutdown test
 date: 2025-09-12
 status: open
 owner: qa
+source: qa
+priority: P2
 related:
   story: docs/bmad/stories/1.6.phase-5-cleanup-and-logging.md
   gate: docs/bmad/qa/gates/1.6-phase-5-cleanup-and-logging.yml
