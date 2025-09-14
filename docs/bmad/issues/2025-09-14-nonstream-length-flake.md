@@ -3,6 +3,8 @@ title: Flaky integration test — chat.nonstream.length.int.test.js
 date: 2025-09-14
 owner: QA/Dev
 labels: [test-flake, integration, nonstream]
+status: open
+priority: P1
 ---
 
 ## Summary

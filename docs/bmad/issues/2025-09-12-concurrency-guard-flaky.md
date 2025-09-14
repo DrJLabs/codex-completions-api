@@ -1,8 +1,12 @@
-# Issue: Streaming Concurrency Guard – Flaky Integration Test
-
-Date: 2025-09-12
-Owner: QA (assign: Quinn)
-Status: Open
+---
+title: Streaming Concurrency Guard – Flaky Integration Test
+date: 2025-09-12
+owner: QA (assign: Quinn)
+status: open
+priority: P1
+source: qa
+labels: [streaming, rate-limit, test-flake]
+---
 
 ## Summary
 
@@ -38,4 +42,4 @@ Guard: `src/handlers/chat/stream.js` (`PROXY_SSE_MAX_CONCURRENCY`)
 ## Notes
 
 - The non-stream rate limit 429 test passes and covers app-level rate limiting.
-- This test is temporarily skipped; guard remains enabled in production code.
+- This test may be temporarily skipped; guard remains enabled in production code.
