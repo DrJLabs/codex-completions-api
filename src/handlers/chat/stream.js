@@ -490,6 +490,9 @@ export async function postChatStream(req, res) {
                 prompt_tokens: p,
                 completion_tokens: c,
                 total_tokens: p + c,
+                // Story 2.6 — Phase H: placeholders for future latency metrics
+                time_to_first_token: null,
+                throughput_after_first_token: null,
               },
             });
           }
