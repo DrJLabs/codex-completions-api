@@ -1,7 +1,7 @@
 ---
 title: OpenAI Chat Completions Parity — Spec & Streaming Contract
 version: 0.1
-updated: 2025-09-13
+updated: 2025-09-14
 source-of-truth: This repository’s server behavior and tests
 ---
 
@@ -60,6 +60,10 @@ Example (minimal):
   2. Zero or more content delta chunks: `choices[0].delta.content`; `finish_reason:null`, `usage:null`.
   3. Finalizer chunk: empty `delta`, `choices[0].finish_reason` populated; `usage:null`.
   4. Optional final usage chunk (only when `stream_options.include_usage:true`): `{ choices: [], usage: {...} }`.
+     - Story 2.6 (2025‑09‑14): adds forward‑compatible, nullable placeholders to the final usage object:
+       - `time_to_first_token: null` (ms)
+       - `throughput_after_first_token: null` (tokens/sec)
+     - These keys appear only on the streaming final usage chunk when usage is requested; they do not appear in non‑stream responses.
   5. Terminal sentinel line: `[DONE]`.
 
 Notes:

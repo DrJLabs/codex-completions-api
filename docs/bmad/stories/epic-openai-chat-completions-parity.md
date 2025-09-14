@@ -1,7 +1,7 @@
 title: Epic — OpenAI Chat Completions Parity
 status: InProgress
 version: 0.1
-updated: 2025-09-13
+updated: 2025-09-14
 owner: Product (PM)
 labels: [api, compatibility, streaming, errors, usage]
 
@@ -89,6 +89,7 @@ As a product, we need our `/v1/chat/completions` responses (non‑stream and str
 - [ ] Phase H — Optional groundwork (future)
   - [ ] Add null placeholders for usage latency metrics (`time_to_first_token`, `throughput_after_first_token`) when `include_usage` is true.
   - [ ] Prepare internal hooks for tool/role blocks without exposing unstable fields.
+  - [x] Story 2.6 — Phase H: Usage Latency Placeholders (docs/bmad/stories/2.6.phase-h-usage-latency-placeholders.md)
 
 # Dependencies & Impact
 

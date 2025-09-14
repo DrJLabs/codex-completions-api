@@ -230,7 +230,7 @@ export async function postChatNonStream(req, res) {
         chunk: d.toString("utf8"),
       });
   });
-  child.on("close", () => {
+  const finalizeResponse = () => {
     if (responded) return;
     responded = true;
     clearTimeout(timeout);
@@ -295,7 +295,11 @@ export async function postChatNonStream(req, res) {
       ],
       usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
     });
-  });
+  };
+
+  // Stabilize: respond on stdout end or process close, whichever happens first
+  child.stdout.on("end", finalizeResponse);
+  child.on("close", finalizeResponse);
   try {
     const submission = {
       id: reqId,
