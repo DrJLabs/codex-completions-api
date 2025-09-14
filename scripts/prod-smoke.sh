@@ -10,7 +10,7 @@ set -Eeuo pipefail
 
 # Load env quietly from repo `.env` if present to populate KEY/PROXY_API_KEY
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ -f "$ROOT_DIR/.env" ]]; then set -a; . "$ROOT_DIR/.env"; set +a; fi
+if [[ -f "$ROOT_DIR/.env" ]]; then . "$ROOT_DIR/.env"; fi
 
 DOMAIN="${DOMAIN:-}"; if [[ -z "$DOMAIN" ]]; then echo "ERROR: DOMAIN is required" >&2; exit 2; fi
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
