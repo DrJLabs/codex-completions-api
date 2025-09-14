@@ -8,9 +8,14 @@ set -Eeuo pipefail
 #   ORIGIN_HOST=127.0.0.1   # IP/host where Traefik listens (default 127.0.0.1)
 #   SKIP_ORIGIN=1            # only test via public domain
 
+# Load env quietly from repo `.env` if present to populate KEY/PROXY_API_KEY
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$ROOT_DIR/.env" ]]; then set -a; . "$ROOT_DIR/.env"; set +a; fi
+
 DOMAIN="${DOMAIN:-}"; if [[ -z "$DOMAIN" ]]; then echo "ERROR: DOMAIN is required" >&2; exit 2; fi
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
-KEY="${KEY:-}"
+# Prefer KEY, fall back to PROXY_API_KEY (from .env or environment)
+KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
 
 pass() { printf "[PASS] %s\n" "$*"; }
