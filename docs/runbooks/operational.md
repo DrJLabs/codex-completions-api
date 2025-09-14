@@ -38,7 +38,7 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 4) CORS preflight failures
 - Symptoms: browser OPTIONS gets 4xx; missing `Access-Control-Allow-*` headers.
 - Causes: `PROXY_ENABLE_CORS=false`; edge policy blocking.
-- Checks: `curl -i -X OPTIONS .../v1/chat/completions -H 'Origin: http://app' -H 'Access-Control-Request-Method: POST'`.
+- Checks: curl -i -X OPTIONS http://127.0.0.1:${PORT:-11435}/v1/chat/completions -H 'Origin: http://app' -H 'Access-Control-Request-Method: POST'.
 - Fixes: set `PROXY_ENABLE_CORS=true` when browser clients call origin directly; otherwise enforce CORS at edge and keep origin permissive only as needed.
 
 5) ForwardAuth 401 (invalid token)
