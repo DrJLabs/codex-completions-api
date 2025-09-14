@@ -72,8 +72,8 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
   - PROD: `.env` → variables `KEY` or `PROXY_API_KEY`.
   - DEV: `.env.dev` → variables `KEY` or `PROXY_API_KEY`.
 - Scripts auto‑load and prefer `KEY`, falling back to `PROXY_API_KEY`:
-  - `scripts/prod-smoke.sh` reads `.env` when present and uses `KEY=${KEY:-$PROXY_API_KEY}`.
-  - `scripts/dev-smoke.sh` reads `.env.dev` when present and uses `KEY=${KEY:-$PROXY_API_KEY}`.
+  - `scripts/prod-smoke.sh` reads `.env` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
+  - `scripts/dev-smoke.sh` reads `.env.dev` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
   - `scripts/test-live.sh` already loads `.env` and prefers `KEY`, then `PROXY_API_KEY`.
 - If neither is set, auth‑required checks are skipped. To force auth tests locally, export `KEY=sk-...` or set it in the appropriate `.env*` file.
 
