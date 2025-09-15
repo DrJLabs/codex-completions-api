@@ -61,6 +61,35 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 
 - If `stream:true` succeeds quickly but non-stream stalls only at the edge, verify Cloudflare/Traefik policies for dev POST requests; origin may still be healthy.
 
+### Runbook: Dev edge non-stream timeout triage
+
+Use the scripted smoke for reproducible evidence and quick signal on where the stall occurs.
+
+1. Run non-stream and streaming smokes on the dev domain
+
+```bash
+DOMAIN=$DEV_DOMAIN KEY=$DEV_KEY npm run smoke:dev-edge
+```
+
+Evidence written to `/tmp/nonstream.out` and `/tmp/stream.out`.
+
+2. Interpret results
+
+- Non-stream 200 + JSON OK, stream OK → edge transient; repeat and collect Ray IDs.
+- Non-stream timeout, stream OK → likely edge/ingress buffering or timeout policy for POST JSON.
+- Both fail → origin or auth/ForwardAuth misconfiguration.
+
+3. Checks (edge → ingress → app)
+
+- Edge: look for 522/524/499 and correlate Ray IDs; confirm WAF policies for POST JSON to `/v1/chat/completions`.
+- Ingress (Traefik): verify timeouts, ForwardAuth target host loopback, route matches production invariants.
+- App: confirm `PROXY_TIMEOUT_MS`/`PROXY_IDLE_TIMEOUT_MS` and non-stream handler returns promptly for short prompts.
+
+4. After fix
+
+- Re-run the smoke script twice; attach cURL headers and timings to GH #74.
+- Add the non-stream smoke to post-deploy CI if not already present.
+
 2. Map DEV settings to PROD
 
 - Compare `compose.dev.stack.yml` to `docker-compose.yml`:
