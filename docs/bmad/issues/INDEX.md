@@ -6,6 +6,8 @@ owner: PM/QA
 
 This index consolidates repo GitHub issues and local QA/docs issues. Priorities reflect current assessment; adjust as work progresses.
 
+## P0
+
 ## P1
 
 - 2025-09-14 — Flaky integration: non‑stream length truncation — `tests/integration/chat.nonstream.length.int.test.js` (local) — `docs/bmad/issues/2025-09-14-nonstream-length-flake.md`
