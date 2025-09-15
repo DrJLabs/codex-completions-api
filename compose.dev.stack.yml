@@ -7,8 +7,12 @@ services:
     environment:
       - PORT=11435
       - PROXY_ENV=dev
+      # Match prod: let Traefik handle CORS, not the app
+      - PROXY_ENABLE_CORS=false
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - CODEX_HOME=/home/node/.codex
+      # Early finalize non-stream responses in DEV if backend is slow, to avoid edge 524
+      - PROXY_DEV_TRUNCATE_AFTER_MS=${PROXY_DEV_TRUNCATE_AFTER_MS:-60000}
       - PROXY_LOG_PROTO=${PROXY_LOG_PROTO:-true}
       - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}

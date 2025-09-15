@@ -1,0 +1,32 @@
+story: 3.1.dev-edge-nonstream-timeout
+epic: epic-stability-ci-hardening-sep-2025
+title: QA Gate — Story 3.1 (Dev Edge Non‑Stream Timeout)
+date: 2025-09-15
+status: PASS
+notes:
+  - Dev edge non‑stream returns 200 JSON under guard; streaming OK.
+  - Guard is DEV‑only. No prod behavior change.
+  - Cloudflare dev cache rule expression fixed to /v1/chat/completions.
+evidence:
+  risk: docs/bmad/qa/assessments/3.1-risk-20250915.md
+  design: docs/bmad/qa/assessments/3.1-test-design-20250915.md
+  trace: docs/bmad/qa/assessments/3.1-trace-20250915.md
+  nfr: docs/bmad/qa/assessments/3.1-nfr-20250915.md
+  review: docs/bmad/qa/assessments/3.1-review-20250915.md
+test_design:
+  scenarios_total: 10
+  by_level:
+    unit: 1
+    integration: 5
+    e2e: 4
+  by_priority:
+    p0: 4
+    p1: 4
+    p2: 2
+  coverage_gaps: []
+risk_summary:
+  totals:
+    critical: 0
+    high: 0
+    medium: 1
+    low: 2
