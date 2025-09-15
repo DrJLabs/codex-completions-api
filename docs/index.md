@@ -32,6 +32,10 @@ Status: Draft (follow‑up to 1.1 gate concerns)
 
 Status: Draft (first story from OpenAI Parity epic)
 
+### [3.1 — Dev Edge Non‑Stream Timeout](./bmad/stories/3.1.dev-edge-nonstream-timeout.md)
+
+Status: Draft (Epic 3 — Stability & CI Hardening)
+
 ## Epic
 
 ### [Epic — Modularize server.js](./bmad/stories/epic-server-modularization-refactor.md)
@@ -39,6 +43,10 @@ Status: Draft (first story from OpenAI Parity epic)
 Status: Done (Phases 1–5 complete)
 
 ### [Epic — OpenAI Chat Completions Parity](./bmad/stories/epic-openai-chat-completions-parity.md)
+
+Status: Proposed
+
+### [Epic — Stability & CI Hardening (Sep 2025)](./bmad/stories/epic-stability-ci-hardening-sep-2025.md)
 
 Status: Proposed
 
