@@ -12,7 +12,6 @@ This index consolidates repo GitHub issues and local QA/docs issues. Priorities 
 
 - 2025-09-14 — Flaky integration: non‑stream length truncation — `tests/integration/chat.nonstream.length.int.test.js` (local) — `docs/bmad/issues/2025-09-14-nonstream-length-flake.md`
 - 2025-09-13 — Golden transcripts + contract checks (GH #77) — `docs/bmad/issues/2025-09-13-chat-golden-transcripts-contract-checks.md`
-- 2025-09-13 — Dev edge: non‑stream POST timeout (GH #74) — `docs/bmad/issues/2025-09-13-dev-edge-nonstream-timeout.md`
 - 2025-09-13 — Emit usage immediately on token_count (GH #73) — `docs/bmad/issues/2025-09-13-emit-usage-immediately-on-token-count.md`
 - 2025-09-12 — Streaming finish_reason chunk parity (GH #61) — `docs/bmad/issues/2025-09-12-streaming-finish-reason-chunk-parity.md`
 - 2025-09-12 — Streaming concurrency guard flaky 429 (local QA) — `docs/bmad/issues/2025-09-12-concurrency-guard-flaky.md`
@@ -32,3 +31,4 @@ This index consolidates repo GitHub issues and local QA/docs issues. Priorities 
 ## Archive
 
 - 2025-09-12 — QA-OBS-LOG-ASSERT — closed — `docs/bmad/issues/_archive/2025-09-12-qa-observability-log-assertions.md`
+- 2025-09-13 — Dev edge: non‑stream POST timeout (GH #74) — closed 2025‑09‑15 — `docs/bmad/issues/2025-09-13-dev-edge-nonstream-timeout.md`
