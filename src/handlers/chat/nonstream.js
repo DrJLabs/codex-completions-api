@@ -150,44 +150,14 @@ export async function postChatNonStream(req, res) {
     });
   }, REQ_TIMEOUT_MS);
 
-  // Dev-only safeguard: early finalize to avoid edge 524 if backend is slow to close
+  // Dev-only safeguard: early terminate child; finalizeResponse will run on 'close'
   const maybeEarlyTruncate = () => {
     if (!DEV_TRUNCATE_MS) return { stop() {} };
     const t = setTimeout(() => {
       if (responded) return;
-      responded = true;
       try {
         child.kill("SIGTERM");
       } catch {}
-      applyCors(null, res);
-      const final = content || stripAnsi(out).trim() || stripAnsi(err).trim() || "";
-      const pt = prompt_tokens || promptTokensEst;
-      const ct = completion_tokens || estTokens(final);
-      appendUsage({
-        ts: Date.now(),
-        req_id: reqId,
-        route: "/v1/chat/completions",
-        method: "POST",
-        requested_model: requestedModel,
-        effective_model: effectiveModel,
-        stream: false,
-        prompt_tokens_est: pt,
-        completion_tokens_est: ct,
-        total_tokens_est: pt + ct,
-        duration_ms: Date.now() - started,
-        status: 200,
-        user_agent: req.headers["user-agent"] || "",
-      });
-      res.json({
-        id: `chatcmpl-${nanoid()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model: requestedModel,
-        choices: [
-          { index: 0, message: { role: "assistant", content: final }, finish_reason: "length" },
-        ],
-        usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
-      });
     }, DEV_TRUNCATE_MS);
     return {
       stop() {

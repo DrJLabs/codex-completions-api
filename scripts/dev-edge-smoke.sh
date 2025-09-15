@@ -22,7 +22,7 @@ ts() { date +%Y-%m-%dT%H:%M:%S%z; }
 
 do_nonstream() {
   echo "[$(ts)] Non-stream smoke → ${base}/v1/chat/completions" >&2
-  hdr=/tmp/nonstream.hdr
+  hdr=$(mktemp -t nonstream.hdr.XXXXXX)
   http_code=$(curl -s ${SHOW_HEADERS:+-D "$hdr"} -o >(tee /tmp/nonstream.out) -w "%{http_code}" \
     -H "Authorization: Bearer ${KEY}" -H 'Content-Type: application/json' \
     -X POST "${base}/v1/chat/completions" \
@@ -45,7 +45,7 @@ do_nonstream() {
 
 do_stream() {
   echo "[$(ts)] Streaming smoke → ${base}/v1/chat/completions" >&2
-  shdr=/tmp/stream.hdr
+  shdr=$(mktemp -t stream.hdr.XXXXXX)
   curl -s ${SHOW_HEADERS:+-D "$shdr"} -N -H "Authorization: Bearer ${KEY}" -H 'Content-Type: application/json' \
     -X POST "${base}/v1/chat/completions" \
     -d "{\"model\":\"${MODEL}\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"${PROMPT}\"}],\"stream_options\":{\"include_usage\":true}}" \
@@ -72,6 +72,7 @@ for arg in "$@"; do
   esac
 done
 
+trap 'rm -f "$hdr" "$shdr" 2>/dev/null || true' EXIT
 ${run_nonstream} && do_nonstream
 ${run_stream} && do_stream
 echo "Smoke complete." >&2
