@@ -28,6 +28,7 @@ Comprehensive documentation of the entire system (no PRD provided as of 2025-09-
 - Systemd unit example: `systemd/codex-openai-proxy.service`
 
 If focusing streaming behavior or parity:
+
 - SSE framing and headers: `src/handlers/chat/stream.js`
 - Non‑stream response shape and usage accounting: `src/handlers/chat/nonstream.js`
 
@@ -39,14 +40,14 @@ The service is a thin HTTP proxy that exposes OpenAI‑compatible endpoints unde
 
 ### Actual Tech Stack
 
-| Category  | Technology          | Version/Notes                                      |
-| --------- | ------------------- | -------------------------------------------------- |
-| Runtime   | Node.js             | engines `>=22` (see `package.json`)                |
-| Framework | Express             | 4.x                                                |
-| Tests     | Vitest              | Unit/integration                                   |
-| E2E       | Playwright Test     | SSE contract and CORS checks                       |
-| Container | Docker, Compose     | Compose labels integrate with Traefik              |
-| Infra     | Traefik, systemd    | ForwardAuth on `127.0.0.1:18080` in production     |
+| Category  | Technology       | Version/Notes                                  |
+| --------- | ---------------- | ---------------------------------------------- |
+| Runtime   | Node.js          | engines `>=22` (see `package.json`)            |
+| Framework | Express          | 4.x                                            |
+| Tests     | Vitest           | Unit/integration                               |
+| E2E       | Playwright Test  | SSE contract and CORS checks                   |
+| Container | Docker, Compose  | Compose labels integrate with Traefik          |
+| Infra     | Traefik, systemd | ForwardAuth on `127.0.0.1:18080` in production |
 
 ### Repository Structure Reality Check
 
@@ -173,4 +174,3 @@ docker compose up -d --build  # Build + run container
 - When `PROXY_PROTECT_MODELS=true`, clients must send `Authorization: Bearer $PROXY_API_KEY` even for `/v1/models`.
 - Streaming path emits keepalives at `PROXY_SSE_KEEPALIVE_MS`; set `X-No-Keepalive: 1` to suppress in some clients.
 - `PROXY_KILL_ON_DISCONNECT=true` will terminate the child on client disconnect; otherwise the child may complete in background.
-

@@ -54,6 +54,7 @@ Purpose: quantify success and guard reliability for the proxy. These targets are
 - Edge health: Successful `GET /v1/models` and `POST /v1/chat/completions` (non‑stream) via edge smoke after each deploy.
 
 Measurement notes
+
 - Use structured access logs for p95 latency approximations (`dur_ms` field) and error rates; aggregate with your log pipeline.
 - For TTFC, use Playwright E2E or client metrics; optional lightweight server metric can be added later.
 - Maintain an incident log referencing the Operational Runbook.
@@ -239,27 +240,28 @@ curl -s "$BASE/v1/completions" \
 
 Recommended defaults per environment. Adjust as traffic and client mix evolve.
 
-| Setting | Dev (local/dev stack) | Prod |
-| --- | --- | --- |
-| `PROXY_ENV` | `dev` | `""` (non‑dev) |
-| Advertised models | `codev-5*` | `codex-5*` |
-| `PROXY_ENABLE_CORS` | `true` | `true` (or restrict at edge) |
-| `PROXY_PROTECT_MODELS` | `false` | `true` |
-| `PROXY_RATE_LIMIT_ENABLED` | `false` | `true` (window 60s, max 60 as baseline) |
-| `PROXY_RATE_LIMIT_WINDOW_MS` | `60000` | `60000` |
-| `PROXY_RATE_LIMIT_MAX` | `60` | `60` (tune with edge RL) |
-| `PROXY_SSE_KEEPALIVE_MS` | `15000` | `15000` (tune with ingress/edge timeouts) |
-| `PROXY_SSE_MAX_CONCURRENCY` | `4` | `16` (start small; scale replicas) |
-| `PROXY_KILL_ON_DISCONNECT` | `false` | `true` |
-| `PROXY_STOP_AFTER_TOOLS` | `false` | `false` (enable only for tool‑strict clients) |
-| `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` | `false` | `false` (enable per client need) |
-| `PROXY_STOP_AFTER_TOOLS_MODE` | `burst` | `burst` |
-| `PROXY_STOP_AFTER_TOOLS_GRACE_MS` | `300` | `300` |
-| `PROXY_TOOL_BLOCK_MAX` | `0` | `0` (cap only if needed) |
-| `CODEX_HOME` | `.codev/` | `.codex-api/` (writable) |
-| `PROXY_CODEX_WORKDIR` | `/tmp/codex-work` | `/tmp/codex-work` |
+| Setting                           | Dev (local/dev stack) | Prod                                          |
+| --------------------------------- | --------------------- | --------------------------------------------- |
+| `PROXY_ENV`                       | `dev`                 | `""` (non‑dev)                                |
+| Advertised models                 | `codev-5*`            | `codex-5*`                                    |
+| `PROXY_ENABLE_CORS`               | `true`                | `true` (or restrict at edge)                  |
+| `PROXY_PROTECT_MODELS`            | `false`               | `true`                                        |
+| `PROXY_RATE_LIMIT_ENABLED`        | `false`               | `true` (window 60s, max 60 as baseline)       |
+| `PROXY_RATE_LIMIT_WINDOW_MS`      | `60000`               | `60000`                                       |
+| `PROXY_RATE_LIMIT_MAX`            | `60`                  | `60` (tune with edge RL)                      |
+| `PROXY_SSE_KEEPALIVE_MS`          | `15000`               | `15000` (tune with ingress/edge timeouts)     |
+| `PROXY_SSE_MAX_CONCURRENCY`       | `4`                   | `16` (start small; scale replicas)            |
+| `PROXY_KILL_ON_DISCONNECT`        | `false`               | `true`                                        |
+| `PROXY_STOP_AFTER_TOOLS`          | `false`               | `false` (enable only for tool‑strict clients) |
+| `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` | `false`               | `false` (enable per client need)              |
+| `PROXY_STOP_AFTER_TOOLS_MODE`     | `burst`               | `burst`                                       |
+| `PROXY_STOP_AFTER_TOOLS_GRACE_MS` | `300`                 | `300`                                         |
+| `PROXY_TOOL_BLOCK_MAX`            | `0`                   | `0` (cap only if needed)                      |
+| `CODEX_HOME`                      | `.codev/`             | `.codex-api/` (writable)                      |
+| `PROXY_CODEX_WORKDIR`             | `/tmp/codex-work`     | `/tmp/codex-work`                             |
 
 Notes
+
 - Prefer rate limiting and strict CORS at the edge (Traefik/Cloudflare); keep origin permissive only when browser clients call it directly.
 - Keep `.codex-api/` writable in prod for rollout/session persistence.
 - After any compose/label change: rebuild with force‑recreate and run `npm run smoke:prod`.
