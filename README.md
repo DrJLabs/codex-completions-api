@@ -133,6 +133,9 @@ Model IDs in dev vs prod:
 - Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`.
 - Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`.
 - Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5`) with the implied reasoning effort.
+- Do **not** override `CODEX_MODEL` in dev to force a specific reasoning tier. Leave it unset so the proxy maps
+  `codev-5-*` requests to `gpt-5` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
+  `400 Unsupported model` otherwise.
 
 Notes:
 
