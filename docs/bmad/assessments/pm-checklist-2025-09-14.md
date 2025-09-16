@@ -15,17 +15,17 @@ Top Concerns: Missing business goals/KPIs; UX sections mostly N/A; expand NFRs a
 
 ## Category Analysis
 
-| Category                         | Status  | Critical Issues |
-| -------------------------------- | ------- | --------------- |
-| 1. Problem Definition & Context  | PARTIAL | No explicit business goals/KPIs; minimal user persona context. |
-| 2. MVP Scope Definition          | PASS    | Scope bounded to OpenAI parity + SSE contract + smoke tests. |
-| 3. User Experience Requirements  | N/A     | Backend proxy; no UI flows. |
-| 4. Functional Requirements       | PASS    | Routes, verbs, error envelopes, examples present. |
+| Category                         | Status  | Critical Issues                                                                  |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| 1. Problem Definition & Context  | PARTIAL | No explicit business goals/KPIs; minimal user persona context.                   |
+| 2. MVP Scope Definition          | PASS    | Scope bounded to OpenAI parity + SSE contract + smoke tests.                     |
+| 3. User Experience Requirements  | N/A     | Backend proxy; no UI flows.                                                      |
+| 4. Functional Requirements       | PASS    | Routes, verbs, error envelopes, examples present.                                |
 | 5. Non-Functional Requirements   | PARTIAL | Basic SLI targets noted; add throughput, availability targets, and env profiles. |
-| 6. Epic & Story Structure        | PARTIAL | Stories not enumerated; can derive from parity gaps and ops improvements. |
-| 7. Technical Guidance            | PASS    | Clear architectural constraints and integration notes. |
-| 8. Cross-Functional Requirements | PARTIAL | Ops/monitoring guidance present but thin; data is N/A. |
-| 9. Clarity & Communication       | PASS    | Docs are structured and versioned; references included. |
+| 6. Epic & Story Structure        | PARTIAL | Stories not enumerated; can derive from parity gaps and ops improvements.        |
+| 7. Technical Guidance            | PASS    | Clear architectural constraints and integration notes.                           |
+| 8. Cross-Functional Requirements | PARTIAL | Ops/monitoring guidance present but thin; data is N/A.                           |
+| 9. Clarity & Communication       | PASS    | Docs are structured and versioned; references included.                          |
 
 ## Top Issues by Priority
 
@@ -60,4 +60,3 @@ Top Concerns: Missing business goals/KPIs; UX sections mostly N/A; expand NFRs a
 ## Final Decision
 
 NEEDS REFINEMENT (non‑blocking) — Ready for architecture, with PM follow‑ups above.
-

@@ -12,17 +12,17 @@ Status: PASS (architecture); PARTIAL (reliability/operability); PARTIAL (formal 
 
 ## Section Results (Pass Rates)
 
-| Section                           | Status   | Notes |
-| --------------------------------- | -------- | ----- |
-| 1. Requirements Alignment         | PARTIAL  | PRD focuses on API parity and smoke criteria; lacks problem statement/metrics. (`docs/bmad/prd.md`) |
-| 2. Architecture Completeness      | PASS     | Clear module boundaries, routes, handlers, SSE behavior, envs. (`docs/bmad/architecture.md`) |
-| 3. Security Model                 | PASS     | Bearer, optional models gating, ForwardAuth documented. (`src/routes/models.js`, `auth/server.mjs`) |
-| 4. Performance                    | PARTIAL  | SSE TTFC target noted; broader perf/throughput not quantified; no load profile. |
-| 5. Reliability & Failure Modes    | PARTIAL  | Timeouts/idle paths covered; no explicit rollback/runbook for degraded child CLI or Traefik outages. |
-| 6. Observability                  | PARTIAL  | Structured JSON access log; no metrics/export or error taxonomy dashboard. |
-| 7. Data & State                   | N/A      | Stateless; no DB. |
-| 8. Delivery & Verification        | PASS     | `verify:all`, integration + E2E tests; smoke for dev/prod paths. |
-| 9. Security Hardening             | PARTIAL  | CORS defaults permissive by design; guidelines present but not parameterized per env. |
+| Section                        | Status  | Notes                                                                                                |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------- |
+| 1. Requirements Alignment      | PARTIAL | PRD focuses on API parity and smoke criteria; lacks problem statement/metrics. (`docs/bmad/prd.md`)  |
+| 2. Architecture Completeness   | PASS    | Clear module boundaries, routes, handlers, SSE behavior, envs. (`docs/bmad/architecture.md`)         |
+| 3. Security Model              | PASS    | Bearer, optional models gating, ForwardAuth documented. (`src/routes/models.js`, `auth/server.mjs`)  |
+| 4. Performance                 | PARTIAL | SSE TTFC target noted; broader perf/throughput not quantified; no load profile.                      |
+| 5. Reliability & Failure Modes | PARTIAL | Timeouts/idle paths covered; no explicit rollback/runbook for degraded child CLI or Traefik outages. |
+| 6. Observability               | PARTIAL | Structured JSON access log; no metrics/export or error taxonomy dashboard.                           |
+| 7. Data & State                | N/A     | Stateless; no DB.                                                                                    |
+| 8. Delivery & Verification     | PASS    | `verify:all`, integration + E2E tests; smoke for dev/prod paths.                                     |
+| 9. Security Hardening          | PARTIAL | CORS defaults permissive by design; guidelines present but not parameterized per env.                |
 
 ## Evidence Highlights
 
@@ -61,4 +61,3 @@ Appendix — Notable Gaps Tracked
 - No DB/state by design → N/A for data modeling.
 - No explicit rate-limit headers beyond 429 + Retry-After.
 - No automated health probes for child CLI beyond request-scoped timeouts.
-
