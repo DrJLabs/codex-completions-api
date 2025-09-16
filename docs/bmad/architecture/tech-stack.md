@@ -71,6 +71,9 @@ updated: 2025-09-13
 # Model IDs
 
 - DEV advertises `codev-5{,-low,-medium,-high,-minimal}`; PROD advertises `codex-5{,…}`; both prefixes accepted everywhere, normalized to runtime `CODEX_MODEL`.
+- Runtime `CODEX_MODEL` should stay at the default (`gpt-5`). Dev API keys cannot invoke `gpt-5-minimal`
+  directly; forcing `CODEX_MODEL=gpt-5-minimal` results in `400 Unsupported model` responses. Let the
+  proxy handle reasoning effort mapping instead.
 
 # Operational Notes
 
