@@ -38,6 +38,7 @@ blob-report/
 
 # Test temp artifacts
 .tmp-*.ndjson
+.tmp*
 
 # Additional temp logs
 .tmp-*.log
