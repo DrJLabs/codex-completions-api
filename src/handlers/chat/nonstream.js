@@ -39,21 +39,28 @@ const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 
 const respondWithJson = (res, statusCode, payload) => {
+  if (res.headersSent) {
+    console.error("[proxy][chat.nonstream] attempted to send JSON after headers were already sent");
+    return;
+  }
+
   try {
-    if (!res.headersSent) res.status(statusCode);
-    res.json(payload);
+    res.status(statusCode).json(payload);
+    return;
   } catch (err) {
-    if (!res.headersSent) {
-      try {
-        res.status(statusCode);
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify(payload));
-        return;
-      } catch (endErr) {
-        console.error("[proxy][chat.nonstream] failed to flush JSON response", endErr);
-      }
-    }
-    console.error("[proxy][chat.nonstream] error sending JSON response", err);
+    console.error("[proxy][chat.nonstream] res.json() failed, falling back", err);
+  }
+
+  if (res.headersSent) {
+    console.error("[proxy][chat.nonstream] headers sent during fallback attempt; cannot recover");
+    return;
+  }
+
+  try {
+    res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(payload));
+  } catch (fallbackErr) {
+    console.error("[proxy][chat.nonstream] fallback JSON response failed", fallbackErr);
   }
 };
 
@@ -389,10 +396,8 @@ export async function postChatNonStream(req, res) {
       },
     });
 
-  // Stabilize: respond on stdout end/close or process close, whichever happens first
+  // Stabilize: respond when stdout ends or the process exits, whichever happens first
   child.stdout.on("end", finalizeSuccess);
-  child.stdout.on("close", finalizeSuccess);
-  child.on("close", finalizeSuccess);
   child.on("exit", finalizeSuccess);
   child.on("error", (error) => {
     console.error("[proxy][chat.nonstream] child process error", error);
