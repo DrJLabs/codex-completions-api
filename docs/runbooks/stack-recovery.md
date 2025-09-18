@@ -1,14 +1,18 @@
-**Stack Recovery**
+# Stack Recovery
 
-- Purpose: Snapshot and roll back prod/dev containers on a shared host.
-- Scope: Works with `docker-compose.yml` (prod, service `app`) and `compose.dev.stack.yml` (dev, service `app-dev`).
+Snapshot and roll back prod/dev containers on a shared host backed by Docker Compose.
 
-**Prereqs**
+## Scope
+
+- Prod stack: `docker-compose.yml` service `app`.
+- Dev stack: `compose.dev.stack.yml` service `app-dev`.
+
+## Prerequisites
 
 - Docker Compose v2 (`docker compose`).
 - Disk space for optional tar backups under `~/.cache/codex-backups`.
 
-**Snapshot (before risky changes)**
+## Snapshot (before risky changes)
 
 - Command: `bash scripts/stack-snapshot.sh`
 - What it does:
@@ -21,7 +25,7 @@
     - `~/.cache/codex-backups/codex-latest-prod.tarpath` (and `dev.tarpath`)
   - Adds repo record: `releases/stack-images-YYYY-MM-DD.lock.json` and updates `releases/stack-images.latest.path`.
 
-**Rollback (fast path)**
+## Rollback (fast path)
 
 - Command: `bash scripts/stack-rollback.sh --env prod|dev|both`
 - Behavior:
@@ -30,19 +34,19 @@
   - Retags canonical tag (`codex-completions-api:latest` for prod, `:dev` for dev).
   - Runs `docker compose up -d --no-build` for the service.
 
-**Rollback (from explicit lock file)**
+## Rollback (from explicit lock file)
 
 - Example: `bash scripts/stack-rollback.sh --from-lock releases/stack-images-2025-09-12.lock.json --env prod`
 
-**Notes**
+## Notes
 
 - Compose files still have `build:` set; rollback uses `--no-build` to avoid a rebuild.
 - Avoid `--build` when reverting; it would create a new image with the same tag.
 - For “belt and suspenders”, run snapshot immediately before any rebuild or `port:deploy`.
 
-**Troubleshooting**
+## Troubleshooting
 
-- Image not present and no tar: you can fetch from a registry if pushed, or rebuild from the matching commit and retag to the archived tag in `releases/*lock.json`.
+- Image not present and no tar: fetch from a registry if pushed, or rebuild from the matching commit and retag to the archived tag in `releases/*lock.json`.
 - Verify running versions:
   - Prod: `docker compose -f docker-compose.yml ps`
   - Dev: `docker compose -f compose.dev.stack.yml ps`

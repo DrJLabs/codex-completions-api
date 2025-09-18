@@ -17,6 +17,7 @@
     "smoke:dev-edge": "bash scripts/dev-edge-smoke.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "lint:runbooks": "prettier -c docs/runbooks",
     "format": "prettier -w .",
     "format:check": "prettier -c .",
     "prepare": "husky install",
