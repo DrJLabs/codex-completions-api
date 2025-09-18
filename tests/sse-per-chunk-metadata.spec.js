@@ -116,6 +116,7 @@ test("usage chunk also has full envelope and order is finalizer → usage → [D
   expect(typeof usage.id).toBe("string");
   expect(typeof usage.created).toBe("number");
   expect(typeof usage.model).toBe("string");
+  expect(usage.usage?.emission_trigger).toBe("token_count");
 
   // order: finalizer first, then usage, then [DONE]
   expect(finalizerIdx).toBeLessThan(usageIdx);

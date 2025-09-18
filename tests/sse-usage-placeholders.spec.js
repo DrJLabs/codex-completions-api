@@ -47,4 +47,5 @@ test("final usage chunk includes latency placeholders as nulls when include_usag
   expect(Object.prototype.hasOwnProperty.call(usage, "throughput_after_first_token")).toBe(true);
   expect(usage.time_to_first_token).toBeNull();
   expect(usage.throughput_after_first_token).toBeNull();
+  expect(usage.emission_trigger).toBe("token_count");
 });

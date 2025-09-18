@@ -289,8 +289,18 @@ export async function postChatStream(req, res) {
   let cutTimer = null;
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-  let ptCount = 0,
-    ctCount = 0;
+  let finishSent = false;
+  let finishReasonState = "stop";
+  let finalized = false;
+  const usageState = {
+    prompt: 0,
+    completion: 0,
+    emitted: false,
+    logged: false,
+    trigger: null,
+    countsSource: "estimate",
+    providerSupplied: false,
+  };
   let streamIdleTimer;
   const resetStreamIdle = () => {
     if (streamIdleTimer) clearTimeout(streamIdleTimer);
@@ -301,6 +311,117 @@ export async function postChatStream(req, res) {
     }, STREAM_IDLE_TIMEOUT_MS);
   };
   resetStreamIdle();
+
+  const updateUsageCounts = (trigger, { prompt, completion } = {}, { provider = false } = {}) => {
+    const promptNum = Number.isFinite(prompt) ? Number(prompt) : NaN;
+    const completionNum = Number.isFinite(completion) ? Number(completion) : NaN;
+    let touched = false;
+    if (!Number.isNaN(promptNum) && promptNum >= 0) {
+      usageState.prompt = provider ? promptNum : Math.max(usageState.prompt, promptNum);
+      touched = true;
+    }
+    if (!Number.isNaN(completionNum) && completionNum >= 0) {
+      usageState.completion = provider
+        ? completionNum
+        : Math.max(usageState.completion, completionNum);
+      touched = true;
+    }
+    if (touched) usageState.countsSource = "event";
+    if (!usageState.trigger) usageState.trigger = trigger;
+    if (provider) usageState.providerSupplied = true;
+  };
+
+  const resolvedCounts = () => {
+    const estimatedCompletion = Math.ceil(emitted.length / 4);
+    const usingEvent = usageState.countsSource === "event";
+    const promptTokens = usingEvent ? usageState.prompt : promptTokensEst;
+    const completionTokens = usingEvent ? usageState.completion : estimatedCompletion;
+    const totalTokens = promptTokens + completionTokens;
+    return { promptTokens, completionTokens, totalTokens, estimatedCompletion };
+  };
+
+  const emitFinishChunk = (reason = "stop") => {
+    if (finishSent) return;
+    finishSent = true;
+    finishReasonState = reason;
+    sendChunk({
+      choices: [{ index: 0, delta: {}, finish_reason: reason }],
+      usage: null,
+    });
+  };
+
+  const emitUsageChunk = (trigger) => {
+    if (usageState.emitted || !includeUsage) return;
+    const { promptTokens, completionTokens, totalTokens } = resolvedCounts();
+    usageState.emitted = true;
+    sendChunk({
+      choices: [],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        // Story 2.6 placeholders remain
+        time_to_first_token: null,
+        throughput_after_first_token: null,
+        emission_trigger: trigger,
+      },
+    });
+  };
+
+  const logUsage = (trigger) => {
+    if (usageState.logged) return;
+    const { promptTokens, completionTokens, totalTokens, estimatedCompletion } = resolvedCounts();
+    const emittedAtMs = Date.now() - started;
+    try {
+      appendUsage({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        method: "POST",
+        requested_model: requestedModel,
+        effective_model: effectiveModel,
+        stream: true,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        prompt_tokens_est: promptTokensEst,
+        completion_tokens_est: estimatedCompletion,
+        total_tokens_est: promptTokensEst + estimatedCompletion,
+        duration_ms: emittedAtMs,
+        status: 200,
+        user_agent: req.headers["user-agent"] || "",
+        emission_trigger: trigger,
+        emitted_at_ms: emittedAtMs,
+        counts_source: usageState.countsSource,
+        usage_included: includeUsage,
+        provider_supplied: usageState.providerSupplied,
+      });
+    } catch (e) {
+      if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
+    }
+    usageState.logged = true;
+  };
+
+  const finalizeStream = ({ reason, trigger } = {}) => {
+    if (finalized) return;
+    finalized = true;
+    const resolvedTrigger =
+      trigger ||
+      usageState.trigger ||
+      (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
+    const finalReason =
+      reason || finishReasonState || (usageState.trigger === "token_count" ? "length" : "stop");
+    if (!finishSent) emitFinishChunk(finalReason);
+    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
+    if (!usageState.logged) logUsage(resolvedTrigger);
+    try {
+      finishSSE();
+    } catch {}
+    cleanupStream();
+    try {
+      child.kill("SIGTERM");
+    } catch {}
+  };
 
   child.stdout.on("data", (chunk) => {
     resetStreamIdle();
@@ -444,64 +565,41 @@ export async function postChatStream(req, res) {
             }
           }
         } else if (t === "token_count") {
-          // Record counts but do NOT emit usage yet; per OpenAI parity
-          // we send the finish_reason chunk first, then the final usage chunk.
-          ptCount = Number(evt.msg?.prompt_tokens || 0);
-          ctCount = Number(evt.msg?.completion_tokens || 0);
+          const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
+          const completionTokens = Number(evt.msg?.completion_tokens ?? evt.msg?.completionTokens);
+          updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
+        } else if (t === "usage") {
+          const promptTokens = Number(
+            evt.msg?.prompt_tokens ?? evt.msg?.usage?.prompt_tokens ?? evt.usage?.prompt_tokens
+          );
+          const completionTokens = Number(
+            evt.msg?.completion_tokens ??
+              evt.msg?.usage?.completion_tokens ??
+              evt.usage?.completion_tokens
+          );
+          updateUsageCounts(
+            "provider",
+            { prompt: promptTokens, completion: completionTokens },
+            { provider: true }
+          );
         } else if (t === "task_complete") {
-          try {
-            if (IS_DEV_ENV) {
-              try {
-                console.log("[dev][response][chat][stream] content=\n" + emitted);
-              } catch (e) {
-                console.error("[dev][response][chat][stream] error:", e);
-              }
-            }
-            appendUsage({
-              ts: Date.now(),
-              req_id: reqId,
-              route: "/v1/chat/completions",
-              method: "POST",
-              requested_model: requestedModel,
-              effective_model: effectiveModel,
-              stream: true,
-              prompt_tokens_est: ptCount || promptTokensEst,
-              completion_tokens_est: ctCount || Math.ceil(emitted.length / 4),
-              total_tokens_est:
-                (ptCount || promptTokensEst) + (ctCount || Math.ceil(emitted.length / 4)),
-              duration_ms: Date.now() - started,
-              status: 200,
-              user_agent: req.headers["user-agent"] || "",
+          const finishReason = String(evt.msg?.finish_reason || evt.msg?.finishReason || "stop");
+          const promptTokens = Number(
+            evt.msg?.prompt_tokens ?? evt.msg?.token_count?.prompt_tokens
+          );
+          const completionTokens = Number(
+            evt.msg?.completion_tokens ?? evt.msg?.token_count?.completion_tokens
+          );
+          if (Number.isFinite(promptTokens) || Number.isFinite(completionTokens)) {
+            updateUsageCounts(usageState.trigger || "task_complete", {
+              prompt: promptTokens,
+              completion: completionTokens,
             });
-          } catch (e) {
-            if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage error:", e);
+          } else if (!usageState.trigger) {
+            usageState.trigger = "task_complete";
           }
-          // Emit a finalizer chunk with finish_reason, then optional usage chunk
-          sendChunk({
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-            usage: null,
-          });
-          if (includeUsage) {
-            const p = ptCount || promptTokensEst;
-            const c = ctCount || Math.ceil(emitted.length / 4);
-            sendChunk({
-              choices: [],
-              usage: {
-                prompt_tokens: p,
-                completion_tokens: c,
-                total_tokens: p + c,
-                // Story 2.6 — Phase H: placeholders for future latency metrics
-                time_to_first_token: null,
-                throughput_after_first_token: null,
-              },
-            });
-          }
-          try {
-            finishSSE();
-          } catch {}
-          try {
-            child.kill("SIGTERM");
-          } catch {}
+          emitFinishChunk(finishReason);
+          finalizeStream({ reason: finishReason, trigger: usageState.trigger || "task_complete" });
           return;
         } else if (t === "error") {
           if (DEBUG_PROTO)
@@ -537,12 +635,14 @@ export async function postChatStream(req, res) {
     child.stdin.write(JSON.stringify(submission) + "\n");
   } catch {}
   child.on("close", () => {
+    if (finalized) return;
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
       sendChunk({
         choices: [{ index: 0, delta: { content }, finish_reason: null }],
         usage: null,
       });
+      sentAny = true;
       if (IS_DEV_ENV) {
         try {
           console.log("[dev][response][chat][stream] content=\n" + content);
@@ -551,8 +651,13 @@ export async function postChatStream(req, res) {
         }
       }
     }
-    finishSSE();
-    cleanupStream();
+    const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
+    const fallbackReason = finishSent
+      ? finishReasonState
+      : usageState.trigger === "token_count"
+        ? "length"
+        : "stop";
+    finalizeStream({ reason: fallbackReason, trigger });
   });
 }
 
