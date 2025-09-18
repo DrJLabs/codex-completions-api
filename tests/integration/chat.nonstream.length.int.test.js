@@ -14,8 +14,7 @@ afterAll(async () => {
   await stopServer(child);
 });
 
-test.skip("non-stream finish_reason is 'length' when backend exits without task_complete [temporarily skipped — flaky; see docs/bmad/issues/2025-09-14-nonstream-length-flake.md]", async () => {
-  // Stabilize against rare socket-closed race when proto terminates quickly
+test("non-stream finish_reason is 'length' when backend exits without task_complete", async () => {
   async function postOnce() {
     return fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
       method: "POST",
@@ -27,20 +26,28 @@ test.skip("non-stream finish_reason is 'length' when backend exits without task_
       }),
     });
   }
-  let r;
-  try {
-    r = await postOnce();
-  } catch {
-    await wait(100);
-    r = await postOnce();
+
+  for (let i = 0; i < 5; i += 1) {
+    let response;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        response = await postOnce();
+        break;
+      } catch (err) {
+        if (attempt === 1) throw err;
+        await wait(100);
+      }
+    }
+
+    expect(response.ok).toBeTruthy();
+    const payload = await response.json();
+    expect(payload?.object).toBe("chat.completion");
+    const choice = payload?.choices?.[0];
+    expect(choice?.finish_reason).toBe("length");
+    expect(typeof payload?.usage?.prompt_tokens).toBe("number");
+    expect(typeof payload?.usage?.completion_tokens).toBe("number");
+    expect(typeof payload?.usage?.total_tokens).toBe("number");
+
+    if (i < 4) await wait(50);
   }
-  expect(r.ok).toBeTruthy();
-  const j = await r.json();
-  expect(j?.object).toBe("chat.completion");
-  const ch = j?.choices?.[0];
-  expect(ch?.finish_reason).toBe("length");
-  // usage should still be present via estimator fallback
-  expect(typeof j?.usage?.prompt_tokens).toBe("number");
-  expect(typeof j?.usage?.completion_tokens).toBe("number");
-  expect(typeof j?.usage?.total_tokens).toBe("number");
 });
