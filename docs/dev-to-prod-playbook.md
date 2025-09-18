@@ -127,14 +127,34 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
 4. Deploy to PROD
 
 - On the production host, from repo root:
-  - `docker compose up -d --build --force-recreate`
-  - `npm run smoke:prod` (the helper reads `DOMAIN`/`APP_DOMAIN` and `PROXY_API_KEY` from `.env`; override via env vars if needed).
+- `docker compose up -d --build --force-recreate`
+- `npm run smoke:prod` (the helper reads `DOMAIN`/`APP_DOMAIN` and `PROXY_API_KEY` from `.env`; override via env vars if needed).
 - If any label or Dockerfile changes were part of the diff, also run `npm run test:live` against the public endpoint.
 
 5. Post‑deploy verification and rollback
 
 - Verify SSE streaming stability and that `[DONE]` terminator is received.
 - If failure occurs, use `docker compose logs -f` and revert to previous image/tag if needed.
+
+### Runbook: Streaming usage early emission checks
+
+1. Reproduce deterministic flows locally:
+
+   ```bash
+   npx vitest run tests/integration/stream.usage-token-count.int.test.js --reporter=default
+   npx vitest run tests/integration/stream.provider-usage.int.test.js --reporter=default
+   ```
+
+   - The token-count shim exits without `task_complete`; expect the SSE transcript to show a `finish_reason:"length"` frame followed by a usage chunk containing `"emission_trigger":"token_count"`.
+   - The provider shim emits a usage event even when `include_usage:false`; the proxy must log it (`emission_trigger:"provider"`) but must not forward an additional usage chunk to the client.
+
+2. Inspect `TOKEN_LOG_PATH` (default `${TMPDIR}/codex-usage.ndjson`) for recent entries:
+   - Confirm each request logs exactly one usage record with `usage_included` reflecting client intent and `emission_trigger` set to `token_count`, `task_complete`, or `provider`.
+   - Watch for duplicate request IDs or mixed triggers after deployment; run a short script to group counts per request if needed.
+
+3. Smoke dev edge (`scripts/dev-edge-smoke.sh`) once changes are deployed:
+   - Capture the streaming transcript and verify the usage chunk appears before `[DONE]` with the expected `emission_trigger`.
+   - Record `codex-usage.ndjson` samples and attach them to GH #73 (or successor) as evidence.
 
 ## Test Selection Policy (applies before porting)
 
