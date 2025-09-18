@@ -114,7 +114,7 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
   - Models and Health routers remain public (no auth) exactly as in prod compose.
 - Confirm `.codex-api/` is mounted read/write in PROD and present in repo (tracked seed files only; secrets managed out-of-band).
   - Seed it with `npm run port:sync-config` on the production host (or copy the two files manually). The script does not copy `auth.json` or any credentials.
-  - The bearer credential is sourced from `/home/drj/.codex/auth.json`; after rotating it, copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
+  - The bearer credential is sourced from `~/.codex/auth.json`; after rotating it, copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
 
 3. Dry‑run production readiness checks
 

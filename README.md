@@ -56,7 +56,7 @@ Codex HOME (production):
   - `config.toml` (Codex client config)
   - `AGENTS.md` (optional)
   - `auth.json` and any other credentials required by Codex (if applicable)
-  - The canonical bearer credential lives at `/home/drj/.codex/auth.json`; after each rotation copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
+  - The canonical bearer credential lives at `~/.codex/auth.json`; after each rotation copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
 
 #### Sync Dev Config → Prod (`.codev` → `.codex-api`)
 
@@ -79,7 +79,7 @@ To port your dev Codex HOME config and agents into the production Codex HOME saf
 Notes:
 
 - The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
-  - For this project the source of truth is `/home/drj/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
+  - For this project the source of truth is `~/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
 - See `docs/dev-to-prod-playbook.md` for the full Dev → Prod procedure including optional checks (`npm run port:check`) and end‑to‑end smoke (`npm run port:prod`).
 
 ### Development

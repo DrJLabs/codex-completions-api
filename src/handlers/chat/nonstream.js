@@ -377,6 +377,17 @@ export async function postChatNonStream(req, res) {
   });
 
   const finalizeSuccess = () => finalizeResponse();
+  const finalizeFailure = (message) =>
+    finalizeResponse({
+      statusCode: 500,
+      errorBody: {
+        error: {
+          message,
+          type: "server_error",
+          code: "backend_error",
+        },
+      },
+    });
 
   // Stabilize: respond on stdout end/close or process close, whichever happens first
   child.stdout.on("end", finalizeSuccess);
@@ -385,11 +396,11 @@ export async function postChatNonStream(req, res) {
   child.on("exit", finalizeSuccess);
   child.on("error", (error) => {
     console.error("[proxy][chat.nonstream] child process error", error);
-    finalizeSuccess();
+    finalizeFailure("Internal server error from backend process.");
   });
   child.stdout.on("error", (error) => {
     console.error("[proxy][chat.nonstream] stdout error", error);
-    finalizeSuccess();
+    finalizeFailure("Internal server error from backend stdout.");
   });
   try {
     const submission = {
