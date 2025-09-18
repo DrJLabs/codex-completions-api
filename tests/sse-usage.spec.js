@@ -52,17 +52,18 @@ test("include_usage emits a final usage chunk before [DONE]", async ({ baseURL }
   expect(frames[frames.length - 1]?.trim()).toBe("[DONE]");
 
   // Find a usage chunk with empty choices
+  let usageChunk = null;
   const usageIdx = frames.findIndex((d) => {
     try {
       const o = JSON.parse(d);
-      return (
-        o?.object === "chat.completion.chunk" &&
+      return o?.object === "chat.completion.chunk" &&
         Array.isArray(o?.choices) &&
         o.choices.length === 0 &&
         o?.usage &&
         typeof o.usage.prompt_tokens === "number" &&
         typeof o.usage.total_tokens === "number"
-      );
+        ? ((usageChunk = o), true)
+        : false;
     } catch {
       return false;
     }
@@ -82,4 +83,5 @@ test("include_usage emits a final usage chunk before [DONE]", async ({ baseURL }
     }
   });
   expect(hasLegacyUsageEvent).toBeFalsy();
+  expect(usageChunk.usage?.emission_trigger).toBe("token_count");
 });
