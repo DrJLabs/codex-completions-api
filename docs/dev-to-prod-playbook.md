@@ -102,7 +102,7 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
 
 2. Inspect application logs for `[proxy][chat.nonstream]` errors. Recent fixes log child process/stdout errors before returning a best-effort JSON body with `finish_reason:"length"`.
 3. Confirm idle watchdog behaviour: ensure `PROXY_PROTO_IDLE_MS` is large enough for local shims and that the handler responded before canceling the timer (look for 504 responses in logs).
-4. Run `scripts/dev-edge-smoke.sh` to confirm dev edge parity still succeeds with usage fields populated.
+4. Run `scripts/dev-edge-smoke.sh` to confirm dev edge parity still succeeds with usage fields populated (the script auto-loads `DEV_DOMAIN` and `PROXY_API_KEY` from `.env.dev`).
 5. If still flaky, enable proto debugging (`PROXY_DEBUG_PROTO=true`) and capture `appendProtoEvent` logs to see whether the proto emitted `task_complete` or exited unexpectedly.
 
 6. Map DEV settings to PROD
@@ -128,7 +128,7 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
 
 - On the production host, from repo root:
   - `docker compose up -d --build --force-recreate`
-  - `npm run smoke:prod` with `DOMAIN=codex-api.onemainarmy.com` and optionally `KEY=sk-...` for chat tests.
+  - `npm run smoke:prod` (the helper reads `DOMAIN`/`APP_DOMAIN` and `PROXY_API_KEY` from `.env`; override via env vars if needed).
 - If any label or Dockerfile changes were part of the diff, also run `npm run test:live` against the public endpoint.
 
 5. Post‑deploy verification and rollback

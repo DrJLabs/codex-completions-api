@@ -50,6 +50,7 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
   - Models: `curl -s $BASE/v1/models | jq .` → includes `codex-5`.
   - Chat (non‑stream): POST `/v1/chat/completions` with bearer → JSON reply.
   - Chat (stream): `stream:true` returns role-first delta + `[DONE]`.
+- Runbook lint: `npm run lint:runbooks` validates `docs/runbooks/**` stay formatted.
 
 ## Commit & Pull Request Guidelines
 
@@ -75,6 +76,7 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
   - `scripts/prod-smoke.sh` reads `.env` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
   - `scripts/dev-smoke.sh` reads `.env.dev` when present and uses `KEY="${KEY:-${PROXY_API_KEY:-}}"`.
   - `scripts/test-live.sh` already loads `.env` and prefers `KEY`, then `PROXY_API_KEY`.
+- Edge domains are sourced the same way: set `DEV_DOMAIN` in `.env.dev` and `DOMAIN`/`APP_DOMAIN` in `.env`. The smoke helpers read those files automatically, so keep them accurate to avoid skipping edge checks.
 - If neither is set, auth‑required checks are skipped. To force auth tests locally, export `KEY=sk-...` or set it in the appropriate `.env*` file.
 
 ## Reliability & Streaming Notes

@@ -12,7 +12,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -f "$ROOT_DIR/.env" ]]; then . "$ROOT_DIR/.env"; fi
 
-DOMAIN="${DOMAIN:-}"; if [[ -z "$DOMAIN" ]]; then echo "ERROR: DOMAIN is required" >&2; exit 2; fi
+DOMAIN="${DOMAIN:-${APP_DOMAIN:-}}"; if [[ -z "$DOMAIN" ]]; then echo "ERROR: DOMAIN (or APP_DOMAIN in .env) is required" >&2; exit 2; fi
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
