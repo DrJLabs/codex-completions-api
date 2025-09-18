@@ -289,8 +289,6 @@ export async function postChatStream(req, res) {
   let cutTimer = null;
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
-  let ptCount = 0,
-    ctCount = 0;
   let finishSent = false;
   let finishReasonState = "stop";
   let finalized = false;
@@ -317,22 +315,27 @@ export async function postChatStream(req, res) {
   const updateUsageCounts = (trigger, { prompt, completion } = {}, { provider = false } = {}) => {
     const promptNum = Number.isFinite(prompt) ? Number(prompt) : NaN;
     const completionNum = Number.isFinite(completion) ? Number(completion) : NaN;
+    let touched = false;
     if (!Number.isNaN(promptNum) && promptNum >= 0) {
-      usageState.prompt = Math.max(usageState.prompt, promptNum);
-      usageState.countsSource = "event";
+      usageState.prompt = provider ? promptNum : Math.max(usageState.prompt, promptNum);
+      touched = true;
     }
     if (!Number.isNaN(completionNum) && completionNum >= 0) {
-      usageState.completion = Math.max(usageState.completion, completionNum);
-      usageState.countsSource = "event";
+      usageState.completion = provider
+        ? completionNum
+        : Math.max(usageState.completion, completionNum);
+      touched = true;
     }
+    if (touched) usageState.countsSource = "event";
     if (!usageState.trigger) usageState.trigger = trigger;
     if (provider) usageState.providerSupplied = true;
   };
 
   const resolvedCounts = () => {
     const estimatedCompletion = Math.ceil(emitted.length / 4);
-    const promptTokens = usageState.prompt || ptCount || promptTokensEst;
-    const completionTokens = usageState.completion || ctCount || estimatedCompletion;
+    const usingEvent = usageState.countsSource === "event";
+    const promptTokens = usingEvent ? usageState.prompt : promptTokensEst;
+    const completionTokens = usingEvent ? usageState.completion : estimatedCompletion;
     const totalTokens = promptTokens + completionTokens;
     return { promptTokens, completionTokens, totalTokens, estimatedCompletion };
   };
@@ -564,9 +567,7 @@ export async function postChatStream(req, res) {
         } else if (t === "token_count") {
           const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
           const completionTokens = Number(evt.msg?.completion_tokens ?? evt.msg?.completionTokens);
-          ptCount = Number.isFinite(promptTokens) ? promptTokens : ptCount;
-          ctCount = Number.isFinite(completionTokens) ? completionTokens : ctCount;
-          updateUsageCounts("token_count", { prompt: ptCount, completion: ctCount });
+          updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
         } else if (t === "usage") {
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.usage?.prompt_tokens ?? evt.usage?.prompt_tokens
@@ -594,8 +595,6 @@ export async function postChatStream(req, res) {
               prompt: promptTokens,
               completion: completionTokens,
             });
-            ptCount = Number.isFinite(promptTokens) ? promptTokens : ptCount;
-            ctCount = Number.isFinite(completionTokens) ? completionTokens : ctCount;
           } else if (!usageState.trigger) {
             usageState.trigger = "task_complete";
           }
