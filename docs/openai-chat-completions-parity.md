@@ -64,13 +64,21 @@ Example (minimal):
        - `time_to_first_token: null` (ms)
        - `throughput_after_first_token: null` (tokens/sec)
      - These keys appear only on the streaming final usage chunk when usage is requested; they do not appear in non‑stream responses.
+     - Story 3.3 (2025‑09‑18): usage objects now include an `emission_trigger` string describing which event prompted emission (`"token_count"`, `"task_complete"`, or `"provider"`). When the proto exits after `token_count` without `task_complete`, the proxy emits a `finish_reason:"length"` chunk followed by the usage object before `[DONE]`.
   5. Terminal sentinel line: `[DONE]`.
+
+Example usage chunk (Story 3.3):
+
+```
+data: {"id":"chatcmpl-xyz","object":"chat.completion.chunk","created":1726646400,"model":"gpt-5","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,"time_to_first_token":null,"throughput_after_first_token":null,"emission_trigger":"token_count"}}
+```
 
 Notes:
 
 - Keepalive comment lines (": <ts>") may appear and should be ignored by clients.
 - No custom event frames are emitted for normal output; every JSON `data:` line uses the `chat.completion.chunk` envelope and includes `id/object/created/model`.
 - `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
+- Providers that emit usage payloads even when `include_usage:false` are tolerated; the proxy logs the payload (`emission_trigger:"provider"`) but does not forward an extra chunk to clients.
 - All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
 
