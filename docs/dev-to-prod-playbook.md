@@ -90,7 +90,22 @@ Evidence written to `/tmp/nonstream.out` and `/tmp/stream.out`.
 - Re-run the smoke script twice; attach cURL headers and timings to GH #74.
 - Add the non-stream smoke to post-deploy CI if not already present.
 
-2. Map DEV settings to PROD
+### Runbook: Non-stream truncation flake triage
+
+1. Reproduce locally with the deterministic shim:
+
+```bash
+npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=default
+```
+
+- The test runs five sequential POSTs against the proxy using `scripts/fake-codex-proto-no-complete.js`. Any `UND_ERR_SOCKET other side closed` indicates the handler closed the socket before emitting JSON.
+
+2. Inspect application logs for `[proxy][chat.nonstream]` errors. Recent fixes log child process/stdout errors before returning a best-effort JSON body with `finish_reason:"length"`.
+3. Confirm idle watchdog behaviour: ensure `PROXY_PROTO_IDLE_MS` is large enough for local shims and that the handler responded before canceling the timer (look for 504 responses in logs).
+4. Run `scripts/dev-edge-smoke.sh` to confirm dev edge parity still succeeds with usage fields populated.
+5. If still flaky, enable proto debugging (`PROXY_DEBUG_PROTO=true`) and capture `appendProtoEvent` logs to see whether the proto emitted `task_complete` or exited unexpectedly.
+
+6. Map DEV settings to PROD
 
 - Compare `compose.dev.stack.yml` to `docker-compose.yml`:
   - ForwardAuth: DEV uses host loopback `127.0.0.1:18081/verify`; PROD must use `127.0.0.1:18080/verify`.
@@ -99,6 +114,7 @@ Evidence written to `/tmp/nonstream.out` and `/tmp/stream.out`.
   - Models and Health routers remain public (no auth) exactly as in prod compose.
 - Confirm `.codex-api/` is mounted read/write in PROD and present in repo (tracked seed files only; secrets managed out-of-band).
   - Seed it with `npm run port:sync-config` on the production host (or copy the two files manually). The script does not copy `auth.json` or any credentials.
+  - The bearer credential is sourced from `/home/drj/.codex/auth.json`; after rotating it, copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
 
 3. Dry‑run production readiness checks
 

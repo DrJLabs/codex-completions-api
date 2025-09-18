@@ -38,6 +38,25 @@ const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 
+const respondWithJson = (res, statusCode, payload) => {
+  try {
+    if (!res.headersSent) res.status(statusCode);
+    res.json(payload);
+  } catch (err) {
+    if (!res.headersSent) {
+      try {
+        res.status(statusCode);
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(payload));
+        return;
+      } catch (endErr) {
+        console.error("[proxy][chat.nonstream] failed to flush JSON response", endErr);
+      }
+    }
+    console.error("[proxy][chat.nonstream] error sending JSON response", err);
+  }
+};
+
 // POST /v1/chat/completions with stream=false
 export async function postChatNonStream(req, res) {
   const reqId = nanoid();
@@ -175,27 +194,133 @@ export async function postChatNonStream(req, res) {
   let prompt_tokens = 0;
   let completion_tokens = 0;
   let done = false;
-  const resetProtoIdle = (() => {
-    let t;
-    return () => {
-      if (t) clearTimeout(t);
-      t = setTimeout(() => {
-        if (responded) return;
-        responded = true;
-        try {
-          child.kill("SIGTERM");
-        } catch {}
-        applyCors(null, res);
-        res.status(504).json({
-          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+  let protoIdleReset = () => {};
+  let protoIdleCancel = () => {};
+  const computeFinal = () =>
+    content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
+
+  const logToolBlocks = () => {
+    try {
+      const final = computeFinal();
+      const { blocks } = extractUseToolBlocks(final, 0);
+      let idxTool = 0;
+      for (const b of blocks || []) {
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_nonstream",
+          kind: "tool_block",
+          idx: ++idxTool,
+          char_start: b.start,
+          char_end: b.end,
+          tool: b.name,
+          path: b.path,
+          query: b.query,
         });
-      }, PROTO_IDLE_MS);
+      }
+    } catch {}
+  };
+
+  const finalizeResponse = ({ statusCode = 200, finishReason, errorBody } = {}) => {
+    if (responded) return;
+    responded = true;
+    clearTimeout(timeout);
+    protoIdleCancel();
+    early?.stop?.();
+
+    const final = computeFinal();
+    const pt = prompt_tokens || promptTokensEst;
+    const ct = completion_tokens || estTokens(final);
+
+    if (statusCode === 200) {
+      logToolBlocks();
+      appendUsage({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        method: "POST",
+        requested_model: requestedModel,
+        effective_model: effectiveModel,
+        stream: false,
+        prompt_tokens_est: pt,
+        completion_tokens_est: ct,
+        total_tokens_est: pt + ct,
+        duration_ms: Date.now() - started,
+        status: statusCode,
+        user_agent: req.headers["user-agent"] || "",
+      });
+    }
+
+    if (IS_DEV_ENV && statusCode === 200) {
+      try {
+        console.log("[dev][response][chat][nonstream] content=\n" + final);
+      } catch (e) {
+        console.error("[dev][response][chat][nonstream] error:", e);
+      }
+    }
+
+    applyCors(null, res);
+
+    if (statusCode !== 200 && errorBody) {
+      respondWithJson(res, statusCode, errorBody);
+      return;
+    }
+
+    const reason = finishReason || (done ? "stop" : "length");
+    const payload = {
+      id: `chatcmpl-${nanoid()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: requestedModel,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: final },
+          finish_reason: reason,
+        },
+      ],
+      usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
     };
-  })();
-  resetProtoIdle();
+
+    respondWithJson(res, statusCode, payload);
+  };
+
+  ({ reset: protoIdleReset, cancel: protoIdleCancel } = (() => {
+    let timer;
+    return {
+      reset() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (responded) return;
+          finalizeResponse({
+            statusCode: 504,
+            errorBody: {
+              error: {
+                message: "backend idle timeout",
+                type: "timeout_error",
+                code: "idle_timeout",
+              },
+            },
+          });
+          try {
+            child.kill("SIGTERM");
+          } catch {}
+        }, PROTO_IDLE_MS);
+      },
+      cancel() {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      },
+    };
+  })());
+
+  protoIdleReset();
 
   child.stdout.on("data", (d) => {
-    resetProtoIdle();
+    protoIdleReset();
     const s = typeof d === "string" ? d : d.toString("utf8");
     out += s;
     buf2 += s;
@@ -238,7 +363,7 @@ export async function postChatNonStream(req, res) {
     }
   });
   child.stderr.on("data", (d) => {
-    resetProtoIdle();
+    protoIdleReset();
     err += d.toString("utf8");
     if (LOG_PROTO)
       appendProtoEvent({
@@ -250,77 +375,22 @@ export async function postChatNonStream(req, res) {
         chunk: d.toString("utf8"),
       });
   });
-  const finalizeResponse = () => {
-    if (responded) return;
-    responded = true;
-    clearTimeout(timeout);
-    early?.stop?.();
-    const final =
-      content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
-    applyCors(null, res);
-    const pt = prompt_tokens || promptTokensEst;
-    const ct = completion_tokens || estTokens(final);
-    try {
-      // Log tool blocks for debugging/analysis
-      const { blocks } = extractUseToolBlocks(final, 0);
-      let idxTool = 0;
-      for (const b of blocks || []) {
-        appendProtoEvent({
-          ts: Date.now(),
-          req_id: reqId,
-          route: "/v1/chat/completions",
-          mode: "chat_nonstream",
-          kind: "tool_block",
-          idx: ++idxTool,
-          char_start: b.start,
-          char_end: b.end,
-          tool: b.name,
-          path: b.path,
-          query: b.query,
-        });
-      }
-    } catch {}
-    appendUsage({
-      ts: Date.now(),
-      req_id: reqId,
-      route: "/v1/chat/completions",
-      method: "POST",
-      requested_model: requestedModel,
-      effective_model: effectiveModel,
-      stream: false,
-      prompt_tokens_est: pt,
-      completion_tokens_est: ct,
-      total_tokens_est: pt + ct,
-      duration_ms: Date.now() - started,
-      status: 200,
-      user_agent: req.headers["user-agent"] || "",
-    });
-    if (IS_DEV_ENV) {
-      try {
-        console.log("[dev][response][chat][nonstream] content=\n" + final);
-      } catch (e) {
-        console.error("[dev][response][chat][nonstream] error:", e);
-      }
-    }
-    res.json({
-      id: `chatcmpl-${nanoid()}`,
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
-      model: requestedModel,
-      choices: [
-        {
-          index: 0,
-          message: { role: "assistant", content: final },
-          finish_reason: done ? "stop" : "length",
-        },
-      ],
-      usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
-    });
-  };
 
-  // Stabilize: respond on stdout end or process close, whichever happens first
-  child.stdout.on("end", finalizeResponse);
-  child.on("close", finalizeResponse);
+  const finalizeSuccess = () => finalizeResponse();
+
+  // Stabilize: respond on stdout end/close or process close, whichever happens first
+  child.stdout.on("end", finalizeSuccess);
+  child.stdout.on("close", finalizeSuccess);
+  child.on("close", finalizeSuccess);
+  child.on("exit", finalizeSuccess);
+  child.on("error", (error) => {
+    console.error("[proxy][chat.nonstream] child process error", error);
+    finalizeSuccess();
+  });
+  child.stdout.on("error", (error) => {
+    console.error("[proxy][chat.nonstream] stdout error", error);
+    finalizeSuccess();
+  });
   try {
     const submission = {
       id: reqId,

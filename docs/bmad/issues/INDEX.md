@@ -19,6 +19,7 @@ This index consolidates repo GitHub issues and local QA/docs issues. Priorities 
 ## P2
 
 - 2025-09-14 — Release/backup hardening (GH #80) — `docs/bmad/issues/2025-09-14-release-backup-hardening.md`
+- 2025-09-17 — Modernize formatting/lint/test tooling (backlog) — `docs/bmad/issues/2025-09-17-testing-tooling-modernization.md`
 - 2025-09-13 — Streaming finalizer richer finish_reason (GH #71) — `docs/bmad/issues/2025-09-13-streaming-finalizer-richer-finish-reason.md`
 - 2025-09-12 — Graceful shutdown SIGTERM test (local QA) — `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`
 
