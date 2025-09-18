@@ -1,0 +1,56 @@
+schema: 1
+story: "3.2"
+story_title: "Story 3.2 — Non-Stream Truncation Determinism"
+gate: PASS
+status_reason: "Deterministic non-stream finalize validated; regression and documentation evidence captured."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-17T03:10:00Z"
+quality_score: 100
+expires: "2025-10-01T03:10:00Z"
+
+top_issues: []
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 3
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 4]
+    ac_gaps: []
+  trace_ref: "docs/bmad/qa/assessments/3.2-trace-20250917.md"
+  nfr_ref: "docs/bmad/qa/assessments/3.2-nfr-20250917.md"
+  risk_ref: "docs/bmad/qa/assessments/3.2-risk-20250917.md"
+
+trace:
+  totals:
+    requirements: 4
+    full: 3
+    partial: 1
+    none: 0
+  uncovered: []
+  notes: "AC3 documentation updates rely on manual review; recommend doc lint automation."
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "Bearer auth unchanged; integration suite verifies gating"
+  performance:
+    status: PASS
+    notes: "Immediate finalize + dev-edge smoke evidence"
+  reliability:
+    status: PASS
+    notes: "Five-run truncation test + Playwright SSE suite"
+  maintainability:
+    status: PASS
+    notes: "Localized diff, docs updated, verify pipeline green"
+
+recommendations:
+  immediate: []
+  future:
+    - action: "Automate dev-edge smoke in CI to capture truncation evidence continuously"
+      refs:
+        - "scripts/dev-edge-smoke.sh"
+    - action: "Add doc lint/CI check to ensure runbook sections stay current"
+      refs:
+        - "docs/dev-to-prod-playbook.md"
