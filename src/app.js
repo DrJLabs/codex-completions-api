@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "node:fs/promises";
 import accessLog from "./middleware/access-log.js";
 import { applyCors as applyCorsUtil } from "./utils.js";
 import { config as CFG } from "./config/index.js";
@@ -7,6 +8,7 @@ import modelsRouter from "./routes/models.js";
 import chatRouter from "./routes/chat.js";
 import usageRouter from "./routes/usage.js";
 import rateLimit from "./middleware/rate-limit.js";
+import { guardSnapshot } from "./services/concurrency-guard.js";
 
 export default function createApp() {
   const app = express();
@@ -56,8 +58,21 @@ export default function createApp() {
     // Uses globalThis to avoid plumbing state; safe because PROXY_TEST_ENDPOINTS
     // is disabled in production by default and only enabled for CI debugging.
     app.get("/__test/conc", (_req, res) => {
-      const conc = Number(globalThis.__sseConcCount || 0);
-      res.json({ conc });
+      res.json({ conc: guardSnapshot() });
+    });
+    app.post("/__test/conc/release", async (_req, res) => {
+      const releasePath = process.env.STREAM_RELEASE_FILE;
+      if (!releasePath) {
+        return res.status(200).json({ ok: false, reason: "STREAM_RELEASE_FILE not set" });
+      }
+      try {
+        // STREAM_RELEASE_FILE is only used in test harnesses; guard is sufficient here.
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
+        await fs.writeFile(releasePath, String(Date.now()), "utf8");
+        return res.json({ ok: true });
+      } catch (error) {
+        return res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
     });
   }
   app.use(healthRouter());

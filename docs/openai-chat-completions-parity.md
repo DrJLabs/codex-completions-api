@@ -82,6 +82,17 @@ Notes:
 - All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
 
+### Streaming Concurrency Guard (Test Instrumentation)
+
+- The per-process SSE concurrency guard rejects additional streams with `429` when `PROXY_SSE_MAX_CONCURRENCY` is set. Production responses remain unchanged.
+- When `PROXY_TEST_ENDPOINTS=true`, the proxy exposes deterministic instrumentation for CI and local harnesses:
+  - Response headers on both accepted and rejected requests: `X-Conc-Before`, `X-Conc-After`, `X-Conc-Limit` (numeric strings). Accepted streams include `before=0`, `after=1` when the first slot is acquired; rejected requests surface the guard state without altering production headers when the flag is off.
+  - Test-only endpoints:
+    - `GET /__test/conc` → `{ conc: <active_count> }`
+    - `POST /__test/conc/release` (optional) writes to `STREAM_RELEASE_FILE` when provided, allowing deterministic teardown of shimmed streams.
+- Guard acquisition occurs before the Codex child process spawns to remove timing races; release is idempotent and wired to `close`, `finish`, and `aborted` events.
+- Structured logs include `{"scope":"sse_guard","outcome":"acquired|rejected|released",...}` with `before`, `after`, and `limit` fields keyed by `req_id` for observability.
+
 ### Streaming Errors
 
 - On unrecoverable errors mid‑stream, the server sends a single JSON error frame:

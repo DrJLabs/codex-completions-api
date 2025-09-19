@@ -156,6 +156,35 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
    - Capture the streaming transcript and verify the usage chunk appears before `[DONE]` with the expected `emission_trigger`.
    - Record `codex-usage.ndjson` samples and attach them to GH #73 (or successor) as evidence.
 
+### Runbook: Streaming concurrency guard determinism
+
+1. Local harness validation:
+
+   ```bash
+   npx vitest run tests/integration/rate-limit.int.test.js --reporter=default --runInBand
+   ```
+
+   - The suite loops the streaming scenario five times with `PROXY_TEST_ENDPOINTS=true` and the shim `scripts/fake-codex-proto-long.js`, asserting deterministic `429` responses and guard headers.
+   - Ensure headers are absent when rerunning with `PROXY_TEST_ENDPOINTS=false` to confirm production parity.
+
+2. Inspect guard telemetry (optional, dev only):
+
+   ```bash
+   PROXY_SSE_MAX_CONCURRENCY=1 PROXY_TEST_ENDPOINTS=true \
+   npm run dev -- --once
+   ```
+
+   - Hit `GET /__test/conc` to observe active counts; use `POST /__test/conc/release` or write to `STREAM_RELEASE_FILE` to release deterministic shims.
+   - Look for `[proxy] {"scope":"sse_guard",...}` entries to confirm acquisition/release pairs and absence of phantom counts.
+
+3. CI/edge troubleshooting:
+   - If the guard misbehaves in dev or CI, enable the instrumentation flag temporarily and collect `x-conc-*` headers along with `/__test/conc` snapshots.
+   - Verify that counts return to zero after each stream; lingering non-zero values indicate a missing release handler or shim that did not signal completion.
+
+4. Post-deploy checks:
+   - Run the streaming guard integration test in the monitored environment or execute a manual two-request sequence with `curl` while `PROXY_TEST_ENDPOINTS=true` to confirm deterministic rejection.
+   - Once validated, disable the flag to hide headers in production traffic.
+
 ## Test Selection Policy (applies before porting)
 
 - Only `src/utils.js` → run unit tests: `npm run test:unit`.
