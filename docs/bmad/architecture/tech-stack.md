@@ -44,6 +44,7 @@ updated: 2025-09-13
 - Unit & Integration: `vitest@^3` (+ `@vitest/coverage-v8`).
 - E2E/API/SSE: `@playwright/test@^1.55`.
 - Coverage target configured in `vitest.config.ts` (V8 engine).
+- CI Baseline (2025-09-19): GitHub Actions runners and Docker images must install Playwright 1.55 browsers (Chromium 140 / Firefox 141 / WebKit 26) and Vitest 3.2.x. Keploy 3.0 CLI will be added to the tool image (see issue `docs/bmad/issues/2025-09-19-keploy-snapshot-ci.md`) so transcript generation and replay run identically locally and in CI.
 
 # Linting & Formatting
 

@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "captured_at": "2025-09-19T05:30:47.370Z",
+    "include_usage": false,
+    "codex_bin": "scripts/fake-codex-proto.js",
+    "commit": "072dbe5ee82fb3e9bd70b97f1dfeb4b188291d49",
+    "scenario": "nonstream-minimal"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello transcript"
+      }
+    ]
+  },
+  "response": {
+    "id": "<dynamic-id>",
+    "object": "chat.completion",
+    "created": "<timestamp>",
+    "model": "codex-5",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Hello from fake-codex."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 6,
+      "total_tokens": 14
+    }
+  }
+}

@@ -82,6 +82,16 @@ Notes:
 - All chunks in a stream share the same `id` and `created` values.
 - Current streaming finalizer sets `finish_reason` to `"stop"`. Non‑stream responses may use `"stop"|"length"`. We will propagate richer reasons in streaming when upstream provides them.
 
+### Golden Transcripts & Snapshots (Story 3.5)
+
+- Location: `test-results/chat-completions/`
+  - `nonstream-minimal.json`
+  - `nonstream-truncation.json`
+  - `streaming-usage.json`
+- Each transcript stores sanitized payloads where `id` and `created` are replaced with `<dynamic-id>` and `<timestamp>` so deterministic diffs highlight envelope drift instead of random identifiers.
+- Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses through a Keploy-style capture, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag).
+- Contract tests (`tests/integration/chat.contract.*.int.test.js`) and Playwright specs (`tests/e2e/chat-contract.spec.ts`) sanitize live responses and compare them to these transcripts on every CI run, ensuring ordering, usage emission, and truncation semantics remain stable.
+
 ### Streaming Concurrency Guard (Test Instrumentation)
 
 - The per-process SSE concurrency guard rejects additional streams with `429` when `PROXY_SSE_MAX_CONCURRENCY` is set. Production responses remain unchanged.
