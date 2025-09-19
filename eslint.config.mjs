@@ -87,7 +87,7 @@ export default [
     ...pwRecommended,
     name: "playwright-e2e",
     // Restrict Playwright rules to top-level specs only (not unit/*.spec.js)
-    files: ["tests/*.spec.{js,ts,tsx}"],
+    files: ["tests/*.spec.js", "tests/e2e/**/*.spec.js"],
     languageOptions: {
       ...(pwRecommended.languageOptions || {}),
       globals: {
