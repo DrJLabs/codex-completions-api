@@ -47,7 +47,9 @@ const main = async () => {
       if (fs.existsSync(releasePath)) {
         try {
           fs.unlinkSync(releasePath);
-        } catch {}
+        } catch (error) {
+          console.error(`Failed to unlink release file ${releasePath}:`, error);
+        }
         break;
       }
     }

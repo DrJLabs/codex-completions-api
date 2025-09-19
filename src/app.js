@@ -63,7 +63,7 @@ export default function createApp() {
     app.post("/__test/conc/release", async (_req, res) => {
       const releasePath = process.env.STREAM_RELEASE_FILE;
       if (!releasePath) {
-        return res.status(200).json({ ok: false, reason: "STREAM_RELEASE_FILE not set" });
+        return res.status(400).json({ ok: false, reason: "STREAM_RELEASE_FILE not set" });
       }
       try {
         // STREAM_RELEASE_FILE is only used in test harnesses; guard is sufficient here.

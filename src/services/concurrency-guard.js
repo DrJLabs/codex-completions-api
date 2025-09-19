@@ -65,7 +65,9 @@ export const logGuardEvent = (event) => {
       ...event,
     };
     console.log(`[proxy] ${JSON.stringify(payload)}`);
-  } catch {}
+  } catch (error) {
+    console.error("[proxy][sse_guard] failed to log guard event", error);
+  }
 };
 
 export const guardSnapshot = () => sseConcurrencyGuard.snapshot();
