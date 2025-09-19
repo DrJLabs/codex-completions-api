@@ -30,13 +30,27 @@ const main = async () => {
 
   write({ type: "session_configured" });
   write({ type: "task_started" });
-  // Emit a few deltas over time and mark readiness after first delta
-  for (let i = 0; i < 50; i++) {
+  const releasePath = process.env.STREAM_RELEASE_FILE;
+  const readyPath = process.env.STREAM_READY_FILE;
+  let i = 0;
+  const shouldHoldOpen = Boolean(releasePath);
+  while (true) {
     write({ type: "agent_message_delta", msg: { delta: `tick-${i} ` } });
-    if (i === 0) {
+    if (i === 0 && readyPath) {
       try {
-        const f = process.env.STREAM_READY_FILE;
-        if (f) fs.writeFileSync(f, String(process.pid), "utf8");
+        fs.writeFileSync(readyPath, String(process.pid), "utf8");
+      } catch {}
+    }
+    i += 1;
+    if (!shouldHoldOpen && i >= 50) break;
+    if (shouldHoldOpen) {
+      try {
+        if (fs.existsSync(releasePath)) {
+          try {
+            fs.unlinkSync(releasePath);
+          } catch {}
+          break;
+        }
       } catch {}
     }
     await delay(100);
