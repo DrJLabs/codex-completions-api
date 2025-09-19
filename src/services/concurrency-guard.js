@@ -70,4 +70,70 @@ export const logGuardEvent = (event) => {
 
 export const guardSnapshot = () => sseConcurrencyGuard.snapshot();
 
+export const applyGuardHeaders = (res, token, testEndpointsEnabled) => {
+  if (!testEndpointsEnabled || !token) return;
+  res.set("X-Conc-Before", String(token.before));
+  res.set("X-Conc-After", String(token.after));
+  res.set("X-Conc-Limit", String(token.limit));
+};
+
+export function setupStreamGuard({ res, reqId, route, maxConc, testEndpointsEnabled, send429 }) {
+  if (!Number.isFinite(maxConc) || maxConc <= 0) {
+    return {
+      acquired: true,
+      release: () => {},
+      token: null,
+    };
+  }
+
+  const attempt = sseConcurrencyGuard.tryAcquire(maxConc);
+  if (!attempt.acquired) {
+    if (testEndpointsEnabled) applyGuardHeaders(res, attempt, true);
+    logGuardEvent({
+      req_id: reqId,
+      route,
+      outcome: "rejected",
+      before: attempt.before,
+      after: attempt.after,
+      limit: maxConc,
+    });
+    send429();
+    return {
+      acquired: false,
+      release: () => {},
+      token: attempt,
+    };
+  }
+
+  logGuardEvent({
+    req_id: reqId,
+    route,
+    outcome: "acquired",
+    before: attempt.before,
+    after: attempt.after,
+    limit: maxConc,
+  });
+
+  let released = false;
+  const release = (outcome = "released") => {
+    if (released) return;
+    released = true;
+    attempt.release();
+    logGuardEvent({
+      req_id: reqId,
+      route,
+      outcome,
+      before: attempt.after,
+      after: guardSnapshot(),
+      limit: maxConc,
+    });
+  };
+
+  return {
+    acquired: true,
+    release,
+    token: attempt,
+  };
+}
+
 export default sseConcurrencyGuard;

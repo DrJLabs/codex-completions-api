@@ -44,14 +44,12 @@ const main = async () => {
     i += 1;
     if (!shouldHoldOpen && i >= 50) break;
     if (shouldHoldOpen) {
-      try {
-        if (fs.existsSync(releasePath)) {
-          try {
-            fs.unlinkSync(releasePath);
-          } catch {}
-          break;
-        }
-      } catch {}
+      if (fs.existsSync(releasePath)) {
+        try {
+          fs.unlinkSync(releasePath);
+        } catch {}
+        break;
+      }
     }
     await delay(100);
   }
