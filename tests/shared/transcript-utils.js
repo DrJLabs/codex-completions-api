@@ -12,16 +12,10 @@ const PLACEHOLDER_ID = "<dynamic-id>";
 const PLACEHOLDER_CREATED = "<timestamp>";
 
 export function sanitizeNonStreamResponse(payload) {
+  if (typeof payload !== "object" || payload === null) return payload;
   const clone = structuredClone(payload);
   clone.id = PLACEHOLDER_ID;
   clone.created = PLACEHOLDER_CREATED;
-  if (Array.isArray(clone?.choices)) {
-    clone.choices = clone.choices.map((choice) => ({
-      ...choice,
-      // Ensure message objects are normalized (delta is not present on non-stream responses)
-      message: choice.message ? { ...choice.message } : undefined,
-    }));
-  }
   return clone;
 }
 
@@ -30,12 +24,6 @@ export function sanitizeStreamChunk(chunk) {
   const clone = structuredClone(chunk);
   clone.id = PLACEHOLDER_ID;
   clone.created = PLACEHOLDER_CREATED;
-  if (Array.isArray(clone.choices)) {
-    clone.choices = clone.choices.map((choice) => ({
-      ...choice,
-      delta: choice.delta ? { ...choice.delta } : choice.delta,
-    }));
-  }
   return clone;
 }
 
@@ -83,15 +71,27 @@ export function parseSSE(raw) {
     .map((segment) => segment.trim())
     .filter(Boolean);
   for (const block of blocks) {
-    if (block.startsWith("data:")) {
-      const payload = block.slice(5).trim();
+    const lines = block.split(/\r?\n/);
+    const dataLines = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+
+    if (dataLines.length > 0) {
+      const payload = dataLines.join("");
       if (payload === "[DONE]") {
         entries.push({ type: "done" });
       } else {
         entries.push({ type: "data", data: JSON.parse(payload) });
       }
-    } else if (block.startsWith(":")) {
-      entries.push({ type: "comment", comment: block.slice(1).trim() });
+      continue;
+    }
+
+    const commentLines = lines
+      .filter((line) => line.startsWith(":"))
+      .map((line) => line.slice(1).trim())
+      .filter(Boolean);
+    if (commentLines.length > 0) {
+      entries.push({ type: "comment", comment: commentLines.join("\n") });
     }
   }
   return entries;
