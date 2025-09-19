@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "captured_at": "2025-09-19T05:30:48.093Z",
+    "include_usage": false,
+    "codex_bin": "scripts/fake-codex-proto-no-complete.js",
+    "commit": "072dbe5ee82fb3e9bd70b97f1dfeb4b188291d49",
+    "scenario": "nonstream-truncation"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Trigger truncation"
+      }
+    ]
+  },
+  "response": {
+    "id": "<dynamic-id>",
+    "object": "chat.completion",
+    "created": "<timestamp>",
+    "model": "codex-5",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Hello (truncated) from fake-codex."
+        },
+        "finish_reason": "length"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 5,
+      "completion_tokens": 9,
+      "total_tokens": 14
+    }
+  }
+}
