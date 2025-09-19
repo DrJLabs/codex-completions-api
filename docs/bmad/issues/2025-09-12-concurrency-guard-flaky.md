@@ -2,7 +2,7 @@
 title: Streaming Concurrency Guard – Flaky Integration Test
 date: 2025-09-12
 owner: QA (assign: Quinn)
-status: open
+status: resolved
 priority: P1
 source: qa
 labels: [streaming, rate-limit, test-flake]
@@ -43,3 +43,14 @@ Guard: `src/handlers/chat/stream.js` (`PROXY_SSE_MAX_CONCURRENCY`)
 
 - The non-stream rate limit 429 test passes and covers app-level rate limiting.
 - This test may be temporarily skipped; guard remains enabled in production code.
+
+## Resolution (2025-09-18)
+
+- Adopted semaphore-based guard in `src/handlers/chat/stream.js` and legacy stream path to ensure acquisition happens before `spawnCodex`, with idempotent release tied to `close`, `finish`, and `aborted` events.
+- Added test-only instrumentation behind `PROXY_TEST_ENDPOINTS=true`:
+  - Guard headers (`X-Conc-Before`, `X-Conc-After`, `X-Conc-Limit`).
+  - `GET /__test/conc` and `POST /__test/conc/release` helpers for CI harnesses.
+  - Structured guard logs (`scope:"sse_guard"`) including `before/after/limit` for each outcome.
+- Hardened `scripts/fake-codex-proto-long.js` to hold open streams until `STREAM_RELEASE_FILE` appears, enabling deterministic concurrency scenarios.
+- Refactored `tests/integration/rate-limit.int.test.js` to run the streaming guard scenario five times, assert guard headers, and verify headers are hidden when `PROXY_TEST_ENDPOINTS=false`.
+- Updated `docs/openai-chat-completions-parity.md` with instrumentation notes and added guard troubleshooting guidance to the dev→prod playbook.
