@@ -44,78 +44,40 @@ async function runCapture({ codexBin, filename, includeUsage, commitSha, createP
   }
 }
 
-async function captureNonStream({ requestBody, filename, codexBin, commitSha }) {
+async function captureChatScenario({
+  codexBin,
+  filename,
+  commitSha,
+  includeUsage = false,
+  requestBody,
+  stream = false,
+  beforeRequest,
+  processResponse,
+  errorLabel,
+}) {
   return runCapture({
     codexBin,
     filename,
-    includeUsage: false,
+    includeUsage,
     commitSha,
     createPayload: async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+      if (beforeRequest) await beforeRequest();
+      const url = new URL(`http://127.0.0.1:${port}/v1/chat/completions`);
+      if (stream) url.searchParams.set("stream", "true");
+      const res = await fetch(url, {
         method: "POST",
         headers: BASE_HEADERS,
         body: JSON.stringify(requestBody),
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`non-stream request failed (${res.status}): ${text}`);
+        const label = errorLabel ?? (stream ? "streaming" : "non-stream");
+        throw new Error(`${label} request failed (${res.status}): ${text}`);
       }
-      const payload = await res.json();
+      const payload = await processResponse(res);
       return {
         request: requestBody,
-        response: sanitizeNonStreamResponse(payload),
-      };
-    },
-  });
-}
-
-async function captureNonStreamLength({ requestBody, filename, codexBin, commitSha }) {
-  return runCapture({
-    codexBin,
-    filename,
-    includeUsage: false,
-    commitSha,
-    createPayload: async (port) => {
-      await wait(50);
-      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: "POST",
-        headers: BASE_HEADERS,
-        body: JSON.stringify(requestBody),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`truncation request failed (${res.status}): ${text}`);
-      }
-      const payload = await res.json();
-      return {
-        request: requestBody,
-        response: sanitizeNonStreamResponse(payload),
-      };
-    },
-  });
-}
-
-async function captureStreaming({ requestBody, filename, codexBin, commitSha }) {
-  return runCapture({
-    codexBin,
-    filename,
-    includeUsage: true,
-    commitSha,
-    createPayload: async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions?stream=true`, {
-        method: "POST",
-        headers: BASE_HEADERS,
-        body: JSON.stringify(requestBody),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`streaming request failed (${res.status}): ${text}`);
-      }
-      const raw = await res.text();
-      const chunks = parseSSE(raw);
-      return {
-        request: requestBody,
-        stream: sanitizeStreamTranscript(chunks),
+        ...payload,
       };
     },
   });
@@ -130,7 +92,7 @@ async function main() {
   const truncationCodex = "scripts/fake-codex-proto-no-complete.js";
   const commitSha = gitCommitSha();
 
-  await captureNonStream({
+  await captureChatScenario({
     requestBody: {
       model: "codex-5",
       stream: false,
@@ -139,9 +101,12 @@ async function main() {
     filename: "nonstream-minimal.json",
     codexBin: defaultCodex,
     commitSha,
+    processResponse: async (res) => ({
+      response: sanitizeNonStreamResponse(await res.json()),
+    }),
   });
 
-  await captureStreaming({
+  await captureChatScenario({
     requestBody: {
       model: "codex-5",
       stream: true,
@@ -151,9 +116,16 @@ async function main() {
     filename: "streaming-usage.json",
     codexBin: defaultCodex,
     commitSha,
+    includeUsage: true,
+    stream: true,
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
   });
 
-  await captureNonStreamLength({
+  await captureChatScenario({
     requestBody: {
       model: "codex-5",
       stream: false,
@@ -162,6 +134,11 @@ async function main() {
     filename: "nonstream-truncation.json",
     codexBin: truncationCodex,
     commitSha,
+    beforeRequest: () => wait(50),
+    errorLabel: "truncation",
+    processResponse: async (res) => ({
+      response: sanitizeNonStreamResponse(await res.json()),
+    }),
   });
 
   console.log("Transcripts refreshed in", TRANSCRIPT_ROOT);
