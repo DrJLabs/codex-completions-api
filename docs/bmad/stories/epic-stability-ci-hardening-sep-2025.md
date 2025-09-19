@@ -55,13 +55,13 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
   - [ ] Emit usage as soon as counts arrive and on teardown; preserve finalizer order; keep `[DONE]` separate.
   - [ ] Verify with Playwright stream collector and contract checks.
 
-- [ ] Phase 4 — Concurrency guard determinism
-  - [ ] Add test‑only headers (`X-Conc-*`) for observability; adjust guard timing if needed.
-  - [ ] Ensure repeatable 429 on the second concurrent stream at limit.
+- [x] Phase 4 — Concurrency guard determinism
+  - [x] Add test‑only headers (`X-Conc-*`) for observability; adjust guard timing if needed.
+  - [x] Ensure repeatable 429 on the second concurrent stream at limit.
 
-- [ ] Phase 5 — Docs & runbooks
-  - [ ] Update `docs/openai-chat-completions-parity.md` if order/toggles are clarified.
-  - [ ] Add a runbook snippet for dev edge timeouts (checks + usual culprits).
+- [x] Phase 5 — Docs & runbooks
+  - [x] Update `docs/openai-chat-completions-parity.md` if order/toggles are clarified.
+  - [x] Add a runbook snippet for dev edge timeouts (checks + usual culprits).
 
 # Dependencies & Impact
 
