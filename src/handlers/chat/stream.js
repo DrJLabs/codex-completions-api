@@ -31,6 +31,7 @@ import {
   extractUseToolBlocks,
 } from "../../dev-logging.js";
 import { buildProtoArgs } from "./shared.js";
+import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -49,6 +50,7 @@ const STREAM_IDLE_TIMEOUT_MS = CFG.PROXY_STREAM_IDLE_TIMEOUT_MS;
 const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
+const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 
 // POST /v1/chat/completions with stream=true
 export async function postChatStream(req, res) {
@@ -63,10 +65,8 @@ export async function postChatStream(req, res) {
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
-  // Global SSE concurrency guard (per-process). Simpler and more deterministic for tests
+  // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
-  globalThis.__sseConcCount = globalThis.__sseConcCount || 0;
-  let acquiredConc = false;
 
   const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
@@ -133,21 +133,30 @@ export async function postChatStream(req, res) {
     return res.status(403).json(tokensExceededBody("messages"));
   }
 
-  // Acquire concurrency slot only after validations pass AND after early-return token guard
-  if (MAX_CONC > 0) {
-    if (globalThis.__sseConcCount >= MAX_CONC) {
+  const guardContext = setupStreamGuard({
+    res,
+    reqId,
+    route: "/v1/chat/completions",
+    maxConc: MAX_CONC,
+    testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
+    send429: () => {
       applyCors(null, res);
-      return res.status(429).json({
+      res.status(429).json({
         error: {
           message: "too many concurrent streams",
           type: "rate_limit_error",
           code: "concurrency_exceeded",
         },
       });
-    }
-    globalThis.__sseConcCount += 1;
-    acquiredConc = true;
+    },
+  });
+
+  if (!guardContext.acquired) {
+    return;
   }
+
+  const releaseGuard = (outcome) => guardContext.release(outcome);
+  applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
   if (IS_DEV_ENV) {
     try {
@@ -263,10 +272,7 @@ export async function postChatStream(req, res) {
     try {
       if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
     } catch {}
-    try {
-      if (MAX_CONC > 0 && acquiredConc)
-        globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
-    } catch {}
+    releaseGuard();
   };
   if (keepaliveMs > 0)
     keepalive = startKeepalives(res, keepaliveMs, () => {
@@ -680,8 +686,6 @@ export async function postCompletionsStream(req, res) {
 
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
-  globalThis.__sseConcCount = globalThis.__sseConcCount || 0;
-  let acquiredConc = false;
 
   const body = req.body || {};
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
@@ -762,6 +766,31 @@ export async function postCompletionsStream(req, res) {
       toSend.length
     );
   } catch {}
+
+  const guardContext = setupStreamGuard({
+    res,
+    reqId,
+    route: "/v1/completions",
+    maxConc: MAX_CONC,
+    testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
+    send429: () => {
+      applyCors(null, res);
+      res.status(429).json({
+        error: {
+          message: "too many concurrent streams",
+          type: "rate_limit_error",
+          code: "concurrency_exceeded",
+        },
+      });
+    },
+  });
+
+  if (!guardContext.acquired) {
+    return;
+  }
+
+  const releaseGuard = (outcome) => guardContext.release(outcome);
+  applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
   const child = spawnCodex(args);
   const onChildError = (e) => {
@@ -878,10 +907,7 @@ export async function postCompletionsStream(req, res) {
     try {
       if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
     } catch {}
-    try {
-      if (MAX_CONC > 0 && acquiredConc)
-        globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
-    } catch {}
+    releaseGuard();
   };
   if (keepaliveMs > 0)
     keepalive = startKeepalives(res, keepaliveMs, () => {
@@ -1070,10 +1096,6 @@ export async function postCompletionsStream(req, res) {
       sendChunk({ choices: [{ index: 0, text: content }] });
     }
     finishSSE();
-    // release slot if acquired
-    try {
-      if (MAX_CONC > 0 && acquiredConc)
-        globalThis.__sseConcCount = Math.max(0, (globalThis.__sseConcCount || 1) - 1);
-    } catch {}
+    releaseGuard("released:child_close");
   });
 }
