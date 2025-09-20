@@ -6,35 +6,49 @@ import {
   sanitizeStreamTranscript,
   parseSSE,
 } from "../shared/transcript-utils.js";
+import { isKeployEnabled, runKeploySuite } from "../shared/keploy-runner.js";
 
-describe("chat completion streaming contract", () => {
-  let serverCtx;
-  let transcript;
+const useKeploy = isKeployEnabled();
 
-  beforeAll(async () => {
-    ensureTranscripts(["streaming-usage.json"]);
-    transcript = await loadTranscript("streaming-usage.json");
-    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
-  }, 10_000);
-
-  afterAll(async () => {
-    if (serverCtx) await stopServer(serverCtx.child);
+if (useKeploy) {
+  describe("chat completion streaming contract (Keploy)", () => {
+    test("replay suite passes", async () => {
+      await runKeploySuite({ label: "chat-contracts" });
+    }, 60_000);
   });
+} else {
+  describe("chat completion streaming contract", () => {
+    let serverCtx;
+    let transcript;
 
-  test("streaming SSE order and usage match golden transcript", async () => {
-    const res = await fetch(`http://127.0.0.1:${serverCtx.PORT}/v1/chat/completions?stream=true`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer test-sk-ci",
-      },
-      body: JSON.stringify(transcript.request),
+    beforeAll(async () => {
+      ensureTranscripts(["streaming-usage.json"]);
+      transcript = await loadTranscript("streaming-usage.json");
+      serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
+    }, 10_000);
+
+    afterAll(async () => {
+      if (serverCtx) await stopServer(serverCtx.child);
     });
 
-    expect(res.ok).toBe(true);
-    const raw = await res.text();
-    const actualEntries = parseSSE(raw);
-    const sanitized = sanitizeStreamTranscript(actualEntries);
-    expect(sanitized).toEqual(transcript.stream);
+    test("streaming SSE order and usage match golden transcript", async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${serverCtx.PORT}/v1/chat/completions?stream=true`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer test-sk-ci",
+          },
+          body: JSON.stringify(transcript.request),
+        }
+      );
+
+      expect(res.ok).toBe(true);
+      const raw = await res.text();
+      const actualEntries = parseSSE(raw);
+      const sanitized = sanitizeStreamTranscript(actualEntries);
+      expect(sanitized).toEqual(transcript.stream);
+    });
   });
-});
+}
