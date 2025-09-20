@@ -1,8 +1,8 @@
 ---
 title: Epic — Stability & CI Hardening (Sep 2025)
-status: Proposed
-version: 0.1
-updated: 2025-09-15
+status: In Progress
+version: 0.2
+updated: 2025-09-20
 owner: Product (PM)
 labels: [stability, ci, parity, streaming, nonstream, edge]
 ---
@@ -38,22 +38,22 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 
 # Phases & Tasks
 
-- [ ] Phase 0 — Contracts first (guardrails)
-  - [ ] Expand golden transcripts to include: minimal prompt, multi‑chunk content, truncation path; store under `test-results/` with clear naming.
-  - [ ] Add contract checks in integration/E2E to validate order: role → content… → finish_reason → usage? → `[DONE]`.
+- [x] Phase 0 — Contracts first (guardrails)
+  - [x] Expand golden transcripts to include: minimal prompt, multi‑chunk content, truncation path; store under `test-results/` with clear naming. _(Story 3.5)_
+  - [x] Add contract checks in integration/E2E to validate order: role → content… → finish*reason → usage? → `[DONE]`. *(Stories 3.5 & 3.6)\_
 
-- [ ] Phase 1 — Dev edge non‑stream timeout (P0)
-  - [ ] Reproduce on dev edge; confirm prod parity. Inspect Cloudflare/WAF, Traefik, and origin timeouts.
-  - [ ] Add tracing headers in dev for visibility; verify body fully flushes before connection close.
-  - [ ] Close GH #74 with evidence (cURL and Playwright smoke on dev domain).
+- [x] Phase 1 — Dev edge non‑stream timeout (P0)
+  - [x] Reproduce on dev edge; confirm prod parity. Inspect Cloudflare/WAF, Traefik, and origin timeouts. _(Story 3.1)_
+  - [x] Add tracing headers in dev for visibility; verify body fully flushes before connection close. _(Story 3.1)_
+  - [x] Close GH #74 with evidence (cURL and Playwright smoke on dev domain). _(Story 3.1)_
 
-- [ ] Phase 2 — Non‑stream truncation flake
-  - [ ] Treat early proto `stdout.end` as truncation and return `finish_reason:"length"` immediately.
-  - [ ] Harden `tests/integration/chat.nonstream.length.int.test.js` for determinism.
+- [x] Phase 2 — Non‑stream truncation flake
+  - [x] Treat early proto `stdout.end` as truncation and return `finish_reason:"length"` immediately. _(Story 3.2)_
+  - [x] Harden `tests/integration/chat.nonstream.length.int.test.js` for determinism. _(Story 3.2)_
 
-- [ ] Phase 3 — Streaming usage timing
-  - [ ] Emit usage as soon as counts arrive and on teardown; preserve finalizer order; keep `[DONE]` separate.
-  - [ ] Verify with Playwright stream collector and contract checks.
+- [x] Phase 3 — Streaming usage timing
+  - [x] Emit usage as soon as counts arrive and on teardown; preserve finalizer order; keep `[DONE]` separate. _(Story 3.3)_
+  - [x] Verify with Playwright stream collector and contract checks. _(Stories 3.3 & 3.6)_
 
 - [x] Phase 4 — Concurrency guard determinism
   - [x] Add test‑only headers (`X-Conc-*`) for observability; adjust guard timing if needed.
@@ -62,6 +62,16 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 - [x] Phase 5 — Docs & runbooks
   - [x] Update `docs/openai-chat-completions-parity.md` if order/toggles are clarified.
   - [x] Add a runbook snippet for dev edge timeouts (checks + usual culprits).
+
+## Progress
+
+- ✅ **Story 3.1–3.4** closed the non-stream timeout, truncation flake, usage emission, and concurrency guard gaps (Phases 1–4).
+- ✅ **Story 3.5** delivered the expanded golden transcript corpus and contract guardrails (Phase 0) plus documentation updates.
+- ✅ **Story 3.6** introduced Keploy-backed snapshots, CI toggles, and QA/PO artifacts; follow-up rollout tracked in `docs/bmad/issues/2025-09-20-keploy-install-config.md`.
+- 🔄 **Outstanding:**
+  - Execute the Keploy CLI installation/config rollout and enable replay in CI (AC6 closure).
+  - Complete P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-13-streaming-finalizer-richer-finish-reason.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
+  - Monitor dev edge in production and add long-term observability for Keploy timings once enabled.
 
 # Dependencies & Impact
 
