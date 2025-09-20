@@ -63,12 +63,6 @@ function buildKeployYaml({ scenario, transcript }) {
         },
         body: responseJson,
       },
-      noise: {
-        body: (stream
-          ? ["$.stream[*].data.id", "$.stream[*].data.created"]
-          : ["$.id", "$.created"]
-        ).map((path) => ({ path })),
-      },
     },
     metadata: {
       codex_bin: metadata.codex_bin,

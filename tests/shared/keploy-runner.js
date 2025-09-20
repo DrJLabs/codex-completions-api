@@ -20,7 +20,7 @@ async function ensureBinaryExists(binary) {
     } catch (err) {
       if (err?.code === "ENOENT") {
         throw new Error(
-          `Keploy CLI not found at "${candidate}". Download https://keploy.io/install.sh, inspect it locally, then execute it or set KEPLOY_BIN.`
+          `Keploy CLI not found at "${candidate}". Please follow the installation steps documented in docs/bmad/architecture/tech-stack.md and set KEPLOY_BIN if using a non-default path.`
         );
       }
       throw err;
@@ -41,7 +41,7 @@ async function ensureBinaryExists(binary) {
   }
 
   throw new Error(
-    `Keploy CLI not found on PATH (looked for "${binary}"). Download https://keploy.io/install.sh, inspect it locally, then execute it or set KEPLOY_BIN.`
+    `Keploy CLI not found on PATH (looked for "${binary}"). Please follow the installation steps documented in docs/bmad/architecture/tech-stack.md and set KEPLOY_BIN if using a non-default path.`
   );
 }
 
