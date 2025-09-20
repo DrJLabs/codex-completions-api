@@ -66,7 +66,9 @@ curl -fsSL "$INSTALL_URL" -o "$TMP_DIR/install.sh"
 chmod +x "$TMP_DIR/install.sh"
 
 log "running installer"
-if ! bash "$TMP_DIR/install.sh" >/dev/null; then
+if ! output=$(bash "$TMP_DIR/install.sh" 2>&1); then
+  log "Installer output:"
+  printf '%s\n' "$output"
   die "Keploy installer failed"
 fi
 
