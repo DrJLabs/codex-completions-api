@@ -29,6 +29,18 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 - Rollout decision recorded: either `KEPLOY_ENABLED` flipped on (with evidence) or a clear schedule/criteria defined.
 - Follow-up issues created for any remaining integration or monitoring tasks.
 
+## Progress — 2025-09-20
+
+- Added `scripts/setup-keploy-cli.sh` to automate CLI install, port pre-flight (16789/16790/26789), and loopback enforcement (`KEPLOY_HOST_BIND=127.0.0.1`). Script outputs the installed version for traceability.
+- Updated `.env.example` / `.env.dev` with the full Keploy env contract (`KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, `KEPLOY_HOST_BIND`).
+- Refreshed `docs/bmad/architecture/tech-stack.md` and `docs/openai-chat-completions-parity.md` with install instructions, caching guidance, and dry-run expectations.
+- CI workflow now caches the CLI layer and introduces a `keploy-dry-run` job (gated by `KEPLOY_ENABLED=true`) that runs `keploy test --config-path config/keploy.yml`, captures runtime metrics, and uploads artifacts/logs.
+
+## Next Steps
+
+- Populate rollout evidence (CI artefacts + local smoke) in this issue before flipping `KEPLOY_ENABLED` on by default.
+- Decide whether DNS helper (`dnsPort`) should remain enabled or default to `0` for development machines; document the outcome.
+
 ## References
 
 - Story 3.6 — `docs/bmad/stories/3.6.keploy-snapshot-ci-integration.md`
