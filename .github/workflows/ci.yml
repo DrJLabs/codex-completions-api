@@ -13,6 +13,10 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      KEPLOY_ENABLED: ${{ vars.KEPLOY_ENABLED || 'false' }}
+      KEPLOY_BIN: ${{ vars.KEPLOY_BIN || 'keploy' }}
+      KEPLOY_APP_PORT: 11435
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,6 +54,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci || npm install
+
+      - name: Install Keploy CLI
+        if: env.KEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          curl --silent -O -L https://keploy.io/install.sh
+          source install.sh
+          keploy version
 
       - name: Format check
         run: npm run format:check

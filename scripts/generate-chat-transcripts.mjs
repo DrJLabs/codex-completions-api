@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import fetch from "node-fetch";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
@@ -16,6 +17,84 @@ const BASE_HEADERS = {
   "Content-Type": "application/json",
   Authorization: "Bearer test-sk-ci",
 };
+
+function isKeployEnabled() {
+  const raw = process.env.KEPLOY_ENABLED ?? "";
+  return /^(1|true|yes)$/i.test(raw.trim());
+}
+
+const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, "keploy", "test-set-0", "tests");
+
+function indentBlock(text, spaces) {
+  const prefix = " ".repeat(spaces);
+  return text
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
+}
+
+async function maybeWriteKeploySnapshot(filename, transcript) {
+  if (!isKeployEnabled()) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  await mkdir(KEPLOY_ROOT, { recursive: true });
+  const scenario = transcript?.metadata?.scenario || filename.replace(/\.json$/, "");
+  const yamlPayload = buildKeployYaml({ scenario, transcript });
+  const target = resolve(KEPLOY_ROOT, `${scenario}.yaml`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  await writeFile(target, `${yamlPayload}\n`, "utf8");
+}
+
+function buildKeployYaml({ scenario, transcript }) {
+  const { metadata, request, response, stream } = transcript;
+  const description = `Chat completions snapshot for ${scenario}`;
+  const bodyPayload = response ?? { stream };
+  const requestJson = JSON.stringify(request, null, 2);
+  const responseJson = JSON.stringify(bodyPayload, null, 2);
+  const headers = stream
+    ? "Content-Type:\n        - text/event-stream"
+    : "Content-Type:\n        - application/json; charset=utf-8";
+
+  const noiseConfig = stream
+    ? `  noise:
+    body:
+      - path: "$.stream[*].data.id"
+      - path: "$.stream[*].data.created"`
+    : `  noise:
+    body:
+      - path: "$.id"
+      - path: "$.created"`;
+
+  return `version: api.keploy.io/v1beta1
+kind: Http
+name: ${scenario}
+description: ${description}
+created: ${metadata.captured_at}
+spec:
+  request:
+    method: POST
+    url: /v1/chat/completions${request.stream ? "?stream=true" : ""}
+    headers:
+      Content-Type:
+        - application/json
+      Authorization:
+        - Bearer test-sk-ci
+    body: |-
+${indentBlock(requestJson, 6)}
+  response:
+    status_code: 200
+    headers:
+      ${headers}
+    body: |-
+${indentBlock(responseJson, 6)}
+${noiseConfig}
+metadata:
+  codex_bin: ${metadata.codex_bin}
+  commit: ${metadata.commit}
+  include_usage: ${metadata.include_usage}
+  placeholders:
+    id: "<dynamic-id>"
+    created: "<timestamp>"`;
+}
 
 function gitCommitSha() {
   try {
@@ -39,6 +118,7 @@ async function runCapture({ codexBin, filename, includeUsage, commitSha, createP
       ...transcriptPayload,
     };
     await saveTranscript(filename, transcript);
+    await maybeWriteKeploySnapshot(filename, transcript);
   } finally {
     await stopServer(ctx.child);
   }
