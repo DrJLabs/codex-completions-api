@@ -13,7 +13,9 @@ const useKeploy = isKeployEnabled();
 if (useKeploy) {
   describe("chat completion streaming contract (Keploy)", () => {
     test("replay suite passes", async () => {
-      await runKeploySuite({ label: "chat-contracts" });
+      const outcome = await runKeploySuite({ label: "chat-contracts" });
+      const expected = outcome.skipped ? { skipped: true } : { exitCode: 0, ran: true };
+      expect(outcome).toEqual(expect.objectContaining(expected));
     }, 60_000);
   });
 } else {
