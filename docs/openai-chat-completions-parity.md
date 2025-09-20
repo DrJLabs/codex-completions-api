@@ -93,6 +93,13 @@ Notes:
 - Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses through a Keploy-style capture, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag).
 - Contract tests (`tests/integration/chat.contract.*.int.test.js`) and Playwright specs (`tests/e2e/chat-contract.spec.ts`) sanitize live responses and compare them to these transcripts on every CI run, ensuring ordering, usage emission, and truncation semantics remain stable.
 
+### Keploy CLI Rollout & Dry-Run (Story 3.7)
+
+- Use `./scripts/setup-keploy-cli.sh` to provision the Keploy CLI. The script validates that ports 16789 (record), 16790 (test), and 26789 (DNS) are free, enforces loopback binding via `KEPLOY_HOST_BIND=127.0.0.1`, downloads the official installer (`curl -fsSL https://keploy.io/install.sh`), and prints the installed version for audit trails.
+- Local `.env` files include `KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, and `KEPLOY_HOST_BIND` so developers can opt in to replay without exposing ports beyond localhost. Set `KEPLOY_ENABLED=true` once the CLI is installed.
+- CI runs the `keploy-dry-run` workflow job whenever `KEPLOY_ENABLED=true` in repository/environment variables. The job reuses the install helper, caches the CLI layer (`~/.keploy`), executes `keploy test --config-path config/keploy.yml`, and uploads `keploy` logs + replay duration metrics as artifacts.
+- The dry-run job keeps the existing `npm run verify:all` duration within budget; performance guard metrics are logged so regressions trigger investigation before flipping `KEPLOY_ENABLED` on by default.
+
 ### Streaming Concurrency Guard (Test Instrumentation)
 
 - The per-process SSE concurrency guard rejects additional streams with `429` when `PROXY_SSE_MAX_CONCURRENCY` is set. Production responses remain unchanged.
