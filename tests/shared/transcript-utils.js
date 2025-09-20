@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { isKeployEnabled } from "./keploy-runner.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
@@ -110,37 +111,26 @@ const REQUIRED_KEPLOY_SNAPSHOTS = [
   "streaming-usage.yaml",
 ];
 
-function isKeployEnabled() {
-  const raw = process.env.KEPLOY_ENABLED ?? "";
-  return /^(1|true|yes)$/i.test(raw.trim());
-}
-
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
-  const missing = files.filter((file) => {
+  const missingJson = files.filter((file) => {
     const fullPath = resolve(TRANSCRIPT_ROOT, file);
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     return !existsSync(fullPath);
   });
-  if (missing.length === 0) {
-    ensureKeploySnapshots();
-    return;
+
+  let missingYaml = [];
+  if (isKeployEnabled()) {
+    missingYaml = REQUIRED_KEPLOY_SNAPSHOTS.filter((file) => {
+      const fullPath = resolve(KEPLOY_ROOT, file);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      return !existsSync(fullPath);
+    });
   }
+
+  if (missingJson.length === 0 && missingYaml.length === 0) return;
+
   const generator = resolve(PROJECT_ROOT, "scripts", "generate-chat-transcripts.mjs");
   // Paths are repo-controlled; safe to exec for regeneration.
-
-  execFileSync("node", [generator], { stdio: "inherit" });
-  ensureKeploySnapshots();
-}
-
-function ensureKeploySnapshots() {
-  if (!isKeployEnabled()) return;
-  const missing = REQUIRED_KEPLOY_SNAPSHOTS.filter((file) => {
-    const fullPath = resolve(KEPLOY_ROOT, file);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    return !existsSync(fullPath);
-  });
-  if (missing.length === 0) return;
-  const generator = resolve(PROJECT_ROOT, "scripts", "generate-chat-transcripts.mjs");
   execFileSync("node", [generator], { stdio: "inherit" });
 }
 

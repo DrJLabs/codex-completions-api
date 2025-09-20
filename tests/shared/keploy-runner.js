@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { access } from "node:fs/promises";
-import { resolve } from "node:path";
+import { constants } from "node:fs";
+import { resolve, isAbsolute, join, delimiter } from "node:path";
 
 const cache = new Map();
 
@@ -11,19 +11,38 @@ export function isKeployEnabled() {
 }
 
 async function ensureBinaryExists(binary) {
-  try {
-    const candidate = resolve(process.cwd(), binary);
-    await access(candidate)
-      .then(() => candidate)
-      .catch(() => access(binary));
-  } catch (err) {
-    if (err && err.code === "ENOENT") {
-      throw new Error(
-        `Keploy CLI not found (looked for "${binary}"). Install via "curl --silent -O -L https://keploy.io/install.sh && source install.sh" or set KEPLOY_BIN.`
-      );
+  const hasPathSeparator = binary.includes("/") || binary.includes("\\");
+  if (hasPathSeparator || isAbsolute(binary)) {
+    const candidate = isAbsolute(binary) ? binary : resolve(process.cwd(), binary);
+    try {
+      await access(candidate, constants.X_OK);
+      return;
+    } catch (err) {
+      if (err?.code === "ENOENT") {
+        throw new Error(
+          `Keploy CLI not found at "${candidate}". Download https://keploy.io/install.sh, inspect it locally, then execute it or set KEPLOY_BIN.`
+        );
+      }
+      throw err;
     }
-    throw err;
   }
+
+  const searchPath = process.env.PATH ?? "";
+  for (const segment of searchPath.split(delimiter)) {
+    if (!segment) continue;
+    const candidate = join(segment, binary);
+    try {
+      await access(candidate, constants.X_OK);
+      return;
+    } catch (err) {
+      if (err?.code === "ENOENT" || err?.code === "EACCES") continue;
+      throw err;
+    }
+  }
+
+  throw new Error(
+    `Keploy CLI not found on PATH (looked for "${binary}"). Download https://keploy.io/install.sh, inspect it locally, then execute it or set KEPLOY_BIN.`
+  );
 }
 
 export async function runKeploySuite({
@@ -34,29 +53,46 @@ export async function runKeploySuite({
   if (!isKeployEnabled()) return { skipped: true };
   if (cache.has(label)) return cache.get(label);
 
-  const binary = process.env.KEPLOY_BIN || "keploy";
-  await ensureBinaryExists(binary);
+  const runPromise = (async () => {
+    const binary = process.env.KEPLOY_BIN || "keploy";
+    await ensureBinaryExists(binary);
 
-  const args = ["test", "--config-path", configPath];
+    const args = ["test", "--config-path", configPath];
 
-  const env = {
-    ...process.env,
-    PROXY_API_KEY: process.env.PROXY_API_KEY || "test-sk-ci",
-    CODEX_BIN: process.env.CODEX_BIN || "scripts/fake-codex-proto.js",
-    PORT: process.env.KEPLOY_APP_PORT || "11435",
-    ...extraEnv,
-  };
+    const env = {
+      ...process.env,
+      PROXY_API_KEY: process.env.PROXY_API_KEY || "test-sk-ci",
+      CODEX_BIN: process.env.CODEX_BIN || "scripts/fake-codex-proto.js",
+      PORT: process.env.KEPLOY_APP_PORT || "11435",
+      ...extraEnv,
+    };
 
-  const child = spawn(binary, args, {
-    env,
-    stdio: "inherit",
-  });
+    return new Promise((resolve, reject) => {
+      const child = spawn(binary, args, {
+        env,
+        stdio: "inherit",
+      });
 
-  const [code] = await once(child, "exit");
-  const result = { exitCode: code, ran: true };
-  cache.set(label, result);
-  if (code !== 0) {
-    throw new Error(`Keploy suite ${label} failed with exit code ${code}`);
+      child.once("error", (err) => {
+        reject(new Error(`Failed to launch Keploy CLI for ${label}: ${err.message}`));
+      });
+
+      child.once("exit", (code) => {
+        const exitCode = typeof code === "number" ? code : 0;
+        if (exitCode !== 0) {
+          reject(new Error(`Keploy suite ${label} failed with exit code ${exitCode}`));
+          return;
+        }
+        resolve({ exitCode, ran: true });
+      });
+    });
+  })();
+
+  cache.set(label, runPromise);
+  try {
+    return await runPromise;
+  } catch (err) {
+    cache.delete(label);
+    throw err;
   }
-  return result;
 }
