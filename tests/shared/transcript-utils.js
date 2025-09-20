@@ -3,10 +3,12 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { isKeployEnabled } from "./keploy-runner.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
 const TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "chat-completions");
+const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, "keploy", "test-set-0", "tests");
 
 const PLACEHOLDER_ID = "<dynamic-id>";
 const PLACEHOLDER_CREATED = "<timestamp>";
@@ -103,16 +105,32 @@ const REQUIRED_TRANSCRIPTS = [
   "streaming-usage.json",
 ];
 
+const REQUIRED_KEPLOY_SNAPSHOTS = [
+  "nonstream-minimal.yaml",
+  "nonstream-truncation.yaml",
+  "streaming-usage.yaml",
+];
+
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
-  const missing = files.filter((file) => {
+  const missingJson = files.filter((file) => {
     const fullPath = resolve(TRANSCRIPT_ROOT, file);
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     return !existsSync(fullPath);
   });
-  if (missing.length === 0) return;
+
+  let missingYaml = [];
+  if (isKeployEnabled()) {
+    missingYaml = REQUIRED_KEPLOY_SNAPSHOTS.filter((file) => {
+      const fullPath = resolve(KEPLOY_ROOT, file);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      return !existsSync(fullPath);
+    });
+  }
+
+  if (missingJson.length === 0 && missingYaml.length === 0) return;
+
   const generator = resolve(PROJECT_ROOT, "scripts", "generate-chat-transcripts.mjs");
   // Paths are repo-controlled; safe to exec for regeneration.
-
   execFileSync("node", [generator], { stdio: "inherit" });
 }
 

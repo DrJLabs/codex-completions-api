@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import fetch from "node-fetch";
+import YAML from "yaml";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
   TRANSCRIPT_ROOT,
@@ -11,11 +13,80 @@ import {
   parseSSE,
   buildMetadata,
 } from "../tests/shared/transcript-utils.js";
+import { isKeployEnabled } from "../tests/shared/keploy-runner.js";
 
 const BASE_HEADERS = {
   "Content-Type": "application/json",
   Authorization: "Bearer test-sk-ci",
 };
+
+const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, "keploy", "test-set-0", "tests");
+
+async function maybeWriteKeploySnapshot(filename, transcript) {
+  if (!isKeployEnabled()) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  await mkdir(KEPLOY_ROOT, { recursive: true });
+  const scenario = transcript?.metadata?.scenario || filename.replace(/\.json$/, "");
+  const yamlPayload = buildKeployYaml({ scenario, transcript });
+  const target = resolve(KEPLOY_ROOT, `${scenario}.yaml`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  await writeFile(target, `${yamlPayload}\n`, "utf8");
+}
+
+function buildKeployYaml({ scenario, transcript }) {
+  const { metadata, request, response, stream } = transcript;
+  const description = `Chat completions snapshot for ${scenario}`;
+  const bodyPayload = response ?? { stream };
+  const requestJson = JSON.stringify(request, null, 2);
+  const responseJson = JSON.stringify(bodyPayload, null, 2);
+
+  const doc = new YAML.Document({
+    version: "api.keploy.io/v1beta1",
+    kind: "Http",
+    name: scenario,
+    description,
+    created: metadata.captured_at,
+    spec: {
+      request: {
+        method: "POST",
+        url: `/v1/chat/completions${request.stream ? "?stream=true" : ""}`,
+        headers: {
+          "Content-Type": ["application/json"],
+          Authorization: ["Bearer test-sk-ci"],
+        },
+        body: requestJson,
+      },
+      response: {
+        status_code: 200,
+        headers: {
+          "Content-Type": [stream ? "text/event-stream" : "application/json; charset=utf-8"],
+        },
+        body: responseJson,
+      },
+    },
+    metadata: {
+      codex_bin: metadata.codex_bin,
+      commit: metadata.commit,
+      include_usage: metadata.include_usage,
+      placeholders: {
+        id: "<dynamic-id>",
+        created: "<timestamp>",
+      },
+    },
+  });
+
+  const requestNode = doc.getIn(["spec", "request", "body"]);
+  if (YAML.isScalar(requestNode)) {
+    requestNode.type = YAML.Scalar.BLOCK_LITERAL;
+  }
+
+  const responseNode = doc.getIn(["spec", "response", "body"]);
+  if (YAML.isScalar(responseNode)) {
+    responseNode.type = YAML.Scalar.BLOCK_LITERAL;
+  }
+
+  return doc.toString().trimEnd();
+}
 
 function gitCommitSha() {
   try {
@@ -39,6 +110,7 @@ async function runCapture({ codexBin, filename, includeUsage, commitSha, createP
       ...transcriptPayload,
     };
     await saveTranscript(filename, transcript);
+    await maybeWriteKeploySnapshot(filename, transcript);
   } finally {
     await stopServer(ctx.child);
   }

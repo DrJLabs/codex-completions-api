@@ -88,6 +88,7 @@ Notes:
   - `nonstream-minimal.json`
   - `nonstream-truncation.json`
   - `streaming-usage.json`
+- Keploy-compatible snapshots live alongside the JSON fixtures under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`. Generate both sets via `npm run transcripts:generate` (enable `KEPLOY_ENABLED=true` to emit the YAML fixtures while keeping JSON fallbacks in sync).
 - Each transcript stores sanitized payloads where `id` and `created` are replaced with `<dynamic-id>` and `<timestamp>` so deterministic diffs highlight envelope drift instead of random identifiers.
 - Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses through a Keploy-style capture, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag).
 - Contract tests (`tests/integration/chat.contract.*.int.test.js`) and Playwright specs (`tests/e2e/chat-contract.spec.ts`) sanitize live responses and compare them to these transcripts on every CI run, ensuring ordering, usage emission, and truncation semantics remain stable.
