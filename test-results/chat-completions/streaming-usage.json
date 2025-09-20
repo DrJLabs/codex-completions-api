@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "captured_at": "2025-09-19T05:30:47.746Z",
+    "captured_at": "2025-09-20T05:55:51.916Z",
     "include_usage": true,
     "codex_bin": "scripts/fake-codex-proto.js",
-    "commit": "072dbe5ee82fb3e9bd70b97f1dfeb4b188291d49",
+    "commit": "3e43238a9ca988a471bb7f79fbedb51b3a2365ec",
     "scenario": "streaming-usage"
   },
   "request": {

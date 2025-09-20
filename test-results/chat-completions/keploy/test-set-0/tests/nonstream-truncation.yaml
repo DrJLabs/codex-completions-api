@@ -1,0 +1,63 @@
+version: api.keploy.io/v1beta1
+kind: Http
+name: nonstream-truncation
+description: Chat completions snapshot for nonstream-truncation
+created: 2025-09-20T07:50:38.414Z
+spec:
+  request:
+    method: POST
+    url: /v1/chat/completions
+    headers:
+      Content-Type:
+        - application/json
+      Authorization:
+        - Bearer test-sk-ci
+    body: |-
+      {
+        "model": "codex-5",
+        "stream": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Trigger truncation"
+          }
+        ]
+      }
+  response:
+    status_code: 200
+    headers:
+      Content-Type:
+        - application/json; charset=utf-8
+    body: |-
+      {
+        "id": "<dynamic-id>",
+        "object": "chat.completion",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello (truncated) from fake-codex."
+            },
+            "finish_reason": "length"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 5,
+          "completion_tokens": 9,
+          "total_tokens": 14
+        }
+      }
+  noise:
+    body:
+      - path: $.id
+      - path: $.created
+metadata:
+  codex_bin: scripts/fake-codex-proto-no-complete.js
+  commit: 153082581fe68c6a78213a1cc0deafcea95b0a63
+  include_usage: false
+  placeholders:
+    id: <dynamic-id>
+    created: <timestamp>
