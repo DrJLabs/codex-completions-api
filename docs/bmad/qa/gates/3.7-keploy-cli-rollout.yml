@@ -1,0 +1,71 @@
+schema: 1
+story: "3.7"
+story_title: "Story 3.7 — Keploy CLI Rollout & Enablement"
+gate: CONCERNS
+status_reason: "Keploy install helper and CI job are in place, but replay evidence is pending until the rollout flag is enabled; AC1/AC3 remain partially covered."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-20T15:25:00Z"
+quality_score: 80
+expires: "2025-10-04T15:25:00Z"
+
+top_issues:
+  - id: "keploy-rollout-evidence"
+    description: "Run canary with KEPLOY_ENABLED=true to capture install and replay artefacts, closing AC1/AC3 coverage gaps."
+    refs:
+      - "docs/bmad/issues/2025-09-20-keploy-install-config.md"
+    status: open
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 2
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 3, 4]
+    ac_gaps: [1, 3]
+  trace_ref: "docs/bmad/qa/assessments/3.7-trace-20250920.md"
+  nfr_ref: "docs/bmad/qa/assessments/3.7-nfr-20250920.md"
+  risk_ref: "docs/bmad/qa/assessments/3.7-risk-20250920.md"
+  test_design_ref: "docs/bmad/qa/assessments/3.7-test-design-20250920.md"
+
+test_evidence:
+  - "npm run verify:all (2025-09-20)"
+  - "Workflow update: keploy-dry-run job (pending activation)"
+
+trace:
+  totals:
+    requirements: 4
+    full: 2
+    partial: 2
+    none: 0
+  uncovered:
+    - ac: "AC1"
+      reason: "Helper present but no recorded installation run on CI yet."
+    - ac: "AC3"
+      reason: "Dry-run job created but not executed; need replay artefacts."
+  notes: "See docs/bmad/qa/assessments/3.7-trace-20250920.md"
+
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: PASS
+    notes: "Install helper enforces loopback binding and port checks."
+  performance:
+    status: CONCERNS
+    notes: "Replay runtime unmeasured; enable canary run to collect baseline."
+  reliability:
+    status: CONCERNS
+    notes: "Dry-run job has not executed; replay success unverified."
+  maintainability:
+    status: PASS
+    notes: "Centralized helper and documentation keep rollout steps reproducible."
+
+recommendations:
+  immediate:
+    - action: "Flip KEPLOY_ENABLED=true in staging and capture artefacts/metrics to retire AC1 & AC3 gaps."
+      refs:
+        - "docs/bmad/issues/2025-09-20-keploy-install-config.md"
+  future:
+    - action: "Add CI alerting on replay duration once baseline metrics exist."
+      refs:
+        - "docs/bmad/architecture/tech-stack.md#Testing & QA"
