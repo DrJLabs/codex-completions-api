@@ -14,11 +14,8 @@ if (useKeploy) {
   test.describe("Chat contract baselines (Keploy)", () => {
     test("replay suite passes", async () => {
       const outcome = await runKeploySuite({ label: "chat-contracts" });
-      if (outcome.skipped) {
-        expect(outcome.skipped).toBe(true);
-      } else {
-        expect(outcome).toMatchObject({ exitCode: 0, ran: true });
-      }
+      const expected = outcome.skipped ? { skipped: true } : { exitCode: 0, ran: true };
+      expect(outcome).toEqual(expect.objectContaining(expected));
     });
   });
 } else {
