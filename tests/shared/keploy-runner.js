@@ -1,9 +1,43 @@
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
-import { resolve, isAbsolute, join, delimiter } from "node:path";
+import { resolve, isAbsolute, join, delimiter, dirname, extname } from "node:path";
 
 const cache = new Map();
+
+const CONFIG_EXTENSIONS = new Set([".yaml", ".yml"]);
+
+async function ensureConfigFileExists(configDir) {
+  const candidateDir = isAbsolute(configDir) ? configDir : resolve(process.cwd(), configDir);
+  const candidates = ["keploy.yaml", "keploy.yml"];
+  for (const name of candidates) {
+    const path = join(candidateDir, name);
+    try {
+      await access(path, constants.R_OK);
+      return;
+    } catch (err) {
+      if (err?.code === "ENOENT") continue;
+      if (err?.code === "EACCES") continue;
+      throw err;
+    }
+  }
+
+  throw new Error(
+    `Keploy config not found under "${candidateDir}". Expected keploy.yaml or keploy.yml; update configPath or follow docs/bmad/architecture/tech-stack.md to generate the config.`
+  );
+}
+
+function normalizeConfigPath(configPath) {
+  if (!configPath) return "config";
+  const trimmed = configPath.trim();
+  if (!trimmed) return "config";
+  const extension = extname(trimmed).toLowerCase();
+  if (CONFIG_EXTENSIONS.has(extension)) {
+    const dir = dirname(trimmed);
+    return dir && dir !== "." ? dir : ".";
+  }
+  return trimmed;
+}
 
 export function isKeployEnabled() {
   const raw = process.env.KEPLOY_ENABLED ?? "";
@@ -57,7 +91,10 @@ export async function runKeploySuite({
     const binary = process.env.KEPLOY_BIN || "keploy";
     await ensureBinaryExists(binary);
 
-    const args = ["test", "--config-path", configPath];
+    const configDir = normalizeConfigPath(configPath);
+    await ensureConfigFileExists(configDir);
+
+    const args = ["test", "--config-path", configDir];
 
     const env = {
       ...process.env,

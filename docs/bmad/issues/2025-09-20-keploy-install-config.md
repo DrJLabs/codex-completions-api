@@ -17,7 +17,7 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 - Update automation (e.g., reusable setup script or CI step) to install the CLI before tests when `KEPLOY_ENABLED=true`, capturing the CLI version in job logs.
 - Document prerequisites (ports 16789/26789, outbound network rules, binary location) and add a troubleshooting section covering proxy startup and failure signals.
 - Define the environment-variable contract (`KEPLOY_ENABLED`, `KEPLOY_BIN`, optional `KEPLOY_APP_PORT`) and update `.env.dev` / `.env.example` guidance with turn-key examples.
-- Validate the installation by running `keploy test --config-path config/keploy.yaml` against the generated snapshots locally and in CI dry-run mode; capture evidence (logs, runtime metrics).
+- Validate the installation by running `keploy test --config-path config` against the generated snapshots locally and in CI dry-run mode; capture evidence (logs, runtime metrics).
 - Decide how and when to enable `KEPLOY_ENABLED=true` in CI (e.g., feature flag, specific branch, or once runners have the binary cached) and record the rollout plan.
 - Identify any follow-up integration points (e.g., dev Docker images, prod observability) and open subsequent tickets if needed.
 
@@ -34,7 +34,7 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 - Added `scripts/setup-keploy-cli.sh` to automate CLI install, port pre-flight (16789/16790/26789), and loopback enforcement (`KEPLOY_HOST_BIND=127.0.0.1`). Script outputs the installed version for traceability.
 - Updated `.env.example` / `.env.dev` with the full Keploy env contract (`KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, `KEPLOY_HOST_BIND`).
 - Refreshed `docs/bmad/architecture/tech-stack.md` and `docs/openai-chat-completions-parity.md` with install instructions, caching guidance, and dry-run expectations.
-- CI workflow now caches the CLI layer and introduces a `keploy-dry-run` job (gated by `KEPLOY_ENABLED=true`) that runs `keploy test --config-path config/keploy.yaml`, captures runtime metrics, and uploads artifacts/logs.
+- CI workflow now caches the CLI layer and introduces a `keploy-dry-run` job (gated by `KEPLOY_ENABLED=true`) that runs `keploy test --config-path config`, captures runtime metrics, and uploads artifacts/logs.
 
 ## Evidence — 2025-09-20
 
