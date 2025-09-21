@@ -85,6 +85,19 @@ RESOLVED_BIN="$(command -v "$BIN_NAME")"
 log "Keploy CLI located at $RESOLVED_BIN"
 
 log "verifying CLI version"
-"$RESOLVED_BIN" version
+version_output=""
+if version_output=$("$RESOLVED_BIN" --version 2>/dev/null); then
+  :
+elif version_output=$("$RESOLVED_BIN" -v 2>/dev/null); then
+  :
+elif version_output=$("$RESOLVED_BIN" version 2>/dev/null); then
+  :
+else
+  log "warning: keploy CLI does not expose a version flag; continuing"
+fi
+
+if [ -n "${version_output:-}" ]; then
+  log "Keploy CLI version: $version_output"
+fi
 
 log "Keploy preflight complete"

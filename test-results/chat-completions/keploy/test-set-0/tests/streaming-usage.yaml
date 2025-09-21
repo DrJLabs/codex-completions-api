@@ -1,17 +1,21 @@
 version: api.keploy.io/v1beta1
 kind: Http
 name: streaming-usage
-description: Chat completions snapshot for streaming-usage
-created: 2025-09-20T07:50:37.846Z
 spec:
-  request:
+  metadata:
+    description: Chat completions snapshot for streaming-usage
+    codex_bin: scripts/fake-codex-proto.js
+    commit: 4427422cbce0e5b29c8a60dd07264cdf53febbee
+    include_usage: "true"
+    placeholders: '{"id":"<dynamic-id>","created":"<timestamp>"}'
+  req:
     method: POST
-    url: /v1/chat/completions?stream=true
-    headers:
-      Content-Type:
-        - application/json
-      Authorization:
-        - Bearer test-sk-ci
+    proto_major: 1
+    proto_minor: 1
+    url: http://127.0.0.1:11436/v1/chat/completions?stream=true
+    header:
+      Content-Type: application/json
+      Authorization: Bearer test-sk-ci
     body: |-
       {
         "model": "codex-5",
@@ -26,11 +30,11 @@ spec:
           }
         ]
       }
-  response:
+    timestamp: 2025-09-20T22:46:34.743Z
+  resp:
     status_code: 200
-    headers:
-      Content-Type:
-        - text/event-stream
+    header:
+      Content-Type: text/event-stream
     body: |-
       {
         "stream": [
@@ -131,14 +135,13 @@ spec:
           }
         ]
       }
-  noise:
-    body:
-      - path: $.stream[*].data.id
-      - path: $.stream[*].data.created
-metadata:
-  codex_bin: scripts/fake-codex-proto.js
-  commit: 153082581fe68c6a78213a1cc0deafcea95b0a63
-  include_usage: true
-  placeholders:
-    id: <dynamic-id>
-    created: <timestamp>
+    proto_major: 1
+    proto_minor: 1
+    timestamp: 2025-09-20T22:46:34.743Z
+  objects: []
+  assertions:
+    noise:
+      body:
+        - $.stream[*].data.id
+        - $.stream[*].data.created
+  created: 1758408394

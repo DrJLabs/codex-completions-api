@@ -1,17 +1,21 @@
 version: api.keploy.io/v1beta1
 kind: Http
 name: nonstream-truncation
-description: Chat completions snapshot for nonstream-truncation
-created: 2025-09-20T07:50:38.414Z
 spec:
-  request:
+  metadata:
+    description: Chat completions snapshot for nonstream-truncation
+    codex_bin: scripts/fake-codex-proto-no-complete.js
+    commit: 4427422cbce0e5b29c8a60dd07264cdf53febbee
+    include_usage: "false"
+    placeholders: '{"id":"<dynamic-id>","created":"<timestamp>"}'
+  req:
     method: POST
-    url: /v1/chat/completions
-    headers:
-      Content-Type:
-        - application/json
-      Authorization:
-        - Bearer test-sk-ci
+    proto_major: 1
+    proto_minor: 1
+    url: http://127.0.0.1:11436/v1/chat/completions
+    header:
+      Content-Type: application/json
+      Authorization: Bearer test-sk-ci
     body: |-
       {
         "model": "codex-5",
@@ -23,11 +27,11 @@ spec:
           }
         ]
       }
-  response:
+    timestamp: 2025-09-20T22:46:34.964Z
+  resp:
     status_code: 200
-    headers:
-      Content-Type:
-        - application/json; charset=utf-8
+    header:
+      Content-Type: application/json; charset=utf-8
     body: |-
       {
         "id": "<dynamic-id>",
@@ -50,14 +54,13 @@ spec:
           "total_tokens": 14
         }
       }
-  noise:
-    body:
-      - path: $.id
-      - path: $.created
-metadata:
-  codex_bin: scripts/fake-codex-proto-no-complete.js
-  commit: 153082581fe68c6a78213a1cc0deafcea95b0a63
-  include_usage: false
-  placeholders:
-    id: <dynamic-id>
-    created: <timestamp>
+    proto_major: 1
+    proto_minor: 1
+    timestamp: 2025-09-20T22:46:34.964Z
+  objects: []
+  assertions:
+    noise:
+      body:
+        - $.id
+        - $.created
+  created: 1758408394
