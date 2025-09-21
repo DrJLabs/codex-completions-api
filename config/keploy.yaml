@@ -1,6 +1,6 @@
 version: v1
 path: test-results/chat-completions
-command: ""
+command: ./scripts/keploy-start-server.sh
 cmdType: shell
 port: 11436
 proxyPort: 16789
