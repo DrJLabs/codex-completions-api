@@ -40,7 +40,7 @@ function buildKeployYaml({ scenario, transcript }) {
   const description = `Chat completions snapshot for ${scenario}`;
   const capturedAt = metadata?.captured_at ?? new Date().toISOString();
   const createdEpochSeconds = Math.floor(new Date(capturedAt).getTime() / 1000);
-  const port = process.env.KEPLOY_APP_PORT || "11435";
+  const port = process.env.KEPLOY_APP_PORT || "11436";
   const baseUrl = `http://127.0.0.1:${port}`;
   const isStream = Array.isArray(stream);
   const bodyPayload = response ?? { stream };
