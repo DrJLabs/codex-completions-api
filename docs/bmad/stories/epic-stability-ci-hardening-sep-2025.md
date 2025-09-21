@@ -69,9 +69,8 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 - ✅ **Story 3.5** delivered the expanded golden transcript corpus and contract guardrails (Phase 0) plus documentation updates.
 - ✅ **Story 3.6** introduced Keploy-backed snapshots, CI toggles, and QA/PO artifacts; follow-up rollout tracked in `docs/bmad/issues/2025-09-20-keploy-install-config.md`.
 - 🔄 **Outstanding:**
-  - Execute the Keploy CLI installation/config rollout and enable replay in CI (AC6 closure).
   - Complete P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-13-streaming-finalizer-richer-finish-reason.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
-  - Monitor dev edge in production and add long-term observability for Keploy timings once enabled.
+  - Monitor dev edge in production and add long-term observability thresholds for Keploy replay timings.
 
 # Dependencies & Impact
 

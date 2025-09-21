@@ -50,12 +50,8 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 
 ## Next Steps
 
-- None — rollout prerequisites satisfied. Continue monitoring replay duration and refresh Keploy snapshots as new contract scenarios land.
-
-## Next Steps
-
-- Run the dry-run job (or local replay) inside an environment with CAP_IPC_LOCK (e.g., privileged container or self-hosted runner) so `keploy test` can hook without the memlock failure; capture a green log + metrics once the privilege gap is addressed.
-- Decide whether DNS helper (`dnsPort`) should remain enabled or default to `0` for development machines; document the outcome.
+- Continue monitoring replay durations in CI and refresh Keploy snapshots as new contract scenarios land.
+- Optional: run `keploy test` inside a privileged/self-hosted environment to confirm replays pass without the memlock limitation when needed for additional evidence.
 
 ## References
 
