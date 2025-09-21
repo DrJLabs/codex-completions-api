@@ -1,0 +1,34 @@
+version: v1
+path: test-results/chat-completions
+command: ./scripts/keploy-start-server.sh
+cmdType: shell
+port: 11436
+proxyPort: 16789
+dnsPort: 26789
+debug: false
+
+test:
+  delay: 1
+  apiTimeout: 10
+  ignoreOrdering: false
+  mocking: false
+  useLocalMock: true
+  host: 127.0.0.1
+  port: 11436
+  globalNoise:
+    body:
+      - path: $.stream[*].data.id
+      - path: $.stream[*].data.created
+      - path: $.id
+      - path: $.created
+
+record:
+  filters:
+    http:
+      - method: GET
+        pathRegex: ^/healthz$
+  recordTimer: 0
+
+bypassRules:
+  - method: GET
+    pathRegex: ^/healthz$

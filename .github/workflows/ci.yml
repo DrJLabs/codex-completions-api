@@ -5,6 +5,7 @@ on:
     branches: [main, main-p, chore/**, feat/**, fix/**]
   pull_request:
     branches: [main, main-p]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,11 +13,14 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - keploy
     env:
       KEPLOY_ENABLED: ${{ vars.KEPLOY_ENABLED || 'false' }}
       KEPLOY_BIN: ${{ vars.KEPLOY_BIN || 'keploy' }}
-      KEPLOY_APP_PORT: 11435
+      KEPLOY_APP_PORT: 11436
       KEPLOY_RECORD_PORT: 16789
       KEPLOY_TEST_PORT: 16790
       KEPLOY_DNS_PORT: 26789
@@ -66,7 +70,7 @@ jobs:
           path: |
             ~/.keploy
             ~/.cache/keploy
-          key: keploy-cli-${{ runner.os }}-${{ hashFiles('scripts/setup-keploy-cli.sh', 'config/keploy.yml') }}
+          key: keploy-cli-${{ runner.os }}-${{ hashFiles('scripts/setup-keploy-cli.sh', 'config/keploy.yaml') }}
 
       - name: Setup Keploy CLI
         if: env.KEPLOY_ENABLED == 'true'
@@ -95,11 +99,14 @@ jobs:
   keploy-dry-run:
     needs: build-and-test
     if: ${{ (vars.KEPLOY_ENABLED || 'false') == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - keploy
     env:
       KEPLOY_ENABLED: ${{ vars.KEPLOY_ENABLED || 'false' }}
       KEPLOY_BIN: ${{ vars.KEPLOY_BIN || 'keploy' }}
-      KEPLOY_APP_PORT: 11435
+      KEPLOY_APP_PORT: 11436
       KEPLOY_RECORD_PORT: 16789
       KEPLOY_TEST_PORT: 16790
       KEPLOY_DNS_PORT: 26789
@@ -123,7 +130,7 @@ jobs:
           path: |
             ~/.keploy
             ~/.cache/keploy
-          key: keploy-cli-${{ runner.os }}-${{ hashFiles('scripts/setup-keploy-cli.sh', 'config/keploy.yml') }}
+          key: keploy-cli-${{ runner.os }}-${{ hashFiles('scripts/setup-keploy-cli.sh', 'config/keploy.yaml') }}
 
       - name: Setup Keploy CLI
         run: ./scripts/setup-keploy-cli.sh
@@ -136,11 +143,17 @@ jobs:
           export PATH="$HOME/.keploy/bin:$HOME/.local/bin:$PATH"
           START_TS=$(date +%s)
           set -o pipefail
-          "$KEPLOY_BIN" test --config-path config/keploy.yml --generate-report \
+          "$KEPLOY_BIN" test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0 \
             | tee artifacts/keploy/test.log
           END_TS=$(date +%s)
           echo "replay_duration_seconds=$((END_TS-START_TS))" > artifacts/keploy/metrics.txt
-          "$KEPLOY_BIN" version > artifacts/keploy/version.txt
+          if "$KEPLOY_BIN" --version > artifacts/keploy/version.txt 2>&1; then
+            :
+          elif "$KEPLOY_BIN" -v > artifacts/keploy/version.txt 2>&1; then
+            :
+          else
+            "$KEPLOY_BIN" version > artifacts/keploy/version.txt 2>&1 || echo "version command unavailable" > artifacts/keploy/version.txt
+          fi
 
       - name: Upload Keploy artifacts
         uses: actions/upload-artifact@v4
