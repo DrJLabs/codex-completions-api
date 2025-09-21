@@ -143,11 +143,17 @@ jobs:
           export PATH="$HOME/.keploy/bin:$HOME/.local/bin:$PATH"
           START_TS=$(date +%s)
           set -o pipefail
-          "$KEPLOY_BIN" test --config-path config/keploy.yaml --path test-results/chat-completions/keploy --test-sets test-set-0 \
+          "$KEPLOY_BIN" test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0 \
             | tee artifacts/keploy/test.log
           END_TS=$(date +%s)
           echo "replay_duration_seconds=$((END_TS-START_TS))" > artifacts/keploy/metrics.txt
-          "$KEPLOY_BIN" version > artifacts/keploy/version.txt
+          if "$KEPLOY_BIN" --version > artifacts/keploy/version.txt 2>&1; then
+            :
+          elif "$KEPLOY_BIN" -v > artifacts/keploy/version.txt 2>&1; then
+            :
+          else
+            "$KEPLOY_BIN" version > artifacts/keploy/version.txt 2>&1 || echo "version command unavailable" > artifacts/keploy/version.txt
+          fi
 
       - name: Upload Keploy artifacts
         uses: actions/upload-artifact@v4
