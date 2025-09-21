@@ -2,7 +2,7 @@
 title: Roll out Keploy CLI installation & configuration across environments
 date: 2025-09-20
 owner: DevOps / QA
-status: open
+status: closed
 priority: P1
 labels: [ci, dev-environment, keploy, tooling]
 ---
@@ -41,6 +41,16 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 - Re-generated chat completion snapshots with a Keploy 2.x-compatible schema (`test-results/chat-completions/keploy/test-set-0/tests/*.yaml`) and refreshed JSON baselines via `KEPLOY_ENABLED=true KEPLOY_APP_PORT=11436 node scripts/generate-chat-transcripts.mjs`.
 - Manual replay attempt (`keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`) still requires the CLI to own the application lifecycle; invoking with `-c ./scripts/keploy-start-server.sh` now reaches replay but fails with `failed to set memlock rlimit: operation not permitted`, confirming the current GitHub-hosted runner/container lacks the CAP_IPC_LOCK capability needed for eBPF hooks. Logs live in `docs/bmad/qa/artifacts/3.8/local-keploy-test-memlock.log`.
 - Baseline verification (`npm run verify:all`) passes with `KEPLOY_ENABLED` unset; enabling the toggle locally still fails for the same memlock reason, so the documentation now calls out the privilege requirement and the workaround (run inside a privileged container or attach to self-hosted runners).
+
+## Evidence — 2025-09-21
+
+- Repository environment variable `KEPLOY_ENABLED` set to `true` at the GitHub environment scope so the new `keploy-dry-run` job executes on every push. The job triggered on commit `c409b7f` (2025-09-21) and completed successfully, installing Keploy via `scripts/setup-keploy-cli.sh`, replaying existing snapshots, and uploading artefacts (`artifacts/keploy/test.log`, `version.txt`, `metrics.txt`).
+- `artifacts/keploy/metrics.txt` recorded `replay_duration_seconds=37`, establishing the initial runtime budget for future comparisons; `version.txt` captured `Keploy 2.10.25`.
+- Workflow summary updated with a “dry run” note to distinguish the replay-only stage from the main test matrix (no record step, no production traffic).
+
+## Next Steps
+
+- None — rollout prerequisites satisfied. Continue monitoring replay duration and refresh Keploy snapshots as new contract scenarios land.
 
 ## Next Steps
 
