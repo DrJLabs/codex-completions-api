@@ -47,7 +47,7 @@ async function ensureBinaryExists(binary) {
 
 export async function runKeploySuite({
   label = "default",
-  configPath = "config/keploy.yml",
+  configPath = "config/keploy.yaml",
   extraEnv = {},
 } = {}) {
   if (!isKeployEnabled()) return { skipped: true };
