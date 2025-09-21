@@ -59,7 +59,7 @@ echo "Configuring systemd overrides for ${SERVICE_NAME}"
 sudo mkdir -p "/etc/systemd/system/${SERVICE_NAME}.d"
 cat <<'OVERRIDE' | sudo tee "/etc/systemd/system/${SERVICE_NAME}.d/override.conf" >/dev/null
 [Service]
-LimitMEMLOCK=infinity
+LimitMEMLOCK=4G
 CapabilityBoundingSet=CAP_IPC_LOCK CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_IPC_LOCK CAP_NET_BIND_SERVICE
 NoNewPrivileges=false
