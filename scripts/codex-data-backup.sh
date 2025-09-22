@@ -168,7 +168,7 @@ prune_backups() {
   mapfile -t archives < <(
     find "$dest_root" -maxdepth 2 -type f \
       \( -name '*.tar.gz' -o -name '*.tar.gz.gpg' \) \
-      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+      -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2- || true
   )
 
   local total=${#archives[@]}
