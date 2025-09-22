@@ -64,10 +64,10 @@ const main = async () => {
     msg: tokenCountMsg,
   });
   await delay(5);
-  const taskCompletePayload = { type: "task_complete" };
-  if (finishReason) {
-    taskCompletePayload.msg = { finish_reason: finishReason };
-  }
+  const taskCompletePayload = {
+    type: "task_complete",
+    msg: { finish_reason: finishReason },
+  };
   write(taskCompletePayload);
   try {
     process.stdout.end?.();
