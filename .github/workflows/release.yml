@@ -24,7 +24,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install dependencies (production lock validation)
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Create release snapshot
         run: bash scripts/stack-snapshot.sh --keep 5 --prune

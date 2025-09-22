@@ -60,7 +60,8 @@ gh release create "$TAG" releases/codex-completions-api-${TAG}-*.tar.gz \
   releases/codex-completions-api-${TAG}-*.lock.json --generate-notes
 ```
 
-Update the lock file’s `release_url` manually if you publish outside the workflow.
+Update the lock file’s `release_url` manually if you publish outside the workflow (for example:
+`jq --arg url "$RELEASE_URL" '.release_url = $url' "$LOCK_FILE" > tmp && mv tmp "$LOCK_FILE"`).
 
 ## Backup `.codex-api` to Google Drive
 
@@ -74,7 +75,8 @@ bash scripts/codex-data-backup.sh --dry-run --mount-check --keep 3
 bash scripts/codex-data-backup.sh --mount-check --keep 3 --prune
 
 # Optional encryption (requires CODEX_BACKUP_GPG_KEY in environment)
-CODEX_BACKUP_GPG_KEY='your-strong-secret-passphrase' bash scripts/codex-data-backup.sh --mount-check --encrypt --prune
+export CODEX_BACKUP_GPG_KEY='your-strong-secret-passphrase'
+bash scripts/codex-data-backup.sh --mount-check --encrypt --prune
 ```
 
 Outputs:
