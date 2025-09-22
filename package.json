@@ -48,7 +48,9 @@
     "ops:snapshot": "bash scripts/stack-snapshot.sh",
     "ops:rollback": "bash scripts/stack-rollback.sh --env both",
     "ops:rollback:prod": "bash scripts/stack-rollback.sh --env prod",
-    "ops:rollback:dev": "bash scripts/stack-rollback.sh --env dev"
+    "ops:rollback:dev": "bash scripts/stack-rollback.sh --env dev",
+    "snapshot:dry-run": "bash scripts/stack-snapshot.sh --dry-run --prune",
+    "backup:data": "bash scripts/codex-data-backup.sh --mount-check --prune"
   },
   "dependencies": {
     "express": "^4.19.2",

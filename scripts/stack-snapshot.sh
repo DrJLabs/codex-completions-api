@@ -1,130 +1,239 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Snapshot currently running dev/prod images on this host,
-# tag them with timestamped tags, save optional tar backups,
-# and record paths for quick rollback.
+usage() {
+  cat <<'USAGE'
+Usage: stack-snapshot.sh [options]
+
+Create a reproducible project snapshot tarball and metadata for release publication.
+
+Options:
+  --env <name>           Environment identifier stored in metadata (default: prod)
+  --version <version>    Version label for the snapshot (default: package.json version or git SHA)
+  --keep <count>         Number of local tarballs/locks to retain when pruning (default: 3)
+  --prune                Delete older tarballs/locks beyond --keep after creating the new snapshot
+  --dry-run              Print planned actions without writing files
+  --docker-image <ref>   Optional Docker image reference to retag with the snapshot label
+  --docker-tag-prefix <prefix>
+                         Prefix for generated Docker tag when --docker-image is provided (default: codex-completions-api)
+  --output-dir <path>    Directory for release artifacts (default: ./releases)
+  --no-tarball           Skip tarball creation (metadata-only)
+  -h, --help             Show this help text
+USAGE
+}
+
+log() { printf '[stack-snapshot] %s\n' "$*"; }
+warn() { printf '[stack-snapshot][WARN] %s\n' "$*" >&2; }
+die() { printf '[stack-snapshot][ERROR] %s\n' "$*" >&2; exit 1; }
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROD_COMPOSE="${PROD_COMPOSE:-$ROOT_DIR/docker-compose.yml}"
-DEV_COMPOSE="${DEV_COMPOSE:-$ROOT_DIR/compose.dev.stack.yml}"
+DEFAULT_OUTPUT="$ROOT_DIR/releases"
+APP_NAME="codex-completions-api"
 
-APP_IMAGE_BASENAME="codex-completions-api"
-BACKUP_DIR="${BACKUP_DIR:-$HOME/.cache/codex-backups}"
-mkdir -p "$BACKUP_DIR" "$ROOT_DIR/releases"
+env_name="prod"
+version_label=""
+keep_count=3
+should_prune=0
+dry_run=0
+output_dir="$DEFAULT_OUTPUT"
+base_image_ref=""
+docker_tag_prefix="$APP_NAME"
+create_tarball=1
 
-TS_UTC="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
-SHORT_DATE="${TS_UTC%%T*}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env)
+      env_name="$2"; shift 2 ;;
+    --version)
+      version_label="$2"; shift 2 ;;
+    --keep)
+      keep_count="$2"; shift 2 ;;
+    --prune)
+      should_prune=1; shift ;;
+    --dry-run)
+      dry_run=1; shift ;;
+    --docker-image)
+      base_image_ref="$2"; shift 2 ;;
+    --docker-tag-prefix)
+      docker_tag_prefix="$2"; shift 2 ;;
+    --output-dir)
+      output_dir="$2"; shift 2 ;;
+    --no-tarball)
+      create_tarball=0; shift ;;
+    -h|--help)
+      usage; exit 0 ;;
+    --)
+      shift; break ;;
+    *)
+      die "Unknown option: $1" ;;
+  esac
+done
 
-LOCK_FILE="$ROOT_DIR/releases/stack-images-${SHORT_DATE}.lock.json"
-TMP_LOCK="$(mktemp)"
-trap 'rm -f "$TMP_LOCK"' EXIT
-
-log() { echo "[stack-snapshot] $*"; }
-warn() { echo "[stack-snapshot][WARN] $*" >&2; }
-die() { echo "[stack-snapshot][ERROR] $*" >&2; exit 1; }
-
-have_container() {
-  local compose_file=$1 service=$2 compose_args=${3:-}
-  # shellcheck disable=SC2086
-  docker compose $compose_args -f "$compose_file" ps -q "$service" 2>/dev/null | grep -q . || return 1
-}
-
-container_id() {
-  local compose_file=$1 service=$2 compose_args=${3:-}
-  # shellcheck disable=SC2086
-  docker compose $compose_args -f "$compose_file" ps -q "$service" 2>/dev/null || true
-}
-
-image_id_from_container() {
-  local cid=$1
-  docker inspect "$cid" --format '{{.Image}}'
-}
-
-image_id_from_tag() {
-  local tag=$1
-  docker image inspect "$tag" --format '{{.Id}}' 2>/dev/null || true
-}
-
-snapshot_env() {
-  local env=$1 compose_file=$2 service=$3 base_tag=$4
-  local cid iid tag new_tag backup_tar compose_args
-
-  # Match how stacks are launched
-  if [[ "$env" == "dev" ]]; then
-    compose_args="-p codex-dev --env-file .env.dev"
-  else
-    compose_args=""
-  fi
-
-  if have_container "$compose_file" "$service" "$compose_args"; then
-    cid=$(container_id "$compose_file" "$service" "$compose_args")
-    iid=$(image_id_from_container "$cid")
-    log "$env: found container $cid with image $iid"
-  else
-    iid=$(image_id_from_tag "$base_tag")
-    if [[ -z "$iid" ]]; then
-      warn "$env: no running container and base tag '$base_tag' not found; skipping"
-      return 0
-    fi
-    log "$env: using image from tag $base_tag → $iid"
-  fi
-
-  # Timestamped tag for archival (lowercase, no colons)
-  local ts_compact
-  ts_compact="$(date -u +%Y%m%d-%H%M%SZ)"
-  local tag_name
-  tag_name="${env}-${ts_compact}"  # e.g., prod-20250912-235129Z
-  local new_tag
-  new_tag="${APP_IMAGE_BASENAME}:${tag_name}"
-  docker tag "$iid" "$new_tag"
-
-  # Optional tar backup (set SNAPSHOT_SKIP_SAVE=1 to skip)
-  if [[ "${SNAPSHOT_SKIP_SAVE:-0}" != "1" ]]; then
-    backup_tar="$BACKUP_DIR/${APP_IMAGE_BASENAME}-${env}-${TS_UTC}.tar"
-    docker save -o "$backup_tar" "$new_tag"
-  else
-    backup_tar=""
-  fi
-
-  # Write latest pointers for rollback convenience
-  echo -n "$iid" > "$BACKUP_DIR/codex-latest-${env}.iid"
-  echo -n "$new_tag" > "$BACKUP_DIR/codex-latest-${env}.tag"
-  if [[ -n "$backup_tar" ]]; then
-    echo -n "$backup_tar" > "$BACKUP_DIR/codex-latest-${env}.tarpath"
-  fi
-
-  # Append JSON line to host history
-  printf '{"ts":"%s","env":"%s","service":"%s","compose":"%s","image_id":"%s","archival_tag":"%s","backup_tar":"%s"}\n' \
-    "$TS_UTC" "$env" "$service" "$compose_file" "$iid" "$new_tag" "${backup_tar:-}" \
-    >> "$BACKUP_DIR/codex-image-history.jsonl"
-
-  # Emit object to tmp lock for repo record
-  printf '  {"env":"%s","compose_file":"%s","service":"%s","compose_image":"%s","snap_ts_utc":"%s","image_id":"%s","archival_tag":"%s"},\n' \
-    "$env" "${compose_file#$ROOT_DIR/}" "$service" "$base_tag" "$TS_UTC" "$iid" "$new_tag" \
-    >> "$TMP_LOCK"
-}
-
-# Capture prod + dev if present
-snapshot_env prod "$PROD_COMPOSE" app "$APP_IMAGE_BASENAME:latest"
-snapshot_env dev  "$DEV_COMPOSE"  app-dev "$APP_IMAGE_BASENAME:dev"
-
-# Build lock file (array) from tmp entries if any lines were written
-if [[ -s "$TMP_LOCK" ]]; then
-  {
-    echo '{'
-    printf '  "_note": "Image snapshot created on %s for rollback.",\n' "$TS_UTC"
-    printf '  "created_at": "%s",\n' "$TS_UTC"
-    printf '  "repo_head": "%s",\n' "$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD || echo unknown)"
-    echo '  "images": ['
-    sed '$ s/,$//' "$TMP_LOCK"
-    echo '  ]'
-    echo '}'
-  } > "$LOCK_FILE"
-  log "Wrote lock: $LOCK_FILE"
-  echo -n "$LOCK_FILE" > "$ROOT_DIR/releases/stack-images.latest.path"
-else
-  warn "No images captured (neither prod nor dev present)."
+if ! [[ $keep_count =~ ^[0-9]+$ && $keep_count -ge 1 ]]; then
+  die "--keep must be a positive integer"
 fi
 
-log "Done. History: $BACKUP_DIR/codex-image-history.jsonl"
+mkdir -p "$output_dir"
+
+if [[ -z "$version_label" ]]; then
+  if command -v node >/dev/null 2>&1; then
+    version_label="$(cd "$ROOT_DIR" && node -p "(() => { try { const v = require('./package.json').version; return v || ''; } catch { return ''; } })()" || true)"
+  fi
+  if [[ -z "$version_label" ]]; then
+    version_label="git-$(git -C "$ROOT_DIR" rev-parse --short HEAD)"
+  fi
+fi
+
+if [[ $version_label != v* && $version_label != git-* ]]; then
+  version_label="v${version_label}"
+fi
+
+snapshot_ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
+ts_compact="$(date -u +%Y%m%d-%H%M%SZ)"
+tarball_name="${APP_NAME}-${version_label}-${snapshot_ts}.tar.gz"
+tarball_path="$output_dir/$tarball_name"
+lock_name="${APP_NAME}-${version_label}-${snapshot_ts}.lock.json"
+lock_path="$output_dir/$lock_name"
+repo_sha="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD || echo unknown)"
+
+log "Preparing snapshot for $APP_NAME@$repo_sha (version=$version_label, env=$env_name)"
+
+create_snapshot_tarball() {
+  local staging
+  staging="$(mktemp -d)"
+  trap 'rm -rf "$staging"' RETURN
+
+  rsync -a --delete \
+    --exclude='.git' \
+    --exclude='node_modules' \
+    --exclude='releases' \
+    --exclude='playwright-report' \
+    --exclude='.cache' \
+    --exclude='artifacts' \
+    --exclude='.bmad-core' \
+    --exclude='.idea' \
+    "$ROOT_DIR"/ "$staging"/
+
+  tar -C "$staging" -czf "$tarball_path" .
+  log "Created tarball: $tarball_path"
+}
+
+snapshot_docker_tag=""
+if [[ -n "$base_image_ref" ]]; then
+  snapshot_docker_tag="${docker_tag_prefix}:${env_name}-${ts_compact}"
+  if [[ $dry_run -eq 1 ]]; then
+    log "[dry-run] Would retag docker image $base_image_ref → $snapshot_docker_tag"
+  else
+    command -v docker >/dev/null 2>&1 || die "docker command not available but --docker-image provided"
+    docker image inspect "$base_image_ref" >/dev/null 2>&1 || die "Base docker image '$base_image_ref' not found"
+    docker tag "$base_image_ref" "$snapshot_docker_tag"
+    log "Tagged docker image: $snapshot_docker_tag"
+  fi
+fi
+
+sha256_value=""
+if [[ $create_tarball -eq 1 ]]; then
+  if [[ $dry_run -eq 1 ]]; then
+    log "[dry-run] Would create tarball $tarball_path"
+  else
+    create_snapshot_tarball
+    sha256_value="$(sha256sum "$tarball_path" | awk '{print $1}')"
+  fi
+else
+  log "Tarball creation disabled via --no-tarball"
+fi
+
+write_lock_file() {
+  if [[ $dry_run -eq 1 ]]; then
+    log "[dry-run] Would write lock metadata $lock_path"
+    return
+  fi
+
+  VERSION_LABEL="$version_label" \
+  ENV_NAME="$env_name" \
+  REPO_SHA="$repo_sha" \
+  SNAPSHOT_TS="$snapshot_ts" \
+  TARBALL_NAME="$tarball_name" \
+  TARBALL_SHA256="$sha256_value" \
+  DOCKER_TAG="$snapshot_docker_tag" \
+  KEEP_COUNT="$keep_count" \
+  OUTPUT_DIR_RELATIVE="${output_dir#$ROOT_DIR/}" \
+  OUTPUT_DIR="$output_dir" \
+  CREATE_TARBALL="$create_tarball" \
+  DRY_RUN_FLAG="$dry_run" \
+  PRUNE_FLAG="$should_prune" \
+  LOCK_PATH="$lock_path" \
+  python3 - <<'PY'
+import json, os, pathlib
+
+def optional(env_key):
+    value = os.environ.get(env_key, "").strip()
+    return value or None
+
+create_tarball = os.environ.get("CREATE_TARBALL", "1") == "1"
+lock = pathlib.Path(os.environ["LOCK_PATH"])
+lock.parent.mkdir(parents=True, exist_ok=True)
+
+data = {
+    "version": os.environ["VERSION_LABEL"],
+    "env": os.environ["ENV_NAME"],
+    "git_sha": os.environ["REPO_SHA"],
+    "created_at": os.environ["SNAPSHOT_TS"],
+    "tarball": optional("TARBALL_NAME") if create_tarball else None,
+    "tarball_sha256": optional("TARBALL_SHA256") if create_tarball else None,
+    "docker_tag": optional("DOCKER_TAG"),
+    "release_url": None,
+    "keep": int(os.environ["KEEP_COUNT"]),
+    "notes": {
+        "output_dir": optional("OUTPUT_DIR_RELATIVE") or os.environ["OUTPUT_DIR"],
+        "dry_run": bool(int(os.environ["DRY_RUN_FLAG"])),
+        "prune": bool(int(os.environ["PRUNE_FLAG"]))
+    }
+}
+
+lock.write_text(json.dumps(data, indent=2) + "\n")
+PY
+  log "Wrote lock metadata: $lock_path"
+}
+
+prune_artifacts() {
+  local tarballs locks
+  mapfile -t tarballs < <(ls -1t "$output_dir"/${APP_NAME}-*.tar.gz 2>/dev/null || true)
+  mapfile -t locks < <(ls -1t "$output_dir"/${APP_NAME}-*.lock.json 2>/dev/null || true)
+
+  if (( ${#tarballs[@]} > keep_count )); then
+    for file in "${tarballs[@]:keep_count}"; do
+      if [[ $dry_run -eq 1 ]]; then
+        log "[dry-run] Would prune tarball $file"
+      else
+        rm -f "$file"
+        log "Pruned tarball $file"
+      fi
+    done
+  fi
+
+  if (( ${#locks[@]} > keep_count )); then
+    for file in "${locks[@]:keep_count}"; do
+      if [[ $dry_run -eq 1 ]]; then
+        log "[dry-run] Would prune lock $file"
+      else
+        rm -f "$file"
+        log "Pruned lock $file"
+      fi
+    done
+  fi
+}
+
+write_lock_file
+
+if [[ $should_prune -eq 1 ]]; then
+  prune_artifacts
+fi
+
+if [[ $dry_run -eq 1 ]]; then
+  log "Dry run complete. Tarball would be: $tarball_path"
+elif [[ $create_tarball -eq 1 ]]; then
+  log "Snapshot complete. Tarball: $tarball_path"
+else
+  log "Snapshot complete. Tarball creation skipped."
+fi
