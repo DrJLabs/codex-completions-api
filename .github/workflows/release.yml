@@ -52,7 +52,7 @@ jobs:
 
       - name: Update lock with release URL
         run: |
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          export RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
           python3 - <<'PY'
 import json, os
 lock_path = os.environ['LOCK_PATH']

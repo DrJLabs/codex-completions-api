@@ -55,7 +55,6 @@ Manual fallback (if CI is unavailable):
 ```bash
 TAG=v1.0.1
 bash scripts/stack-snapshot.sh --keep 5
-jq -r '.tarball' releases/codex-completions-api-${TAG}.lock.json
 # create GitHub release with gh CLI
 gh release create "$TAG" releases/codex-completions-api-${TAG}-*.tar.gz \
   releases/codex-completions-api-${TAG}-*.lock.json --generate-notes
@@ -75,7 +74,7 @@ bash scripts/codex-data-backup.sh --dry-run --mount-check --keep 3
 bash scripts/codex-data-backup.sh --mount-check --keep 3 --prune
 
 # Optional encryption (requires CODEX_BACKUP_GPG_KEY in environment)
-CODEX_BACKUP_GPG_KEY='longpassphrase' bash scripts/codex-data-backup.sh --mount-check --encrypt --prune
+CODEX_BACKUP_GPG_KEY='your-strong-secret-passphrase' bash scripts/codex-data-backup.sh --mount-check --encrypt --prune
 ```
 
 Outputs:
@@ -120,7 +119,7 @@ The script fails fast if `/mnt/gdrive` is not mounted (when `--mount-check` is u
    tar -xzvf /mnt/gdrive/codex-backups/YYYY/MM-DD/codex-api-*.tar.gz -C .
    ```
 
-   - If encrypted, decrypt first: `gpg --batch --yes --passphrase "$CODEX_BACKUP_GPG_KEY" -o codex-api.tar.gz codex-api.tar.gz.gpg`.
+   - If encrypted, decrypt first: `printf '%s' "$CODEX_BACKUP_GPG_KEY" | gpg --batch --yes --passphrase-fd 0 -o codex-api.tar.gz codex-api.tar.gz.gpg`.
 
 4. Re-deploy using the release tarball (copy into place or redeploy container with the release bundle contents).
 5. Run smoke tests (`npm run smoke:prod` or local dry-run) and document the drill outcome.
