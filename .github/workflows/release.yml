@@ -52,7 +52,6 @@ jobs:
 
       - name: Update lock with release URL
         run: |
-          export RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
           python3 - <<'PY'
 import json, os
 lock_path = os.environ['LOCK_PATH']
@@ -66,6 +65,7 @@ with open(lock_path, 'w', encoding='utf-8') as fh:
 PY
         env:
           LOCK_PATH: ${{ steps.snapshot.outputs.lock_path }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
 
       - name: Bundle release artifacts
         run: |
