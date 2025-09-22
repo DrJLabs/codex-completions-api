@@ -296,7 +296,7 @@ export async function postChatStream(req, res) {
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
   let finishSent = false;
-  let finishReasonState = "stop";
+  let finishReasonState = null;
   let finalized = false;
   const usageState = {
     prompt: 0,
@@ -306,6 +306,9 @@ export async function postChatStream(req, res) {
     trigger: null,
     countsSource: "estimate",
     providerSupplied: false,
+    finishReason: null,
+    finishReasonSource: null,
+    finishReasonSourcePriority: Infinity,
   };
   let streamIdleTimer;
   const resetStreamIdle = () => {
@@ -346,12 +349,102 @@ export async function postChatStream(req, res) {
     return { promptTokens, completionTokens, totalTokens, estimatedCompletion };
   };
 
+  const resolveSourcePriority = (source) => {
+    switch (source) {
+      case "token_count":
+        return 0;
+      case "task_complete":
+        return 1;
+      case "finalize":
+      case "finalizer":
+        return 2;
+      case "fallback":
+      case "token_count_fallback":
+        return 3;
+      default:
+        return Infinity;
+    }
+  };
+
+  const normalizeFinishReason = (value) => {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (["max_tokens", "token_limit", "token_limit_reached", "length"].includes(lower)) {
+      return "length";
+    }
+    if (lower === "stop_sequence") return "stop";
+    return lower;
+  };
+
+  const recordFinishReason = (raw, source) => {
+    const normalized = normalizeFinishReason(raw);
+    if (!normalized) return null;
+    finishReasonState = normalized;
+    usageState.finishReason = normalized;
+    const priority = resolveSourcePriority(source);
+    if (priority < usageState.finishReasonSourcePriority) {
+      usageState.finishReasonSourcePriority = priority;
+      usageState.finishReasonSource = source;
+    }
+    return normalized;
+  };
+
+  const extractFinishReason = (msg = {}) => {
+    if (!msg || typeof msg !== "object") return null;
+    const candidates = [msg.finish_reason, msg.finishReason, msg.reason, msg.stop_reason];
+    const tokenCount = msg.token_count || msg.tokenCount;
+    if (tokenCount && typeof tokenCount === "object") {
+      candidates.push(
+        tokenCount.finish_reason,
+        tokenCount.finishReason,
+        tokenCount.reason,
+        tokenCount.stop_reason
+      );
+      if (
+        tokenCount.token_limit_reached === true ||
+        tokenCount.max_tokens_reached === true ||
+        tokenCount.limit_type === "max_tokens"
+      ) {
+        return "length";
+      }
+    }
+    if (msg.token_limit_reached === true || msg.max_tokens_reached === true) {
+      return "length";
+    }
+    for (const candidate of candidates) {
+      const normalized = normalizeFinishReason(candidate);
+      if (normalized) return normalized;
+    }
+    return null;
+  };
+
+  const fallbackFinishReason = () => {
+    if (finishReasonState) return finishReasonState;
+    if (usageState.finishReason) return usageState.finishReason;
+    if (usageState.trigger === "token_count") return "length";
+    return "stop";
+  };
+
   const emitFinishChunk = (reason = "stop") => {
     if (finishSent) return;
+    let resolved = recordFinishReason(reason, "finalizer");
+    if (!resolved) {
+      resolved = fallbackFinishReason();
+      finishReasonState = resolved;
+      if (!usageState.finishReason) usageState.finishReason = resolved;
+      if (!usageState.finishReasonSource) {
+        usageState.finishReasonSource =
+          usageState.trigger === "token_count" ? "token_count_fallback" : "finalizer";
+        usageState.finishReasonSourcePriority = resolveSourcePriority(
+          usageState.finishReasonSource
+        );
+      }
+    }
     finishSent = true;
-    finishReasonState = reason;
     sendChunk({
-      choices: [{ index: 0, delta: {}, finish_reason: reason }],
+      choices: [{ index: 0, delta: {}, finish_reason: resolved }],
       usage: null,
     });
   };
@@ -378,6 +471,9 @@ export async function postChatStream(req, res) {
     if (usageState.logged) return;
     const { promptTokens, completionTokens, totalTokens, estimatedCompletion } = resolvedCounts();
     const emittedAtMs = Date.now() - started;
+    const finishReason = usageState.finishReason || fallbackFinishReason();
+    const finishReasonSource =
+      usageState.finishReasonSource || (finishReasonState ? "finalizer" : "fallback");
     try {
       appendUsage({
         ts: Date.now(),
@@ -401,6 +497,8 @@ export async function postChatStream(req, res) {
         counts_source: usageState.countsSource,
         usage_included: includeUsage,
         provider_supplied: usageState.providerSupplied,
+        finish_reason: finishReason,
+        finish_reason_source: finishReasonSource,
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -415,8 +513,9 @@ export async function postChatStream(req, res) {
       trigger ||
       usageState.trigger ||
       (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
-    const finalReason =
-      reason || finishReasonState || (usageState.trigger === "token_count" ? "length" : "stop");
+    const providedReason = normalizeFinishReason(reason);
+    const finalReason = providedReason || fallbackFinishReason();
+    if (providedReason) recordFinishReason(providedReason, "finalize");
     if (!finishSent) emitFinishChunk(finalReason);
     if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!usageState.logged) logUsage(resolvedTrigger);
@@ -574,6 +673,8 @@ export async function postChatStream(req, res) {
           const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
           const completionTokens = Number(evt.msg?.completion_tokens ?? evt.msg?.completionTokens);
           updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
+          const tokenFinishReason = extractFinishReason(evt.msg);
+          if (tokenFinishReason) recordFinishReason(tokenFinishReason, "token_count");
         } else if (t === "usage") {
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.usage?.prompt_tokens ?? evt.usage?.prompt_tokens
@@ -589,7 +690,10 @@ export async function postChatStream(req, res) {
             { provider: true }
           );
         } else if (t === "task_complete") {
-          const finishReason = String(evt.msg?.finish_reason || evt.msg?.finishReason || "stop");
+          const finishReason =
+            extractFinishReason(evt.msg) ||
+            (usageState.trigger === "token_count" ? "length" : null);
+          if (finishReason) recordFinishReason(finishReason, "task_complete");
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.token_count?.prompt_tokens
           );
@@ -604,7 +708,7 @@ export async function postChatStream(req, res) {
           } else if (!usageState.trigger) {
             usageState.trigger = "task_complete";
           }
-          emitFinishChunk(finishReason);
+          emitFinishChunk(finishReason || undefined);
           finalizeStream({ reason: finishReason, trigger: usageState.trigger || "task_complete" });
           return;
         } else if (t === "error") {
