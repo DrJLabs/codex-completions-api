@@ -202,11 +202,11 @@ prune_artifacts() {
   local tarballs locks
   mapfile -t tarballs < <(
     find "$output_dir" -maxdepth 1 -type f -name "${APP_NAME}-*.tar.gz" \
-      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+      -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2- || true
   )
   mapfile -t locks < <(
     find "$output_dir" -maxdepth 1 -type f -name "${APP_NAME}-*.lock.json" \
-      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+      -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2- || true
   )
 
   if (( ${#tarballs[@]} > keep_count )); then
