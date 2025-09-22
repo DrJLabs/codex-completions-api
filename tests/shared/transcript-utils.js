@@ -103,12 +103,14 @@ const REQUIRED_TRANSCRIPTS = [
   "nonstream-minimal.json",
   "nonstream-truncation.json",
   "streaming-usage.json",
+  "streaming-usage-length.json",
 ];
 
 const REQUIRED_KEPLOY_SNAPSHOTS = [
   "nonstream-minimal.yaml",
   "nonstream-truncation.yaml",
   "streaming-usage.yaml",
+  "streaming-usage-length.yaml",
 ];
 
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
