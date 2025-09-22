@@ -149,6 +149,8 @@ write_lock_file() {
     return
   fi
 
+  command -v python3 >/dev/null 2>&1 || die "python3 is required to generate lock files but is not found in PATH."
+
   VERSION_LABEL="$version_label" \
   ENV_NAME="$env_name" \
   REPO_SHA="$repo_sha" \
@@ -198,10 +200,17 @@ PY
 
 prune_artifacts() {
   local tarballs locks
-  mapfile -t tarballs < <(ls -1t "$output_dir"/${APP_NAME}-*.tar.gz 2>/dev/null || true)
-  mapfile -t locks < <(ls -1t "$output_dir"/${APP_NAME}-*.lock.json 2>/dev/null || true)
+  mapfile -t tarballs < <(
+    find "$output_dir" -maxdepth 1 -type f -name "${APP_NAME}-*.tar.gz" \
+      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+  )
+  mapfile -t locks < <(
+    find "$output_dir" -maxdepth 1 -type f -name "${APP_NAME}-*.lock.json" \
+      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+  )
 
   if (( ${#tarballs[@]} > keep_count )); then
+    log "Found ${#tarballs[@]} tarballs, pruning to keep $keep_count"
     for file in "${tarballs[@]:keep_count}"; do
       if [[ $dry_run -eq 1 ]]; then
         log "[dry-run] Would prune tarball $file"
@@ -213,6 +222,7 @@ prune_artifacts() {
   fi
 
   if (( ${#locks[@]} > keep_count )); then
+    log "Found ${#locks[@]} lock files, pruning to keep $keep_count"
     for file in "${locks[@]:keep_count}"; do
       if [[ $dry_run -eq 1 ]]; then
         log "[dry-run] Would prune lock $file"
