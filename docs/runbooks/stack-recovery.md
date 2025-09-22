@@ -121,7 +121,7 @@ The script fails fast if `/mnt/gdrive` is not mounted (when `--mount-check` is u
    tar -xzvf /mnt/gdrive/codex-backups/YYYY/MM-DD/codex-api-*.tar.gz -C .
    ```
 
-   - If encrypted, decrypt first: `printf '%s' "$CODEX_BACKUP_GPG_KEY" | gpg --batch --yes --passphrase-fd 0 -o codex-api.tar.gz codex-api.tar.gz.gpg`.
+   - If encrypted, decrypt first: `printf '%s' "$CODEX_BACKUP_GPG_KEY" | gpg --batch --yes --passphrase-fd 0 --decrypt -o codex-api.tar.gz codex-api.tar.gz.gpg`.
 
 4. Re-deploy using the release tarball (copy into place or redeploy container with the release bundle contents).
 5. Run smoke tests (`npm run smoke:prod` or local dry-run) and document the drill outcome.
