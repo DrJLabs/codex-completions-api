@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "captured_at": "2025-09-22T03:48:29.956Z",
+    "captured_at": "2025-09-22T03:48:30.277Z",
     "include_usage": true,
     "codex_bin": "scripts/fake-codex-proto.js",
     "commit": "d947871a9215ee7c5eb038d31649d68600e7f14d",
-    "scenario": "streaming-usage"
+    "scenario": "streaming-usage-length"
   },
   "request": {
     "model": "codex-5",
@@ -15,7 +15,7 @@
     "messages": [
       {
         "role": "user",
-        "content": "Stream transcript"
+        "content": "Stream transcript (length)"
       }
     ]
   },
@@ -88,7 +88,7 @@
           {
             "index": 0,
             "delta": {},
-            "finish_reason": "stop"
+            "finish_reason": "length"
           }
         ],
         "usage": null

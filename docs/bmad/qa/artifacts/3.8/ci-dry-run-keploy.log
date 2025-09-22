@@ -11,5 +11,5 @@
 
 version: 2.10.25
 
-🐰 Keploy: 2025-09-20T17:50:39-04:00 	[31mERROR[0m	No test-sets found. Please record testcases using [keploy record] command
-🐰 Keploy: 2025-09-20T17:50:39-04:00 	[31mERROR[0m	failed to validate flags	{"error": "No test-sets found. Please record testcases using [keploy record] command"}
+🐰 Keploy: 2025-09-21T15:33:35-04:00 	[31mERROR[0m	No test-sets found. Please record testcases using [keploy record] command
+🐰 Keploy: 2025-09-21T15:33:35-04:00 	[31mERROR[0m	failed to validate flags	{"error": "No test-sets found. Please record testcases using [keploy record] command"}

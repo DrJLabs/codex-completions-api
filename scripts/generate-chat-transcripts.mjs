@@ -123,8 +123,15 @@ function gitCommitSha() {
   }
 }
 
-async function runCapture({ codexBin, filename, includeUsage, commitSha, createPayload }) {
-  const ctx = await startServer({ CODEX_BIN: codexBin });
+async function runCapture({
+  codexBin,
+  filename,
+  includeUsage,
+  commitSha,
+  createPayload,
+  protoEnv,
+}) {
+  const ctx = await startServer({ CODEX_BIN: codexBin, ...(protoEnv || {}) });
   try {
     const transcriptPayload = await createPayload(ctx.PORT);
     const transcript = {
@@ -153,12 +160,14 @@ async function captureChatScenario({
   beforeRequest,
   processResponse,
   errorLabel,
+  protoEnv,
 }) {
   return runCapture({
     codexBin,
     filename,
     includeUsage,
     commitSha,
+    protoEnv,
     createPayload: async (port) => {
       if (beforeRequest) await beforeRequest();
       const url = new URL(`http://127.0.0.1:${port}/v1/chat/completions`);
@@ -217,6 +226,26 @@ async function main() {
     commitSha,
     includeUsage: true,
     stream: true,
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Stream transcript (length)" }],
+    },
+    filename: "streaming-usage-length.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    protoEnv: { FAKE_CODEX_FINISH_REASON: "length" },
     processResponse: async (res) => {
       const raw = await res.text();
       const chunks = parseSSE(raw);
