@@ -8,7 +8,7 @@ Usage: codex-data-backup.sh [options]
 Create a `.codex-api` data snapshot, copy it into Google Drive, and optionally prune older backups.
 
 Options:
-  --source <path>        Path to the .codex-api directory (default: ./ .codex-api)
+  --source <path>        Path to the .codex-api directory (default: ./.codex-api in project root)
   --dest <path>          Destination root for backups (default: /mnt/gdrive/codex-backups)
   --keep <count>         Number of backups to retain when pruning (default: 3)
   --prune                Remove older backups beyond --keep after upload
