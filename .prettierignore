@@ -12,3 +12,4 @@ blob-report
 docs/bmad/qa/assessments/2.5-test-design-20250913.md
 docs/openai-chat-completions-parity.md
 tests/integration/chat.model.consistency.int.test.js
+.github/workflows/release.yml

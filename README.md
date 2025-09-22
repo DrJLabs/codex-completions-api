@@ -80,7 +80,15 @@ Notes:
 
 - The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
   - For this project the source of truth is `~/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
-- See `docs/dev-to-prod-playbook.md` for the full Dev → Prod procedure including optional checks (`npm run port:check`) and end‑to‑end smoke (`npm run port:prod`).
+- See `docs/dev-to-prod-playbook.md` for the full Dev → Prod procedure including optional checks (`npm run port:check`) and end‑to-end smoke (`npm run port:prod`).
+
+### Release & Backup shortcuts
+
+- `npm run snapshot:dry-run` → preview the release tarball + lock that `scripts/stack-snapshot.sh` would create in `releases/`.
+- `bash scripts/stack-snapshot.sh --keep 3 --prune` → generate a release bundle (tarball + lock) and prune older bundles.
+- Tagging `v*` triggers `.github/workflows/release.yml`, which verifies the SHA256 and uploads tarball + lock + `SHA256SUMS` to the GitHub Release.
+- `npm run backup:data` → run `scripts/codex-data-backup.sh --mount-check --prune` to copy `.codex-api` into `/mnt/gdrive/codex-backups/YYYY/MM-DD/` with matching `.sha256` files.
+- Optional encryption: export `CODEX_BACKUP_GPG_KEY` and append `--encrypt` when running the backup script.
 
 ### Development
 

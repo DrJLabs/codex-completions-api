@@ -30,13 +30,25 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - Usually handled by `port:check` automatically. To run explicitly or to force-overwrite:
   - `npm run port:sync-config` (copies `.codev/{config.toml,AGENTS.md}` → `.codex-api/`; skips secrets)
 
-3. Deploy to production (after review)
+3. Create release bundle & publish
+
+- `bash scripts/stack-snapshot.sh --keep 3 --prune` (or `npm run snapshot:dry-run` first).
+- Tag a release (`git tag vX.Y.Z && git push origin vX.Y.Z`) to trigger `.github/workflows/release.yml`.
+- Watch the workflow for digest verification and asset upload.
+- Manual fallback: `gh release create <tag> releases/codex-completions-api-*.tar.gz releases/*.lock.json --generate-notes`.
+
+4. Deploy to production (after review)
 
 - One-liner (validate, sync, deploy, smoke):
   - `DOMAIN=codex-api.onemainarmy.com npm run port:prod`
 - Manual path:
   - `docker compose up -d --build --force-recreate`
   - `npm run smoke:prod` (set `DOMAIN` and optionally `KEY`)
+
+5. Post-release data backup
+
+- `npm run backup:data` (runs `scripts/codex-data-backup.sh --mount-check --prune`).
+- Confirm the archive + checksum appear under `/mnt/gdrive/codex-backups/YYYY/MM-DD/`.
 
 ## Step-by-step Method
 
@@ -46,6 +58,20 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - Run tests: `npm run verify:all`.
 - Bring up public dev stack: `npm run dev:stack:up`.
 - Validate edge path via Cloudflare: `npm run smoke:dev` with `DEV_DOMAIN` set.
+
+### Create release bundle
+
+- When ready to cut a release, run `bash scripts/stack-snapshot.sh --keep 3 --prune` (or `npm run snapshot:dry-run` first).
+- Inspect the generated lock file in `releases/` for the git SHA and checksum.
+- Tag the commit (`git tag vX.Y.Z && git push origin vX.Y.Z`) so `.github/workflows/release.yml` uploads the tarball + lock and records the SHA256 in the release assets.
+- Manual publish fallback: `gh release create <tag> releases/codex-completions-api-*.tar.gz releases/*.lock.json --generate-notes`. If you bypass CI, update the lock manually (e.g., `jq --arg url "$RELEASE_URL" '.release_url = $url' "$LOCK_FILE" > tmp && mv tmp "$LOCK_FILE"`).
+
+### Backup `.codex-api` data
+
+- After promoting a release, capture the runtime data directory: `npm run backup:data` (alias for `bash scripts/codex-data-backup.sh --mount-check --prune`).
+- Archives land in `/mnt/gdrive/codex-backups/YYYY/MM-DD/` with matching `.sha256` digests.
+- Optional encryption: export `CODEX_BACKUP_GPG_KEY` and append `--encrypt` to the backup script.
+- Document restore drills (monthly spot, quarterly full) under `docs/bmad/qa/artifacts/3.10/` per QA test design.
 
 ### Dev non-stream timeout note
 
