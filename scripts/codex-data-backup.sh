@@ -90,14 +90,14 @@ if [[ $mount_check -eq 1 ]]; then
     probe=$check_path
     while [[ "$probe" != "/" && "$probe" != "." ]]; do
       if mountpoint -q "$probe" 2>/dev/null; then
+  if [[ $found_mount -eq 0 ]] && command -v mountpoint >/dev/null 2>&1; then
+    probe=$check_path
+    while [[ "$probe" != "/" && "$probe" != "." ]]; do
+      if mountpoint -q "$probe" 2>/dev/null; then
         found_mount=1
         break
       fi
-      parent=$(dirname "$probe")
-      if [[ "$parent" == "$probe" ]]; then
-        break
-      fi
-      probe="$parent"
+      probe=$(dirname "$probe")
     done
   fi
   if [[ $found_mount -eq 0 ]]; then
