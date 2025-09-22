@@ -1,0 +1,94 @@
+name: Release Snapshot
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot-and-release:
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: "22"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies (production lock validation)
+        run: npm ci --ignore-scripts
+
+      - name: Create release snapshot
+        run: bash scripts/stack-snapshot.sh --keep 5 --prune
+
+      - name: Discover latest snapshot metadata
+        id: snapshot
+        run: |
+          LOCK_PATH=$(ls -t releases/codex-completions-api-*.lock.json | head -n1)
+          TARBALL_NAME=$(jq -r '.tarball' "$LOCK_PATH")
+          if [ "$TARBALL_NAME" = "null" ] || [ -z "$TARBALL_NAME" ]; then
+            echo "Snapshot metadata missing tarball path" >&2
+            exit 1
+          fi
+          TAR_PATH="releases/$TARBALL_NAME"
+          SHA_VALUE=$(jq -r '.tarball_sha256' "$LOCK_PATH")
+          echo "lock_path=$LOCK_PATH" >> "$GITHUB_OUTPUT"
+          echo "tarball_path=$TAR_PATH" >> "$GITHUB_OUTPUT"
+          echo "lock_name=$(basename "$LOCK_PATH")" >> "$GITHUB_OUTPUT"
+          echo "tarball_name=$TARBALL_NAME" >> "$GITHUB_OUTPUT"
+          echo "sha_value=$SHA_VALUE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tarball checksum
+        run: |
+          printf '%s  %s\n' "${{ steps.snapshot.outputs.sha_value }}" "${{ steps.snapshot.outputs.tarball_path }}" | sha256sum --check --status
+
+      - name: Update lock with release URL
+        run: |
+          python3 - <<'PY'
+import json, os
+lock_path = os.environ['LOCK_PATH']
+release_url = os.environ['RELEASE_URL']
+with open(lock_path, 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+data['release_url'] = release_url
+with open(lock_path, 'w', encoding='utf-8') as fh:
+    json.dump(data, fh, indent=2)
+    fh.write('\n')
+PY
+        env:
+          LOCK_PATH: ${{ steps.snapshot.outputs.lock_path }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+      - name: Bundle release artifacts
+        run: |
+          mkdir -p release-artifacts
+          cp "${{ steps.snapshot.outputs.tarball_path }}" release-artifacts/
+          cp "${{ steps.snapshot.outputs.lock_path }}" release-artifacts/
+          printf '%s  %s\n' "${{ steps.snapshot.outputs.sha_value }}" "${{ steps.snapshot.outputs.tarball_name }}" > release-artifacts/SHA256SUMS
+
+      - name: Upload workflow artifact (diagnostics)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts
+          retention-days: 7
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release-artifacts/${{ steps.snapshot.outputs.tarball_name }}
+            release-artifacts/${{ steps.snapshot.outputs.lock_name }}
+            release-artifacts/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
