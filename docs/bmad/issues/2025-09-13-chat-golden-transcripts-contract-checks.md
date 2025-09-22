@@ -20,3 +20,9 @@ Introduce deterministic “golden” transcripts and optional contract checks to
 - New Playwright spec (`tests/e2e/chat-contract.spec.ts`) exercises streaming/non-stream flows with traces enabled, relying on the same transcripts.
 - Documentation (`docs/openai-chat-completions-parity.md`) now explains where the transcripts live, how to refresh them, and how contract tests keep parity locked.
 - CI wiring exposes `KEPLOY_ENABLED`/`KEPLOY_BIN` variables so the replay step can run `keploy test --config-path config` when the CLI is installed; otherwise suites fall back to direct HTTP assertions. Use the Keploy CLI exit code and proxy logs to monitor record/test durations and surface failures in job summaries. The repository GitHub environment now sets `KEPLOY_ENABLED=true`, so the `keploy-dry-run` workflow executes automatically on pushes while continuing to use captured transcripts only.
+
+## Validation Notes (2025-09-22)
+
+- Recent CI runs (e.g., `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`) show the `keploy-dry-run` job invoking `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`.
+- The CLI prints `ERROR No test-sets found. Please record testcases using [keploy record] command` even though the repository contains `test-results/chat-completions/keploy/test-set-0/tests/*.yaml` from Story 3.5.
+- Because the job still exits successfully, replay coverage is effectively skipped; this is a misconfiguration in the test invocation rather than an intentional opt-out. Fix should align the CLI path/flags with the stored snapshots (tracked alongside Story 3.6 and this issue).
