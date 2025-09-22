@@ -64,7 +64,7 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - When ready to cut a release, run `bash scripts/stack-snapshot.sh --keep 3 --prune` (or `npm run snapshot:dry-run` first).
 - Inspect the generated lock file in `releases/` for the git SHA and checksum.
 - Tag the commit (`git tag vX.Y.Z && git push origin vX.Y.Z`) so `.github/workflows/release.yml` uploads the tarball + lock and records the SHA256 in the release assets.
-- Manual publish fallback: `gh release create <tag> releases/codex-completions-api-*.tar.gz releases/*.lock.json --generate-notes`. Remember to run `python -m json.tool` to set `release_url` in the lock if you bypass CI.
+- Manual publish fallback: `gh release create <tag> releases/codex-completions-api-*.tar.gz releases/*.lock.json --generate-notes`. If you bypass CI, update the lock manually (e.g., `jq --arg url "$RELEASE_URL" '.release_url = $url' "$LOCK_FILE" > tmp && mv tmp "$LOCK_FILE"`).
 
 ### Backup `.codex-api` data
 

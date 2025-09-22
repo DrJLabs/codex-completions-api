@@ -73,22 +73,31 @@ fi
 if [[ $mount_check -eq 1 ]]; then
   check_path=$dest_root
   if [[ ! -d $check_path ]]; then
-    check_path=$(dirname "$check_path")
+    while [[ "$check_path" != "/" && "$check_path" != "." && ! -d $check_path ]]; do
+      next=$(dirname "$check_path")
+      [[ "$next" == "$check_path" ]] && break
+      check_path=$next
+    done
   fi
   found_mount=0
   if command -v findmnt >/dev/null 2>&1; then
-    if findmnt -T "$check_path" >/dev/null 2>&1; then
+    mount_target=$(findmnt -T "$check_path" -o TARGET -n 2>/dev/null || true)
+    if [[ -n "$mount_target" && "$mount_target" != "/" && "$mount_target" != "." ]]; then
       found_mount=1
     fi
   fi
   if [[ $found_mount -eq 0 ]] && command -v mountpoint >/dev/null 2>&1; then
     probe=$check_path
-    while [[ $probe != "/" ]]; do
+    while [[ "$probe" != "/" && "$probe" != "." ]]; do
       if mountpoint -q "$probe" 2>/dev/null; then
         found_mount=1
         break
       fi
-      probe=$(dirname "$probe")
+      parent=$(dirname "$probe")
+      if [[ "$parent" == "$probe" ]]; then
+        break
+      fi
+      probe="$parent"
     done
   fi
   if [[ $found_mount -eq 0 ]]; then
@@ -102,8 +111,6 @@ if [[ $encrypt_flag -eq 1 ]]; then
     die "CODEX_BACKUP_GPG_KEY environment variable must be set when using --encrypt"
   fi
 fi
-
-mkdir -p "$dest_root"
 
 snapshot_ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
 short_date="${snapshot_ts%%T*}"
