@@ -164,16 +164,24 @@ else
 fi
 
 prune_backups() {
-  local backups
-  mapfile -t backups < <(ls -1t "$dest_root"/*/*.tar.gz* 2>/dev/null || true)
-  if (( ${#backups[@]} > keep_count )); then
-    for file in "${backups[@]:keep_count}"; do
-      local sum_file="$file.sha256"
+  local archives
+  mapfile -t archives < <(
+    find "$dest_root" -maxdepth 2 -type f \
+      \( -name '*.tar.gz' -o -name '*.tar.gz.gpg' \) \
+      -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2- || true
+  )
+
+  local total=${#archives[@]}
+  if (( total > keep_count )); then
+    log "Found $total backups, pruning to keep $keep_count"
+    for archive in "${archives[@]:keep_count}"; do
+      local checksum="${archive}.sha256"
       if [[ $dry_run -eq 1 ]]; then
-        log "[dry-run] Would prune $file and $sum_file"
+        log "[dry-run] Would prune $archive"
+        [[ -f $checksum ]] && log "[dry-run] Would prune $checksum"
       else
-        rm -f "$file" "$sum_file"
-        log "Pruned $file"
+        rm -f "$archive" "$checksum"
+        log "Pruned $archive"
       fi
     done
   fi
