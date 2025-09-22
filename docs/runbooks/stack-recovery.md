@@ -54,14 +54,14 @@ Manual fallback (if CI is unavailable):
 
 ```bash
 TAG=v1.0.1
-bash scripts/stack-snapshot.sh --keep 5
+bash scripts/stack-snapshot.sh --keep 5 --prune
 # create GitHub release with gh CLI
 gh release create "$TAG" releases/codex-completions-api-${TAG}-*.tar.gz \
   releases/codex-completions-api-${TAG}-*.lock.json --generate-notes
 ```
 
-Update the lock file’s `release_url` manually if you publish outside the workflow (for example:
-`jq --arg url "$RELEASE_URL" '.release_url = $url' "$LOCK_FILE" > tmp && mv tmp "$LOCK_FILE"`).
+Update the lock file’s `release_url` manually if you publish outside the workflow so downstream
+restore automation can locate the release asset.
 
 ## Backup `.codex-api` to Google Drive
 

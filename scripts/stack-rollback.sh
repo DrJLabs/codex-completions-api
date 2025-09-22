@@ -16,6 +16,11 @@ ONLY_ENV=""
 IMAGE_ID_OVERRIDE=""
 TAG_OVERRIDE=""
 
+LOCK_IMAGE_ID=""
+LOCK_DOCKER_TAG=""
+LOCK_CREATED_AT=""
+LOCK_TARBALL=""
+
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [--env prod|dev|both] [--from-lock PATH] [--image-id SHA256:...] [--tag TAG]
@@ -58,56 +63,124 @@ choose_envs() {
   esac
 }
 
-iid_from_lock() {
+load_lock_metadata() {
   local env=$1 lock=$2
-  if command -v jq >/dev/null 2>&1; then
-    jq -r --arg env "$env" '.images[] | select(.env == $env) | .image_id' "$lock"
-  else
-    warn "'jq' not found; falling back to brittle awk JSON parsing"
-    awk -v env="$env" '
-      $0 ~ "\"env\": \""env"\"" { f=1 }
-      f && $0 ~ /"image_id"/ { gsub(/[",]/, "", $2); print $2; exit }
-    ' "$lock"
-  fi
-}
+  local line=""
 
-ts_from_lock() {
-  local env=$1 lock=$2
-  if command -v jq >/dev/null 2>&1; then
-    jq -r --arg env "$env" '.images[] | select(.env == $env) | .snap_ts_utc' "$lock"
-  else
-    warn "'jq' not found; falling back to brittle awk JSON parsing"
-    awk -v env="$env" '
-      $0 ~ "\"env\": \""env"\"" { f=1 }
-      f && $0 ~ /"snap_ts_utc"/ { gsub(/[",]/, "", $2); print $2; exit }
-    ' "$lock"
+  LOCK_IMAGE_ID=""
+  LOCK_DOCKER_TAG=""
+  LOCK_CREATED_AT=""
+  LOCK_TARBALL=""
+
+  if command -v python3 >/dev/null 2>&1; then
+    if ! line=$(python3 - "$lock" "$env" <<'PY'
+import json, sys
+
+path, env_name = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+
+entry = None
+if isinstance(data, dict):
+    if 'images' in data:
+        for item in data.get('images', []):
+            if item.get('env') == env_name:
+                entry = item
+                break
+    else:
+        entry_env = data.get('env')
+        if entry_env is None or entry_env == env_name:
+            entry = data
+
+if not entry:
+    sys.exit(0)
+
+snap = entry.get('snap_ts_utc') or entry.get('created_at') or ''
+fields = [
+    entry.get('image_id') or '',
+    entry.get('docker_tag') or '',
+    snap,
+    entry.get('tarball') or '',
+]
+print('\t'.join(fields))
+PY
+    ); then
+      line=""
+    fi
   fi
+
+  if [[ -z "$line" ]] && command -v jq >/dev/null 2>&1; then
+    if ! line=$(jq -r --arg env "$env" '
+      def pick_entry:
+        if type == "object" and has("images") then
+          (.images[] | select(.env == $env))
+        elif type == "object" then
+          if (has("env") and .env != $env) then empty else . end
+        else empty end;
+      pick_entry | [(.image_id // ""), (.docker_tag // ""), ((.snap_ts_utc // .created_at) // ""), (.tarball // "")] | @tsv
+    ' "$lock" 2>/dev/null); then
+      line=""
+    fi
+    if [[ "$line" == "null" ]]; then
+      line=""
+    fi
+  fi
+
+  if [[ -z "$line" ]]; then
+    return 1
+  fi
+
+  IFS=$'\t' read -r LOCK_IMAGE_ID LOCK_DOCKER_TAG LOCK_CREATED_AT LOCK_TARBALL <<<"$line"
+  return 0
 }
 
 ensure_image_present() {
-  local iid=$1 env=$2 lock=$3
-  if docker image inspect "$iid" >/dev/null 2>&1; then
+  local ref=$1 env=$2 lock_ts=$3 docker_tag_hint=$4
+
+  if [[ -z "$ref" && -n "$docker_tag_hint" ]]; then
+    ref="$docker_tag_hint"
+  fi
+
+  [[ -n "$ref" ]] || die "$env: lock metadata did not provide an image reference"
+
+  if docker image inspect "$ref" >/dev/null 2>&1; then
     return 0
   fi
-  # Prefer tar derived from lock timestamp if provided, else latest pointer
-  local tarpath=""
-  if [[ -n "$lock" ]]; then
-    local ts
-    ts=$(ts_from_lock "$env" "$lock" || true)
-    if [[ -n "$ts" ]]; then
-      tarpath="$BACKUP_DIR/${APP_IMAGE_BASENAME}-${env}-${ts}.tar"
+
+  if [[ -n "$docker_tag_hint" && "$docker_tag_hint" != "$ref" ]]; then
+    if docker image inspect "$docker_tag_hint" >/dev/null 2>&1; then
+      return 0
     fi
   fi
-  if [[ -z "$tarpath" ]] || [[ ! -f "$tarpath" ]]; then
-    tarpath="$BACKUP_DIR/codex-latest-${env}.tarpath"
-    [[ -f "$tarpath" ]] && tarpath="$(cat "$tarpath")" || tarpath=""
+
+  local tarpath=""
+  if [[ -n "$lock_ts" ]]; then
+    local candidate="$BACKUP_DIR/${APP_IMAGE_BASENAME}-${env}-${lock_ts}.tar"
+    [[ -f "$candidate" ]] && tarpath="$candidate"
   fi
-  if [[ -f "$tarpath" ]]; then
+
+  if [[ -z "$tarpath" ]]; then
+    local ptr="$BACKUP_DIR/codex-latest-${env}.tarpath"
+    if [[ -f "$ptr" ]]; then
+      tarpath="$(cat "$ptr")"
+    fi
+  fi
+
+  if [[ -n "$tarpath" && -f "$tarpath" ]]; then
     log "$env: loading image from $tarpath"
     docker load -i "$tarpath"
-    return 0
+    if docker image inspect "$ref" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "$docker_tag_hint" ]]; then
+      if docker image inspect "$docker_tag_hint" >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+    die "$env: loaded $tarpath but image reference '$ref' is still missing"
   fi
-  die "$env: image $iid not present and no backup tar available"
+
+  die "$env: image $ref not present and no backup tar available"
 }
 
 retag_and_redeploy() {
@@ -141,10 +214,23 @@ choose_envs
 
 for env in "${envs[@]}"; do
   iid=""
+  lock_ts=""
+  docker_hint=""
+
   if [[ -n "$IMAGE_ID_OVERRIDE" ]]; then
     iid="$IMAGE_ID_OVERRIDE"
   elif [[ -n "$LOCK_FROM" ]]; then
-    iid="$(iid_from_lock "$env" "$LOCK_FROM")"
+    if load_lock_metadata "$env" "$LOCK_FROM"; then
+      if [[ -n "$LOCK_IMAGE_ID" ]]; then
+        iid="$LOCK_IMAGE_ID"
+      elif [[ -n "$LOCK_DOCKER_TAG" ]]; then
+        iid="$LOCK_DOCKER_TAG"
+      fi
+      lock_ts="$LOCK_CREATED_AT"
+      docker_hint="$LOCK_DOCKER_TAG"
+    else
+      die "$env: could not parse lock metadata from $LOCK_FROM (missing env entry or unsupported schema)"
+    fi
   else
     # use latest pointer
     ptr="$BACKUP_DIR/codex-latest-${env}.iid"
@@ -153,8 +239,8 @@ for env in "${envs[@]}"; do
     fi
   fi
 
-  [[ -n "$iid" ]] || die "$env: could not determine image id; use --from-lock or --image-id"
-  ensure_image_present "$iid" "$env" "$LOCK_FROM"
+  [[ -n "$iid" ]] || die "$env: could not determine image id or tag; use --from-lock or --image-id"
+  ensure_image_present "$iid" "$env" "$lock_ts" "$docker_hint"
   retag_and_redeploy "$env" "$iid"
 done
 
