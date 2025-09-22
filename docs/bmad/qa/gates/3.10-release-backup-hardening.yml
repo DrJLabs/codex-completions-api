@@ -1,0 +1,62 @@
+schema: 1
+story: "3.10"
+story_title: "Story 3.10 — Release & Backup Hardening"
+gate: PASS
+status_reason: "Snapshot, release, and backup flows validated with dry-run + live backup; documentation and QA artefacts complete."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-22T07:45:00Z"
+quality_score: 95
+expires: "2025-10-06T07:45:00Z"
+
+top_issues: []
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 3
+  risks_identified: 5
+  trace:
+    ac_covered: [1, 2, 3, 4, 5]
+    ac_gaps: []
+  trace_ref: "docs/bmad/qa/assessments/3.10-trace-20250922.md"
+  nfr_ref: "docs/bmad/qa/assessments/3.10-nfr-20250922.md"
+  risk_ref: "docs/bmad/qa/assessments/3.10-risk-20250922.md"
+
+test_evidence:
+  - "bash scripts/stack-snapshot.sh --dry-run --keep 3 --prune (2025-09-22)"
+  - "bash scripts/codex-data-backup.sh --mount-check --keep 3 --prune (2025-09-22)"
+  - "npm run format:check"
+
+trace:
+  totals:
+    requirements: 5
+    full: 5
+    partial: 0
+    none: 0
+  uncovered: []
+  notes: "See trace matrix for detailed AC mapping and evidence references."
+
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: PASS
+    notes: "Offsite backups support optional GPG encryption; no secrets in lock files."
+  performance:
+    status: PASS
+    notes: "On-demand tarball creation with pruning; no continuous load."
+  reliability:
+    status: PASS
+    notes: "Digest verification and mount-check guard against silent failures."
+  maintainability:
+    status: PASS
+    notes: "Scripts documented with help text and referenced in runbook/playbook."
+
+recommendations:
+  immediate:
+    - action: "Execute first tag-driven Release workflow to capture uploaded artifact evidence."
+      refs:
+        - ".github/workflows/release.yml"
+  future:
+    - action: "Record outcomes of monthly spot restore in docs/bmad/qa/artifacts/3.10/restore-checklist.md."
+      refs:
+        - "docs/runbooks/stack-recovery.md"
