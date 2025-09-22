@@ -16,4 +16,4 @@ Strengthen tag/release/backup strategy with immutable registry-backed snapshots,
 
 - Delivered via PR #94 (`feat/release-backup-hardening`) and merged to `main`.
 - Release/backup scripts and docs landed as part of Story 3.10. GitHub Actions jobs now publish release bundles and run the `keploy-dry-run` replay step.
-- The Keploy job currently logs `ERROR No test-sets found...` while succeeding; follow-up tracked alongside Story 3.6/Issue #77 and Issue `docs/bmad/issues/2025-09-22-keploy-dry-run-replay-gap.md` to reconcile the replay configuration.
+- The Keploy job now fails whenever `keploy test` emits `ERROR No test-sets found...`, with the fix documented in `docs/bmad/issues/2025-09-22-keploy-dry-run-replay-gap.md` and Story 3.6.

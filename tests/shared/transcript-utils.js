@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { isKeployEnabled } from "./keploy-runner.js";
@@ -8,7 +8,8 @@ import { isKeployEnabled } from "./keploy-runner.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
 const TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "chat-completions");
-const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, "keploy", "test-set-0", "tests");
+const REPO_NAME = basename(PROJECT_ROOT);
+const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, REPO_NAME, "test-set-0", "tests");
 
 const PLACEHOLDER_ID = "<dynamic-id>";
 const PLACEHOLDER_CREATED = "<timestamp>";
@@ -136,4 +137,4 @@ export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
   execFileSync("node", [generator], { stdio: "inherit" });
 }
 
-export { TRANSCRIPT_ROOT, PLACEHOLDER_ID, PLACEHOLDER_CREATED, REQUIRED_TRANSCRIPTS };
+export { TRANSCRIPT_ROOT, KEPLOY_ROOT, PLACEHOLDER_ID, PLACEHOLDER_CREATED, REQUIRED_TRANSCRIPTS };

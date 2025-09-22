@@ -21,7 +21,7 @@ Story 3.8 requires a successful Keploy replay run (`keploy test`) to clear the r
 ## Done When
 
 - Privileged runner/container available to CI with CAP_IPC_LOCK and other Keploy prerequisites.
-- `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` completes successfully in CI, producing updated artifacts under `docs/bmad/qa/artifacts/3.8/`.
+- `keploy test --config-path config --path test-results/chat-completions --test-sets test-set-0` completes successfully in CI, producing updated artifacts under `docs/bmad/qa/artifacts/3.8/`.
 - Documentation reflects the new execution path and how developers can reproduce the evidence locally if needed.
 - Story 3.8 gate updated with PASS based on the successful replay evidence.
 

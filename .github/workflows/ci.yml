@@ -143,8 +143,9 @@ jobs:
           export PATH="$HOME/.keploy/bin:$HOME/.local/bin:$PATH"
           START_TS=$(date +%s)
           set -o pipefail
-          "$KEPLOY_BIN" test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0 \
-            | tee artifacts/keploy/test.log
+          "$KEPLOY_BIN" test --disable-ansi --config-path config --path test-results/chat-completions --test-sets test-set-0 \
+            2>&1 | tee artifacts/keploy/test.log
+          CLI_STATUS=${PIPESTATUS[0]}
           END_TS=$(date +%s)
           echo "replay_duration_seconds=$((END_TS-START_TS))" > artifacts/keploy/metrics.txt
           if "$KEPLOY_BIN" --version > artifacts/keploy/version.txt 2>&1; then
@@ -153,6 +154,18 @@ jobs:
             :
           else
             "$KEPLOY_BIN" version > artifacts/keploy/version.txt 2>&1 || echo "version command unavailable" > artifacts/keploy/version.txt
+          fi
+          if [ "$CLI_STATUS" -ne 0 ]; then
+            echo "Keploy CLI exited with status $CLI_STATUS" >&2
+            exit "$CLI_STATUS"
+          fi
+          if grep -Fq "No test-sets found" artifacts/keploy/test.log; then
+            echo "Keploy CLI did not locate the configured test-set" >&2
+            exit 1
+          fi
+          if grep -Fq $'\tERROR\t' artifacts/keploy/test.log; then
+            echo "Keploy CLI reported errors during replay" >&2
+            exit 1
           fi
 
       - name: Upload Keploy artifacts

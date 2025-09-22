@@ -2,7 +2,7 @@
 title: Keploy dry-run replay job skips stored test-set (CI follow-up)
 date: 2025-09-22
 owner: QA/Dev
-status: open
+status: resolved
 priority: P1
 source: observation
 labels: [ci, keploy, follow-up]
@@ -12,7 +12,7 @@ Keploy replay coverage is currently missing in CI because the `keploy-dry-run` j
 
 ## Observed Behaviour
 
-- Workflows `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`, `17924615572`, and `17924615984` run `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`.
+- Workflows `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`, `17924615572`, and `17924615984` run `keploy test --config-path config --path test-results/chat-completions --test-sets test-set-0`.
 - Logs show `ERROR No test-sets found. Please record testcases using [keploy record] command`, yet the step completes with exit code 0.
 - The repository already contains snapshots under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml` from Story 3.5.
 
@@ -32,12 +32,16 @@ Keploy replay coverage is currently missing in CI because the `keploy-dry-run` j
 - Additional flags (`--useLocalMock`, `--mocking`, `--in-ci`) might be required to force replay mode instead of a no-op.
 - The snapshots might need to be packaged into Keploy's expected `.yaml` structure (e.g., `test.yaml` + `mock.yaml`) rather than the current multi-file layout.
 
-## Next Steps
+## Resolution (2025-09-22)
 
-1. Reproduce locally with `KEPLOY_ENABLED=true` and `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` to confirm the failure.
-2. Consult Story 3.6 implementation notes and Keploy docs to align the directory layout / flags with the CLI expectations.
-3. Update `.github/workflows/ci.yml` to fail the job when Keploy issues errors, or add validation that the replay executed at least one test-case (e.g., check metrics output).
-4. When fixed, refresh the BMAD stories/issues (3.6, 3.10, Issue #77) to close the follow-up and document the resolution.
+- Snapshots now live under `test-results/chat-completions/keploy/test-set-0/tests`, matching the name Keploy derives from the repository root. The generator (`scripts/generate-chat-transcripts.mjs`) and transcript utilities were updated to write/read the new layout so `keploy test` discovers the bundled fixtures without additional flags.
+- The CI job invokes `keploy test --config-path config --path test-results/chat-completions --test-sets test-set-0 --disable-ansi` and captures logs to `artifacts/keploy/test.log`. A post-run guard fails the job when the CLI exits non-zero, prints `No test-sets found`, or emits any `ERROR` lines, closing the silent-success gap. Metrics and version files are still uploaded for debugging.
+- Until the self-hosted runner gains `CAP_IPC_LOCK`, the replay will stop at the known memlock error, causing the job to fail loudly instead of passing silently. Track the privilege work under `docs/bmad/issues/2025-09-20-keploy-memlock-privilege.md`.
+
+## Follow-up
+
+- Provision the privileged Keploy runner (`docs/bmad/issues/2025-09-20-keploy-memlock-privilege.md`), then re-run `keploy-dry-run` to validate that the stored test-set executes end-to-end.
+- Update Stories 3.6, 3.10, and Issue #77 with the new asset path and CI enforcement evidence.
 
 ## Links & References
 

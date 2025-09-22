@@ -23,6 +23,6 @@ Introduce deterministic “golden” transcripts and optional contract checks to
 
 ## Validation Notes (2025-09-22)
 
-- Recent CI runs (e.g., `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`) show the `keploy-dry-run` job invoking `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`.
-- The CLI prints `ERROR No test-sets found. Please record testcases using [keploy record] command` even though the repository contains `test-results/chat-completions/keploy/test-set-0/tests/*.yaml` from Story 3.5.
+- Recent CI runs (e.g., `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`) show the `keploy-dry-run` job invoking `keploy test --config-path config --path test-results/chat-completions --test-sets test-set-0`.
+- Earlier runs printed `ERROR No test-sets found. Please record testcases using [keploy record] command` despite the stored fixtures; the CI step now fails on that condition and points to the relocated assets at `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`.
 - Because the job still exits successfully, replay coverage is effectively skipped; this is a misconfiguration in the test invocation rather than an intentional opt-out. Fix should align the CLI path/flags with the stored snapshots (tracked alongside Story 3.6 and follow-up Issue `docs/bmad/issues/2025-09-22-keploy-dry-run-replay-gap.md`).

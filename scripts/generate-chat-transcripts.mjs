@@ -7,6 +7,7 @@ import YAML from "yaml";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
   TRANSCRIPT_ROOT,
+  KEPLOY_ROOT,
   saveTranscript,
   sanitizeNonStreamResponse,
   sanitizeStreamTranscript,
@@ -21,8 +22,6 @@ const BASE_HEADERS = {
   "Content-Type": "application/json",
   Authorization: "Bearer test-sk-ci",
 };
-
-const KEPLOY_ROOT = resolve(TRANSCRIPT_ROOT, "keploy", "test-set-0", "tests");
 
 async function maybeWriteKeploySnapshot(filename, transcript) {
   if (!isKeployEnabled()) return;

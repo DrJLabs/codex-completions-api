@@ -15,7 +15,7 @@ Story 3.9 shipped streaming `finish_reason` propagation plus refreshed contracts
 
 - Add `finish_reason` distribution panels/alerts using the new fields written by `appendUsage` (e.g., Grafana/Looker). Document thresholds for detecting unexpected `length` spikes.
 - Install `@langchain/openai` (or vendor it) in an integration test job so `tests/integration/langchain.streaming.int.test.js` runs instead of skipping. Verify the harness assertions against both `stop` and `length` flows.
-- Run `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` on `codex-keploy-ci-*` after deploying Story 3.9 to confirm snapshots stay valid. Attach fresh logs/metrics to the rollout issue.
+- Run `keploy test --config-path config --path test-results/chat-completions --test-sets test-set-0` on `codex-keploy-ci-*` after deploying Story 3.9 to confirm snapshots stay valid. Attach fresh logs/metrics to the rollout issue.
 
 ## Done When
 
