@@ -1,2 +1,1 @@
-Error:  unknown command "version" for "keploy"
-Run 'keploy --help' for usage.
+Keploy 2.10.25

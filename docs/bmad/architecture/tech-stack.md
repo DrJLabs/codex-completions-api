@@ -50,6 +50,7 @@ updated: 2025-09-13
 - CI caches the CLI layer (`~/.keploy` and `~/.cache/keploy`) keyed on `scripts/setup-keploy-cli.sh` + `config/keploy.yaml`. When `KEPLOY_ENABLED=true`, the `keploy-dry-run` job runs `keploy test --config-path config` and uploads logs/metrics artifacts without extending `npm run verify:all` beyond budget (runtime delta logged for visibility).
 - The repository GitHub environment stores `KEPLOY_ENABLED=true` so the dry-run job executes automatically on pushes. It remains labelled a “dry run” because it replays previously recorded snapshots and never attempts to capture live traffic or hit external services; failures surface contract drift without disrupting the main test matrix.
 - Environment variables: `KEPLOY_MODE` (default `test`), `KEPLOY_APP_PORT` (11436 by default for local evidence runs), `KEPLOY_RECORD_PORT` (16789), `KEPLOY_TEST_PORT` (16790), `KEPLOY_DNS_PORT` (26789), and `KEPLOY_HOST_BIND` (loopback) are documented in `.env.example` / `.env.dev` for developers enabling the proxy locally.
+- Keploy replays execute on the self-hosted runner `codex-keploy-ci-01` (labels: `self-hosted`, `linux`, `keploy`) to satisfy CAP_IPC_LOCK; CI runs `CI #459–463` validated the setup while GitHub-hosted runners remain blocked on memlock constraints and private-repo minute limits.
 
 # Linting & Formatting
 

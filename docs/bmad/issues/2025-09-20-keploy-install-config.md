@@ -42,16 +42,17 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 - Manual replay attempt (`keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`) still requires the CLI to own the application lifecycle; invoking with `-c ./scripts/keploy-start-server.sh` now reaches replay but fails with `failed to set memlock rlimit: operation not permitted`, confirming the current GitHub-hosted runner/container lacks the CAP_IPC_LOCK capability needed for eBPF hooks. Logs live in `docs/bmad/qa/artifacts/3.8/local-keploy-test-memlock.log`.
 - Baseline verification (`npm run verify:all`) passes with `KEPLOY_ENABLED` unset; enabling the toggle locally still fails for the same memlock reason, so the documentation now calls out the privilege requirement and the workaround (run inside a privileged container or attach to self-hosted runners).
 
-## Evidence — 2025-09-21
+## Evidence — 2025-09-21 (self-hosted runner)
 
-- Repository environment variable `KEPLOY_ENABLED` set to `true` at the GitHub environment scope so the new `keploy-dry-run` job executes on every push. The job triggered on commit `c409b7f` (2025-09-21) and completed successfully, installing Keploy via `scripts/setup-keploy-cli.sh`, replaying existing snapshots, and uploading artefacts (`artifacts/keploy/test.log`, `version.txt`, `metrics.txt`).
-- `artifacts/keploy/metrics.txt` recorded `replay_duration_seconds=37`, establishing the initial runtime budget for future comparisons; `version.txt` captured `Keploy 2.10.25`.
-- Workflow summary updated with a “dry run” note to distinguish the replay-only stage from the main test matrix (no record step, no production traffic).
+- Repository environment variable `KEPLOY_ENABLED` remains `true`, and the CI workflow now routes the `keploy-dry-run` job to self-hosted runner `codex-keploy-ci-01` (labels: `self-hosted`, `linux`, `keploy`). Run #459 (PR), run #462 (merge), and run #463 (docs update) each completed with conclusion `success`, confirming the privileged path is stable.
+- Latest artefacts (run #463) captured under `docs/bmad/qa/artifacts/3.8/ci-dry-run-*.{log,metrics.txt,version.txt}` show Keploy 2.10.25 executing without memlock errors; the CLI still logs informational `No test-sets found` messages when no new recordings are staged, but the step exits cleanly.
+- Metrics currently report `replay_duration_seconds=0`, reflecting the replay-only invocation against cached snapshots on the self-hosted runner. This value will increase once recordings are refreshed; monitor future runs for drift.
+- Workflow summary and runbook notes updated to clarify that GitHub-hosted runners are no longer used for Keploy replays while private-repo minutes are exhausted.
 
 ## Next Steps
 
-- Continue monitoring replay durations in CI and refresh Keploy snapshots as new contract scenarios land.
-- Optional: run `keploy test` inside a privileged/self-hosted environment to confirm replays pass without the memlock limitation when needed for additional evidence.
+- Keep monitoring replay durations in CI and refresh Keploy snapshots as new contract scenarios land.
+- Document any change in runner availability or capacity planning (e.g., additional self-hosted runners) if the workload increases.
 
 ## References
 

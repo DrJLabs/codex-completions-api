@@ -1,8 +1,8 @@
 ---
 title: Epic — Stability & CI Hardening (Sep 2025)
 status: In Progress
-version: 0.2
-updated: 2025-09-20
+version: 0.3
+updated: 2025-09-21
 owner: Product (PM)
 labels: [stability, ci, parity, streaming, nonstream, edge]
 ---
@@ -68,9 +68,11 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 - ✅ **Story 3.1–3.4** closed the non-stream timeout, truncation flake, usage emission, and concurrency guard gaps (Phases 1–4).
 - ✅ **Story 3.5** delivered the expanded golden transcript corpus and contract guardrails (Phase 0) plus documentation updates.
 - ✅ **Story 3.6** introduced Keploy-backed snapshots, CI toggles, and QA/PO artifacts; follow-up rollout tracked in `docs/bmad/issues/2025-09-20-keploy-install-config.md`.
+- ✅ **Story 3.7** standardized Keploy CLI installation across CI and local dev, flipping `KEPLOY_ENABLED` and documenting the environment contract.
+- ✅ **Story 3.8** captured replay evidence using self-hosted runner `codex-keploy-ci-01`, clearing the memlock blocker and archiving artefacts from CI runs #459–463.
 - 🔄 **Outstanding:**
   - Complete P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-13-streaming-finalizer-richer-finish-reason.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
-  - Monitor dev edge in production and add long-term observability thresholds for Keploy replay timings.
+  - Monitor dev edge in production and add long-term observability thresholds for Keploy replay timings (capture replay duration trends from self-hosted runner metrics).
 
 # Dependencies & Impact
 
@@ -87,6 +89,8 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 
 # Change Log
 
-| Date       | Version | Description                     | Author |
-| ---------- | ------- | ------------------------------- | ------ |
-| 2025-09-15 | 0.1     | Initial epic drafted (Proposed) | PM     |
+| Date       | Version | Description                                                                | Author |
+| ---------- | ------- | -------------------------------------------------------------------------- | ------ |
+| 2025-09-15 | 0.1     | Initial epic drafted (Proposed)                                            | PM     |
+| 2025-09-20 | 0.2     | Updated progress after stories 3.5–3.6 landed; flagged Keploy follow-ups   | PM     |
+| 2025-09-21 | 0.3     | Recorded self-hosted Keploy rollout (stories 3.7–3.8) and refreshed status | PM     |

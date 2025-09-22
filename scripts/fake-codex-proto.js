@@ -44,12 +44,31 @@ const main = async () => {
   await delay(5);
   write({ type: "agent_message", msg: { message } });
   await delay(5);
+  const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
+    .trim()
+    .toLowerCase();
+  const finishReason = ["length", "max_tokens", "token_limit"].includes(requestedFinish)
+    ? "length"
+    : "stop";
+  const tokenCountMsg = {
+    prompt_tokens: 8,
+    completion_tokens: Math.ceil(message.length / 4),
+  };
+  if (finishReason === "length") {
+    tokenCountMsg.finish_reason = "length";
+    tokenCountMsg.reason = "length";
+    tokenCountMsg.token_limit_reached = true;
+  }
   write({
     type: "token_count",
-    msg: { prompt_tokens: 8, completion_tokens: Math.ceil(message.length / 4) },
+    msg: tokenCountMsg,
   });
   await delay(5);
-  write({ type: "task_complete" });
+  const taskCompletePayload = { type: "task_complete" };
+  if (finishReason) {
+    taskCompletePayload.msg = { finish_reason: finishReason };
+  }
+  write(taskCompletePayload);
   try {
     process.stdout.end?.();
   } catch {}
