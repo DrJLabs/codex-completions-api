@@ -70,8 +70,9 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 - ✅ **Story 3.6** introduced Keploy-backed snapshots, CI toggles, and QA/PO artifacts; follow-up rollout tracked in `docs/bmad/issues/2025-09-20-keploy-install-config.md`.
 - ✅ **Story 3.7** standardized Keploy CLI installation across CI and local dev, flipping `KEPLOY_ENABLED` and documenting the environment contract.
 - ✅ **Story 3.8** captured replay evidence using self-hosted runner `codex-keploy-ci-01`, clearing the memlock blocker and archiving artefacts from CI runs #459–463.
+- ✅ **Story 3.9** delivers richer streaming finish_reason parity, telemetry, and updated client guidance; follow-up telemetry dashboards tracked in `docs/bmad/issues/2025-09-22-finish-reason-follow-ups.md`.
 - 🔄 **Outstanding:**
-  - Complete P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-13-streaming-finalizer-richer-finish-reason.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
+  - Complete remaining P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
   - Monitor dev edge in production and add long-term observability thresholds for Keploy replay timings (capture replay duration trends from self-hosted runner metrics).
 
 # Dependencies & Impact
