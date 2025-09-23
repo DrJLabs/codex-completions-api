@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
 import fetch from "node-fetch";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
