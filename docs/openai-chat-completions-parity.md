@@ -90,12 +90,10 @@ Notes:
   - `nonstream-truncation.json`
   - `streaming-usage.json`
   - `streaming-usage-length.json`
-- Keploy-compatible snapshots live alongside the JSON fixtures under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`. Generate both sets via `npm run transcripts:generate` (enable `KEPLOY_ENABLED=true` to emit the YAML fixtures while keeping JSON fallbacks in sync).
+- Historical note: Keploy YAML snapshots previously lived under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`, but the directory was removed on 2025-09-22 when the replay initiative was shelved.
 - Each transcript stores sanitized payloads where `id` and `created` are replaced with `<dynamic-id>` and `<timestamp>` so deterministic diffs highlight envelope drift instead of random identifiers.
-- Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses through a Keploy-style capture, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag).
-- GitHub Actions run `keploy test` through the `keploy-dry-run` job, but as of 2025-09-22 the CLI logs `ERROR No test-sets found...` despite the YAML snapshots listed above. The job exits zero, so current CI does not actually replay the captures; fixing the invocation/configuration is required to regain coverage (see Story 3.6 and Issue #77).
-- Manual dry-run evidence (2025-09-20): `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` now reads the 2.x snapshots but fails when the CLI tries to start the app (`failed to set memlock rlimit: operation not permitted`). Logs, metrics stub, and version output live under `docs/bmad/qa/artifacts/3.8/`, documenting the need for CAP_IPC_LOCK (privileged container/self-hosted runner) before replay can succeed.
-- CI dry-run evidence (2025-09-21): with `KEPLOY_ENABLED=true` configured in repository environments, the `keploy-dry-run` job replays existing snapshots on a GitHub-hosted runner, installs Keploy via the helper script, and publishes artefacts (`test.log`, `metrics.txt`, `version.txt`). The job is labelled “dry run” because it replays previously recorded traffic; no new captures or external calls occur, so the step can run on every push without mutating datasets.
+- Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag). The helper no longer emits Keploy YAML files.
+- Keploy replay evidence captured in 2025-09-20/21 remains archived under `docs/bmad/qa/artifacts/3.8/`, but no automated job currently exercises `keploy test` since the workflow was removed as part of the shelving decision.
 - Contract tests (`tests/integration/chat.contract.*.int.test.js`) and Playwright specs (`tests/e2e/chat-contract.spec.ts`) sanitize live responses and compare them to these transcripts on every CI run, ensuring ordering, usage emission, and truncation semantics remain stable.
 
 ### Client Guidance (2025-09-22)
@@ -106,10 +104,11 @@ Notes:
 
 ### Keploy CLI Rollout & Dry-Run (Story 3.7)
 
-- Use `./scripts/setup-keploy-cli.sh` to provision the Keploy CLI. The script validates that ports 16789 (record), 16790 (test), and 26789 (DNS) are free, enforces loopback binding via `KEPLOY_HOST_BIND=127.0.0.1`, downloads the official installer (`curl -fsSL https://keploy.io/install.sh`), and prints the installed version for audit trails.
-- Local `.env` files include `KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, and `KEPLOY_HOST_BIND` so developers can opt in to replay without exposing ports beyond localhost. Set `KEPLOY_ENABLED=true` once the CLI is installed.
-- CI runs the `keploy-dry-run` workflow job whenever `KEPLOY_ENABLED=true` in repository/environment variables. The job reuses the install helper, caches the CLI layer (`~/.keploy`), executes `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`, and uploads `keploy` logs plus replay duration metrics as artifacts.
-- The dry-run job keeps the existing `npm run verify:all` duration within budget; performance guard metrics are logged so regressions trigger investigation before flipping additional Keploy stages (record/compare) on by default.
+> **Shelved 2025-09-22.** Scripts (`scripts/setup-keploy-cli.sh`, `scripts/keploy-start-server.sh`) and GitHub Actions (`keploy-dry-run`) were removed; notes below are retained only for historical traceability.
+
+- Prior to shelving, the rollout plan automated Keploy CLI installation, port validation, and replay execution through the `keploy-dry-run` workflow. Evidence from those runs is archived under `docs/bmad/qa/artifacts/3.8/`.
+- Repository/environment variables `KEPLOY_*` were documented in `.env.example` and `.env.dev`; these toggles have been excised now that the initiative paused.
+- Future replay tooling should revisit runner privileges (CAP_IPC_LOCK) and CLI provisioning if we pursue an alternative snapshot solution.
 
 ### Streaming Concurrency Guard (Test Instrumentation)
 

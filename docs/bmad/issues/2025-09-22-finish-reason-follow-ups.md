@@ -15,13 +15,13 @@ Story 3.9 shipped streaming `finish_reason` propagation plus refreshed contracts
 
 - Add `finish_reason` distribution panels/alerts using the new fields written by `appendUsage` (e.g., Grafana/Looker). Document thresholds for detecting unexpected `length` spikes.
 - Install `@langchain/openai` (or vendor it) in an integration test job so `tests/integration/langchain.streaming.int.test.js` runs instead of skipping. Verify the harness assertions against both `stop` and `length` flows.
-- Run `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` on `codex-keploy-ci-*` after deploying Story 3.9 to confirm snapshots stay valid. Attach fresh logs/metrics to the rollout issue.
+- _(Shelved 2025-09-22)_ Previously planned: run `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0` on `codex-keploy-ci-*` after deploying Story 3.9. No action required until a new replay strategy is selected.
 
 ## Done When
 
 - Dashboards/alerts referencing `finish_reason` are live and linked from the observability runbook.
 - CI emits LangChain harness results (pass/fail) and protects against regressions in richer `finish_reason` behavior.
-- Keploy dry-run evidence covering the updated transcripts is stored under `docs/bmad/qa/artifacts/` with run metadata.
+- Keploy dry-run evidence covering the updated transcripts is archived under `docs/bmad/qa/artifacts/` for reference; no new runs are expected while the initiative remains paused.
 
 ## References
 
