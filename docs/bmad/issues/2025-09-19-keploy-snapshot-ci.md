@@ -2,12 +2,14 @@
 title: Integrate Keploy snapshot capture into CI (Story 3.5 follow-up)
 date: 2025-09-19
 owner: DevOps / QA
-status: open
+status: shelved
 priority: P1
 labels: [ci, snapshots, keploy, tooling]
 ---
 
 ## Why
+
+> **Note (2025-09-22):** Keploy integration work is shelved; the backlog remains here for context.
 
 Story 3.5 introduced deterministic golden transcripts and contract checks. We currently rely on a custom recorder script; integrating Keploy 3.x will provide first-class HTTP snapshot capture, mock generation, and deterministic replay inside `npm run verify:all` and future provider tests.
 

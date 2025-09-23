@@ -1,10 +1,10 @@
 schema: 1
 story: "3.7"
 story_title: "Story 3.7 — Keploy CLI Rollout & Enablement"
-gate: PASS
-status_reason: "Keploy dry-run job executed with KEPLOY_ENABLED=true; installation helper, documentation, and replay evidence now satisfy AC1–AC4."
+gate: SHELVED
+status_reason: "Keploy CLI rollout paused on 2025-09-22; previous evidence retained for historical reference."
 reviewer: "Quinn (Test Architect)"
-updated: "2025-09-21T11:05:00Z"
+updated: "2025-09-22T18:00:00Z"
 quality_score: 95
 expires: "2025-10-05T11:05:00Z"
 
