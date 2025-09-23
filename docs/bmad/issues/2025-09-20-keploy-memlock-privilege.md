@@ -2,12 +2,14 @@
 title: Provide privileged environment for Keploy replay evidence
 date: 2025-09-20
 owner: Platform / DevOps
-status: closed
+status: shelved
 priority: P1
 labels: [ci, keploy, infrastructure, tooling]
 ---
 
 ## Why
+
+> **Note (2025-09-22):** Keploy replay automation has been paused; this issue remains for historical reference only.
 
 Story 3.8 requires a successful Keploy replay run (`keploy test`) to clear the rollout gate. Initial attempts on GitHub-hosted runners aborted with `failed to set memlock rlimit: operation not permitted` because the environment lacked CAP_IPC_LOCK, preventing Keploy from initializing its eBPF hooks. Without a privileged container or self-hosted runner, we could not capture green evidence for CI or local dry runs.
 
@@ -31,6 +33,7 @@ Story 3.8 requires a successful Keploy replay run (`keploy test`) to clear the r
 - Updated the CI workflow so the `keploy-dry-run` job executes exclusively on the self-hosted runner while leaving a fallback path documented for GitHub-hosted runners.
 - Captured consecutive successful runs (`CI` runs #459–463) where the `keploy-dry-run` job completed without memlock errors and uploaded artefacts (`keploy.log`, `metrics.txt`, `version.txt`).
 - Synced documentation (tech stack guide, Story 3.8, install/config issue) with the new runner requirements, runtime metrics, and reproduction guidance for privileged environments.
+- **Shelving note (2025-09-22):** The runner was decommissioned alongside the Keploy workflow cleanup; details above remain for historical traceability only.
 
 ## Evidence
 
