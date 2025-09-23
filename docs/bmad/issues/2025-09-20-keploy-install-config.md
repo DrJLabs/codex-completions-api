@@ -2,12 +2,14 @@
 title: Roll out Keploy CLI installation & configuration across environments
 date: 2025-09-20
 owner: DevOps / QA
-status: closed
+status: shelved
 priority: P1
 labels: [ci, dev-environment, keploy, tooling]
 ---
 
 ## Why
+
+> **Note (2025-09-22):** The Keploy rollout is shelved. Historical context is retained below.
 
 Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CLI itself is not yet installed on developer machines or CI runners. Without a tested installation procedure, the new toggle (`KEPLOY_ENABLED`) will remain disabled and the pipeline will continue using inline transcripts. We need a focused effort to install Keploy, document expectations, and verify the workflow in each target environment.
 
@@ -31,8 +33,8 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 
 ## Progress — 2025-09-20
 
-- Added `scripts/setup-keploy-cli.sh` to automate CLI install, port pre-flight (16789/16790/26789), and loopback enforcement (`KEPLOY_HOST_BIND=127.0.0.1`). Script outputs the installed version for traceability.
-- Updated `.env.example` / `.env.dev` with the full Keploy env contract (`KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, `KEPLOY_HOST_BIND`).
+- Added `scripts/setup-keploy-cli.sh` to automate CLI install, port pre-flight (16789/16790/26789), and loopback enforcement (`KEPLOY_HOST_BIND=127.0.0.1`). (Removed 2025-09-22 as part of shelving.)
+- Updated `.env.example` / `.env.dev` with the full Keploy env contract (`KEPLOY_MODE`, `KEPLOY_APP_PORT`, `KEPLOY_RECORD_PORT`, `KEPLOY_TEST_PORT`, `KEPLOY_DNS_PORT`, `KEPLOY_HOST_BIND`). (Reverted 2025-09-22 during shelving.)
 - Refreshed `docs/bmad/architecture/tech-stack.md` and `docs/openai-chat-completions-parity.md` with install instructions, caching guidance, and dry-run expectations.
 - CI workflow now caches the CLI layer and introduces a `keploy-dry-run` job (gated by `KEPLOY_ENABLED=true`) that runs `keploy test --config-path config`, captures runtime metrics, and uploads artifacts/logs.
 

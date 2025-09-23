@@ -2,11 +2,13 @@
 title: Keploy dry-run replay job skips stored test-set (CI follow-up)
 date: 2025-09-22
 owner: QA/Dev
-status: open
+status: shelved
 priority: P1
 source: observation
 labels: [ci, keploy, follow-up]
 ---
+
+> **Note (2025-09-22):** Keploy replay coverage has been shelved. The details below are preserved for posterity.
 
 Keploy replay coverage is currently missing in CI because the `keploy-dry-run` job exits successfully even when the CLI reports that no test-sets were found.
 
