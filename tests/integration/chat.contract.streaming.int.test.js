@@ -24,6 +24,11 @@ const STREAM_SCENARIOS = [
     env: { FAKE_CODEX_MODE: "tool_call" },
   },
   {
+    label: "tool_calls_sequential",
+    transcriptFile: "streaming-tool-calls-sequential.json",
+    env: { FAKE_CODEX_MODE: "tool_call", FAKE_CODEX_PARALLEL: "false" },
+  },
+  {
     label: "function_call",
     transcriptFile: "streaming-function-call.json",
     env: { FAKE_CODEX_MODE: "function_call" },

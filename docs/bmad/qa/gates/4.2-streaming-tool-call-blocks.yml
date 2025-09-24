@@ -1,0 +1,64 @@
+schema: 1
+story: "4.2"
+story_title: "Story 4.2 — Streaming Tool Call Blocks"
+gate: PASS
+status_reason: "Streaming tool-call deltas, aggregates, and usage emission validated across stream/non-stream paths with refreshed transcripts, telemetry, and solo-dev smoke harness."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-24T18:20:00Z"
+quality_score: 93
+expires: "2025-10-08T18:20:00Z"
+
+top_issues: []
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 5
+  risks_identified: 6
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6]
+    ac_gaps: []
+  trace_ref: "docs/bmad/qa/assessments/4.2-test-design-20250924.md"
+  nfr_ref: null
+  risk_ref: "docs/bmad/qa/assessments/4.2-risk-20250924.md"
+
+test_evidence:
+  - "npm run test:unit"
+  - "npm run test:integration -- chat.contract.streaming.int.test.js"
+  - "npm test"
+  - "npm run transcripts:generate"
+  - "node scripts/smoke/stream-tool-call.js --include-usage"
+  - "node scripts/smoke/stream-tool-call.js"
+
+trace:
+  totals:
+    requirements: 6
+    full: 6
+    partial: 0
+    none: 0
+  uncovered: []
+  notes: "Coverage mapped in test design matrix (docs/bmad/qa/assessments/4.2-test-design-20250924.md)."
+
+nfr_validation:
+  _assessed: [performance, reliability, maintainability]
+  performance:
+    status: PASS
+    notes: "Smoke harness benchmarking (2025-09-24) showed ~0.12s wall time, peak RSS 56.3 MB vs 57.0 MB (∆ 0.7 MB), CPU <0.05s user/<0.02s system; current PROXY_TOOL_BLOCK_MAX=16 remains sufficient."
+  reliability:
+    status: PASS
+    notes: "Shared aggregator + updated transcripts ensure consistent tool-call ordering across stream/non-stream handlers."
+  maintainability:
+    status: PASS
+    notes: "Dedicated helper, unit coverage, and smoke harness artifacts reduce regression risk for solo developers."
+
+recommendations:
+  immediate:
+    - action: "Publish benchmarking summary alongside release checklist and ensure canary telemetry stays within captured envelope."
+      refs:
+        - "docs/bmad/stories/4.2.streaming-tool-call-blocks.md"
+        - "docs/bmad/qa/assessments/4.2-review-20250924.md"
+  future:
+    - action: "Expand Langfuse dashboards to watch `tool_call_index`, `delta_position`, and `usage_emitted` for canary streams."
+      refs:
+        - "src/dev-logging.js"
+        - "docs/bmad/qa/assessments/4.2-review-20250924.md"

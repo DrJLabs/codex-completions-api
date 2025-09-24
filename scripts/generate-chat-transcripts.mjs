@@ -226,6 +226,43 @@ async function main() {
   await captureChatScenario({
     requestBody: {
       model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Stream tool execution (sequential)" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_user",
+            description: "Returns fake profile information",
+            parameters: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+              },
+              required: ["id"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "lookup_user" } },
+    },
+    filename: "streaming-tool-calls-sequential.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    protoEnv: { FAKE_CODEX_MODE: "tool_call", FAKE_CODEX_PARALLEL: "false" },
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
       stream: false,
       messages: [{ role: "user", content: "Call legacy function" }],
       tools: [

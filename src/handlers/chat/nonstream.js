@@ -30,6 +30,7 @@ import {
   logFinishReasonTelemetry,
   coerceAssistantContent,
 } from "./shared.js";
+import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -84,7 +85,7 @@ export async function postChatNonStream(req, res) {
       if (value) unknownFinishReasons.add(value);
     },
   });
-  let assistantToolCalls = null;
+  const toolCallAggregator = createToolCallAggregator();
   let assistantFunctionCall = null;
   let hasToolCalls = false;
   let hasFunctionCall = false;
@@ -93,7 +94,7 @@ export async function postChatNonStream(req, res) {
     if (!payload || typeof payload !== "object") return;
     const toolCalls = payload.tool_calls || payload.toolCalls;
     if (Array.isArray(toolCalls) && toolCalls.length) {
-      assistantToolCalls = toolCalls;
+      toolCallAggregator.ingestMessage({ tool_calls: toolCalls });
       hasToolCalls = true;
     }
     const functionCall = payload.function_call || payload.functionCall;
@@ -280,10 +281,9 @@ export async function postChatNonStream(req, res) {
     early?.stop?.();
 
     const final = computeFinal();
-    const toolCallsPayload =
-      hasToolCalls && Array.isArray(assistantToolCalls) && assistantToolCalls.length
-        ? assistantToolCalls
-        : null;
+    const toolCallsSnapshot = toolCallAggregator.snapshot();
+    const toolCallsPayload = toolCallsSnapshot.length ? toolCallsSnapshot : null;
+    if (toolCallsPayload) hasToolCalls = true;
     const functionCallPayload = hasFunctionCall ? assistantFunctionCall : null;
 
     if (finishReason) finishReasonTracker.record(finishReason, "finalize");
@@ -334,6 +334,19 @@ export async function postChatNonStream(req, res) {
 
     if (statusCode === 200) {
       logToolBlocks();
+      try {
+        if (toolCallsPayload) {
+          appendProtoEvent({
+            ts: Date.now(),
+            req_id: reqId,
+            route: "/v1/chat/completions",
+            mode: "chat_nonstream",
+            kind: "tool_call_summary",
+            tool_calls: toolCallsPayload,
+            parallel_supported: toolCallAggregator.supportsParallelCalls(),
+          });
+        }
+      } catch {}
       appendUsage({
         ts: Date.now(),
         req_id: reqId,
@@ -352,6 +365,8 @@ export async function postChatNonStream(req, res) {
         finish_reason_source: reasonSource,
         has_tool_calls: !!toolCallsPayload,
         has_function_call: !!functionCallPayload,
+        tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
+        tool_call_emitted: toolCallAggregator.hasCalls(),
       });
       logFinishReasonTelemetry({
         route: "/v1/chat/completions",
@@ -473,6 +488,8 @@ export async function postChatNonStream(req, res) {
           if (typeof deltaPayload === "string") {
             content += deltaPayload;
           } else if (deltaPayload && typeof deltaPayload === "object") {
+            const { updated } = toolCallAggregator.ingestDelta(deltaPayload);
+            if (updated) hasToolCalls = true;
             const textDelta = coerceAssistantContent(
               deltaPayload.content ?? deltaPayload.text ?? ""
             );
@@ -483,6 +500,8 @@ export async function postChatNonStream(req, res) {
           if (typeof messagePayload === "string") {
             content = messagePayload;
           } else if (messagePayload && typeof messagePayload === "object") {
+            toolCallAggregator.ingestMessage(messagePayload);
+            if (toolCallAggregator.hasCalls()) hasToolCalls = true;
             const textValue = coerceAssistantContent(
               messagePayload.content ?? messagePayload.text ?? ""
             );

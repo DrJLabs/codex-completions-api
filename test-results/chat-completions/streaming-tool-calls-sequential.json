@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "captured_at": "2025-09-24T10:24:53.011Z",
+    "captured_at": "2025-09-24T10:24:53.711Z",
     "include_usage": true,
     "codex_bin": "scripts/fake-codex-proto.js",
     "commit": "3e5454766a0f720cde25caa71a17394f57814dea",
-    "scenario": "streaming-usage-length"
+    "scenario": "streaming-tool-calls-sequential"
   },
   "request": {
     "model": "codex-5",
@@ -15,9 +15,35 @@
     "messages": [
       {
         "role": "user",
-        "content": "Stream transcript (length)"
+        "content": "Stream tool execution (sequential)"
       }
-    ]
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
   },
   "stream": [
     {
@@ -50,26 +76,17 @@
           {
             "index": 0,
             "delta": {
-              "content": "Hello f"
-            },
-            "finish_reason": null
-          }
-        ],
-        "usage": null
-      }
-    },
-    {
-      "type": "data",
-      "data": {
-        "id": "<dynamic-id>",
-        "object": "chat.completion.chunk",
-        "created": "<timestamp>",
-        "model": "codex-5",
-        "choices": [
-          {
-            "index": 0,
-            "delta": {
-              "content": "rom fake-codex."
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "id": "tool_fake_1",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_user",
+                    "arguments": "{\"id\":\"42\"}"
+                  }
+                }
+              ]
             },
             "finish_reason": null
           }
@@ -88,7 +105,7 @@
           {
             "index": 0,
             "delta": {},
-            "finish_reason": "length"
+            "finish_reason": "tool_calls"
           }
         ],
         "usage": null
@@ -104,8 +121,8 @@
         "choices": [],
         "usage": {
           "prompt_tokens": 8,
-          "completion_tokens": 6,
-          "total_tokens": 14,
+          "completion_tokens": 0,
+          "total_tokens": 8,
           "time_to_first_token": null,
           "throughput_after_first_token": null,
           "emission_trigger": "token_count"
