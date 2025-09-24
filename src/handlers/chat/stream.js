@@ -419,7 +419,9 @@ export async function postChatStream(req, res) {
   };
 
   const scheduleStopAfterTools = () => {
-    if (!STOP_AFTER_TOOLS || toolCount === 0 || stoppedAfterTools) return;
+    const newToolCount = toolCallAggregator.hasCalls() ? toolCallAggregator.snapshot().length : 0;
+    const totalToolCount = toolCount + newToolCount;
+    if (!STOP_AFTER_TOOLS || totalToolCount === 0 || stoppedAfterTools) return;
     const cutNow = () => {
       if (stoppedAfterTools) return;
       stoppedAfterTools = true;
@@ -433,7 +435,7 @@ export async function postChatStream(req, res) {
         child.kill("SIGTERM");
       } catch {}
     };
-    if (STOP_AFTER_TOOLS_MAX > 0 && toolCount >= STOP_AFTER_TOOLS_MAX) {
+    if (STOP_AFTER_TOOLS_MAX > 0 && totalToolCount >= STOP_AFTER_TOOLS_MAX) {
       cutNow();
     } else if (STOP_AFTER_TOOLS_MODE === "first") {
       cutNow();
@@ -625,7 +627,6 @@ export async function postChatStream(req, res) {
             const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload);
             if (updated) {
               hasToolCallsFlag = true;
-              toolCount = Math.max(toolCount, toolCallAggregator.snapshot().length);
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
@@ -665,7 +666,6 @@ export async function postChatStream(req, res) {
             });
             if (updated) {
               hasToolCallsFlag = true;
-              toolCount = Math.max(toolCount, toolCallAggregator.snapshot().length);
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
