@@ -1,0 +1,17 @@
+schema: 1
+story: "4.3"
+gate: CONCERNS
+status_reason: "Optional parameter validation lacks automated coverage; real Codex perf data pending."
+reviewer: Quinn
+updated: "2025-09-24T23:05:00Z"
+top_issues:
+  - id: "TEST-4301"
+    severity: high
+    finding: "No automated tests exercise logprobs/top_logprobs/response_format/seed validation added in Story 4.3."
+    suggested_action: "Add integration tests asserting canonical invalid_request_error responses and accepted response_format='text'."
+  - id: "PERF-4301"
+    severity: medium
+    finding: "Benchmark against real Codex backend timed out; impact of multi-choice aggregation under production load unverified."
+    suggested_action: "Re-run streaming benchmark with BENCH_CODEX_BIN=codex once credentials/connectivity are available and attach results."
+waiver:
+  active: false

@@ -109,6 +109,7 @@ const REQUIRED_TRANSCRIPTS = [
   "streaming-tool-calls-sequential.json",
   "streaming-function-call.json",
   "streaming-content-filter.json",
+  "streaming-multi-choice.json",
 ];
 
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
