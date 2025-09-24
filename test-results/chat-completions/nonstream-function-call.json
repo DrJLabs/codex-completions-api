@@ -1,0 +1,70 @@
+{
+  "metadata": {
+    "captured_at": "2025-09-24T04:17:16.978Z",
+    "include_usage": false,
+    "codex_bin": "scripts/fake-codex-proto.js",
+    "commit": "8567c9a42b74559d0b22616bed0ab265f0fe4272",
+    "scenario": "nonstream-function-call"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Call legacy function"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "legacy_lookup",
+          "description": "Returns fake info",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "legacy_lookup"
+      }
+    }
+  },
+  "response": {
+    "id": "<dynamic-id>",
+    "object": "chat.completion",
+    "created": "<timestamp>",
+    "model": "codex-5",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "function_call": {
+            "name": "lookup_user",
+            "arguments": "{\"id\":\"42\"}"
+          },
+          "content": null
+        },
+        "finish_reason": "function_call"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 0,
+      "total_tokens": 8
+    }
+  }
+}

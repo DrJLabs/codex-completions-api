@@ -38,26 +38,74 @@ const main = async () => {
   await delay(10);
   write({ type: "agent_reasoning_delta", msg: { delta: "…" } });
   await delay(10);
-  // Send both delta and full message to satisfy either incremental or final-only logic
-  const message = "Hello from fake-codex.";
-  write({ type: "agent_message_delta", msg: { delta: message.slice(0, 7) } });
-  await delay(5);
-  write({ type: "agent_message", msg: { message } });
-  await delay(5);
+
+  const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
   const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
     .trim()
     .toLowerCase();
-  const finishReason = ["length", "max_tokens", "token_limit"].includes(requestedFinish)
-    ? "length"
-    : "stop";
+  let finishReason = "stop";
+  if (["length", "max_tokens", "token_limit"].includes(requestedFinish)) {
+    finishReason = "length";
+  }
+  if (scenario === "content_filter") {
+    finishReason = "content_filter";
+  } else if (scenario === "function_call") {
+    finishReason = finishReason === "length" ? "length" : "function_call";
+  }
+
+  const toolCalls =
+    scenario === "tool_call"
+      ? [
+          {
+            id: "tool_fake_1",
+            type: "function",
+            function: {
+              name: "lookup_user",
+              arguments: '{"id":"42"}',
+            },
+          },
+        ]
+      : null;
+
+  const functionCall =
+    scenario === "function_call"
+      ? {
+          name: "lookup_user",
+          arguments: '{"id":"42"}',
+        }
+      : null;
+
+  const baseMessage = "Hello from fake-codex.";
+  const messageText = ["content_filter", "tool_call", "function_call"].includes(scenario)
+    ? ""
+    : baseMessage;
+
+  if (messageText) {
+    write({ type: "agent_message_delta", msg: { delta: messageText.slice(0, 7) } });
+    await delay(5);
+  }
+
+  const assistantMessage = {
+    role: "assistant",
+    content: toolCalls || functionCall ? null : messageText,
+  };
+  if (toolCalls) assistantMessage.tool_calls = toolCalls;
+  if (functionCall) assistantMessage.function_call = functionCall;
+
+  write({ type: "agent_message", msg: { message: assistantMessage } });
+  await delay(5);
+
+  const completionTokensEst = toolCalls || functionCall ? 0 : Math.ceil(messageText.length / 4);
   const tokenCountMsg = {
     prompt_tokens: 8,
-    completion_tokens: Math.ceil(message.length / 4),
+    completion_tokens: completionTokensEst,
   };
   if (finishReason === "length") {
     tokenCountMsg.finish_reason = "length";
     tokenCountMsg.reason = "length";
     tokenCountMsg.token_limit_reached = true;
+  } else if (finishReason === "content_filter") {
+    tokenCountMsg.finish_reason = "content_filter";
   }
   write({
     type: "token_count",

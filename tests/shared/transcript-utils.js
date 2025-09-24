@@ -100,8 +100,14 @@ export function parseSSE(raw) {
 const REQUIRED_TRANSCRIPTS = [
   "nonstream-minimal.json",
   "nonstream-truncation.json",
+  "nonstream-tool-calls.json",
+  "nonstream-content-filter.json",
+  "nonstream-function-call.json",
   "streaming-usage.json",
   "streaming-usage-length.json",
+  "streaming-tool-calls.json",
+  "streaming-function-call.json",
+  "streaming-content-filter.json",
 ];
 
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {

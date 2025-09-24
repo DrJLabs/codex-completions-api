@@ -33,6 +33,24 @@ const STREAM_CASES = [
     expectedFinishReason: "length",
     prompt: "LangChain harness length",
   },
+  {
+    label: "tool_calls",
+    env: { FAKE_CODEX_MODE: "tool_call" },
+    expectedFinishReason: "tool_calls",
+    prompt: "LangChain harness tool calls",
+  },
+  {
+    label: "function_call",
+    env: { FAKE_CODEX_MODE: "function_call" },
+    expectedFinishReason: "function_call",
+    prompt: "LangChain harness function call",
+  },
+  {
+    label: "content_filter",
+    env: { FAKE_CODEX_MODE: "content_filter" },
+    expectedFinishReason: "content_filter",
+    prompt: "LangChain harness content filter",
+  },
 ];
 
 const extractFinishReasonFromEvent = (event) => {
