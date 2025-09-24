@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "captured_at": "2025-09-24T04:17:17.572Z",
+    "captured_at": "2025-09-24T10:24:54.294Z",
     "include_usage": false,
     "codex_bin": "scripts/fake-codex-proto.js",
-    "commit": "8567c9a42b74559d0b22616bed0ab265f0fe4272",
+    "commit": "3e5454766a0f720cde25caa71a17394f57814dea",
     "scenario": "nonstream-content-filter"
   },
   "request": {

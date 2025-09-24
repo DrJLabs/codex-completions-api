@@ -37,6 +37,7 @@ import {
   logFinishReasonTelemetry,
   coerceAssistantContent,
 } from "./shared.js";
+import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
 
 const API_KEY = CFG.API_KEY;
@@ -301,11 +302,13 @@ export async function postChatStream(req, res) {
   let cutTimer = null;
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
+  const toolCallAggregator = createToolCallAggregator();
   let finishSent = false;
   let finalized = false;
   let hasToolCallsFlag = false;
   let hasFunctionCall = false;
-  const hasToolCallEvidence = () => hasToolCallsFlag || toolCount > 0;
+  const hasToolCallEvidence = () =>
+    hasToolCallsFlag || toolCount > 0 || toolCallAggregator.hasCalls();
   const unknownFinishReasons = new Set();
   let finalFinishReason = null;
   let finalFinishSource = null;
@@ -415,6 +418,62 @@ export async function postChatStream(req, res) {
     finishTracker.record(raw, source);
   };
 
+  const scheduleStopAfterTools = () => {
+    const newToolCount = toolCallAggregator.hasCalls() ? toolCallAggregator.snapshot().length : 0;
+    const totalToolCount = toolCount + newToolCount;
+    if (!STOP_AFTER_TOOLS || totalToolCount === 0 || stoppedAfterTools) return;
+    const cutNow = () => {
+      if (stoppedAfterTools) return;
+      stoppedAfterTools = true;
+      try {
+        clearKeepalive();
+      } catch {}
+      try {
+        finishSSE();
+      } catch {}
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+    };
+    if (STOP_AFTER_TOOLS_MAX > 0 && totalToolCount >= STOP_AFTER_TOOLS_MAX) {
+      cutNow();
+    } else if (STOP_AFTER_TOOLS_MODE === "first") {
+      cutNow();
+    } else {
+      try {
+        if (cutTimer) clearTimeout(cutTimer);
+      } catch {}
+      cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+    }
+  };
+
+  const appendContentSegment = (text) => {
+    if (!text) return;
+    emitted += text;
+    try {
+      const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
+      if (blocks && blocks.length) {
+        toolCount += blocks.length;
+        lastToolEnd = blocks[blocks.length - 1].end;
+        scanPos = nextPos;
+      }
+    } catch {}
+    let allowUntil = emitted.length;
+    if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
+      allowUntil = lastToolEnd;
+    }
+    const segment = emitted.slice(forwardedUpTo, allowUntil);
+    if (segment) {
+      sendChunk({
+        choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+        usage: null,
+      });
+      sentAny = true;
+      forwardedUpTo = allowUntil;
+    }
+    scheduleStopAfterTools();
+  };
+
   const emitUsageChunk = (trigger) => {
     if (usageState.emitted || !includeUsage) return;
     const { promptTokens, completionTokens, totalTokens } = resolvedCounts();
@@ -467,6 +526,8 @@ export async function postChatStream(req, res) {
         finish_reason_source: resolved.source,
         has_tool_calls: hasToolCallEvidence(),
         has_function_call: hasFunctionCall,
+        tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
+        tool_call_emitted: toolCallAggregator.hasCalls(),
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -486,6 +547,19 @@ export async function postChatStream(req, res) {
     if (!finishSent) emitFinishChunk();
     if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!usageState.logged) logUsage(resolvedTrigger);
+    if (toolCallAggregator.hasCalls()) {
+      try {
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_stream",
+          kind: "tool_call_summary",
+          tool_calls: toolCallAggregator.snapshot(),
+          parallel_supported: toolCallAggregator.supportsParallelCalls(),
+        });
+      } catch {}
+    }
     logFinishReasonTelemetry({
       route: "/v1/chat/completions",
       reqId,
@@ -546,58 +620,35 @@ export async function postChatStream(req, res) {
           if (finishCandidate) trackFinishReason(finishCandidate, t || "event");
         }
         if (t === "agent_message_delta") {
-          const d = String((evt.msg?.delta ?? evt.delta) || "");
-          if (d) {
-            emitted += d;
-            // Parse for tool blocks; update lastToolEnd and toolCount
-            try {
-              const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
-              if (blocks && blocks.length) {
-                toolCount += blocks.length;
-                lastToolEnd = blocks[blocks.length - 1].end;
-                scanPos = nextPos;
-              }
-            } catch {}
-            // Determine how far we are allowed to forward
-            let allowUntil = emitted.length;
-            if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
-              allowUntil = lastToolEnd;
-            }
-            const segment = emitted.slice(forwardedUpTo, allowUntil);
-            if (segment) {
-              sendChunk({
-                choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
-                usage: null,
-              });
-              sentAny = true;
-              forwardedUpTo = allowUntil;
-            }
-            // Early cut behavior
-            if (STOP_AFTER_TOOLS && toolCount > 0 && !stoppedAfterTools) {
-              const cutNow = () => {
-                if (stoppedAfterTools) return;
-                stoppedAfterTools = true;
-                try {
-                  clearKeepalive();
-                } catch {}
-                try {
-                  finishSSE();
-                } catch {}
-                try {
-                  child.kill("SIGTERM");
-                } catch {}
-              };
-              if (STOP_AFTER_TOOLS_MAX > 0 && toolCount >= STOP_AFTER_TOOLS_MAX) {
-                cutNow();
-              } else if (STOP_AFTER_TOOLS_MODE === "first") {
-                cutNow();
-              } else {
-                try {
-                  if (cutTimer) clearTimeout(cutTimer);
-                } catch {}
-                cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+          const deltaPayload = evt.msg?.delta ?? evt.delta;
+          if (typeof deltaPayload === "string") {
+            appendContentSegment(deltaPayload);
+          } else if (deltaPayload && typeof deltaPayload === "object") {
+            const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload);
+            if (updated) {
+              hasToolCallsFlag = true;
+              for (const toolDelta of deltas) {
+                if (LOG_PROTO) {
+                  appendProtoEvent({
+                    ts: Date.now(),
+                    req_id: reqId,
+                    route: "/v1/chat/completions",
+                    mode: "chat_stream",
+                    kind: "tool_call_delta",
+                    event: toolDelta,
+                  });
+                }
+                sendChunk({
+                  choices: [{ index: 0, delta: { tool_calls: [toolDelta] }, finish_reason: null }],
+                  usage: null,
+                });
               }
             }
+            const textDelta = coerceAssistantContent(
+              deltaPayload.content ?? deltaPayload.text ?? ""
+            );
+            if (textDelta) appendContentSegment(textDelta);
+            else scheduleStopAfterTools();
           }
         } else if (t === "agent_message") {
           const messagePayload = evt.msg?.message ?? evt.message;
@@ -607,56 +658,33 @@ export async function postChatStream(req, res) {
               let suffix = "";
               if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
               else if (!sentAny) suffix = m;
-              if (suffix) {
-                emitted += suffix;
-                // Update tool blocks
-                try {
-                  const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
-                  if (blocks && blocks.length) {
-                    toolCount += blocks.length;
-                    lastToolEnd = blocks[blocks.length - 1].end;
-                    scanPos = nextPos;
-                  }
-                } catch {}
-                let allowUntil = emitted.length;
-                if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
-                  allowUntil = lastToolEnd;
-                }
-                const segment = emitted.slice(forwardedUpTo, allowUntil);
-                if (segment) {
-                  sendChunk({
-                    choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
-                    usage: null,
-                  });
-                  sentAny = true;
-                  forwardedUpTo = allowUntil;
-                }
-                if (STOP_AFTER_TOOLS && toolCount > 0 && !stoppedAfterTools) {
-                  const cutNow = () => {
-                    if (stoppedAfterTools) return;
-                    stoppedAfterTools = true;
-                    try {
-                      clearKeepalive();
-                    } catch {}
-                    try {
-                      finishSSE();
-                    } catch {}
-                    try {
-                      child.kill("SIGTERM");
-                    } catch {}
-                  };
-                  if (STOP_AFTER_TOOLS_MAX > 0 && toolCount >= STOP_AFTER_TOOLS_MAX) cutNow();
-                  else if (STOP_AFTER_TOOLS_MODE === "first") cutNow();
-                  else {
-                    try {
-                      if (cutTimer) clearTimeout(cutTimer);
-                    } catch {}
-                    cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
-                  }
-                }
-              }
+              if (suffix) appendContentSegment(suffix);
             }
           } else if (messagePayload && typeof messagePayload === "object") {
+            const { deltas, updated } = toolCallAggregator.ingestMessage(messagePayload, {
+              emitIfMissing: true,
+            });
+            if (updated) {
+              hasToolCallsFlag = true;
+              for (const toolDelta of deltas) {
+                if (LOG_PROTO) {
+                  appendProtoEvent({
+                    ts: Date.now(),
+                    req_id: reqId,
+                    route: "/v1/chat/completions",
+                    mode: "chat_stream",
+                    kind: "tool_call_delta",
+                    event: toolDelta,
+                    source: "agent_message",
+                  });
+                }
+                sendChunk({
+                  choices: [{ index: 0, delta: { tool_calls: [toolDelta] }, finish_reason: null }],
+                  usage: null,
+                });
+              }
+            }
+            if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
             const text = coerceAssistantContent(
               messagePayload.content ?? messagePayload.text ?? ""
             );
@@ -664,30 +692,9 @@ export async function postChatStream(req, res) {
               let suffix = "";
               if (text.startsWith(emitted)) suffix = text.slice(emitted.length);
               else if (!sentAny) suffix = text;
-              if (suffix) {
-                emitted += suffix;
-                try {
-                  const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
-                  if (blocks && blocks.length) {
-                    toolCount += blocks.length;
-                    lastToolEnd = blocks[blocks.length - 1].end;
-                    scanPos = nextPos;
-                  }
-                } catch {}
-                let allowUntil = emitted.length;
-                if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
-                  allowUntil = lastToolEnd;
-                }
-                const segment = emitted.slice(forwardedUpTo, allowUntil);
-                if (segment) {
-                  sendChunk({
-                    choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
-                    usage: null,
-                  });
-                  sentAny = true;
-                  forwardedUpTo = allowUntil;
-                }
-              }
+              if (suffix) appendContentSegment(suffix);
+            } else {
+              scheduleStopAfterTools();
             }
           }
         } else if (t === "token_count") {
