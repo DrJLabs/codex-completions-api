@@ -32,7 +32,7 @@ const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
-const DEV_TRUNCATE_MS = Number(CFG.PROXY_DEV_TRUNCATE_AFTER_MS || 0);
+const NONSTREAM_TRUNCATE_MS = CFG.PROXY_NONSTREAM_TRUNCATE_AFTER_MS;
 const PROTO_IDLE_MS = CFG.PROXY_PROTO_IDLE_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
@@ -178,13 +178,13 @@ export async function postChatNonStream(req, res) {
 
   // Dev-only safeguard: early terminate child; finalizeResponse will run on 'close'
   const maybeEarlyTruncate = () => {
-    if (!DEV_TRUNCATE_MS) return { stop() {} };
+    if (!NONSTREAM_TRUNCATE_MS) return { stop() {} };
     const t = setTimeout(() => {
       if (responded) return;
       try {
         child.kill("SIGTERM");
       } catch {}
-    }, DEV_TRUNCATE_MS);
+    }, NONSTREAM_TRUNCATE_MS);
     return {
       stop() {
         try {

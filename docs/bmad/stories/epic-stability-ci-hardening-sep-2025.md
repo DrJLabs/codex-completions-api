@@ -74,7 +74,7 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 
 ## Close-out Summary — 2025-09-23
 
-- Dev edge non-stream timeout resolved by tightening the dev-only guard (`PROXY_DEV_TRUNCATE_AFTER_MS=9000`); `npm run smoke:dev` now passes consistently with both non-stream and streaming checks.
+- Dev edge non-stream timeout resolved by tightening the non-stream guard (`PROXY_NONSTREAM_TRUNCATE_AFTER_MS=9000`); `npm run smoke:dev` now passes consistently with both non-stream and streaming checks.
 - All linked issues are closed or archived under `docs/bmad/issues/_archive/`, with GitHub issues #73, #74, #77, and #80 closed alongside documentation updates.
 - Keploy-related work is shelved indefinitely; references now point to archived notes while the live test matrix relies on JSON transcripts and contract tests.
 - Remaining stretch items (release/backup hardening evidence, graceful shutdown test, finish_reason telemetry) are documented in the archive for potential future epics.
