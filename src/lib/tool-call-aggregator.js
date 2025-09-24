@@ -4,7 +4,7 @@ const ARGUMENT_KEYS = ["arguments", "arguments_chunk", "argumentsChunk"];
 const ID_KEYS = ["id", "tool_call_id", "toolCallId"];
 const TOOL_CALL_KEYS = ["tool_calls", "toolCalls"];
 
-const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+const hasOwn = Object.hasOwn;
 
 const DEFAULT_TYPE = "function";
 
