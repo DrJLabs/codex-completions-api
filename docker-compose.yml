@@ -10,6 +10,8 @@ services:
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - PROXY_SANDBOX_MODE=${PROXY_SANDBOX_MODE:-danger-full-access}
       - PROXY_CODEX_WORKDIR=${PROXY_CODEX_WORKDIR:-/tmp/codex-work}
+      - PROXY_NONSTREAM_TRUNCATE_AFTER_MS=${PROXY_NONSTREAM_TRUNCATE_AFTER_MS:-9000}
+      - PROXY_DEV_TRUNCATE_AFTER_MS=${PROXY_DEV_TRUNCATE_AFTER_MS:-9000}
       # Explicitly unset provider forcing; Codex will auto-select based on auth/config
       - CODEX_FORCE_PROVIDER=
       - CODEX_HOME=/app/.codex-api
