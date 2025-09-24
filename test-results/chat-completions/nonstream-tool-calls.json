@@ -1,0 +1,76 @@
+{
+  "metadata": {
+    "captured_at": "2025-09-24T04:17:16.367Z",
+    "include_usage": false,
+    "codex_bin": "scripts/fake-codex-proto.js",
+    "commit": "8567c9a42b74559d0b22616bed0ab265f0fe4272",
+    "scenario": "nonstream-tool-calls"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Run the lookup tool for user 42"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
+  },
+  "response": {
+    "id": "<dynamic-id>",
+    "object": "chat.completion",
+    "created": "<timestamp>",
+    "model": "codex-5",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "tool_fake_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_user",
+                "arguments": "{\"id\":\"42\"}"
+              }
+            }
+          ],
+          "content": null
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 0,
+      "total_tokens": 8
+    }
+  }
+}

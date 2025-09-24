@@ -23,7 +23,13 @@ import {
   extractUseToolBlocks,
   LOG_PROTO,
 } from "../../dev-logging.js";
-import { buildProtoArgs } from "./shared.js";
+import {
+  buildProtoArgs,
+  createFinishReasonTracker,
+  extractFinishReasonFromMessage,
+  logFinishReasonTelemetry,
+  coerceAssistantContent,
+} from "./shared.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -69,6 +75,43 @@ export async function postChatNonStream(req, res) {
   const reqId = nanoid();
   const started = Date.now();
   let responded = false;
+  const unknownFinishReasons = new Set();
+  const finishReasonTracker = createFinishReasonTracker({
+    fallback: "stop",
+    onUnknown: (info) => {
+      if (!info) return;
+      const value = info.value || info.raw;
+      if (value) unknownFinishReasons.add(value);
+    },
+  });
+  let assistantToolCalls = null;
+  let assistantFunctionCall = null;
+  let hasToolCalls = false;
+  let hasFunctionCall = false;
+
+  const trackToolSignals = (payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const toolCalls = payload.tool_calls || payload.toolCalls;
+    if (Array.isArray(toolCalls) && toolCalls.length) {
+      assistantToolCalls = toolCalls;
+      hasToolCalls = true;
+    }
+    const functionCall = payload.function_call || payload.functionCall;
+    if (functionCall && typeof functionCall === "object") {
+      assistantFunctionCall = functionCall;
+      hasFunctionCall = true;
+    }
+    if (payload.message && typeof payload.message === "object") {
+      trackToolSignals(payload.message);
+    }
+    if (payload.delta && typeof payload.delta === "object") trackToolSignals(payload.delta);
+    if (Array.isArray(payload.deltas)) {
+      for (const item of payload.deltas) trackToolSignals(item);
+    }
+    if (payload.arguments && typeof payload.arguments === "object") {
+      trackToolSignals(payload.arguments);
+    }
+  };
 
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -200,9 +243,9 @@ export async function postChatNonStream(req, res) {
   let content = "";
   let prompt_tokens = 0;
   let completion_tokens = 0;
-  let done = false;
   let protoIdleReset = () => {};
   let protoIdleCancel = () => {};
+  let sawTaskComplete = false;
   const computeFinal = () =>
     content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
 
@@ -237,8 +280,57 @@ export async function postChatNonStream(req, res) {
     early?.stop?.();
 
     const final = computeFinal();
-    const pt = prompt_tokens || promptTokensEst;
-    const ct = completion_tokens || estTokens(final);
+    const toolCallsPayload =
+      hasToolCalls && Array.isArray(assistantToolCalls) && assistantToolCalls.length
+        ? assistantToolCalls
+        : null;
+    const functionCallPayload = hasFunctionCall ? assistantFunctionCall : null;
+
+    if (finishReason) finishReasonTracker.record(finishReason, "finalize");
+
+    const resolveWithContext = () =>
+      finishReasonTracker.resolve({
+        hasToolCalls,
+        hasFunctionCall,
+      });
+
+    let resolvedFinish = resolveWithContext();
+    if (!sawTaskComplete && resolvedFinish.reason === "stop") {
+      finishReasonTracker.record("length", "fallback_truncation");
+      resolvedFinish = resolveWithContext();
+    }
+
+    const canonicalReason = resolvedFinish.reason;
+    const reasonSource = resolvedFinish.source;
+    const unknownReasons = resolvedFinish.unknown || [];
+    const reasonTrail = resolvedFinish.trail || [];
+
+    const suppressContent =
+      !!toolCallsPayload || !!functionCallPayload || canonicalReason === "content_filter";
+    const messageContent = suppressContent ? "" : content && content.length ? content : final;
+    const normalizedContent = messageContent && messageContent.length ? messageContent : null;
+    const pt =
+      Number.isFinite(prompt_tokens) && prompt_tokens > 0 ? prompt_tokens : promptTokensEst;
+    const contentForTokenEst = normalizedContent || "";
+    const ct =
+      Number.isFinite(completion_tokens) && completion_tokens > 0
+        ? completion_tokens
+        : contentForTokenEst
+          ? estTokens(contentForTokenEst)
+          : 0;
+
+    const assistantMessage = { role: "assistant" };
+    if (toolCallsPayload) {
+      assistantMessage.tool_calls = toolCallsPayload;
+      assistantMessage.content = null;
+    } else if (functionCallPayload) {
+      assistantMessage.function_call = functionCallPayload;
+      assistantMessage.content = null;
+    } else if (canonicalReason === "content_filter") {
+      assistantMessage.content = null;
+    } else {
+      assistantMessage.content = normalizedContent ?? messageContent ?? final;
+    }
 
     if (statusCode === 200) {
       logToolBlocks();
@@ -256,6 +348,20 @@ export async function postChatNonStream(req, res) {
         duration_ms: Date.now() - started,
         status: statusCode,
         user_agent: req.headers["user-agent"] || "",
+        finish_reason: canonicalReason,
+        finish_reason_source: reasonSource,
+        has_tool_calls: !!toolCallsPayload,
+        has_function_call: !!functionCallPayload,
+      });
+      logFinishReasonTelemetry({
+        route: "/v1/chat/completions",
+        reqId,
+        reason: canonicalReason,
+        source: reasonSource,
+        hasToolCalls: !!toolCallsPayload,
+        hasFunctionCall: !!functionCallPayload,
+        unknownReasons: unknownReasons.length ? unknownReasons : Array.from(unknownFinishReasons),
+        trail: reasonTrail,
       });
     }
 
@@ -274,7 +380,6 @@ export async function postChatNonStream(req, res) {
       return;
     }
 
-    const reason = finishReason || (done ? "stop" : "length");
     const payload = {
       id: `chatcmpl-${nanoid()}`,
       object: "chat.completion",
@@ -283,8 +388,8 @@ export async function postChatNonStream(req, res) {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: final },
-          finish_reason: reason,
+          message: assistantMessage,
+          finish_reason: canonicalReason,
         },
       ],
       usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
@@ -357,14 +462,43 @@ export async function postChatNonStream(req, res) {
           kind: "event",
           event: evt,
         });
-        if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
-        else if (tp === "agent_message")
-          content = String((evt.msg?.message ?? evt.message) || content);
-        else if (tp === "token_count") {
-          prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens);
-          completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens);
+        const payload = evt.msg || evt;
+        if (payload) {
+          const finishCandidate = extractFinishReasonFromMessage(payload);
+          if (finishCandidate) finishReasonTracker.record(finishCandidate, tp || "event");
+          trackToolSignals(payload);
+        }
+        if (tp === "agent_message_delta") {
+          const deltaPayload = evt.msg?.delta ?? evt.delta;
+          if (typeof deltaPayload === "string") {
+            content += deltaPayload;
+          } else if (deltaPayload && typeof deltaPayload === "object") {
+            const textDelta = coerceAssistantContent(
+              deltaPayload.content ?? deltaPayload.text ?? ""
+            );
+            if (textDelta) content += textDelta;
+          }
+        } else if (tp === "agent_message") {
+          const messagePayload = evt.msg?.message ?? evt.message;
+          if (typeof messagePayload === "string") {
+            content = messagePayload;
+          } else if (messagePayload && typeof messagePayload === "object") {
+            const textValue = coerceAssistantContent(
+              messagePayload.content ?? messagePayload.text ?? ""
+            );
+            if (textValue) content = textValue;
+          }
+        } else if (tp === "token_count") {
+          prompt_tokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens ?? prompt_tokens);
+          completion_tokens = Number(
+            evt.msg?.completion_tokens ?? evt.msg?.completionTokens ?? completion_tokens
+          );
         } else if (tp === "task_complete") {
-          done = true;
+          sawTaskComplete = true;
+          finishReasonTracker.record(
+            extractFinishReasonFromMessage(evt.msg || evt),
+            "task_complete"
+          );
         }
       } catch {}
     }

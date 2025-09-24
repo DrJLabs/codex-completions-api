@@ -1,138 +1,111 @@
 ---
 title: Codex Completions API — Product Requirements (PRD)
-status: draft
-version: v1
-updated: 2025-09-14
+status: active
+version: v1.1
+updated: 2025-09-24
 ---
 
-# Overview
+# Goals and Background Context
 
-An OpenAI Chat Completions–compatible proxy for Codex CLI. It exposes `GET /v1/models` and `POST /v1/chat/completions` with optional streaming (SSE), plus a `GET /healthz` endpoint and a legacy shim for `POST /v1/completions`. The proxy normalizes model IDs and maps requests to a Codex process (`codex proto`).
+## Goals
+
+- Deliver an OpenAI Chat Completions-compatible proxy so existing SDKs, IDEs, and CI tooling work without code changes.
+- Maintain reliable, low-latency access to Codex via clearly defined SLOs, guardrails, and automated smoke tests for both dev and prod environments.
+- Provide observability, configuration toggles, and operational guidance that let platform and QA teams diagnose issues quickly.
+
+## Background Context
+
+The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-24.
+
+## Change Log
+
+| Date       | Version | Description                                                                   | Author     |
+| ---------- | ------- | ----------------------------------------------------------------------------- | ---------- |
+| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update | PM (codex) |
+| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                       | PM (codex) |
 
 # Users & Use Cases
 
-- Developers and tools expecting OpenAI-compatible endpoints (IDEs, SDKs, curl).
-- CI smoke/E2E tests verifying availability and streaming contract.
+- Developers, SDKs, and IDE integrations that already speak the OpenAI Chat Completions API.
+- CI/CD smoke and E2E pipelines (Playwright, contract/golden transcript checks) validating availability and streaming order.
+- Platform/Ops staff and runbooks monitoring health, latency, and usage to keep parity with production expectations.
 
-# Functional Requirements
+# Requirements
 
-- Models listing
-  - Route: `GET,HEAD,OPTIONS /v1/models` (JSON list)
-  - Advertises `codev-5*` in dev and `codex-5*` in prod; accepts both prefixes everywhere. Implemented in `src/routes/models.js` using `publicModelIds()` from `src/config/models.js`.
-  - Gating: `PROXY_PROTECT_MODELS=true` requires Bearer auth (same key as chat).
-- Chat Completions
-  - Route: `POST /v1/chat/completions` (also supports `HEAD` and `OPTIONS` for contract/CORS checks)
-  - Auth: Bearer required (`Authorization: Bearer <PROXY_API_KEY>`).
-  - Non‑stream (JSON): returns OpenAI‑shaped payload with `choices[0].message.content` and `usage`.
-  - Stream (SSE): `Content-Type: text/event-stream` with role‑first delta chunks and terminating `[DONE]`.
-  - Model resolution: accepts env‑appropriate advertised IDs, also `gpt-5` with optional `reasoning.effort`.
-  - Tool‑related options (opt‑in): tail suppression or cut‑after‑tools to support strict tool‑first clients.
-- Legacy Completions Shim
-  - Route: `POST /v1/completions` (maps to Chat backend). Same auth and model rules.
-- Health
-  - Route: `GET /healthz` returns `{ ok: true, sandbox_mode }`.
+## Functional Requirements
 
-# Non‑Functional Requirements
+1. **FR1:** Expose `GET /healthz` returning `{ ok: true, sandbox_mode }` without auth for liveness and sandbox telemetry.
+2. **FR2:** Expose `GET|HEAD|OPTIONS /v1/models` to advertise environment-specific models (`codev-5*` in dev, `codex-5*` in prod) while respecting `PROXY_PROTECT_MODELS` bearer-gating.
+3. **FR3:** Support `POST /v1/chat/completions` (non-stream) with OpenAI-compatible response body, including stable `id`, `object:"chat.completion"`, `created`, normalized `model`, `choices`, `usage`, and `finish_reason` semantics (`stop`, `length`, etc.).
+4. **FR4:** When `stream:true`, emit SSE chunks with role-first delta, deterministic `created`/`id`/`model`, optional usage chunk when `stream_options.include_usage:true`, keepalive comments, and final `[DONE]` line. Honor tool-tail controls and concurrency guard outcomes.
+5. **FR5:** Provide `POST /v1/completions` shim that maps prompt-based payloads onto the chat handlers, preserving auth, streaming options, and envelope parity.
+6. **FR6:** Surface usage telemetry via `GET /v1/usage` (aggregated metrics) and `GET /v1/usage/raw` (bounded NDJSON events) for internal QA/ops workflows.
+7. **FR7:** Offer optional in-app token-bucket rate limiting (`PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`) that defends POST chat/completions endpoints in addition to edge rate limiting.
+8. **FR8:** Enforce streaming concurrency guard and tool-response shaping toggles through env vars (`PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_TOOL_BLOCK_MAX`).
+9. **FR9:** When `PROXY_TEST_ENDPOINTS=true`, expose `GET /__test/conc` and `POST /__test/conc/release` to inspect/release SSE guard state for CI debugging only.
 
-- CORS: Enabled by default (`PROXY_ENABLE_CORS`, preflight handled globally).
-- Stability: Respect timeouts (`PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`).
-- Streaming: Keepalives every `PROXY_SSE_KEEPALIVE_MS` ms; can be disabled via `User‑Agent` (Electron/Obsidian), `X-No-Keepalive: 1`, or `?no_keepalive=1`.
-- Security: Single bearer key (`PROXY_API_KEY`) for all protected routes.
-- Observability: Text access log plus structured JSON access log (`src/middleware/access-log.js`); dev‑mode proto/tool logs gated by env.
-- Sandbox/Workdir: Child process runs with `CODEX_HOME` and `PROXY_CODEX_WORKDIR` set.
-- Rate limiting: In‑process token bucket (`src/middleware/rate-limit.js`), intended as defense‑in‑depth; rely on edge for primary RL.
+## Non-Functional Requirements
 
-## Business Goals & KPIs (SLIs/SLOs)
+1. **NFR1:** All protected endpoints require `Authorization: Bearer <PROXY_API_KEY>`; prod traffic is pre-authenticated by Traefik ForwardAuth (`auth/server.mjs`) at `http://127.0.0.1:18080/verify`.
+2. **NFR2:** Maintain OpenAI envelope compatibility (error shape `{ error: { message, type, param?, code? } }`, normalized model IDs, optional `system_fingerprint`). Unknown parameters are ignored gracefully.
+3. **NFR3:** Provide structured JSON access logs with `req_id`, latency, auth presence, and route plus a text log line for existing observers; record usage events to `TOKEN_LOG_PATH` NDJSON for analytics.
+4. **NFR4:** Achieve 99.9% monthly availability, non-stream p95 ≤ 5 s, stream TTFC p95 ≤ 2 s, and 5xx error rate < 1% (auth errors excluded). Keep SSE connections alive with configurable `PROXY_SSE_KEEPALIVE_MS`.
+5. **NFR5:** Service remains stateless; `.codex-api/` must stay writable in prod for Codex sessions. Sandbox defaults to `danger-full-access`; `PROXY_CODEX_WORKDIR` isolates Codex runtime files (default `/tmp/codex-work`).
+6. **NFR6:** Protect streaming stability with `PROXY_SSE_MAX_CONCURRENCY`, optional `PROXY_KILL_ON_DISCONNECT`, and dev-only truncate guard (`PROXY_DEV_TRUNCATE_AFTER_MS`) without regressing contract order.
+7. **NFR7:** Respect Test Selection Policy — touching `server.js`, handlers, or streaming code mandates `npm run test:integration` and `npm test`; broader changes run `npm run verify:all`.
 
-Purpose: quantify success and guard reliability for the proxy. These targets are initial and should be tuned with production data.
+# User Interface Design Goals
 
-- Availability SLO: 99.9% monthly (excludes planned maintenance).
-- Non‑stream response p95: ≤ 5 s for short prompts (≤ 512 tokens joined).
-- Stream TTFC p95: ≤ 2 s; stream remains active with keepalives ≤ `PROXY_SSE_KEEPALIVE_MS`.
-- Error budget: 5xx rate < 1% of requests (auth errors excluded).
-- Concurrency envelope per replica: ≤ `PROXY_SSE_MAX_CONCURRENCY` active streams; ensure `ulimit -n` allows ≥ 32 × concurrency.
-- Edge health: Successful `GET /v1/models` and `POST /v1/chat/completions` (non‑stream) via edge smoke after each deploy.
+Not applicable — service is API-only with no end-user UI. Surface consumer-facing behavior through OpenAI-compatible API responses and docs.
 
-Measurement notes
+# Technical Assumptions & Constraints
 
-- Use structured access logs for p95 latency approximations (`dur_ms` field) and error rates; aggregate with your log pipeline.
-- For TTFC, use Playwright E2E or client metrics; optional lightweight server metric can be added later.
-- Maintain an incident log referencing the Operational Runbook.
+## Platform & Runtime
 
-# Configuration (Key Env Vars)
+- Node.js ≥ 22.x, Express 4.19.x, `nanoid` for IDs; ESM modules only.
+- The proxy shells out to Codex CLI (`codex proto`) using `src/services/codex-runner.js`, respecting `CODEX_BIN`, `CODEX_HOME`, and sandbox/workdir envs.
+- Runs behind Traefik + Cloudflare; compose/service labels in `docker-compose.yml` are authoritative for prod.
 
-- `PORT` (default 11435)
-- `PROXY_API_KEY` (required for protected routes)
-- `PROXY_ENV` (`dev` → advertise `codev-5*`; otherwise `codex-5*`)
-- `PROXY_PROTECT_MODELS` (`true` to require auth for `/v1/models`)
-- `CODEX_MODEL` default model name; accepts `gpt-5`
-- `CODEX_BIN` path or name of Codex binary; `CODEX_HOME` for Codex runtime home
-- `PROXY_SANDBOX_MODE` (default `danger-full-access`)
-- `PROXY_CODEX_WORKDIR` working directory for child process
-- Streaming & tools behavior: `PROXY_STOP_AFTER_TOOLS` (boolean), `PROXY_STOP_AFTER_TOOLS_MODE` (`burst`|`first`), `PROXY_STOP_AFTER_TOOLS_GRACE_MS` (cut delay), `PROXY_TOOL_BLOCK_MAX` (max <use_tool> blocks before cut), `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` (boolean)
-- Timeouts: `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`
-- `PROXY_SSE_KEEPALIVE_MS`, `PROXY_KILL_ON_DISCONNECT`, `PROXY_DEBUG_PROTO`
-- Rate limiting: `PROXY_RATE_LIMIT_ENABLED` (boolean), `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`
-- Concurrency: `PROXY_SSE_MAX_CONCURRENCY` (limit concurrent streams; 0 disables)
+## External Integrations
 
-# API Details
+- Traefik ForwardAuth invokes `auth/server.mjs`; do not change the verify URL unless Traefik runs inside the same Docker network.
+- Edge smoke tests rely on `.env`/`.env.dev` keys and domains (`DOMAIN`, `DEV_DOMAIN`); maintain them for `scripts/prod-smoke.sh` and `scripts/dev-smoke.sh`.
 
-## GET /healthz
+## Development & QA Practices
 
-- 200 with `{ ok: true, sandbox_mode }`.
+- Default verification path: `npm run verify:all` (format → lint → unit → integration → Playwright E2E).
+- Contract coverage uses Playwright golden transcripts plus Vitest integration tests; Keploy snapshots are optional and currently paused per Story 3.6.
+- Follow BMAD branching (`feat/*`, `fix/*`, `chore/*`) and commit style (Conventional Commits) before PRs.
 
-## GET /v1/models
+# API Surface & Behavior
 
-- 200 with list of advertised models. 401 with `WWW-Authenticate` when `PROXY_PROTECT_MODELS=true` and missing/invalid key.
-- `HEAD` and `OPTIONS` supported.
+## Endpoint Summary
 
-## POST /v1/chat/completions
+| Endpoint                   | Methods              | Auth                                          | Notes                                                                                |
+| -------------------------- | -------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `/healthz`                 | `GET`                | None                                          | Returns `{ ok: true, sandbox_mode }` for liveness.                                   |
+| `/v1/models`               | `GET, HEAD, OPTIONS` | Optional (see `PROXY_PROTECT_MODELS`)         | Advertises environment-specific models; HEAD responds 200 with JSON content-type.    |
+| `/v1/chat/completions`     | `POST`               | Bearer required                               | Core Chat Completions route; supports streaming and non-stream with OpenAI envelope. |
+| `/v1/completions`          | `POST`               | Bearer required                               | Legacy shim translating prompt payloads to chat backend.                             |
+| `/v1/usage`                | `GET`                | Bearer required (via ForwardAuth)             | Aggregated usage counts (`parseTime` query filters).                                 |
+| `/v1/usage/raw`            | `GET`                | Bearer required (via ForwardAuth)             | Returns bounded NDJSON events with `limit` (default 200, max 10000).                 |
+| `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only.                                    |
 
-- Body (minimal): `{ "model": "gpt-5" | "codex-5-low" | "codev-5-low", "messages": [{"role":"user","content":"..."}], "stream": boolean }`
-- Auth: `Authorization: Bearer <PROXY_API_KEY>` required.
-- Non‑stream returns JSON with `choices[0].message.content` and `usage`.
-- Stream returns SSE events and final `data: [DONE]`. Stable `id` and `created` across all chunks; per‑chunk envelope includes `id/object/created/model`.
+## Streaming Contract & Tool Controls
 
-## POST /v1/completions (shim)
+- Role-first SSE chunk, then content deltas, optional empty delta with `finish_reason`, optional usage chunk, and final `[DONE]` line.
+- `PROXY_SSE_KEEPALIVE_MS` emits keepalive comments (disabled for Electron/Obsidian UAs or when `X-No-Keepalive: 1` / `?no_keepalive=1`).
+- Tool-aware options: `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE` (`burst`|`first`), `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_MAX`.
 
-- Body: `{ "model": "...", "prompt": "...", "stream": boolean }` → mapped to chat backend.
-- `HEAD` and `OPTIONS` are supported.
+## Error Envelope & Validation
 
-## Error Responses (Examples)
+- Authentication failures return HTTP 401 with `WWW-Authenticate` header and `code:"invalid_api_key"`.
+- Invalid models return HTTP 404 with `code:"model_not_found"` and `param:"model"`.
+- Rate limiting yields HTTP 429 with `code:"rate_limit_error"` when in-app guard is enabled.
 
-- 401 Unauthorized
+## Representative Responses
 
-```json
-{
-  "error": {
-    "message": "unauthorized",
-    "type": "authentication_error",
-    "code": "invalid_api_key"
-  }
-}
-```
-
-- 404 model_not_found (invalid `model`)
-
-```json
-{
-  "error": {
-    "message": "The model codex-9 does not exist or you do not have access to it.",
-    "type": "invalid_request_error",
-    "param": "model",
-    "code": "model_not_found"
-  }
-}
-```
-
-## Error Envelope Policy
-
-- All error responses follow this shape: `{ "error": { "message": string, "type": string, "param"?: string, "code"?: string } }`.
-- Authentication failures include `WWW-Authenticate` header and `code: "invalid_api_key"`.
-
-## Success Examples (Representative)
-
-GET /v1/models
+### GET /v1/models
 
 ```json
 {
@@ -141,9 +114,7 @@ GET /v1/models
 }
 ```
 
-Note: In dev, IDs are `codev-5*`; response structure is identical.
-
-POST /v1/chat/completions (non‑stream)
+### POST /v1/chat/completions (non-stream)
 
 ```json
 {
@@ -162,122 +133,110 @@ POST /v1/chat/completions (non‑stream)
 }
 ```
 
-# Smoke Tests
+### Error Example — invalid API key
 
-Export these first (local dev):
+```json
+{
+  "error": {
+    "message": "unauthorized",
+    "type": "authentication_error",
+    "code": "invalid_api_key"
+  }
+}
+```
+
+# Configuration Surface
+
+- **Core:** `PORT`, `PROXY_ENV`, `PROXY_API_KEY`, `PROXY_PROTECT_MODELS`, `CODEX_MODEL`, `CODEX_BIN`, `CODEX_HOME`, `PROXY_SANDBOX_MODE`, `PROXY_CODEX_WORKDIR`, `CODEX_FORCE_PROVIDER`.
+- **Streaming & Tools:** `PROXY_SSE_KEEPALIVE_MS`, `PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_KILL_ON_DISCONNECT`.
+- **Timeouts & Limits:** `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`, `PROXY_DEV_TRUNCATE_AFTER_MS`, `PROXY_MAX_PROMPT_TOKENS`.
+- **Security & Rate Limits:** `PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`.
+- **Diagnostics:** `PROXY_ENABLE_CORS`, `PROXY_DEBUG_PROTO`, `PROXY_TEST_ENDPOINTS`, `STREAM_RELEASE_FILE` (test harness only), `TOKEN_LOG_PATH` (via `src/dev-logging.js`).
+
+# Observability, Logging & Tooling
+
+- Structured JSON access log (`src/middleware/access-log.js`) plus console text log.
+- Usage NDJSON logs aggregated by `GET /v1/usage`; raw events accessible via `GET /v1/usage/raw`.
+- Concurrency guard snapshot via `guardSnapshot()` and optional `/__test/conc` endpoints when enabled.
+- Runbooks: `docs/runbooks/operational.md`, `docs/dev-to-prod-playbook.md`, streaming parity notes in `docs/openai-chat-completions-parity.md`.
+
+# Success Metrics & KPIs
+
+- Availability SLO: 99.9% monthly (excludes planned maintenance).
+- Non-stream response p95 ≤ 5 s for prompts ≤ 512 joined tokens.
+- Streaming TTFC p95 ≤ 2 s with keepalive cadence ≤ configured interval.
+- 5xx (minus auth) < 1% of total requests.
+- Concurrency per replica ≤ `PROXY_SSE_MAX_CONCURRENCY`; ensure `ulimit -n` ≥ 32 × concurrency.
+
+# Delivery Plan & Status
+
+## Epics
+
+| Epic                                                        | Status    | Updated    | Notes                                                                                                          |
+| ----------------------------------------------------------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| `docs/bmad/stories/epic-openai-chat-completions-parity.md`  | Done      | 2025-09-14 | Locked OpenAI parity for non-stream, streaming, error envelopes, usage toggle.                                 |
+| `docs/bmad/stories/epic-server-modularization-refactor.md`  | Done      | 2025-09-13 | Completed modularization of server, introduced structured logs and service boundaries.                         |
+| `docs/bmad/stories/epic-stability-ci-hardening-sep-2025.md` | Completed | 2025-09-23 | Closed September stability campaign (non-stream truncation, usage timing, concurrency guard, contract checks). |
+
+## Completed Story Highlights
+
+- Phase 1.x (config, routers, modularization) delivered foundational modules and error envelopes.
+- Phase 2.x (OpenAI parity) shipped finish-reason chunking, usage toggles, and refined error codes.
+- Phase 3.x (Sep 2025 stability) resolved dev-edge timeout, truncation determinism, streaming usage timing, concurrency guard determinism, golden transcript CI, and Keploy toggle documentation.
+
+## Outstanding Follow-up / Backlog
+
+- Release/backup hardening evidence (tracked under `docs/bmad/issues/_archive/2025-09-14-release-backup-hardening.md`).
+- Graceful shutdown SIGTERM integration test automation follow-up (`docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
+- Finish_reason telemetry enhancements (archived in `docs/bmad/issues/_archive/2025-09-22-finish-reason-follow-ups.md`).
+
+# Acceptance Criteria & Verification
+
+## Automated Verification
+
+- `npm run verify:all` — primary gate (format, lint, unit, integration, Playwright E2E).
+- Targeted runs: `npm run test:unit`, `npm run test:integration`, `npm test`, and `npm run lint` when touching respective layers.
+
+## Smoke Commands (local dev)
 
 ```bash
 BASE="http://127.0.0.1:11435"
-KEY="codex-local-secret"   # or your PROXY_API_KEY
-```
+KEY="codex-local-secret"  # or your PROXY_API_KEY
 
-Health
-
-```bash
 curl -s "$BASE/healthz" | jq .
-```
-
-Models (unauth; add -H Authorization if PROXY_PROTECT_MODELS=true)
-
-```bash
 curl -s "$BASE/v1/models" | jq .
-curl -sI "$BASE/v1/models"   # HEAD
-```
+curl -sI "$BASE/v1/models"
 
-Chat (non‑stream)
-
-```bash
 curl -s "$BASE/v1/chat/completions" \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5","stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq '.choices[0].message.content'
-```
 
-Chat (stream)
-
-```bash
 curl -N "$BASE/v1/chat/completions" \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5","stream":true,"messages":[{"role":"user","content":"Count to 3"}]}'
-```
 
-Completions shim (non‑stream)
-
-```bash
 curl -s "$BASE/v1/completions" \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5","stream":false,"prompt":"Say hello."}' | jq '.choices[0].text'
 ```
 
-# Acceptance Criteria
+# Out of Scope
 
-- Health, models, non‑stream chat, and stream chat smoke commands succeed with 2xx.
-- SSE stream includes chunks and ends with `[DONE]`.
-- Missing/invalid bearer returns 401 with `WWW-Authenticate`.
+- File, image, or audio APIs; only chat/completions are supported.
+- Fine-tuning and embeddings endpoints.
+- Multi-choice (`n>1`) streaming; currently rejected with `invalid_request_error`.
+- Automatic deployment orchestration; refer to runbooks and scripts in `scripts/`.
 
-# CORS & Origins
+# Checklist Results
 
-- Default: `PROXY_ENABLE_CORS=true` enables permissive CORS with preflight handling.
-- Recommendation (prod behind Traefik/Cloudflare): prefer restricting CORS at the edge and set `PROXY_ENABLE_CORS=false` unless browser clients require it.
+PM checklist and automated BMAD QA gates are tracked per-story; no new checklist run was triggered when compiling this revision.
 
-# SLIs / SLOs (Initial Targets)
+# Next Steps
 
-- Non‑stream p95 time‑to‑response (short prompt): ≤ 5s.
-- Stream p95 time‑to‑first‑chunk: ≤ 2s; idle lulls ≤ `PROXY_STREAM_IDLE_TIMEOUT_MS` (5m default).
-- 5xx rate: < 1% during normal operation; auth errors excluded.
+## UX Expert Prompt
 
-# API Versioning & Compatibility
+> API-only project — no UI deliverables. Confirm documentation consumers have the endpoint contract above; no UX action required beyond keeping SDK docs synced.
 
-- Follows OpenAI‑compatible shapes for models and chat (non‑stream/stream).
-- Changes are additive whenever possible. Any breaking change to response schema or headers is treated as a major revision and documented in CHANGELOG.
+## Architect Prompt
 
-# Scaling & Availability
-
-- The proxy is stateless; scale horizontally behind Traefik/Cloudflare without sticky sessions.
-- Long‑lived SSE connections: budget connections per replica; tune `PROXY_SSE_KEEPALIVE_MS` and idle timeouts to match ingress timeouts.
-- Ensure sufficient file descriptors (`ulimit -n`) for concurrent SSE clients.
-
-## Environment Profiles (Dev vs Prod)
-
-Recommended defaults per environment. Adjust as traffic and client mix evolve.
-
-| Setting                           | Dev (local/dev stack) | Prod                                          |
-| --------------------------------- | --------------------- | --------------------------------------------- |
-| `PROXY_ENV`                       | `dev`                 | `""` (non‑dev)                                |
-| Advertised models                 | `codev-5*`            | `codex-5*`                                    |
-| `PROXY_ENABLE_CORS`               | `true`                | `true` (or restrict at edge)                  |
-| `PROXY_PROTECT_MODELS`            | `false`               | `true`                                        |
-| `PROXY_RATE_LIMIT_ENABLED`        | `false`               | `true` (window 60s, max 60 as baseline)       |
-| `PROXY_RATE_LIMIT_WINDOW_MS`      | `60000`               | `60000`                                       |
-| `PROXY_RATE_LIMIT_MAX`            | `60`                  | `60` (tune with edge RL)                      |
-| `PROXY_SSE_KEEPALIVE_MS`          | `15000`               | `15000` (tune with ingress/edge timeouts)     |
-| `PROXY_SSE_MAX_CONCURRENCY`       | `4`                   | `16` (start small; scale replicas)            |
-| `PROXY_KILL_ON_DISCONNECT`        | `false`               | `true`                                        |
-| `PROXY_STOP_AFTER_TOOLS`          | `false`               | `false` (enable only for tool‑strict clients) |
-| `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` | `false`               | `false` (enable per client need)              |
-| `PROXY_STOP_AFTER_TOOLS_MODE`     | `burst`               | `burst`                                       |
-| `PROXY_STOP_AFTER_TOOLS_GRACE_MS` | `300`                 | `300`                                         |
-| `PROXY_TOOL_BLOCK_MAX`            | `0`                   | `0` (cap only if needed)                      |
-| `CODEX_HOME`                      | `.codev/`             | `.codex-api/` (writable)                      |
-| `PROXY_CODEX_WORKDIR`             | `/tmp/codex-work`     | `/tmp/codex-work`                             |
-
-Notes
-
-- Prefer rate limiting and strict CORS at the edge (Traefik/Cloudflare); keep origin permissive only when browser clients call it directly.
-- Keep `.codex-api/` writable in prod for rollout/session persistence.
-- After any compose/label change: rebuild with force‑recreate and run `npm run smoke:prod`.
-
-# Out of Scope (for now)
-
-- Files, images, and audio routes.
-- Fine‑tuning APIs.
-
-# References
-
-- `server.js`
-- `docker-compose.yml`
-- `auth/server.mjs` (ForwardAuth)
-- `README.md`
-- `src/config/models.js`
-- `src/routes/chat.js`, `src/handlers/chat/*`
-- `src/middleware/access-log.js`, `src/middleware/rate-limit.js`
-- Operational Runbook: `docs/runbooks/operational.md`
+> Validate `docs/bmad/architecture.md` against current repo: ensure module map (routers, handlers, services, middleware) reflects recent stability changes, and confirm streaming concurrency guard + usage endpoints remain captured in architecture diagrams and runbooks.

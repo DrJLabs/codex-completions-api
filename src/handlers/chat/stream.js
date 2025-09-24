@@ -30,7 +30,13 @@ import {
   appendProtoEvent,
   extractUseToolBlocks,
 } from "../../dev-logging.js";
-import { buildProtoArgs } from "./shared.js";
+import {
+  buildProtoArgs,
+  createFinishReasonTracker,
+  extractFinishReasonFromMessage,
+  logFinishReasonTelemetry,
+  coerceAssistantContent,
+} from "./shared.js";
 import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
 
 const API_KEY = CFG.API_KEY;
@@ -296,8 +302,22 @@ export async function postChatStream(req, res) {
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
   let finishSent = false;
-  let finishReasonState = null;
   let finalized = false;
+  let hasToolCallsFlag = false;
+  let hasFunctionCall = false;
+  const hasToolCallEvidence = () => hasToolCallsFlag || toolCount > 0;
+  const unknownFinishReasons = new Set();
+  let finalFinishReason = null;
+  let finalFinishSource = null;
+  let finalFinishTrail = [];
+  let finalFinishUnknown = [];
+  const finishTracker = createFinishReasonTracker({
+    fallback: "stop",
+    onUnknown: (info) => {
+      const value = info?.value || info?.raw;
+      if (value) unknownFinishReasons.add(value);
+    },
+  });
   const usageState = {
     prompt: 0,
     completion: 0,
@@ -306,9 +326,6 @@ export async function postChatStream(req, res) {
     trigger: null,
     countsSource: "estimate",
     providerSupplied: false,
-    finishReason: null,
-    finishReasonSource: null,
-    finishReasonSourcePriority: Infinity,
   };
   let streamIdleTimer;
   const resetStreamIdle = () => {
@@ -349,104 +366,53 @@ export async function postChatStream(req, res) {
     return { promptTokens, completionTokens, totalTokens, estimatedCompletion };
   };
 
-  const resolveSourcePriority = (source) => {
-    switch (source) {
-      case "token_count":
-        return 0;
-      case "task_complete":
-        return 1;
-      case "finalize":
-      case "finalizer":
-        return 2;
-      case "fallback":
-      case "token_count_fallback":
-        return 3;
-      default:
-        return Infinity;
+  const trackToolSignals = (payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const toolCalls = payload.tool_calls || payload.toolCalls;
+    if (Array.isArray(toolCalls) && toolCalls.length) hasToolCallsFlag = true;
+    const functionCall = payload.function_call || payload.functionCall;
+    if (functionCall && typeof functionCall === "object") hasFunctionCall = true;
+    if (payload.message && typeof payload.message === "object") trackToolSignals(payload.message);
+    if (payload.delta && typeof payload.delta === "object") trackToolSignals(payload.delta);
+    if (Array.isArray(payload.deltas)) {
+      for (const delta of payload.deltas) trackToolSignals(delta);
+    }
+    if (Array.isArray(payload.items)) {
+      for (const item of payload.items) trackToolSignals(item);
+    }
+    if (payload.arguments && typeof payload.arguments === "object") {
+      trackToolSignals(payload.arguments);
     }
   };
 
-  const normalizeFinishReason = (value) => {
-    if (value === null || value === undefined) return null;
-    const raw = String(value).trim();
-    if (!raw) return null;
-    const lower = raw.toLowerCase();
-    if (["max_tokens", "token_limit", "token_limit_reached", "length"].includes(lower)) {
-      return "length";
-    }
-    if (lower === "stop_sequence") return "stop";
-    return lower;
+  const resolveFinishReason = (context = {}) => {
+    const resolved = finishTracker.resolve({
+      hasToolCalls: hasToolCallEvidence(),
+      hasFunctionCall,
+      ...context,
+    });
+    finalFinishReason = resolved.reason;
+    finalFinishSource = resolved.source;
+    finalFinishTrail = resolved.trail || [];
+    finalFinishUnknown = resolved.unknown || [];
+    return resolved;
   };
 
-  const recordFinishReason = (raw, source) => {
-    const normalized = normalizeFinishReason(raw);
-    if (!normalized) return null;
-    finishReasonState = normalized;
-    usageState.finishReason = normalized;
-    const priority = resolveSourcePriority(source);
-    if (priority < usageState.finishReasonSourcePriority) {
-      usageState.finishReasonSourcePriority = priority;
-      usageState.finishReasonSource = source;
-    }
-    return normalized;
-  };
-
-  const extractFinishReason = (msg = {}) => {
-    if (!msg || typeof msg !== "object") return null;
-    const candidates = [msg.finish_reason, msg.finishReason, msg.reason, msg.stop_reason];
-    const tokenCount = msg.token_count || msg.tokenCount;
-    if (tokenCount && typeof tokenCount === "object") {
-      candidates.push(
-        tokenCount.finish_reason,
-        tokenCount.finishReason,
-        tokenCount.reason,
-        tokenCount.stop_reason
-      );
-      if (
-        tokenCount.token_limit_reached === true ||
-        tokenCount.max_tokens_reached === true ||
-        tokenCount.limit_type === "max_tokens"
-      ) {
-        return "length";
-      }
-    }
-    if (msg.token_limit_reached === true || msg.max_tokens_reached === true) {
-      return "length";
-    }
-    for (const candidate of candidates) {
-      const normalized = normalizeFinishReason(candidate);
-      if (normalized) return normalized;
-    }
-    return null;
-  };
-
-  const fallbackFinishReason = () => {
-    if (finishReasonState) return finishReasonState;
-    if (usageState.finishReason) return usageState.finishReason;
-    if (usageState.trigger === "token_count") return "length";
-    return "stop";
-  };
-
-  const emitFinishChunk = (reason = "stop") => {
-    if (finishSent) return;
-    let resolved = recordFinishReason(reason, "finalizer");
-    if (!resolved) {
-      resolved = fallbackFinishReason();
-      finishReasonState = resolved;
-      if (!usageState.finishReason) usageState.finishReason = resolved;
-      if (!usageState.finishReasonSource) {
-        usageState.finishReasonSource =
-          usageState.trigger === "token_count" ? "token_count_fallback" : "finalizer";
-        usageState.finishReasonSourcePriority = resolveSourcePriority(
-          usageState.finishReasonSource
-        );
-      }
-    }
+  const emitFinishChunk = (rawReason) => {
+    if (finishSent) return finalFinishReason;
+    if (rawReason) finishTracker.record(rawReason, "finalizer");
+    const { reason } = resolveFinishReason();
     finishSent = true;
     sendChunk({
-      choices: [{ index: 0, delta: {}, finish_reason: resolved }],
+      choices: [{ index: 0, delta: {}, finish_reason: reason }],
       usage: null,
     });
+    return reason;
+  };
+
+  const trackFinishReason = (raw, source) => {
+    if (raw === null || raw === undefined) return;
+    finishTracker.record(raw, source);
   };
 
   const emitUsageChunk = (trigger) => {
@@ -471,9 +437,9 @@ export async function postChatStream(req, res) {
     if (usageState.logged) return;
     const { promptTokens, completionTokens, totalTokens, estimatedCompletion } = resolvedCounts();
     const emittedAtMs = Date.now() - started;
-    const finishReason = usageState.finishReason || fallbackFinishReason();
-    const finishReasonSource =
-      usageState.finishReasonSource || (finishReasonState ? "finalizer" : "fallback");
+    const resolved = finalFinishReason
+      ? { reason: finalFinishReason, source: finalFinishSource }
+      : resolveFinishReason();
     try {
       appendUsage({
         ts: Date.now(),
@@ -497,8 +463,10 @@ export async function postChatStream(req, res) {
         counts_source: usageState.countsSource,
         usage_included: includeUsage,
         provider_supplied: usageState.providerSupplied,
-        finish_reason: finishReason,
-        finish_reason_source: finishReasonSource,
+        finish_reason: resolved.reason,
+        finish_reason_source: resolved.source,
+        has_tool_calls: hasToolCallEvidence(),
+        has_function_call: hasFunctionCall,
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -513,12 +481,23 @@ export async function postChatStream(req, res) {
       trigger ||
       usageState.trigger ||
       (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
-    const providedReason = normalizeFinishReason(reason);
-    const finalReason = providedReason || fallbackFinishReason();
-    if (providedReason) recordFinishReason(providedReason, "finalize");
-    if (!finishSent) emitFinishChunk(finalReason);
+    if (reason) trackFinishReason(reason, "finalize");
+    const resolvedFinish = resolveFinishReason();
+    if (!finishSent) emitFinishChunk();
     if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!usageState.logged) logUsage(resolvedTrigger);
+    logFinishReasonTelemetry({
+      route: "/v1/chat/completions",
+      reqId,
+      reason: resolvedFinish.reason,
+      source: resolvedFinish.source,
+      hasToolCalls: hasToolCallEvidence(),
+      hasFunctionCall,
+      unknownReasons: finalFinishUnknown.length
+        ? finalFinishUnknown
+        : Array.from(unknownFinishReasons),
+      trail: finalFinishTrail,
+    });
     try {
       finishSSE();
     } catch {}
@@ -560,6 +539,12 @@ export async function postChatStream(req, res) {
           kind: "event",
           event: evt,
         });
+        const payload = evt.msg || evt;
+        if (payload) {
+          trackToolSignals(payload);
+          const finishCandidate = extractFinishReasonFromMessage(payload);
+          if (finishCandidate) trackFinishReason(finishCandidate, t || "event");
+        }
         if (t === "agent_message_delta") {
           const d = String((evt.msg?.delta ?? evt.delta) || "");
           if (d) {
@@ -615,56 +600,92 @@ export async function postChatStream(req, res) {
             }
           }
         } else if (t === "agent_message") {
-          const m = String((evt.msg?.message ?? evt.message) || "");
-          if (m) {
-            let suffix = "";
-            if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
-            else if (!sentAny) suffix = m;
-            if (suffix) {
-              emitted += suffix;
-              // Update tool blocks
-              try {
-                const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
-                if (blocks && blocks.length) {
-                  toolCount += blocks.length;
-                  lastToolEnd = blocks[blocks.length - 1].end;
-                  scanPos = nextPos;
+          const messagePayload = evt.msg?.message ?? evt.message;
+          if (typeof messagePayload === "string") {
+            const m = messagePayload;
+            if (m) {
+              let suffix = "";
+              if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
+              else if (!sentAny) suffix = m;
+              if (suffix) {
+                emitted += suffix;
+                // Update tool blocks
+                try {
+                  const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
+                  if (blocks && blocks.length) {
+                    toolCount += blocks.length;
+                    lastToolEnd = blocks[blocks.length - 1].end;
+                    scanPos = nextPos;
+                  }
+                } catch {}
+                let allowUntil = emitted.length;
+                if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
+                  allowUntil = lastToolEnd;
                 }
-              } catch {}
-              let allowUntil = emitted.length;
-              if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
-                allowUntil = lastToolEnd;
+                const segment = emitted.slice(forwardedUpTo, allowUntil);
+                if (segment) {
+                  sendChunk({
+                    choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+                    usage: null,
+                  });
+                  sentAny = true;
+                  forwardedUpTo = allowUntil;
+                }
+                if (STOP_AFTER_TOOLS && toolCount > 0 && !stoppedAfterTools) {
+                  const cutNow = () => {
+                    if (stoppedAfterTools) return;
+                    stoppedAfterTools = true;
+                    try {
+                      clearKeepalive();
+                    } catch {}
+                    try {
+                      finishSSE();
+                    } catch {}
+                    try {
+                      child.kill("SIGTERM");
+                    } catch {}
+                  };
+                  if (STOP_AFTER_TOOLS_MAX > 0 && toolCount >= STOP_AFTER_TOOLS_MAX) cutNow();
+                  else if (STOP_AFTER_TOOLS_MODE === "first") cutNow();
+                  else {
+                    try {
+                      if (cutTimer) clearTimeout(cutTimer);
+                    } catch {}
+                    cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+                  }
+                }
               }
-              const segment = emitted.slice(forwardedUpTo, allowUntil);
-              if (segment) {
-                sendChunk({
-                  choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
-                  usage: null,
-                });
-                sentAny = true;
-                forwardedUpTo = allowUntil;
-              }
-              if (STOP_AFTER_TOOLS && toolCount > 0 && !stoppedAfterTools) {
-                const cutNow = () => {
-                  if (stoppedAfterTools) return;
-                  stoppedAfterTools = true;
-                  try {
-                    clearKeepalive();
-                  } catch {}
-                  try {
-                    finishSSE();
-                  } catch {}
-                  try {
-                    child.kill("SIGTERM");
-                  } catch {}
-                };
-                if (STOP_AFTER_TOOLS_MAX > 0 && toolCount >= STOP_AFTER_TOOLS_MAX) cutNow();
-                else if (STOP_AFTER_TOOLS_MODE === "first") cutNow();
-                else {
-                  try {
-                    if (cutTimer) clearTimeout(cutTimer);
-                  } catch {}
-                  cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
+            }
+          } else if (messagePayload && typeof messagePayload === "object") {
+            const text = coerceAssistantContent(
+              messagePayload.content ?? messagePayload.text ?? ""
+            );
+            if (text) {
+              let suffix = "";
+              if (text.startsWith(emitted)) suffix = text.slice(emitted.length);
+              else if (!sentAny) suffix = text;
+              if (suffix) {
+                emitted += suffix;
+                try {
+                  const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
+                  if (blocks && blocks.length) {
+                    toolCount += blocks.length;
+                    lastToolEnd = blocks[blocks.length - 1].end;
+                    scanPos = nextPos;
+                  }
+                } catch {}
+                let allowUntil = emitted.length;
+                if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
+                  allowUntil = lastToolEnd;
+                }
+                const segment = emitted.slice(forwardedUpTo, allowUntil);
+                if (segment) {
+                  sendChunk({
+                    choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+                    usage: null,
+                  });
+                  sentAny = true;
+                  forwardedUpTo = allowUntil;
                 }
               }
             }
@@ -673,8 +694,8 @@ export async function postChatStream(req, res) {
           const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
           const completionTokens = Number(evt.msg?.completion_tokens ?? evt.msg?.completionTokens);
           updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
-          const tokenFinishReason = extractFinishReason(evt.msg);
-          if (tokenFinishReason) recordFinishReason(tokenFinishReason, "token_count");
+          const tokenFinishReason = extractFinishReasonFromMessage(evt.msg);
+          if (tokenFinishReason) trackFinishReason(tokenFinishReason, "token_count");
         } else if (t === "usage") {
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.usage?.prompt_tokens ?? evt.usage?.prompt_tokens
@@ -691,9 +712,9 @@ export async function postChatStream(req, res) {
           );
         } else if (t === "task_complete") {
           const finishReason =
-            extractFinishReason(evt.msg) ||
+            extractFinishReasonFromMessage(evt.msg) ||
             (usageState.trigger === "token_count" ? "length" : null);
-          if (finishReason) recordFinishReason(finishReason, "task_complete");
+          if (finishReason) trackFinishReason(finishReason, "task_complete");
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.token_count?.prompt_tokens
           );
@@ -762,12 +783,12 @@ export async function postChatStream(req, res) {
       }
     }
     const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
-    const fallbackReason = finishSent
-      ? finishReasonState
+    const inferredReason = finishSent
+      ? finalFinishReason
       : usageState.trigger === "token_count"
         ? "length"
         : "stop";
-    finalizeStream({ reason: fallbackReason, trigger });
+    finalizeStream({ reason: inferredReason, trigger });
   });
 }
 

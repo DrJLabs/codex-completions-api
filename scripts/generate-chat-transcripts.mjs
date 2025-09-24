@@ -158,6 +158,175 @@ async function main() {
     requestBody: {
       model: "codex-5",
       stream: false,
+      messages: [{ role: "user", content: "Run the lookup tool for user 42" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_user",
+            description: "Returns fake profile information",
+            parameters: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+              },
+              required: ["id"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "lookup_user" } },
+    },
+    filename: "nonstream-tool-calls.json",
+    codexBin: defaultCodex,
+    commitSha,
+    protoEnv: { FAKE_CODEX_MODE: "tool_call" },
+    processResponse: async (res) => ({
+      response: sanitizeNonStreamResponse(await res.json()),
+    }),
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Stream tool execution" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_user",
+            description: "Returns fake profile information",
+            parameters: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+              },
+              required: ["id"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "lookup_user" } },
+    },
+    filename: "streaming-tool-calls.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    protoEnv: { FAKE_CODEX_MODE: "tool_call" },
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: false,
+      messages: [{ role: "user", content: "Call legacy function" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "legacy_lookup",
+            description: "Returns fake info",
+            parameters: {
+              type: "object",
+              properties: { query: { type: "string" } },
+              required: ["query"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "legacy_lookup" } },
+    },
+    filename: "nonstream-function-call.json",
+    codexBin: defaultCodex,
+    commitSha,
+    protoEnv: { FAKE_CODEX_MODE: "function_call" },
+    processResponse: async (res) => ({
+      response: sanitizeNonStreamResponse(await res.json()),
+    }),
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Stream legacy function" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "legacy_lookup",
+            description: "Returns fake info",
+            parameters: {
+              type: "object",
+              properties: { query: { type: "string" } },
+              required: ["query"],
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "legacy_lookup" } },
+    },
+    filename: "streaming-function-call.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    protoEnv: { FAKE_CODEX_MODE: "function_call" },
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: false,
+      messages: [{ role: "user", content: "Generate disallowed content" }],
+    },
+    filename: "nonstream-content-filter.json",
+    codexBin: defaultCodex,
+    commitSha,
+    protoEnv: { FAKE_CODEX_MODE: "content_filter" },
+    processResponse: async (res) => ({
+      response: sanitizeNonStreamResponse(await res.json()),
+    }),
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Stream content filter scenario" }],
+    },
+    filename: "streaming-content-filter.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    protoEnv: { FAKE_CODEX_MODE: "content_filter" },
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: false,
       messages: [{ role: "user", content: "Trigger truncation" }],
     },
     filename: "nonstream-truncation.json",

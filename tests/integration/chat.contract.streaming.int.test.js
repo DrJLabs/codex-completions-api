@@ -18,6 +18,21 @@ const STREAM_SCENARIOS = [
     transcriptFile: "streaming-usage-length.json",
     env: { FAKE_CODEX_FINISH_REASON: "length" },
   },
+  {
+    label: "tool_calls",
+    transcriptFile: "streaming-tool-calls.json",
+    env: { FAKE_CODEX_MODE: "tool_call" },
+  },
+  {
+    label: "function_call",
+    transcriptFile: "streaming-function-call.json",
+    env: { FAKE_CODEX_MODE: "function_call" },
+  },
+  {
+    label: "content_filter",
+    transcriptFile: "streaming-content-filter.json",
+    env: { FAKE_CODEX_MODE: "content_filter" },
+  },
 ];
 
 describe.each(STREAM_SCENARIOS)(
