@@ -2,7 +2,7 @@
 title: Add golden transcripts + contract checks for Chat Completions parity (#77)
 date: 2025-09-13
 owner: QA/Dev
-status: open
+status: closed
 priority: P1
 source: github
 gh_issue: 77
@@ -21,8 +21,8 @@ Introduce deterministic “golden” transcripts and optional contract checks to
 - Documentation (`docs/openai-chat-completions-parity.md`) now explains where the transcripts live, how to refresh them, and how contract tests keep parity locked.
 - CI wiring exposes `KEPLOY_ENABLED`/`KEPLOY_BIN` variables so the replay step can run `keploy test --config-path config` when the CLI is installed; otherwise suites fall back to direct HTTP assertions. Use the Keploy CLI exit code and proxy logs to monitor record/test durations and surface failures in job summaries. The repository GitHub environment now sets `KEPLOY_ENABLED=true`, so the `keploy-dry-run` workflow executes automatically on pushes while continuing to use captured transcripts only.
 
-## Validation Notes (2025-09-22)
+## Validation Notes (2025-09-23)
 
-- Recent CI runs (e.g., `https://github.com/DrJLabs/codex-completions-api/actions/runs/17924486614`) show the `keploy-dry-run` job invoking `keploy test --config-path config --path test-results/chat-completions/keploy --test-sets test-set-0`.
-- The CLI prints `ERROR No test-sets found. Please record testcases using [keploy record] command` even though the repository contains `test-results/chat-completions/keploy/test-set-0/tests/*.yaml` from Story 3.5.
-- Because the job still exits successfully, replay coverage is effectively skipped; this is a misconfiguration in the test invocation rather than an intentional opt-out. Fix should align the CLI path/flags with the stored snapshots (tracked alongside Story 3.6 and follow-up Issue `docs/bmad/issues/2025-09-22-keploy-dry-run-replay-gap.md`).
+- Contract tests run as part of `npm run test:integration` and `npm test`; JSON transcripts live under `test-results/chat-completions/` with deterministic sanitisation.
+- Keploy replay automation was shelved on 2025-09-22; all related YAML fixtures and workflow steps were removed in PR #96. Future snapshot tooling will be tracked separately if revived.
+- GitHub issue [#77](https://github.com/DrJLabs/codex-completions-api/issues/77) closed with references to the contract suites and documentation updates.
