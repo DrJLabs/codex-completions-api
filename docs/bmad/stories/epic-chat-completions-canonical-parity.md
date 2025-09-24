@@ -31,7 +31,7 @@ Deliver the remaining protocol features (finish reasons, streaming tool calls, m
 
 # Stories
 
-1. **Story 4.1 — Finish-Reason Canonicalization:** Broaden finish reason mapping (non-stream + stream finalizer) to include `content_filter`, `tool_calls`, and legacy `function_call`, plus audit tests/docs.
+1. **Story 4.1 — Finish-Reason Canonicalization (Done 2025-09-24):** Broaden finish reason mapping (non-stream + stream finalizer) to include `content_filter`, `tool_calls`, and legacy `function_call`, plus audit tests/docs.
 2. **Story 4.2 — Streaming Tool Call Blocks:** Stream OpenAI-style `tool_calls` deltas (id/type/json args chunks) and ensure non-stream payloads mirror final tool call aggregates.
 3. **Story 4.3 — Multi-Choice & Error Lexicon:** Implement `n>1` choice aggregation/streaming, update error `type` values to OpenAI canonical names, and cover ignored params (`logprobs`, `response_format`, `seed`) with deterministic handling.
 
