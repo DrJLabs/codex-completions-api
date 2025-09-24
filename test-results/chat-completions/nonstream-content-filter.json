@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "captured_at": "2025-09-24T04:17:18.105Z",
+    "captured_at": "2025-09-24T04:17:17.572Z",
     "include_usage": false,
-    "codex_bin": "scripts/fake-codex-proto-no-complete.js",
+    "codex_bin": "scripts/fake-codex-proto.js",
     "commit": "8567c9a42b74559d0b22616bed0ab265f0fe4272",
-    "scenario": "nonstream-truncation"
+    "scenario": "nonstream-content-filter"
   },
   "request": {
     "model": "codex-5",
@@ -12,7 +12,7 @@
     "messages": [
       {
         "role": "user",
-        "content": "Trigger truncation"
+        "content": "Generate disallowed content"
       }
     ]
   },
@@ -26,15 +26,15 @@
         "index": 0,
         "message": {
           "role": "assistant",
-          "content": "Hello (truncated) from fake-codex."
+          "content": null
         },
-        "finish_reason": "length"
+        "finish_reason": "content_filter"
       }
     ],
     "usage": {
-      "prompt_tokens": 5,
-      "completion_tokens": 9,
-      "total_tokens": 14
+      "prompt_tokens": 8,
+      "completion_tokens": 0,
+      "total_tokens": 8
     }
   }
 }

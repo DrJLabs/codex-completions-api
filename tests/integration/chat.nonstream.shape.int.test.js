@@ -40,3 +40,102 @@ test("non-stream response uses stop finish_reason on normal completion and inclu
   expect(typeof j?.usage?.completion_tokens).toBe("number");
   expect(typeof j?.usage?.total_tokens).toBe("number");
 });
+
+test("non-stream canonicalizes tool_calls finish_reason when tool payload is returned", async () => {
+  const ctx = await startServer({ FAKE_CODEX_MODE: "tool_call" });
+  try {
+    const r = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+      body: JSON.stringify({
+        model: "codex-5",
+        stream: false,
+        messages: [{ role: "user", content: "Use the lookup tool" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "lookup_user",
+              description: "Returns fake profile information",
+              parameters: {
+                type: "object",
+                properties: { id: { type: "string" } },
+                required: ["id"],
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "lookup_user" } },
+      }),
+    });
+    expect(r.ok).toBeTruthy();
+    const j = await r.json();
+    const ch = j?.choices?.[0];
+    expect(ch?.finish_reason).toBe("tool_calls");
+    expect(Array.isArray(ch?.message?.tool_calls)).toBe(true);
+    expect(ch?.message?.tool_calls?.length).toBeGreaterThan(0);
+    expect(ch?.message?.content).toBeNull();
+  } finally {
+    await stopServer(ctx.child);
+  }
+}, 10_000);
+
+test("non-stream surfaces legacy function_call finish_reason when no tool_calls array", async () => {
+  const ctx = await startServer({ FAKE_CODEX_MODE: "function_call" });
+  try {
+    const r = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+      body: JSON.stringify({
+        model: "codex-5",
+        stream: false,
+        messages: [{ role: "user", content: "Call the legacy function" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "legacy_lookup",
+              description: "Legacy lookup",
+              parameters: {
+                type: "object",
+                properties: { query: { type: "string" } },
+                required: ["query"],
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "legacy_lookup" } },
+      }),
+    });
+    expect(r.ok).toBeTruthy();
+    const j = await r.json();
+    const ch = j?.choices?.[0];
+    expect(ch?.finish_reason).toBe("function_call");
+    expect(ch?.message?.function_call).toBeTruthy();
+    expect(ch?.message?.tool_calls).toBeUndefined();
+  } finally {
+    await stopServer(ctx.child);
+  }
+}, 10_000);
+
+test("non-stream propagates content_filter finish_reason", async () => {
+  const ctx = await startServer({ FAKE_CODEX_MODE: "content_filter" });
+  try {
+    const r = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+      body: JSON.stringify({
+        model: "codex-5",
+        stream: false,
+        messages: [{ role: "user", content: "Return disallowed output" }],
+      }),
+    });
+    expect(r.ok).toBeTruthy();
+    const j = await r.json();
+    const ch = j?.choices?.[0];
+    expect(ch?.finish_reason).toBe("content_filter");
+    expect(ch?.message?.content).toBeNull();
+  } finally {
+    await stopServer(ctx.child);
+  }
+}, 10_000);

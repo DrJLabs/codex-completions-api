@@ -1,141 +1,239 @@
 ---
 title: Codex Completions API — Architecture
-status: draft
-version: v2
-updated: 2025-09-13
+status: active
+version: v2.1
+updated: 2025-09-24
 ---
 
-# Context
+# Introduction
 
-Node/Express service exposing OpenAI‑compatible endpoints and brokering requests to Codex CLI. The service was recently modularized and gained expanded tests, structured access logs, optional in‑app rate limiting, richer SSE controls, and usage/proto event logging.
+Codex Completions API is a Node/Express proxy that fronts the Codex CLI (`codex proto`) with an OpenAI Chat Completions-compatible surface. The service now follows the modular structure introduced during the server refactor and has since been hardened by streaming parity and stability epics. This document captures the current architecture, integration points, and operational invariants required for continued enhancements.
 
-# System Overview
+# Existing Project Analysis
 
-- Entry points
-  - `GET /healthz` — liveness + sandbox mode (src/routes/health.js:6)
-  - `GET|HEAD /v1/models` — advertised IDs; gated when `PROXY_PROTECT_MODELS=true` (src/routes/models.js:26–36,39–50)
-  - `POST /v1/chat/completions` — chat; stream and non‑stream (src/routes/chat.js:16–20)
-  - `POST /v1/completions` — legacy shim to the same handlers (src/routes/chat.js:22–26)
-  - `GET /v1/usage` and `GET /v1/usage/raw` — dev usage aggregation + raw events (src/routes/usage.js:31,40)
-- Child process per request: `codex proto ...` with normalized model + optional provider + reasoning effort (src/handlers/chat/shared.js:8–28; src/services/codex-runner.js:16–35).
-- CORS: applied globally for all methods including OPTIONS (src/app.js:15–24; src/utils.js:140–189).
+## Current Project State
 
-# Module Boundaries
+- **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes.
+- **Current Tech Stack:** Node.js ≥ 22, Express 4.19, Vitest, Playwright, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
+- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) spawning short-lived Codex child processes per request.
+- **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
 
-- Bootstrap
-  - `server.js` — thin HTTP wrapper (listen + signals). App construction moved out. (server.js:4–10,12–22)
-  - `src/app.js` — JSON body limit, global CORS, access logging, rate limit middleware, router mounts. (src/app.js:11–13,15–24,26–44,45–66)
-- Routers
-  - Health (src/routes/health.js:4–9)
-  - Models (src/routes/models.js:7–24,38–52)
-  - Chat + legacy completions (src/routes/chat.js:1–26)
-  - Usage (src/routes/usage.js:28–49)
-- Handlers
-  - Chat non‑stream (src/handlers/chat/nonstream.js)
-  - Chat stream (SSE) + legacy completions stream (src/handlers/chat/stream.js)
-  - Shared proto arg builder (src/handlers/chat/shared.js)
-- Services
-  - Codex runner (spawn/env/workdir) (src/services/codex-runner.js)
-  - SSE helpers (headers/keepalives/finish) (src/services/sse.js)
-- Middleware
-  - Access log (structured JSON, adds `X-Request-Id`) (src/middleware/access-log.js)
-  - Token‑bucket rate limit for POST chat/completions (optional) (src/middleware/rate-limit.js)
-- Config & Lib
-  - Env config (src/config/index.js)
-  - Model ID helpers (src/config/models.js)
-  - Errors (src/lib/errors.js)
-  - Utils (token est., join, CORS, model normalization) (src/utils.js)
-- ForwardAuth sidecar
-  - `auth/server.mjs` — Traefik ForwardAuth; validates bearer and handles CORS (`/verify`, `/healthz`).
+## Available Documentation
+
+- `docs/bmad/prd.md` — Product requirements, KPIs, smoke tests.
+- `docs/openai-chat-completions-parity.md` — Contract notes for streaming order and error envelopes.
+- `docs/bmad/stories/*` — Epic and story execution details (parity, modularization, stability).
+- `docs/runbooks/operational.md` and `docs/dev-to-prod-playbook.md` — Operational runbooks and deployment guidance.
+- `docs/bmad/architecture/*` — Deeper breakdowns (source tree, tech stack, modularization references).
+
+## Identified Constraints
+
+- Traefik ForwardAuth must continue to target `http://127.0.0.1:18080/verify`; do not switch to container hostname unless Traefik is containerized.
+- `.codex-api/` must remain writable in prod; enforcing read-only breaks Codex session persistence and streaming state.
+- `PROXY_SSE_MAX_CONCURRENCY` governs active SSE streams per replica; ensure `ulimit -n` and resource sizing satisfy the concurrency envelope.
+- Dev edge relies on `PROXY_DEV_TRUNCATE_AFTER_MS` safeguards; maintain default zero in prod to avoid truncating real traffic.
+
+## Change Log
+
+| Change                                   | Date       | Version | Description                                                                                                  | Author            |
+| ---------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------ | ----------------- |
+| Architecture refresh post-stability epic | 2025-09-24 | v2.1    | Documented usage endpoints, concurrency guard service, and updated module maps after Sep 2025 stabilization. | Architect (codex) |
+| Server modularization doc update         | 2025-09-13 | v2.0    | Captured router/handler/service separation introduced during modularization refactor.                        | Architect (codex) |
+
+# Enhancement Scope and Integration Strategy
+
+Recent work centered on brownfield stabilization: enforcing streaming parity, adding usage telemetry endpoints, hardening concurrency guards, and documenting dev/prod operational contracts.
+
+## Enhancement Overview
+
+**Enhancement Type:** Brownfield stabilization & parity
+
+**Scope:** Maintain Chat Completions compatibility, ensure deterministic streaming and usage telemetry, and expose observability tooling.
+
+**Integration Impact:** Medium — touches streaming handlers (`src/handlers/chat/*`), concurrency guard, usage router, logging, and documentation/runbooks.
+
+## Integration Approach
+
+**Code Integration Strategy:** Modular Express app configured in `src/app.js`; routers mount handlers that orchestrate Codex CLI child processes with shared services and middleware.
+
+**Database Integration:** None; persistence is limited to NDJSON telemetry files written to `${TMPDIR}` or configured paths.
+
+**API Integration:** Maintains OpenAI-compatible shapes; new `/v1/usage` and `/v1/usage/raw` routes share auth expectations via ForwardAuth.
+
+**UI Integration:** Not applicable — no end-user UI components.
+
+## Compatibility Requirements
+
+- Preserve OpenAI response envelopes (non-stream and streaming) including `finish_reason`, `usage`, and error payloads.
+- Accept OpenAI-style chat payloads plus legacy prompt payloads via `/v1/completions` shim.
+- Keep model normalization parity between advertised IDs and runtime defaults.
+- Ensure Traefik/Cloudflare edge routing labels remain unchanged when updating compose files.
+
+# Tech Stack
+
+## Existing Technology Stack
+
+| Category         | Current Technology                      | Version               | Usage in Enhancement                                                         | Notes                                               |
+| ---------------- | --------------------------------------- | --------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- |
+| Runtime          | Node.js                                 | ≥ 22.x                | Hosts Express server and orchestrates Codex child processes.                 | ESM modules only.                                   |
+| Web Framework    | Express                                 | 4.19.x                | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.          |
+| Child Process    | Codex CLI (`codex proto`)               | Current Codex release | Generates completions for each request.                                      | Controlled via `src/services/codex-runner.js`.      |
+| Logging          | Custom JSON + console loggers           | n/a                   | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.       |
+| Testing          | Vitest, Playwright                      | 3.2.4 / 1.55.0        | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                     |
+| Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM              | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                            |
+| Containerization | Docker Compose                          | v2                    | Prod/dev stacks, attaches to external `traefik` network.                     | Compose file is source of truth for routing labels. |
+
+## New Technology Additions
+
+None — stabilization leveraged the existing stack and toggles.
+
+# Data Models and Telemetry Records
+
+- **UsageLogEvent** (NDJSON in `TOKEN_LOG_PATH`): `{ ts, prompt_tokens_est, completion_tokens_est, total_tokens_est, model, req_id, route }`. Consumed by `src/routes/usage.js` and aggregated via `aggregateUsage` in `src/utils.js`.
+- **ProtoEvent** (optional NDJSON in `PROTO_LOG_PATH`): recordings of Codex proto stdout/stderr and tool blocks when dev logging is enabled.
+
+## Schema Integration Strategy
+
+- Telemetry remains file-based; no database schema changes required.
+- Backward compatibility: usage routes cap returned events (`limit` default 200, max 10000) and preserve previous JSON structure.
+- NDJSON files are recreated on demand; ensure filesystem permissions allow creation under `${TMPDIR}` or configured paths.
+
+# Component Architecture
+
+## Routers (`src/routes/*`)
+
+- `health.js` — `/healthz` liveness.
+- `models.js` — `/v1/models` with optional auth gating.
+- `chat.js` — `/v1/chat/completions` and `/v1/completions` (HEAD + POST) delegating to stream/non-stream handlers.
+- `usage.js` — `/v1/usage` and `/v1/usage/raw` for telemetry queries.
+
+## Handlers (`src/handlers/chat/*`)
+
+- `nonstream.js` — Validates payloads, normalizes models, interacts with Codex proto, aggregates content/usage, enforces dev truncate guard.
+- `stream.js` — Streams SSE chunks, manages concurrency guard, keepalives, tool suppression, usage chunk emission, and final cleanup.
+- `shared.js` — Builds Codex CLI argument lists, configures environment, and injects sandbox/workdir settings.
+
+## Services (`src/services/*`)
+
+- `codex-runner.js` — Spawns `codex proto`, manages environment variables, handles stdout/stderr piping, and ensures sandbox/workdir compliance.
+- `sse.js` — Applies SSE headers, schedules keepalives, finalizes stream events.
+- `concurrency-guard.js` — Global semaphore controlling concurrent SSE streams, exposing `setupStreamGuard`, `guardSnapshot`, and logging helpers.
+
+## Middleware (`src/middleware/*`)
+
+- `access-log.js` — Structured JSON request log with request IDs and timing.
+- `rate-limit.js` — Token-bucket rate limiter keyed by bearer token/IP, configurable via env toggles.
+
+## Config & Utilities
+
+- `src/config/index.js` — Typed env loader for all `PROXY_*`, `CODEX_*`, and sandbox settings.
+- `src/config/models.js` — Advertised model ID helpers (dev vs prod).
+- `src/utils.js` — Token estimators, usage aggregation, model normalization, CORS helpers.
+- `src/dev-logging.js` — Usage/proto NDJSON appenders and `<use_tool>` block extraction.
+
+## Auth & Edge Integration
+
+- `auth/server.mjs` — ForwardAuth sidecar validating bearer keys and mirroring CORS handling for Traefik.
+- `docker-compose.yml` — Defines service labels (`traefik.http.routers.codex-*`) and attaches external `traefik` network.
+
+## Scripts & Tooling (`scripts/*`)
+
+- Smoke & live tests (`dev-smoke.sh`, `prod-smoke.sh`, `test-live.sh`).
+- Porting utilities (`port-dev-to-prod.sh`, `sync-codex-config.sh`).
+- Ops automation (`stack-snapshot.sh`, `stack-rollback.sh`).
 
 # Request Lifecycles
 
-## Chat — Non‑stream
+## GET /healthz
 
-1. JSON body + auth validated (src/handlers/chat/nonstream.js:41–46,48–60).
-2. Normalize model; reject unknown requested IDs (src/handlers/chat/nonstream.js:62–75; src/config/models.js:8–12; src/utils.js:116–138).
-3. Build `codex proto` args (sandbox, model, optional provider, effort) (src/handlers/chat/nonstream.js:91–97; shared.js:8–28).
-4. Consume child events, accumulate content and token counts; idle guard (src/handlers/chat/nonstream.js:160–206,141–156).
-5. Return OpenAI‑shaped JSON with `usage` (src/handlers/chat/nonstream.js:28–41).
+1. Express router responds immediately with `{ ok: true, sandbox_mode }` derived from `config.PROXY_SANDBOX_MODE`.
+2. No auth required; used by edge health checks and compose health probes.
 
-## Chat — Stream (SSE)
+## GET /v1/models
 
-1. Auth + validation; per‑process SSE concurrency guard via `PROXY_SSE_MAX_CONCURRENCY` (src/handlers/chat/stream.js:55–63,108–122).
-2. Set SSE headers (`text/event-stream`, `X-Accel-Buffering: no`), compute keepalive interval with UA/header/query overrides (src/services/sse.js:5–19,21–39; src/handlers/chat/stream.js:223–259).
-3. Emit role‑first delta, then content deltas; stable `id` per completion; final `[DONE]` (src/handlers/chat/stream.js:203–214,223–259,254–259; 174–210 on completion).
-4. Optional shaping: tail suppression and early‑cut after `<use_tool>` blocks via `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` and `PROXY_STOP_AFTER_TOOLS{,_MODE,_GRACE_MS}`; optional `PROXY_TOOL_BLOCK_MAX` cap (src/handlers/chat/stream.js:73–109,84–109; 95–109 for cut path).
-5. Cleanup on `close/finish/aborted`; optional child kill on disconnect via `PROXY_KILL_ON_DISCONNECT` (src/handlers/chat/stream.js:237–259,1–3,246–251).
+1. Optional bearer validation occurs in `models.js` when `PROXY_PROTECT_MODELS=true`.
+2. Response lists public model IDs based on `PROXY_ENV`; `normalizePublicModels` from `src/config/models.js` ensures environment parity.
 
-## Legacy Completions
+## POST /v1/chat/completions — Non-stream
 
-Mirrors chat behavior for both non‑stream and stream, mapping prompt↔messages while preserving OpenAI shapes (src/handlers/chat/nonstream.js:59–257; src/handlers/chat/stream.js:261–382).
+1. Request validated (`nonstream.validatePayload`); Bearer required (`Authorization` header).
+2. Model normalized via `normalizeModel`; tool-tail toggles inspected.
+3. `codex-runner` spawns `codex proto` with sandbox/workdir and optional provider/effort overrides (`CODEX_FORCE_PROVIDER`, `PROXY_STOP_AFTER_TOOLS*`).
+4. Handler accumulates stdout events, tracks `<use_tool>` blocks (via `extractUseToolBlocks`), and enforces idle/overall timeouts.
+5. Deterministic finalize path returns JSON with aggregated content, `finish_reason`, and usage estimates; dev truncate guard returns `finish_reason:"length"` when configured.
+
+## POST /v1/chat/completions — Stream (SSE)
+
+1. `setupStreamGuard` enforces `PROXY_SSE_MAX_CONCURRENCY`; rejected requests emit 429 with guard headers/logs.
+2. SSE headers set (`text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`). Keepalive scheduler respects UA overrides and `X-No-Keepalive` hints.
+3. Stream emits role-first delta chunk, successive content deltas, optional tool-tail suppression, optional finish-reason and usage chunks, and final `[DONE]` sentinel.
+4. Cleanup releases concurrency guard token, clears keepalive intervals, and optionally kills child process if `PROXY_KILL_ON_DISCONNECT` is true.
+
+## POST /v1/completions (Legacy Shim)
+
+1. Payload converted from prompt format to chat messages; shares validation, spawning, and completion flow with chat handlers.
+2. Response or stream mirrors chat behavior, preserving OpenAI envelope semantics for legacy clients.
+
+## `/v1/usage` & `/v1/usage/raw`
+
+1. `parseTime` filters query window; `aggregateUsage` returns totals and optional hourly/daily buckets.
+2. Raw endpoint returns capped NDJSON events (`limit` query with safe bounds) for debugging/analytics.
+3. Same bearer expectations as other protected routes (enforced via ForwardAuth); no additional schema transformations.
 
 # Security Model
 
-- Bearer key required for chat/completions; models route optionally gated via `PROXY_PROTECT_MODELS` (src/routes/models.js:26–36; src/handlers/\*: token checks near the top of each handler).
-- ForwardAuth (Traefik) service validates bearer before requests reach app in PROD (auth/server.mjs:33–54).
-- CORS defaults enabled globally; preflight handled centrally (src/app.js:15–24; src/utils.js:140–189; auth/server.mjs:39–42 for sidecar).
+- Bearer token required for chat/completions/usage routes; models route optionally gated via `PROXY_PROTECT_MODELS`.
+- ForwardAuth (`auth/server.mjs`) performs pre-request verification in prod deployments.
+- In-app rate limiter (disabled by default) guards POST chat/completions; edge rate limiting via Traefik/Cloudflare is recommended primary defense.
+- Concurrency guard prevents SSE overload; guard telemetry logged for observability.
+- CORS enabled by default with origin echo and credentials support; can be disabled via `PROXY_ENABLE_CORS` when edge handles CORS.
 
-# Rate Limiting
+# Rate Limiting & Concurrency Guard
 
-- In‑app token bucket (optional): `PROXY_RATE_LIMIT_ENABLED=true` gates POST `/v1/chat/completions` and `/v1/completions` per API key (fallback IP). Window and max via `PROXY_RATE_LIMIT_WINDOW_MS` and `PROXY_RATE_LIMIT_MAX`. Periodic bucket cleanup prevents growth (src/middleware/rate-limit.js:6–24,26–54).
-- Edge limits recommended at Traefik/Cloudflare for defense‑in‑depth.
+- `services/concurrency-guard.js` maintains a global semaphore per process. `setupStreamGuard` logs `acquired`/`rejected`/`released` events and exposes optional headers when `PROXY_TEST_ENDPOINTS=true`.
+- `/__test/conc` and `/__test/conc/release` (dev/test only) expose guard state and release hooks for CI scenarios.
+- `PROXY_SSE_MAX_CONCURRENCY` defaults to 4 in dev; prod recommended max is 16 (see PRD env profile).
 
-# Model IDs & Normalization
+# Observability & Telemetry
 
-- Advertised IDs depend on env: DEV → `codev-5{,-low,-medium,-high,-minimal}`; PROD → `codex-5{,…}` (src/config/models.js:3–6).
-- Accepted IDs include both DEV/PROD prefixes plus fallback default (`gpt-5`) for effective model (src/config/models.js:8–12).
-- `normalizeModel` maps public IDs to the effective runtime model ID; unknown IDs are treated as exact (and rejected earlier for advertised lists) (src/utils.js:116–138).
+- Structured request logs (`[http]` text and JSON) capture latency, auth presence, and user agents.
+- Concurrency guard events logged with `[proxy]` prefix for guard monitoring.
+- Usage NDJSON and optional proto event logs support `/v1/usage` reporting and debugging.
+- Runbooks detail analysis steps for non-stream truncation, streaming order, and dev edge timeouts.
 
-# Observability
+# Configuration & Environment Profiles
 
-- Structured access logs: JSON line per request with `req_id`, route, status, latency, UA, auth presence (src/middleware/access-log.js:10–31). Minimal text line also retained (src/app.js:26–40).
-- Usage logs: NDJSON at tmp path (default `${TMPDIR}/codex-usage.ndjson`) with token estimates and timing (src/dev-logging.js:9–29; used in handlers when responding).
-- Proto event logs (DEV): NDJSON of child stdout/stderr/chunks and tool blocks (src/dev-logging.js:11–15,31–37). Aggregation endpoints in `/v1/usage*` (src/routes/usage.js).
+- See `docs/bmad/prd.md#Configuration Surface` for exhaustive env variable list.
+- Dev defaults (`.env.dev`): `PROXY_ENV=dev`, advertised `codev-5*`, `PROXY_PROTECT_MODELS=false`, `PROXY_SSE_MAX_CONCURRENCY=4`, `PROXY_DEV_TRUNCATE_AFTER_MS=9000` as needed.
+- Prod defaults: `PROXY_PROTECT_MODELS=true`, `PROXY_RATE_LIMIT_ENABLED=true`, `PROXY_SSE_MAX_CONCURRENCY=16`, `PROXY_KILL_ON_DISCONNECT=true`, `PROXY_DEV_TRUNCATE_AFTER_MS=0`.
 
-# Configuration Surface
+# Testing & Quality Gates
 
-- Core/Env: see src/config/index.js:12–43
-  - `PORT`, `PROXY_ENV`, `PROXY_API_KEY`, `PROXY_PROTECT_MODELS`
-  - Codex: `CODEX_BIN`, `CODEX_HOME`, `CODEX_MODEL`, `CODEX_FORCE_PROVIDER`, `PROXY_CODEX_WORKDIR`
-  - Streaming/Tools: `PROXY_SSE_KEEPALIVE_MS`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_SSE_MAX_CONCURRENCY`
-  - Timeouts: `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`
-  - Security: `PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`
-  - Misc: `PROXY_KILL_ON_DISCONNECT`, `PROXY_ENABLE_CORS`, `PROXY_DEBUG_PROTO`, `PROXY_TEST_ENDPOINTS`
+- Unit tests cover utilities (`tests/unit`); integration tests focus on routes, error envelopes, rate limiting, truncation determinism.
+- Playwright E2E suite validates `/v1/models`, non-stream chat, streaming order, and `[DONE]` termination.
+- Golden transcripts stored under `test-results/` back contract checks.
+- Test selection policy: changes to handlers/server require `npm run test:integration` + `npm test`; broad changes execute `npm run verify:all`.
+- QA gates and risk assessments tracked under `docs/bmad/qa/` per story.
 
-# Limits & Defaults
+# Deployment & Operations
 
-- JSON body limit: 16 MiB (src/app.js:13)
-- SSE keepalive: 15 s default; disabled for Electron/Obsidian UAs or `X-No-Keepalive: 1`/`?no_keepalive=1` (src/services/sse.js:13–19)
-- Stream idle timeout and overall timeouts configurable via env (src/config/index.js:29–33)
+- `npm run dev:stack:up` spins up dev stack with Traefik and dev domain; `npm run dev:stack:down` tears it down.
+- Prod deploy: `docker compose up -d --build --force-recreate` followed by `npm run smoke:prod`.
+- `npm run port:prod` automates dev → prod config sync and optional smoke tests.
+- `.codex-api/` houses Codex runtime state; ensure volume mounts persist across restarts.
+- `scripts/stack-snapshot.sh` and `stack-rollback.sh` provide snapshot/rollback automation (dev and prod).
 
-# Scaling & Resilience
+# Troubleshooting Playbook Highlights
 
-- Stateless; safe to run multiple replicas behind Traefik without sticky sessions.
-- Per‑process SSE concurrency guard avoids overload with `PROXY_SSE_MAX_CONCURRENCY`; consider pod replica scaling for sustained streams (src/handlers/chat/stream.js:61–66,108–122).
-- Graceful shutdown hooks close the listener on SIGTERM/SIGINT (server.js:12–22).
+- **Non-stream timeouts:** Verify `PROXY_DEV_TRUNCATE_AFTER_MS` and edge timeouts; use `scripts/dev-edge-smoke.sh` for reproduction.
+- **Streaming stalls:** Inspect keepalive settings, concurrency guard logs, and SSE client hints (Electron/Obsidian overrides).
+- **Unauthorized errors:** Confirm ForwardAuth health (`auth/server.mjs` logs) and bearer key distribution.
+- **Rate limit/429 issues:** Check in-app guard toggles and edge rate limiting; capture guard headers via `/__test/conc` when enabled.
 
-# Tests & Coverage (high‑level)
+# Related Documents
 
-- Unit (Vitest): utilities and dev logging (tests/unit/\*.spec.js)
-- Integration (Vitest): routes, headers, rate limit, idle/kill‑on‑disconnect, timeouts (tests/integration/\*)
-- E2E (Playwright): `/v1/models`, non‑stream chat, streaming SSE contract (tests/e2e/\*; playwright.config.ts)
-
-# Deployment Invariants (prod)
-
-- `docker-compose.yml` is authoritative for routing/labels; service must be on external `traefik` network.
-- Traefik ForwardAuth target (host loopback): `http://127.0.0.1:18080/verify` (auth/server.mjs serves it).
-- `.codex-api/` MUST be writable in production; runtime workdir isolated under `PROXY_CODEX_WORKDIR`. See README for smoke commands.
-
-# Diagrams & Cross‑Refs
-
-- `docs/architecture.svg`, `docs/request-flow.svg`, `docs/architecture.png`
-- See also: `docs/bmad/architecture/server-modularization-refactor.md`
-
-# Mini Runbook
-
-- 401 on chat/completions: check `Authorization: Bearer <PROXY_API_KEY>`; in PROD verify ForwardAuth env and service.
-- 404 `model_not_found`: use `/v1/models` IDs or default `gpt-5` with optional `reasoning.effort`.
-- SSE stalls/drops: tune `PROXY_SSE_KEEPALIVE_MS`; disable for Electron/Obsidian via `X-No-Keepalive: 1` or `?no_keepalive=1`.
-- 429 rate limit: lower request burst or adjust `PROXY_RATE_LIMIT_*` or disable in-app limiter.
-- Timeouts/502: confirm container health; verify Traefik labels/network and ForwardAuth target.
+- `docs/bmad/prd.md` — authoritative requirements and KPIs.
+- `docs/openai-chat-completions-parity.md` — detailed streaming parity checklist.
+- `docs/bmad/architecture/source-tree.md` — directory-level breakdown.
+- `docs/bmad/stories/epic-stability-ci-hardening-sep-2025.md` — stability epic outcomes driving current architecture.
+- `docs/runbooks/operational.md` — incident response and smoke guidance.

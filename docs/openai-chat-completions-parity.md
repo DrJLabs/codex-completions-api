@@ -90,6 +90,7 @@ Notes:
   - `nonstream-truncation.json`
   - `streaming-usage.json`
   - `streaming-usage-length.json`
+- Canonical reference: [Research — OpenAI Chat Completions Streaming Reference](bmad/research/2025-09-24-openai-chat-completions-streaming-reference.md) captures the expected chunk lifecycle, finish reasons, tool call deltas, and usage semantics used by these transcripts.
 - Historical note: Keploy YAML snapshots previously lived under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`, but the directory was removed on 2025-09-22 when the replay initiative was shelved.
 - Each transcript stores sanitized payloads where `id` and `created` are replaced with `<dynamic-id>` and `<timestamp>` so deterministic diffs highlight envelope drift instead of random identifiers.
 - Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag). The helper no longer emits Keploy YAML files.
