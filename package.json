@@ -9,7 +9,7 @@
     "start": "node server.js",
     "dev": "bash scripts/dev.sh",
     "dev:shim": "bash scripts/dev.sh --shim",
-    "dev:stack:up": "docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build",
+    "dev:stack:up": "DOCKER_BUILDKIT=0 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build",
     "dev:stack:down": "docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev down -v",
     "dev:stack:logs": "docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev logs -f --tail=200",
     "smoke:prod": "bash scripts/prod-smoke.sh",

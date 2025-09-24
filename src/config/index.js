@@ -61,4 +61,5 @@ export const config = {
   PROXY_DEV_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Limits
   PROXY_MAX_PROMPT_TOKENS: num("PROXY_MAX_PROMPT_TOKENS", 0), // 0 disables context-length guard
+  PROXY_MAX_CHAT_CHOICES: num("PROXY_MAX_CHAT_CHOICES", 5),
 };

@@ -34,14 +34,31 @@ afterAll(async () => {
   } catch {}
 });
 
-test("chat: n>1 returns 400 invalid_request_error with param n", async () => {
+test("chat: n=0 returns 400 invalid_request_error with param n", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
     body: JSON.stringify({
       model: "codex-5",
       stream: false,
-      n: 2,
+      n: 0,
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  });
+  expect(r.status).toBe(400);
+  const j = await r.json();
+  expect(j?.error?.type).toBe("invalid_request_error");
+  expect(j?.error?.param).toBe("n");
+});
+
+test("chat: n greater than allowed maximum returns 400 invalid_request_error", async () => {
+  const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: false,
+      n: 6,
       messages: [{ role: "user", content: "hi" }],
     }),
   });

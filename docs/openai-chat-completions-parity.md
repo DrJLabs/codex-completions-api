@@ -1,7 +1,7 @@
 ---
 title: OpenAI Chat Completions Parity — Spec & Streaming Contract
-version: 0.2
-updated: 2025-09-22
+version: 0.3
+updated: 2025-09-24
 source-of-truth: This repository’s server behavior and tests
 ---
 
@@ -13,11 +13,12 @@ source-of-truth: This repository’s server behavior and tests
   - object: string = "chat.completion"
   - created: number (unix seconds)
   - model: string (accepts `codex-5*` and `codev-5*` aliases)
-  - choices: array[0]
-    - index: 0
-    - message: { role: "assistant", content: string }
-    - finish_reason: "stop" | "length"
-  - usage: { prompt_tokens: number, completion_tokens: number, total_tokens: number }
+- choices: array
+  - index: 0..n-1 (defaults to 0 when `n` omitted)
+  - message: { role: "assistant", content: string | null, tool_calls?, function_call? }
+  - finish_reason: "stop" | "length" | "tool_calls" | "function_call" | "content_filter"
+- usage: { prompt_tokens: number, completion_tokens: number, total_tokens: number }
+  - `completion_tokens` aggregates generated tokens across all choices; `prompt_tokens` counts the shared request tokens once.
 
 Verification: Covered by integration tests —
 - tests/integration/chat.nonstream.shape.int.test.js (shape + stop)
@@ -51,14 +52,14 @@ Example (minimal):
   - created: number (unix seconds)
   - model: string
   - choices: array
-    - For deltas: [{ index: 0, delta: { role?"assistant" | content?string } }]
-    - Finalizer: [{ index: 0, delta: {}, finish_reason: "stop" | "length" }]
+    - For deltas: [{ index: i, delta: { role?"assistant" | content?string | tool_calls?[] } }] for every `i` in 0..n-1
+    - Finalizer: [{ index: i, delta: {}, finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | "function_call" }]
   - usage: optional object only when `stream_options.include_usage=true` and tokens are known
 
 - Required order:
-  1. Initial role delta: `choices[0].delta.role = "assistant"`; `finish_reason:null`, `usage:null`.
-  2. Zero or more content delta chunks: `choices[0].delta.content`; `finish_reason:null`, `usage:null`.
-  3. Finalizer chunk: empty `delta`, `choices[0].finish_reason` populated; `usage:null`.
+  1. Initial role delta: `choices[i].delta.role = "assistant"`; `finish_reason:null`, `usage:null` for every choice index.
+  2. Zero or more content/tool-call delta chunks per choice: `choices[i].delta.content|tool_calls`; `finish_reason:null`, `usage:null`.
+  3. Finalizer chunk: empty `delta`, `choices[i].finish_reason` populated; `usage:null`.
   4. Optional final usage chunk (only when `stream_options.include_usage:true`): `{ choices: [], usage: {...} }`.
      - Story 2.6 (2025‑09‑14): adds forward‑compatible, nullable placeholders to the final usage object:
        - `time_to_first_token: null` (ms)
@@ -81,7 +82,15 @@ Notes:
 - `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
 - Providers that emit usage payloads even when `include_usage:false` are tolerated; the proxy logs the payload (`emission_trigger:"provider"`) but does not forward an extra chunk to clients.
 - All chunks in a stream share the same `id` and `created` values.
+- When `n>1`, the proxy broadcasts identical role/content/tool-call deltas to each `choices[i]` index so clients can group by index. Usage totals aggregate completion tokens across all choices while prompt tokens remain per request.
 - Dev logging captures the propagated finish reason (and its source event) for observability dashboards and regressions.
+
+## Release Guidance — Story 4.3 (2025-09-24)
+
+- Update client documentation to note that `n` is now supported up to `PROXY_MAX_CHAT_CHOICES` (default 5) and that streaming payloads broadcast deltas for each index.
+- Communicate that `completion_tokens` in usage objects represent the sum across all returned choices; prompt tokens remain unchanged.
+- Highlight that `response_format` values other than `"text"`, positive `logprobs`, and any `top_logprobs` now return canonical `invalid_request_error` responses with `param` pointers.
+- Surface the new `choice_count` field in internal telemetry dashboards for parity monitoring.
 
 ### Golden Transcripts & Snapshots (Story 3.5)
 
@@ -92,6 +101,7 @@ Notes:
 - `streaming-usage-length.json`
 - `streaming-tool-calls.json`
 - `streaming-tool-calls-sequential.json`
+- `streaming-multi-choice.json`
 - Canonical reference: [Research — OpenAI Chat Completions Streaming Reference](bmad/research/2025-09-24-openai-chat-completions-streaming-reference.md) captures the expected chunk lifecycle, finish reasons, tool call deltas, and usage semantics used by these transcripts.
 - `streaming-tool-calls.json` exercises the parallel tool-call path where Codex emits incremental deltas (`delta.tool_calls[*].function.arguments`). The proxy forwards each fragment in order and terminates with `finish_reason:"tool_calls"` followed by a usage chunk when requested.
 - `streaming-tool-calls-sequential.json` captures the sequential fallback (`parallel_tool_calls:false`). Upstream omits deltas; the proxy detects the flag and emits a single consolidated `tool_calls` delta on the `agent_message` envelope so clients still observe the function payload stream-side.
@@ -154,7 +164,7 @@ Notes:
 Examples:
 
 - Missing `messages[]` → `400` with `param: "messages"`.
-- `n>1` unsupported → `400` with `param: "n"`.
+- `n` outside `[1, PROXY_MAX_CHAT_CHOICES]` → `400` with `param: "n"`.
 - Model not accepted → `404` with descriptive code.
 - Tokens exceeded (context length) → `403` with `type: "tokens_exceeded_error"`.
 - Unauthorized (when protection enabled) → `401` with `type: "authentication_error"`.
@@ -165,3 +175,7 @@ Examples:
 - stream: boolean.
 - stream_options.include_usage: boolean; when true, emits a usage chunk before `[DONE]`.
 - reasoning.effort: "low" | "medium" | "high" | "minimal"; default implied by model.
+- n: integer; defaults to 1 and is limited by `PROXY_MAX_CHAT_CHOICES` (currently 5). The proxy emits one choice per index with aggregated usage totals.
+- logprobs/top_logprobs: unsupported — requests with `logprobs>0` or any `top_logprobs` return `invalid_request_error`.
+- response_format: only `"text"` is accepted; other types (e.g., `json_object`, `json_schema`) yield `invalid_request_error`.
+- seed: optional integer; validated but otherwise ignored by the proxy.
