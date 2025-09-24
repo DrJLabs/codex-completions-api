@@ -26,6 +26,7 @@ DO_SMOKE=0
 DO_SYNC=1
 REQUESTED_DRY_RUN=0
 DOMAIN="${DOMAIN:-}"
+SMOKE_WAIT=${SMOKE_WAIT_SECONDS:-10}
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --deploy) DEPLOY=1; shift;;
@@ -70,7 +71,7 @@ docker compose config >> "$ART_DIR/docker-compose.config.yaml"
 echo "Checking invariants…"
 
 # ForwardAuth address must be host loopback:18080 (prod)
-FA_LABEL=$(yq -r '.services.app.labels[]? | select(startswith("traefik.http.middlewares.codex-forwardauth.forwardauth.address="))' docker-compose.yml || true)
+FA_LABEL=$(yq -r '.services.app.labels[]? | select(test("^traefik.http.middlewares.codex-forwardauth.forwardauth.address="))' docker-compose.yml || true)
 if [[ -z "$FA_LABEL" ]] || [[ "$FA_LABEL" == *$'
 '* ]]; then
   echo "[FAIL] Expected exactly one 'traefik.http.middlewares.codex-forwardauth.forwardauth.address' label in docker-compose.yml." | tee "$ART_DIR/invariants.txt"
@@ -86,7 +87,7 @@ fi
 required=(codex-api codex-preflight codex-models codex-health)
 missing=()
 for r in "${required[@]}"; do
-  if ! yq -e ".services.app.labels[]? | select(startswith(\"traefik.http.routers.${r}.rule=\"))" docker-compose.yml >/dev/null; then
+  if ! yq -e ".services.app.labels[]? | select(test(\"^traefik.http.routers.${r}.rule=\"))" docker-compose.yml >/dev/null; then
     missing+=("$r")
   fi
 done
@@ -177,6 +178,10 @@ if [[ "$DO_SMOKE" == "1" ]]; then
   if [[ -z "$DOMAIN" ]]; then
     echo "Warning: --smoke set but no domain provided (use --domain or DOMAIN=...). Skipping smoke." | tee -a "$ART_DIR/smoke.txt"
   else
+    if [[ "$SMOKE_WAIT" =~ ^[0-9]+$ ]] && [[ "$SMOKE_WAIT" -gt 0 ]]; then
+      echo "Waiting ${SMOKE_WAIT}s before smoke to allow edge warm-up..." | tee -a "$ART_DIR/smoke.txt"
+      sleep "$SMOKE_WAIT"
+    fi
     echo "Running smoke against https://$DOMAIN ..." | tee -a "$ART_DIR/smoke.txt"
     DOMAIN="$DOMAIN" KEY="${KEY:-}" bash "$ROOT_DIR/scripts/prod-smoke.sh" 2>&1 | tee -a "$ART_DIR/smoke.txt"
   fi

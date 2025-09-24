@@ -7,6 +7,21 @@ const num = (name, def) => {
   const val = Number(raw);
   return Number.isNaN(val) ? Number(def) : val;
 };
+const resolveTruncateMs = () => {
+  const modern = process.env.PROXY_NONSTREAM_TRUNCATE_AFTER_MS;
+  if (modern !== undefined && modern !== "") {
+    const parsedModern = Number(modern);
+    if (!Number.isNaN(parsedModern)) return parsedModern;
+  }
+
+  const legacy = process.env.PROXY_DEV_TRUNCATE_AFTER_MS;
+  if (legacy !== undefined && legacy !== "") {
+    const parsedLegacy = Number(legacy);
+    if (!Number.isNaN(parsedLegacy)) return parsedLegacy;
+  }
+
+  return 0;
+};
 const bool = (name, def) => String(process.env[name] ?? def).toLowerCase() === "true";
 
 export const config = {
@@ -40,8 +55,10 @@ export const config = {
   PROXY_RATE_LIMIT_MAX: num("PROXY_RATE_LIMIT_MAX", 60),
   PROXY_SSE_MAX_CONCURRENCY: num("PROXY_SSE_MAX_CONCURRENCY", 4),
   PROXY_TEST_ENDPOINTS: bool("PROXY_TEST_ENDPOINTS", "false"),
-  // Dev-only: allow early non-stream finalize to avoid edge timeouts (ms; 0=disabled)
-  PROXY_DEV_TRUNCATE_AFTER_MS: num("PROXY_DEV_TRUNCATE_AFTER_MS", 0),
+  // Non-stream guard: allow early finalize to avoid edge timeouts (ms; 0=disabled)
+  PROXY_NONSTREAM_TRUNCATE_AFTER_MS: resolveTruncateMs(),
+  // Back-compat alias (deprecated name, maps to the same value)
+  PROXY_DEV_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Limits
   PROXY_MAX_PROMPT_TOKENS: num("PROXY_MAX_PROMPT_TOKENS", 0), // 0 disables context-length guard
 };
