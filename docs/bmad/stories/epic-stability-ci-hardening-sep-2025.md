@@ -1,8 +1,8 @@
 ---
 title: Epic — Stability & CI Hardening (Sep 2025)
-status: In Progress
-version: 0.3
-updated: 2025-09-21
+status: Completed
+version: 1.0
+updated: 2025-09-23
 owner: Product (PM)
 labels: [stability, ci, parity, streaming, nonstream, edge]
 ---
@@ -70,10 +70,14 @@ Our proxy is functionally aligned with OpenAI’s Chat Completions API, but a ha
 - ✅ **Story 3.6** introduced Keploy-backed snapshots, CI toggles, and QA/PO artifacts; follow-up rollout tracked in `docs/bmad/issues/2025-09-20-keploy-install-config.md`.
 - ✅ **Story 3.7** standardized Keploy CLI installation across CI and local dev, flipping `KEPLOY_ENABLED` and documenting the environment contract.
 - ✅ **Story 3.8** captured replay evidence using self-hosted runner `codex-keploy-ci-01`, clearing the memlock blocker and archiving artefacts from CI runs #459–463.
-- ✅ **Story 3.9** delivers richer streaming finish_reason parity, telemetry, and updated client guidance; follow-up telemetry dashboards tracked in `docs/bmad/issues/2025-09-22-finish-reason-follow-ups.md`.
-- 🔄 **Outstanding:**
-  - Complete remaining P2 stretch goals (`docs/bmad/issues/2025-09-14-release-backup-hardening.md`, `docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
-  - Monitor dev edge in production and add long-term observability thresholds for Keploy replay timings (capture replay duration trends from self-hosted runner metrics).
+- ✅ **Story 3.9** delivers richer streaming finish_reason parity, telemetry, and updated client guidance; remaining telemetry follow-ups were shelved for future observability work (`docs/bmad/issues/_archive/2025-09-22-finish-reason-follow-ups.md`).
+
+## Close-out Summary — 2025-09-23
+
+- Dev edge non-stream timeout resolved by tightening the dev-only guard (`PROXY_DEV_TRUNCATE_AFTER_MS=9000`); `npm run smoke:dev` now passes consistently with both non-stream and streaming checks.
+- All linked issues are closed or archived under `docs/bmad/issues/_archive/`, with GitHub issues #73, #74, #77, and #80 closed alongside documentation updates.
+- Keploy-related work is shelved indefinitely; references now point to archived notes while the live test matrix relies on JSON transcripts and contract tests.
+- Remaining stretch items (release/backup hardening evidence, graceful shutdown test, finish_reason telemetry) are documented in the archive for potential future epics.
 
 # Dependencies & Impact
 
