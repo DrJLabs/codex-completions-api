@@ -125,7 +125,7 @@ export function createToolCallAggregator({ idFactory } = {}) {
       const shouldEmit = emit || (fallbackEmit && !stateEntry.emitted);
 
       const entryId = extractId(rawEntry, stateEntry.id, generateId);
-      if (entryId !== stateEntry.id) {
+      if (entryId !== stateEntry.id && !stateEntry.sent.id) {
         stateEntry.id = entryId;
         stateEntry.sent.id = false;
       }
