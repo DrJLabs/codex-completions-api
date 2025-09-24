@@ -53,6 +53,7 @@ const main = async () => {
     finishReason = finishReason === "length" ? "length" : "function_call";
   }
 
+  const parallelToolCalls = !/^false$/i.test(String(process.env.FAKE_CODEX_PARALLEL || "true"));
   const toolCalls =
     scenario === "tool_call"
       ? [
@@ -80,7 +81,42 @@ const main = async () => {
     ? ""
     : baseMessage;
 
-  if (messageText) {
+  if (toolCalls && parallelToolCalls) {
+    write({
+      type: "agent_message_delta",
+      msg: {
+        parallel_tool_calls: parallelToolCalls,
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: toolCalls[0].id,
+              type: toolCalls[0].type,
+              function: { name: toolCalls[0].function.name },
+            },
+          ],
+        },
+      },
+    });
+    await delay(5);
+    const argChunks = ['{"id":"', "42", '"}'];
+    for (const chunk of argChunks) {
+      write({
+        type: "agent_message_delta",
+        msg: {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: chunk },
+              },
+            ],
+          },
+        },
+      });
+      await delay(5);
+    }
+  } else if (messageText) {
     write({ type: "agent_message_delta", msg: { delta: messageText.slice(0, 7) } });
     await delay(5);
   }
@@ -92,7 +128,9 @@ const main = async () => {
   if (toolCalls) assistantMessage.tool_calls = toolCalls;
   if (functionCall) assistantMessage.function_call = functionCall;
 
-  write({ type: "agent_message", msg: { message: assistantMessage } });
+  const messageEnvelope = { message: assistantMessage };
+  if (!parallelToolCalls) messageEnvelope.parallel_tool_calls = false;
+  write({ type: "agent_message", msg: messageEnvelope });
   await delay(5);
 
   const completionTokensEst = toolCalls || functionCall ? 0 : Math.ceil(messageText.length / 4);
