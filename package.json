@@ -15,6 +15,7 @@
     "smoke:prod": "bash scripts/prod-smoke.sh",
     "smoke:dev": "bash scripts/dev-smoke.sh",
     "smoke:dev-edge": "bash scripts/dev-edge-smoke.sh",
+    "smoke:stream-tool-call": "node scripts/smoke/stream-tool-call.js --include-usage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:runbooks": "prettier -c docs/runbooks",

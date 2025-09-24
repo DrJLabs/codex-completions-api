@@ -88,14 +88,19 @@ Notes:
 - Location: `test-results/chat-completions/`
   - `nonstream-minimal.json`
   - `nonstream-truncation.json`
-  - `streaming-usage.json`
-  - `streaming-usage-length.json`
+- `streaming-usage.json`
+- `streaming-usage-length.json`
+- `streaming-tool-calls.json`
+- `streaming-tool-calls-sequential.json`
 - Canonical reference: [Research — OpenAI Chat Completions Streaming Reference](bmad/research/2025-09-24-openai-chat-completions-streaming-reference.md) captures the expected chunk lifecycle, finish reasons, tool call deltas, and usage semantics used by these transcripts.
+- `streaming-tool-calls.json` exercises the parallel tool-call path where Codex emits incremental deltas (`delta.tool_calls[*].function.arguments`). The proxy forwards each fragment in order and terminates with `finish_reason:"tool_calls"` followed by a usage chunk when requested.
+- `streaming-tool-calls-sequential.json` captures the sequential fallback (`parallel_tool_calls:false`). Upstream omits deltas; the proxy detects the flag and emits a single consolidated `tool_calls` delta on the `agent_message` envelope so clients still observe the function payload stream-side.
 - Historical note: Keploy YAML snapshots previously lived under `test-results/chat-completions/keploy/test-set-0/tests/*.yaml`, but the directory was removed on 2025-09-22 when the replay initiative was shelved.
 - Each transcript stores sanitized payloads where `id` and `created` are replaced with `<dynamic-id>` and `<timestamp>` so deterministic diffs highlight envelope drift instead of random identifiers.
 - Refresh via `npm run transcripts:generate`, which spins up the deterministic fake Codex proto, records requests/responses, and saves metadata (commit SHA, `codex_bin`, capture timestamp, `include_usage` flag). The helper no longer emits Keploy YAML files.
 - Keploy replay evidence captured in 2025-09-20/21 remains archived under `docs/bmad/qa/artifacts/3.8/`, but no automated job currently exercises `keploy test` since the workflow was removed as part of the shelving decision.
 - Contract tests (`tests/integration/chat.contract.*.int.test.js`) and Playwright specs (`tests/e2e/chat-contract.spec.ts`) sanitize live responses and compare them to these transcripts on every CI run, ensuring ordering, usage emission, and truncation semantics remain stable.
+- Solo smoke harness: `node scripts/smoke/stream-tool-call.js --include-usage` streams a tool call against a running proxy, writes the raw SSE log plus a SHA256 digest to `docs/bmad/qa/artifacts/streaming-tool-call/`, and prints a JSON summary for regression diffing.
 
 ### Client Guidance (2025-09-22)
 

@@ -106,6 +106,7 @@ const REQUIRED_TRANSCRIPTS = [
   "streaming-usage.json",
   "streaming-usage-length.json",
   "streaming-tool-calls.json",
+  "streaming-tool-calls-sequential.json",
   "streaming-function-call.json",
   "streaming-content-filter.json",
 ];
