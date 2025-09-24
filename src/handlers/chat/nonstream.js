@@ -329,7 +329,7 @@ export async function postChatNonStream(req, res) {
     } else if (canonicalReason === "content_filter") {
       assistantMessage.content = null;
     } else {
-      assistantMessage.content = normalizedContent ?? messageContent ?? final;
+      assistantMessage.content = normalizedContent;
     }
 
     if (statusCode === 200) {
