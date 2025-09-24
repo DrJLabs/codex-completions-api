@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "captured_at": "2025-09-24T04:17:16.059Z",
+    "captured_at": "2025-09-24T04:17:17.770Z",
     "include_usage": true,
     "codex_bin": "scripts/fake-codex-proto.js",
     "commit": "8567c9a42b74559d0b22616bed0ab265f0fe4272",
-    "scenario": "streaming-usage-length"
+    "scenario": "streaming-content-filter"
   },
   "request": {
     "model": "codex-5",
@@ -15,7 +15,7 @@
     "messages": [
       {
         "role": "user",
-        "content": "Stream transcript (length)"
+        "content": "Stream content filter scenario"
       }
     ]
   },
@@ -49,46 +49,8 @@
         "choices": [
           {
             "index": 0,
-            "delta": {
-              "content": "Hello f"
-            },
-            "finish_reason": null
-          }
-        ],
-        "usage": null
-      }
-    },
-    {
-      "type": "data",
-      "data": {
-        "id": "<dynamic-id>",
-        "object": "chat.completion.chunk",
-        "created": "<timestamp>",
-        "model": "codex-5",
-        "choices": [
-          {
-            "index": 0,
-            "delta": {
-              "content": "rom fake-codex."
-            },
-            "finish_reason": null
-          }
-        ],
-        "usage": null
-      }
-    },
-    {
-      "type": "data",
-      "data": {
-        "id": "<dynamic-id>",
-        "object": "chat.completion.chunk",
-        "created": "<timestamp>",
-        "model": "codex-5",
-        "choices": [
-          {
-            "index": 0,
             "delta": {},
-            "finish_reason": "length"
+            "finish_reason": "content_filter"
           }
         ],
         "usage": null
@@ -104,8 +66,8 @@
         "choices": [],
         "usage": {
           "prompt_tokens": 8,
-          "completion_tokens": 6,
-          "total_tokens": 14,
+          "completion_tokens": 0,
+          "total_tokens": 8,
           "time_to_first_token": null,
           "throughput_after_first_token": null,
           "emission_trigger": "token_count"

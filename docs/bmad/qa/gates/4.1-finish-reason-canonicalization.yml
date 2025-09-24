@@ -1,0 +1,63 @@
+schema: 1
+story: "4.1"
+story_title: "Story 4.1 — Finish-Reason Canonicalization"
+gate: PASS
+status_reason: "Canonical finish_reason mapper validated across non-stream and streaming paths with refreshed transcripts, telemetry, and documentation."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-24T08:20:00Z"
+quality_score: 94
+expires: "2025-10-08T08:20:00Z"
+
+top_issues: []
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 7
+  risks_identified: 6
+  trace:
+    ac_covered: [1, 2, 3, 4, 5]
+    ac_gaps: []
+  trace_ref: "docs/bmad/qa/assessments/4.1-trace-20250924.md"
+  nfr_ref: "docs/bmad/qa/assessments/4.1-nfr-20250924.md"
+  risk_ref: "docs/bmad/qa/assessments/4.1-risk-20250924.md"
+
+test_evidence:
+  - "npm run verify:all (unit, integration, Playwright)"
+  - "npm run transcripts:generate"
+  - "node scripts/fake-codex-proto.js --tool_call (via integration harness)"
+
+trace:
+  totals:
+    requirements: 5
+    full: 5
+    partial: 0
+    none: 0
+  uncovered: []
+  notes: "See trace matrix for detailed Given-When-Then mappings per acceptance criterion."
+
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: PASS
+    notes: "Telemetry logs canonical reason without exposing request payloads; mapper handles unknown inputs safely."
+  performance:
+    status: PASS
+    notes: "String normalization is constant-time; verify:all run shows no measurable regression."
+  reliability:
+    status: PASS
+    notes: "Shared helper eliminates drift; fallback to length covers truncation scenarios."
+  maintainability:
+    status: PASS
+    notes: "Centralized module, refreshed transcripts, and updated parity docs ease future upkeep."
+
+recommendations:
+  immediate:
+    - action: "Monitor `[proxy][finish_reason]` telemetry after rollout to ensure unknown values stay below 1%."
+      refs:
+        - "src/handlers/chat/shared.js"
+        - ".tmp-usage.test.ndjson"
+  future:
+    - action: "Record LangChain harness evidence once dependency is available to demonstrate downstream parity."
+      refs:
+        - "tests/integration/langchain.streaming.int.test.js"

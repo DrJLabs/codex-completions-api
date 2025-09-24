@@ -56,7 +56,9 @@ test("chat non-stream includes required fields and usage", async () => {
   expect(ch?.index).toBe(0);
   expect(ch?.message?.role).toBe("assistant");
   expect(typeof ch?.message?.content).toBe("string");
-  expect(["stop", "length"]).toContain(ch?.finish_reason);
+  expect(["stop", "length", "tool_calls", "content_filter", "function_call"]).toContain(
+    ch?.finish_reason
+  );
   expect(typeof j?.usage?.prompt_tokens).toBe("number");
   expect(typeof j?.usage?.completion_tokens).toBe("number");
   expect(typeof j?.usage?.total_tokens).toBe("number");
