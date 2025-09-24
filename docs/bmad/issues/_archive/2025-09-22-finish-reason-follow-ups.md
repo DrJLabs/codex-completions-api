@@ -2,7 +2,7 @@
 title: Follow-up — finish_reason telemetry & LangChain CI coverage
 date: 2025-09-22
 owner: Dev / QA / Observability
-status: open
+status: shelved
 priority: P2
 labels: [streaming, telemetry, ci, follow-up]
 ---
@@ -21,7 +21,11 @@ Story 3.9 shipped streaming `finish_reason` propagation plus refreshed contracts
 
 - Dashboards/alerts referencing `finish_reason` are live and linked from the observability runbook.
 - CI emits LangChain harness results (pass/fail) and protects against regressions in richer `finish_reason` behavior.
-- Keploy dry-run evidence covering the updated transcripts is archived under `docs/bmad/qa/artifacts/` for reference; no new runs are expected while the initiative remains paused.
+- Keploy dry-run evidence covering the updated transcripts is archived under `docs/bmad/qa/artifacts/`; no new runs are expected while the initiative remains paused.
+
+## Status Note — 2025-09-23
+
+Shelved alongside the epic close-out. Telemetry dashboards and LangChain coverage will be reconsidered when observability expansion is prioritised.
 
 ## References
 
