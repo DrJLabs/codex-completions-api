@@ -43,8 +43,12 @@ test.describe("Live E2E (real Codex)", () => {
     // If models are protected in prod, this may be 401. Allow 200 or 401.
     expect([200, 401]).toContain(status);
     const ids = status === 200 ? ((await m.json())?.data || []).map((x) => x.id) : [];
+    const lowerBase = (baseURL || "").toLowerCase();
+    const expectProdModels = !(lowerBase.includes("codex-dev") || lowerBase.includes("codev"));
+    const baseModel = expectProdModels ? "codex-5" : "codev-5";
+    const hasExpectedModel = ids.some((id) => id === baseModel || id.startsWith(`${baseModel}-`));
     // Single unconditional expect to satisfy playwright/no-conditional-expect
-    expect(status !== 200 || ids.includes("codex-5")).toBeTruthy();
+    expect(status !== 200 || hasExpectedModel).toBeTruthy();
   });
 
   test("non-stream chat returns content", async ({ request }) => {
