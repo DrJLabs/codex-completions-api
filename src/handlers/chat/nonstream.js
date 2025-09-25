@@ -29,6 +29,7 @@ import {
   extractFinishReasonFromMessage,
   logFinishReasonTelemetry,
   coerceAssistantContent,
+  validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 
@@ -44,6 +45,27 @@ const PROTO_IDLE_MS = CFG.PROXY_PROTO_IDLE_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
+const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
+
+const buildInvalidChoiceError = (value) =>
+  invalidRequestBody(
+    "n",
+    `n must be an integer between 1 and ${MAX_CHAT_CHOICES}; received ${value}`
+  );
+
+const normalizeChoiceCount = (raw) => {
+  if (raw === undefined || raw === null) return { ok: true, value: 1 };
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    return { ok: true, value: raw };
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed)) {
+      return { ok: true, value: parsed };
+    }
+  }
+  return { ok: false, error: buildInvalidChoiceError(raw) };
+};
 
 const respondWithJson = (res, statusCode, payload) => {
   if (res.headersSent) {
@@ -135,11 +157,25 @@ export async function postChatNonStream(req, res) {
     });
   }
 
-  // n>1 not supported in this epic scope
-  const n = Number(body.n || 0);
-  if (n > 1) {
+  const {
+    ok: choiceOk,
+    value: requestedChoiceCount = 1,
+    error: choiceError,
+  } = normalizeChoiceCount(body.n);
+  if (!choiceOk) {
     applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("n", "n>1 is unsupported"));
+    return res.status(400).json(choiceError);
+  }
+  if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
+    applyCors(null, res);
+    return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
+  }
+  const choiceCount = requestedChoiceCount;
+
+  const optionalValidation = validateOptionalChatParams(body);
+  if (!optionalValidation.ok) {
+    applyCors(null, res);
+    return res.status(400).json(optionalValidation.error);
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
@@ -319,18 +355,37 @@ export async function postChatNonStream(req, res) {
           ? estTokens(contentForTokenEst)
           : 0;
 
-    const assistantMessage = { role: "assistant" };
-    if (toolCallsPayload) {
-      assistantMessage.tool_calls = toolCallsPayload;
-      assistantMessage.content = null;
-    } else if (functionCallPayload) {
-      assistantMessage.function_call = functionCallPayload;
-      assistantMessage.content = null;
-    } else if (canonicalReason === "content_filter") {
-      assistantMessage.content = null;
-    } else {
-      assistantMessage.content = normalizedContent;
-    }
+    const clonedToolCalls = (toolCallsPayload || []).map((entry) => {
+      const fn =
+        entry.function && typeof entry.function === "object" ? { ...entry.function } : undefined;
+      const clone = { ...entry };
+      if (fn) clone.function = fn;
+      return clone;
+    });
+
+    const clonedFunctionCall = functionCallPayload ? { ...functionCallPayload } : null;
+
+    const buildAssistantMessage = () => {
+      const msg = { role: "assistant" };
+      if (clonedToolCalls.length) {
+        msg.tool_calls = clonedToolCalls.map((entry) => ({
+          ...entry,
+          function:
+            entry.function && typeof entry.function === "object"
+              ? { ...entry.function }
+              : entry.function,
+        }));
+        msg.content = null;
+      } else if (clonedFunctionCall) {
+        msg.function_call = { ...clonedFunctionCall };
+        msg.content = null;
+      } else if (canonicalReason === "content_filter") {
+        msg.content = null;
+      } else {
+        msg.content = normalizedContent;
+      }
+      return msg;
+    };
 
     if (statusCode === 200) {
       logToolBlocks();
@@ -356,8 +411,8 @@ export async function postChatNonStream(req, res) {
         effective_model: effectiveModel,
         stream: false,
         prompt_tokens_est: pt,
-        completion_tokens_est: ct,
-        total_tokens_est: pt + ct,
+        completion_tokens_est: ct * choiceCount,
+        total_tokens_est: pt + ct * choiceCount,
         duration_ms: Date.now() - started,
         status: statusCode,
         user_agent: req.headers["user-agent"] || "",
@@ -367,6 +422,7 @@ export async function postChatNonStream(req, res) {
         has_function_call: !!functionCallPayload,
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
+        choice_count: choiceCount,
       });
       logFinishReasonTelemetry({
         route: "/v1/chat/completions",
@@ -377,6 +433,7 @@ export async function postChatNonStream(req, res) {
         hasFunctionCall: !!functionCallPayload,
         unknownReasons: unknownReasons.length ? unknownReasons : Array.from(unknownFinishReasons),
         trail: reasonTrail,
+        choiceCount,
       });
     }
 
@@ -395,19 +452,28 @@ export async function postChatNonStream(req, res) {
       return;
     }
 
+    const aggregatedPromptTokens = pt;
+    const aggregatedCompletionTokens = ct * choiceCount;
+    const aggregatedUsage = {
+      prompt_tokens: aggregatedPromptTokens,
+      completion_tokens: aggregatedCompletionTokens,
+      total_tokens: aggregatedPromptTokens + aggregatedCompletionTokens,
+    };
+
+    const assistantMessageTemplate = buildAssistantMessage();
+    const choices = Array.from({ length: choiceCount }, (_, idx) => ({
+      index: idx,
+      message: structuredClone(assistantMessageTemplate),
+      finish_reason: canonicalReason,
+    }));
+
     const payload = {
       id: `chatcmpl-${nanoid()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model: requestedModel,
-      choices: [
-        {
-          index: 0,
-          message: assistantMessage,
-          finish_reason: canonicalReason,
-        },
-      ],
-      usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
+      choices,
+      usage: aggregatedUsage,
     };
 
     respondWithJson(res, statusCode, payload);

@@ -1,0 +1,146 @@
+{
+  "metadata": {
+    "captured_at": "2025-09-24T10:24:52.813Z",
+    "include_usage": true,
+    "codex_bin": "scripts/fake-codex-proto.js",
+    "commit": "3e5454766a0f720cde25caa71a17394f57814dea",
+    "scenario": "streaming-multi-choice"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "n": 2,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Stream multi-choice transcript"
+      }
+    ]
+  },
+  "stream": [
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          },
+          {
+            "index": 1,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "Hello f"
+            },
+            "finish_reason": null
+          },
+          {
+            "index": 1,
+            "delta": {
+              "content": "Hello f"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "rom fake-codex."
+            },
+            "finish_reason": null
+          },
+          {
+            "index": 1,
+            "delta": {
+              "content": "rom fake-codex."
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+          },
+          {
+            "index": 1,
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 12,
+          "total_tokens": 20,
+          "time_to_first_token": null,
+          "throughput_after_first_token": null,
+          "emission_trigger": "token_count"
+        }
+      }
+    },
+    {
+      "type": "done"
+    }
+  ]
+}
