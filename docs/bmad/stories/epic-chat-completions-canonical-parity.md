@@ -1,7 +1,7 @@
 ---
 title: Epic — Chat Completions Canonical Parity
-status: Proposed
-version: 0.1
+status: Done
+version: 1.0
 updated: 2025-09-24
 owner: Product (PM)
 labels: [api, compatibility, streaming, nonstream, errors]
@@ -32,14 +32,14 @@ Deliver the remaining protocol features (finish reasons, streaming tool calls, m
 # Stories
 
 1. **Story 4.1 — Finish-Reason Canonicalization (Done 2025-09-24):** Broaden finish reason mapping (non-stream + stream finalizer) to include `content_filter`, `tool_calls`, and legacy `function_call`, plus audit tests/docs.
-2. **Story 4.2 — Streaming Tool Call Blocks:** Stream OpenAI-style `tool_calls` deltas (id/type/json args chunks) and ensure non-stream payloads mirror final tool call aggregates.
-3. **Story 4.3 — Multi-Choice & Error Lexicon:** Implement `n>1` choice aggregation/streaming, update error `type` values to OpenAI canonical names, and cover ignored params (`logprobs`, `response_format`, `seed`) with deterministic handling.
+2. **Story 4.2 — Streaming Tool Call Blocks (Done 2025-09-24):** Stream OpenAI-style `tool_calls` deltas (id/type/json args chunks) and ensure non-stream payloads mirror final tool call aggregates.
+3. **Story 4.3 — Multi-Choice & Error Lexicon (Done 2025-09-24):** Implement `n>1` choice aggregation/streaming, update error `type` values to OpenAI canonical names, and cover ignored params (`logprobs`, `response_format`, `seed`) with deterministic handling.
 
 # Compatibility Requirements
 
-- [ ] Multi-choice responses preserve deterministic ordering and include per-choice usage when requested.
-- [ ] Streaming tool call frames follow OpenAI structure (`delta.tool_calls[{id,type,function:{name,arguments}}]`).
-- [ ] Error envelope maintains `{error:{message,type,param?,code?}}` shape while adopting canonical `type` strings (`authentication_error`, `permission_error`, etc.).
+- [x] Multi-choice responses preserve deterministic ordering and include per-choice usage when requested.
+- [x] Streaming tool call frames follow OpenAI structure (`delta.tool_calls[{id,type,function:{name,arguments}}]`).
+- [x] Error envelope maintains `{error:{message,type,param?,code?}}` shape while adopting canonical `type` strings (`authentication_error`, `permission_error`, etc.).
 
 # Risk Mitigation
 
@@ -49,32 +49,32 @@ Deliver the remaining protocol features (finish reasons, streaming tool calls, m
 
 # Definition of Done
 
-- [ ] Finish-reason matrix updated with tests and docs; non-stream + stream return canonical values.
-- [ ] Streaming tool_calls supported end-to-end with contract tests and documentation updates.
-- [ ] `n>1` choices fully supported (non-stream + stream) with deterministic coverage and usage accounting.
-- [ ] Error type lexicon aligned and validated via integration tests; docs reflect new mapping.
-- [ ] Docs and runbooks updated (e.g., `docs/openai-chat-completions-parity.md`, SDK guidance) and smoke tests cover new scenarios.
+- [x] Finish-reason matrix updated with tests and docs; non-stream + stream return canonical values.
+- [x] Streaming tool_calls supported end-to-end with contract tests and documentation updates.
+- [x] `n>1` choices fully supported (non-stream + stream) with deterministic coverage and usage accounting.
+- [x] Error type lexicon aligned and validated via integration tests; docs reflect new mapping.
+- [x] Docs and runbooks updated (e.g., `docs/openai-chat-completions-parity.md`, SDK guidance) and smoke tests cover new scenarios.
 
 # Scope Validation
 
-- [ ] Enhancement fits within three focused stories.
-- [ ] Architectural changes limited to existing handlers/services; no new subsystems required.
-- [ ] Integration complexity limited to SSE and error mapping surfaces.
-- [ ] Enhancement follows existing streaming/non-stream patterns.
+- [x] Enhancement fits within three focused stories.
+- [x] Architectural changes limited to existing handlers/services; no new subsystems required.
+- [x] Integration complexity limited to SSE and error mapping surfaces.
+- [x] Enhancement follows existing streaming/non-stream patterns.
 
 # Risk Assessment
 
-- [ ] Regression risk mitigated via expanded contract fixtures.
-- [ ] Rollback toggle documented and validated.
-- [ ] Testing plan covers new and existing functionality.
-- [ ] Team has clarity on tool call semantics and Codex CLI outputs.
+- [x] Regression risk mitigated via expanded contract fixtures.
+- [x] Rollback toggle documented and validated.
+- [x] Testing plan covers new and existing functionality.
+- [x] Team has clarity on tool call semantics and Codex CLI outputs.
 
 # Completeness Check
 
-- [ ] Epic goal is clear, measurable, and user-focused.
-- [ ] Stories cover remaining parity gaps without overlap.
-- [ ] Success criteria include SDK validation and contract tests.
-- [ ] Dependencies (handlers, tests, docs) are captured.
+- [x] Epic goal is clear, measurable, and user-focused.
+- [x] Stories cover remaining parity gaps without overlap.
+- [x] Success criteria include SDK validation and contract tests.
+- [x] Dependencies (handlers, tests, docs) are captured.
 
 # Story Manager Handoff
 
@@ -99,6 +99,7 @@ The epic should maintain system integrity while delivering canonical parity for 
 
 # Change Log
 
-| Date       | Version | Description                     | Author |
-| ---------- | ------- | ------------------------------- | ------ |
-| 2025-09-24 | 0.1     | Initial epic drafted (Proposed) | PM     |
+| Date       | Version | Description                            | Author |
+| ---------- | ------- | -------------------------------------- | ------ |
+| 2025-09-24 | 0.1     | Initial epic drafted (Proposed)        | PM     |
+| 2025-09-24 | 1.0     | Stories 4.1–4.3 completed; epic closed | PM     |
