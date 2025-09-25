@@ -30,7 +30,7 @@ services:
       - PROXY_TOOL_BLOCK_MAX=${PROXY_TOOL_BLOCK_MAX:-0}
       - PROXY_SUPPRESS_TAIL_AFTER_TOOLS=${PROXY_SUPPRESS_TAIL_AFTER_TOOLS:-}
       # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
-      - CODEX_BIN=${CODEX_BIN:-codex}
+      - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
     ports:
       - 127.0.0.1:${DEV_PORT:-18010}:11435
     volumes:
@@ -38,8 +38,8 @@ services:
       - ./.codev:/home/node/.codex
       # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
       - ./scripts:/app/scripts:ro
-      # When using CODEX_BIN=codex, provide the host CLI binary (optional)
-      - ~/.cargo/bin/codex:/usr/local/bin/codex:ro
+      # Mount host Codex CLI package (bin/ + vendor) read-only inside container
+      - ~/.local/share/npm/lib/node_modules/@openai/codex:/usr/local/lib/codex-cli:ro
     restart: unless-stopped
     networks:
       - traefik
