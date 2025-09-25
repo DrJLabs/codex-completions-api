@@ -29,6 +29,7 @@ services:
       - PROXY_STOP_AFTER_TOOLS_GRACE_MS=${PROXY_STOP_AFTER_TOOLS_GRACE_MS:-300}
       - PROXY_TOOL_BLOCK_MAX=${PROXY_TOOL_BLOCK_MAX:-0}
       - PROXY_SUPPRESS_TAIL_AFTER_TOOLS=${PROXY_SUPPRESS_TAIL_AFTER_TOOLS:-}
+      - PROXY_ENABLE_PARALLEL_TOOL_CALLS=${PROXY_ENABLE_PARALLEL_TOOL_CALLS:-}
       # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
       - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
     ports:
