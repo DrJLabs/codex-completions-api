@@ -76,7 +76,7 @@ Proxy‑level methods to improve alignment—without rewriting either side’s p
 
 3. Improve research depth/quality via structured web results and caching.
    - Wrap Codex Responses “web_search” tool at proxy: aggregate results to n-high‑quality citations (title, URL, snippet, access date), de‑duplicate domains, and feed compact summaries back to the model as follow‑up input chunks. Maintain a per‑session cache keyed by query.
-   - Keep Codex’s `parallel_tool_calls=false` (default) for determinism; proxy can still serialize multiple searches.
+   - Keep Codex’s `parallel_tool_calls=false` (default) for determinism; proxy can still serialize multiple searches. When experimenting locally, set `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` (dev-only) so the proxy forwards `--config parallel_tool_calls=true` to the shim.
 
 4. Strengthen answer checking without prompt edits.
    - Post‑turn validation hooks at the proxy (dev only):
