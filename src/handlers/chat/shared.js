@@ -306,14 +306,11 @@ export function logFinishReasonTelemetry({
 export function validateOptionalChatParams(body = {}) {
   const { logprobs, top_logprobs, response_format, seed } = body;
 
-  if (logprobs !== undefined && logprobs !== null) {
-    const numeric = Number(logprobs);
-    if (!Number.isFinite(numeric) || numeric > 0) {
-      return {
-        ok: false,
-        error: invalidRequestBody("logprobs", "logprobs is not supported for this model"),
-      };
-    }
+  if (logprobs) {
+    return {
+      ok: false,
+      error: invalidRequestBody("logprobs", "logprobs is not supported for this model"),
+    };
   }
 
   if (top_logprobs !== undefined && top_logprobs !== null) {
