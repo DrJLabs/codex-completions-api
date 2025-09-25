@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /* eslint-disable security/detect-object-injection */
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
+import { execFile } from "node:child_process";
 import fetch from "node-fetch";
-import pidusage from "pidusage";
 import { startServer, stopServer } from "../../tests/integration/helpers.js";
+
+const execFileAsync = promisify(execFile);
 
 const ITERATIONS = Number(process.env.BENCH_ITERATIONS || 30);
 const CHOICE_COUNTS = (process.env.BENCH_COUNTS || "1,2,5")
@@ -27,10 +30,13 @@ function computeStats(samples) {
 
 async function captureProcessSnapshot(pid) {
   try {
-    const { memory, cpu } = await pidusage(pid);
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "rss=,%cpu="]);
+    const [rssStr = "", cpuStr = ""] = stdout.trim().split(/\s+/);
+    const rssKb = Number.parseFloat(rssStr);
+    const cpuPercent = Number.parseFloat(cpuStr);
     return {
-      rss_mb: Number.isFinite(memory) ? memory / (1024 * 1024) : null,
-      cpu_percent: Number.isFinite(cpu) ? cpu : null,
+      rss_mb: Number.isFinite(rssKb) ? rssKb / 1024 : null,
+      cpu_percent: Number.isFinite(cpuPercent) ? cpuPercent : null,
     };
   } catch {
     return {
