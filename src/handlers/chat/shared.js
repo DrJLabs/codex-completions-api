@@ -6,6 +6,7 @@ export function buildProtoArgs({
   FORCE_PROVIDER,
   reasoningEffort,
   allowEffort,
+  enableParallelTools = false,
 }) {
   const args = [
     "proto",
@@ -23,6 +24,7 @@ export function buildProtoArgs({
     `model="${effectiveModel}"`,
   ];
   if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
+  if (enableParallelTools) args.push("--config", "parallel_tool_calls=true");
   if (allowEffort?.has?.(reasoningEffort)) {
     args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
     args.push("--config", `reasoning.effort="${reasoningEffort}"`);
