@@ -460,9 +460,10 @@ export async function postChatNonStream(req, res) {
       total_tokens: aggregatedPromptTokens + aggregatedCompletionTokens,
     };
 
+    const assistantMessageTemplate = buildAssistantMessage();
     const choices = Array.from({ length: choiceCount }, (_, idx) => ({
       index: idx,
-      message: buildAssistantMessage(),
+      message: structuredClone(assistantMessageTemplate),
       finish_reason: canonicalReason,
     }));
 
