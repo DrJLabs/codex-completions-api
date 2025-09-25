@@ -60,6 +60,7 @@ const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
+const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
@@ -166,6 +167,7 @@ export async function postChatStream(req, res) {
     FORCE_PROVIDER,
     reasoningEffort,
     allowEffort,
+    enableParallelTools: ENABLE_PARALLEL_TOOL_CALLS,
   });
 
   const prompt = joinMessages(messages);
@@ -962,6 +964,7 @@ export async function postCompletionsStream(req, res) {
     FORCE_PROVIDER,
     reasoningEffort,
     allowEffort,
+    enableParallelTools: ENABLE_PARALLEL_TOOL_CALLS,
   });
 
   const messages = [{ role: "user", content: prompt }];
