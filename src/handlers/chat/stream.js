@@ -36,6 +36,7 @@ import {
   extractFinishReasonFromMessage,
   logFinishReasonTelemetry,
   coerceAssistantContent,
+  validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
@@ -58,6 +59,27 @@ const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
 const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
+const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
+
+const buildInvalidChoiceError = (value) =>
+  invalidRequestBody(
+    "n",
+    `n must be an integer between 1 and ${MAX_CHAT_CHOICES}; received ${value}`
+  );
+
+const normalizeChoiceCount = (raw) => {
+  if (raw === undefined || raw === null) return { ok: true, value: 1 };
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    return { ok: true, value: raw };
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed)) {
+      return { ok: true, value: parsed };
+    }
+  }
+  return { ok: false, error: buildInvalidChoiceError(raw) };
+};
 
 // POST /v1/chat/completions with stream=true
 export async function postChatStream(req, res) {
@@ -89,11 +111,25 @@ export async function postChatStream(req, res) {
     });
   }
 
-  // n>1 not supported in this epic scope
-  const n = Number(body.n || 0);
-  if (n > 1) {
+  const {
+    ok: choiceOk,
+    value: requestedChoiceCount = 1,
+    error: choiceError,
+  } = normalizeChoiceCount(body.n);
+  if (!choiceOk) {
     applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("n", "n>1 is unsupported"));
+    return res.status(400).json(choiceError);
+  }
+  if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
+    applyCors(null, res);
+    return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
+  }
+  const choiceCount = requestedChoiceCount;
+
+  const optionalValidation = validateOptionalChatParams(body);
+  if (!optionalValidation.ok) {
+    applyCors(null, res);
+    return res.status(400).json(optionalValidation.error);
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
@@ -243,13 +279,21 @@ export async function postChatStream(req, res) {
       ...payload,
     });
   };
+  const buildChoiceFrames = (builder) => {
+    if (choiceCount === 1) return [builder(0)];
+    return Array.from({ length: choiceCount }, (_value, idx) => builder(idx));
+  };
   const sendRoleOnce = (() => {
     let sent = false;
     return () => {
       if (sent) return;
       sent = true;
       sendChunk({
-        choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+        choices: buildChoiceFrames((index) => ({
+          index,
+          delta: { role: "assistant" },
+          finish_reason: null,
+        })),
         usage: null,
       });
     };
@@ -303,6 +347,14 @@ export async function postChatStream(req, res) {
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
   const toolCallAggregator = createToolCallAggregator();
+  const cloneToolCallDelta = (delta) => {
+    if (!delta || typeof delta !== "object") return {};
+    const cloned = { ...delta };
+    if (delta.function && typeof delta.function === "object") {
+      cloned.function = { ...delta.function };
+    }
+    return cloned;
+  };
   let finishSent = false;
   let finalized = false;
   let hasToolCallsFlag = false;
@@ -407,7 +459,11 @@ export async function postChatStream(req, res) {
     const { reason } = resolveFinishReason();
     finishSent = true;
     sendChunk({
-      choices: [{ index: 0, delta: {}, finish_reason: reason }],
+      choices: buildChoiceFrames((index) => ({
+        index,
+        delta: {},
+        finish_reason: reason,
+      })),
       usage: null,
     });
     return reason;
@@ -465,7 +521,11 @@ export async function postChatStream(req, res) {
     const segment = emitted.slice(forwardedUpTo, allowUntil);
     if (segment) {
       sendChunk({
-        choices: [{ index: 0, delta: { content: segment }, finish_reason: null }],
+        choices: buildChoiceFrames((index) => ({
+          index,
+          delta: { content: segment },
+          finish_reason: null,
+        })),
         usage: null,
       });
       sentAny = true;
@@ -476,14 +536,16 @@ export async function postChatStream(req, res) {
 
   const emitUsageChunk = (trigger) => {
     if (usageState.emitted || !includeUsage) return;
-    const { promptTokens, completionTokens, totalTokens } = resolvedCounts();
+    const { promptTokens, completionTokens } = resolvedCounts();
+    const aggregatedCompletion = completionTokens * choiceCount;
+    const aggregatedTotal = promptTokens + aggregatedCompletion;
     usageState.emitted = true;
     sendChunk({
       choices: [],
       usage: {
         prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
+        completion_tokens: aggregatedCompletion,
+        total_tokens: aggregatedTotal,
         // Story 2.6 placeholders remain
         time_to_first_token: null,
         throughput_after_first_token: null,
@@ -494,7 +556,10 @@ export async function postChatStream(req, res) {
 
   const logUsage = (trigger) => {
     if (usageState.logged) return;
-    const { promptTokens, completionTokens, totalTokens, estimatedCompletion } = resolvedCounts();
+    const { promptTokens, completionTokens, estimatedCompletion } = resolvedCounts();
+    const aggregatedCompletion = completionTokens * choiceCount;
+    const aggregatedTotal = promptTokens + aggregatedCompletion;
+    const aggregatedEstCompletion = estimatedCompletion * choiceCount;
     const emittedAtMs = Date.now() - started;
     const resolved = finalFinishReason
       ? { reason: finalFinishReason, source: finalFinishSource }
@@ -509,11 +574,11 @@ export async function postChatStream(req, res) {
         effective_model: effectiveModel,
         stream: true,
         prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
+        completion_tokens: aggregatedCompletion,
+        total_tokens: aggregatedTotal,
         prompt_tokens_est: promptTokensEst,
-        completion_tokens_est: estimatedCompletion,
-        total_tokens_est: promptTokensEst + estimatedCompletion,
+        completion_tokens_est: aggregatedEstCompletion,
+        total_tokens_est: promptTokensEst + aggregatedEstCompletion,
         duration_ms: emittedAtMs,
         status: 200,
         user_agent: req.headers["user-agent"] || "",
@@ -528,6 +593,7 @@ export async function postChatStream(req, res) {
         has_function_call: hasFunctionCall,
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
+        choice_count: choiceCount,
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -571,6 +637,7 @@ export async function postChatStream(req, res) {
         ? finalFinishUnknown
         : Array.from(unknownFinishReasons),
       trail: finalFinishTrail,
+      choiceCount,
     });
     try {
       finishSSE();
@@ -639,7 +706,11 @@ export async function postChatStream(req, res) {
                   });
                 }
                 sendChunk({
-                  choices: [{ index: 0, delta: { tool_calls: [toolDelta] }, finish_reason: null }],
+                  choices: buildChoiceFrames((index) => ({
+                    index,
+                    delta: { tool_calls: [cloneToolCallDelta(toolDelta)] },
+                    finish_reason: null,
+                  })),
                   usage: null,
                 });
               }
@@ -679,7 +750,11 @@ export async function postChatStream(req, res) {
                   });
                 }
                 sendChunk({
-                  choices: [{ index: 0, delta: { tool_calls: [toolDelta] }, finish_reason: null }],
+                  choices: buildChoiceFrames((index) => ({
+                    index,
+                    delta: { tool_calls: [cloneToolCallDelta(toolDelta)] },
+                    finish_reason: null,
+                  })),
                   usage: null,
                 });
               }
@@ -777,7 +852,11 @@ export async function postChatStream(req, res) {
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
       sendChunk({
-        choices: [{ index: 0, delta: { content }, finish_reason: null }],
+        choices: buildChoiceFrames((index) => ({
+          index,
+          delta: { content },
+          finish_reason: null,
+        })),
         usage: null,
       });
       sentAny = true;

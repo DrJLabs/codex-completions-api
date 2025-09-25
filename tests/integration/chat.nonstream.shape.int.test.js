@@ -41,6 +41,33 @@ test("non-stream response uses stop finish_reason on normal completion and inclu
   expect(typeof j?.usage?.total_tokens).toBe("number");
 });
 
+test("non-stream returns multiple choices when n>1 with aggregated usage", async () => {
+  const choiceCount = 3;
+  const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: false,
+      n: choiceCount,
+      messages: [{ role: "user", content: "hello multi" }],
+    }),
+  });
+  expect(r.ok).toBeTruthy();
+  const j = await r.json();
+  expect(Array.isArray(j?.choices)).toBe(true);
+  expect(j.choices).toHaveLength(choiceCount);
+  const indexes = j.choices.map((choice) => choice.index);
+  expect(new Set(indexes)).toEqual(new Set([0, 1, 2]));
+  const contents = j.choices.map((choice) => choice?.message?.content ?? null);
+  expect(new Set(contents).size).toBeLessThanOrEqual(choiceCount);
+  const usage = j?.usage;
+  expect(typeof usage?.prompt_tokens).toBe("number");
+  expect(typeof usage?.completion_tokens).toBe("number");
+  expect(usage.total_tokens).toBe(usage.prompt_tokens + usage.completion_tokens);
+  expect(usage.completion_tokens % choiceCount).toBe(0);
+});
+
 test("non-stream canonicalizes tool_calls finish_reason when tool payload is returned", async () => {
   const ctx = await startServer({ FAKE_CODEX_MODE: "tool_call" });
   try {

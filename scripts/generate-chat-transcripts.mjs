@@ -139,6 +139,26 @@ async function main() {
       model: "codex-5",
       stream: true,
       stream_options: { include_usage: true },
+      n: 2,
+      messages: [{ role: "user", content: "Stream multi-choice transcript" }],
+    },
+    filename: "streaming-multi-choice.json",
+    codexBin: defaultCodex,
+    commitSha,
+    includeUsage: true,
+    stream: true,
+    processResponse: async (res) => {
+      const raw = await res.text();
+      const chunks = parseSSE(raw);
+      return { stream: sanitizeStreamTranscript(chunks) };
+    },
+  });
+
+  await captureChatScenario({
+    requestBody: {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
       messages: [{ role: "user", content: "Stream transcript (length)" }],
     },
     filename: "streaming-usage-length.json",

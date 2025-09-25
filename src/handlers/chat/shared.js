@@ -1,3 +1,5 @@
+import { invalidRequestBody } from "../../lib/errors.js";
+
 export function buildProtoArgs({
   SANDBOX_MODE,
   effectiveModel,
@@ -281,6 +283,7 @@ export function logFinishReasonTelemetry({
   unknownReasons = [],
   hasToolCalls = false,
   hasFunctionCall = false,
+  choiceCount,
 }) {
   try {
     const payload = {
@@ -291,8 +294,59 @@ export function logFinishReasonTelemetry({
       has_tool_calls: !!hasToolCalls,
       has_function_call: !!hasFunctionCall,
     };
+    if (Number.isInteger(choiceCount) && choiceCount > 0) {
+      payload.choice_count = choiceCount;
+    }
     if (unknownReasons.length) payload.unknown = unknownReasons;
     if (trail.length) payload.trail = trail;
     console.info("[proxy][finish_reason]", JSON.stringify(payload));
   } catch {}
+}
+
+export function validateOptionalChatParams(body = {}) {
+  const { logprobs, top_logprobs, response_format, seed } = body;
+
+  if (logprobs) {
+    return {
+      ok: false,
+      error: invalidRequestBody("logprobs", "logprobs is not supported for this model"),
+    };
+  }
+
+  if (top_logprobs !== undefined && top_logprobs !== null) {
+    return {
+      ok: false,
+      error: invalidRequestBody("top_logprobs", "top_logprobs is not supported"),
+    };
+  }
+
+  if (response_format !== undefined && response_format !== null) {
+    const makeError = () =>
+      invalidRequestBody("response_format", 'response_format.type must be "text" when provided');
+
+    if (typeof response_format === "string") {
+      if (response_format.toLowerCase() !== "text") {
+        return { ok: false, error: makeError() };
+      }
+    } else if (typeof response_format === "object") {
+      const type = String(response_format.type || "text").toLowerCase();
+      if (type !== "text") {
+        return { ok: false, error: makeError() };
+      }
+    } else {
+      return { ok: false, error: makeError() };
+    }
+  }
+
+  if (seed !== undefined && seed !== null) {
+    const seedValue = Number(seed);
+    if (!Number.isInteger(seedValue)) {
+      return {
+        ok: false,
+        error: invalidRequestBody("seed", "seed must be an integer"),
+      };
+    }
+  }
+
+  return { ok: true };
 }
