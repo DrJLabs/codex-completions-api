@@ -14,6 +14,7 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
     -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d '{"model":"gpt-5","stream":false,"messages":[{"role":"user","content":"ping"}]}' | jq .
   ```
+- Codex CLI mount sanity: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli && docker compose exec codex-api env | grep CODEX_BIN`
 
 ## Common Incidents (Symptoms → Causes → Checks → Fixes)
 
@@ -66,6 +67,13 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 - Checks: review env; confirm edge RL policy.
 - Fixes: tune `PROXY_RATE_LIMIT_*`; prefer enforcing RL at Traefik/Cloudflare.
 
+8. Codex CLI mismatch / missing vendor assets
+
+- Symptoms: spawn errors referencing missing scripts or vendor modules; sudden behavior drift across environments.
+- Causes: container not mounting `/usr/local/lib/codex-cli` or using an outdated local CLI binary.
+- Checks: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`; confirm `CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js` at runtime; inspect host path `~/.local/share/npm/lib/node_modules/@openai/codex`.
+- Fixes: reinstall/update the host `@openai/codex` package; ensure compose files mount it read-only; restart the stack after syncing.
+
 ## Deploy, Restart, Rollback
 
 Rebuild + restart (prod host):
@@ -91,10 +99,11 @@ DOMAIN=${DOMAIN:?set} KEY=${KEY:?set} npm run smoke:prod
   - Fields: `ts, level, req_id, method, route, status, dur_ms, ua, auth, kind`
   - Example filter (last 200 lines): `tail -200 server.log | jq -r 'select(.kind=="access") | [.status,.dur_ms,.route] | @tsv'`
 - Dev prompt/proto events when enabled: look for `[dev][prompt]` and `[proxy] spawning (proto)` lines.
+- Streaming benchmarks: `scripts/benchmarks/stream-multi-choice.mjs` spawns the proxy and samples CPU/RSS via `ps`; run locally when comparing CLI builds or parallel-tool experiments.
 
 ## Environment Profiles (summary)
 
-- Dev: permissive CORS, advertise `codev-5*`, test endpoints allowed, low concurrency.
-- Prod: optionally restrict CORS at edge; advertise `codex-5*`; enable models gating; edge RL; set SSE concurrency and OS limits appropriately.
+- Dev: permissive CORS, advertise `codev-5*`, test endpoints allowed, low concurrency, optional `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` for Codex parallel tool experiments.
+- Prod: optionally restrict CORS at edge; advertise `codex-5*`; enable models gating; edge RL; set SSE concurrency and OS limits appropriately; keep `PROXY_ENABLE_PARALLEL_TOOL_CALLS` unset/false for deterministic sequencing.
 
 See `docs/bmad/prd.md` for a full Dev vs Prod table, KPIs/SLIs, and references.

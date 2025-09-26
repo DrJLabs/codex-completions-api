@@ -11,6 +11,8 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - ForwardAuth target in PROD must remain `http://127.0.0.1:18080/verify` (host loopback). Do not switch to container alias unless Traefik itself runs inside the same Docker network (not our prod).
 - Keep `PROXY_SANDBOX_MODE=danger-full-access` and mount a writable `.codex-api/` in prod.
 - Prefer environment’s advertised model IDs in examples: DEV `codev-5*`; PROD `codex-5*` (both accepted).
+- Mount the Codex CLI package (`~/.local/share/npm/lib/node_modules/@openai/codex`) read-only into `/usr/local/lib/codex-cli` so both stacks run the same CLI build; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`.
+- Leave `PROXY_ENABLE_PARALLEL_TOOL_CALLS` unset in prod; enable only in dev when validating parallel tool experiments.
 
 ## TL;DR (commands)
 
@@ -20,6 +22,7 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - `npx playwright install --with-deps chromium`
 - `npm run verify:all`
 - `npm run dev:stack:up` → `npm run smoke:dev`
+- Inspect the dev container (`docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`) to confirm the CLI package mount and ensure `CODEX_BIN` resolves to that path.
 
 2. Prepare production update (dry-run checks)
 
@@ -44,6 +47,7 @@ Audience: engineers and automation. Assumes Docker, Traefik host service, and Cl
 - Manual path:
   - `docker compose up -d --build --force-recreate`
   - `npm run smoke:prod` (set `DOMAIN` and optionally `KEY`)
+  - `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli` (verify CLI package mount) and double-check `env | grep PROXY_ENABLE_PARALLEL_TOOL_CALLS` remains unset/false.
 
 5. Post-release data backup
 
@@ -226,6 +230,8 @@ npx vitest run tests/integration/chat.nonstream.length.int.test.js --reporter=de
 - `.codex-api/` is mounted writable; sandbox/workdir env defaults remain set:
   - `PROXY_SANDBOX_MODE=danger-full-access`
   - `PROXY_CODEX_WORKDIR=/tmp/codex-work`
+- `/usr/local/lib/codex-cli` is mounted read-only from `~/.local/share/npm/lib/node_modules/@openai/codex`; `CODEX_BIN` resolves to `/usr/local/lib/codex-cli/bin/codex.js` in both environments.
+- `PROXY_ENABLE_PARALLEL_TOOL_CALLS` stays unset/false in prod; dev may toggle it on for experiments.
 
 ## Artifacts
 
