@@ -14,7 +14,7 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
     -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d '{"model":"gpt-5","stream":false,"messages":[{"role":"user","content":"ping"}]}' | jq .
   ```
-- Codex CLI mount sanity: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli && docker compose exec codex-api env | grep CODEX_BIN`
+- Codex CLI sanity: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli && docker compose exec codex-api env | grep CODEX_BIN`
 
 ## Common Incidents (Symptoms → Causes → Checks → Fixes)
 
@@ -70,9 +70,9 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 8. Codex CLI mismatch / missing vendor assets
 
 - Symptoms: spawn errors referencing missing scripts or vendor modules; sudden behavior drift across environments.
-- Causes: container not mounting `/usr/local/lib/codex-cli` or using an outdated local CLI binary.
-- Checks: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`; confirm `CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js` at runtime; inspect host path `./node_modules/@openai/codex`.
-- Fixes: reinstall/update the host `@openai/codex` package; ensure compose files mount it read-only; restart the stack after syncing.
+- Causes: baked CLI missing from the image or an outdated local override.
+- Checks: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`; confirm `CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js` at runtime; inspect custom overrides if `CODEX_BIN` points elsewhere.
+- Fixes: rebuild the image (ensuring `npm ci --omit=dev` installs `@openai/codex`), or swap to a new CLI build via `CODEX_BIN` override; restart the stack after syncing.
 
 ## Deploy, Restart, Rollback
 

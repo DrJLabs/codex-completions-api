@@ -67,7 +67,7 @@ This document summarizes improvements inspired by LiteLLMâ€™s proxy, Codex CLIâ€
 
 ## Configuration Summary
 
-- `CODEX_BIN`: defaults to `/usr/local/lib/codex-cli/bin/codex.js` (mounted package volume).
+- `CODEX_BIN`: defaults to `/usr/local/lib/codex-cli/bin/codex.js` (baked into the Docker image).
 - `PROXY_ENABLE_PARALLEL_TOOL_CALLS`: dev-only toggle forwarding `parallel_tool_calls=true` to Codex CLI.
 - `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`: govern post-tool streaming behavior.
 - `PROXY_SSE_MAX_CONCURRENCY`: per-process streaming guard; adjust alongside OS file descriptor limits.
