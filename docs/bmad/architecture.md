@@ -34,7 +34,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 - Traefik ForwardAuth must continue to target `http://127.0.0.1:18080/verify`; do not switch to container hostname unless Traefik is containerized.
 - `.codex-api/` must remain writable in prod; enforcing read-only breaks Codex session persistence and streaming state.
-- Containers must mount the Codex CLI package (`./node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) so CLI binaries and vendor assets remain in sync with host updates; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`.
+- Containers bake the Codex CLI (`@openai/codex`) into the image at build time (`/usr/local/lib/codex-cli`); `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Dev stacks can still override `CODEX_BIN` to point at `scripts/fake-codex-proto.js` when shimming the provider.
 - `PROXY_SSE_MAX_CONCURRENCY` governs active SSE streams per replica; ensure `ulimit -n` and resource sizing satisfy the concurrency envelope.
 - Dev edge relies on `PROXY_DEV_TRUNCATE_AFTER_MS` safeguards; maintain default zero in prod to avoid truncating real traffic.
 
@@ -42,7 +42,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 | Change                                   | Date       | Version | Description                                                                                                                                | Author            |
 | ---------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| Parallel tools + CLI mount alignment     | 2025-09-26 | v2.2    | Added dev parallel tool passthrough details, codex CLI package mount expectations, updated testing/observability references, refreshed ops | Architect (codex) |
+| Parallel tools + CLI packaging           | 2025-09-26 | v2.2    | Documented dev parallel tool passthrough, baked Codex CLI into the image, refreshed testing/observability references, updated ops guidance | Architect (codex) |
 | Architecture refresh post-stability epic | 2025-09-24 | v2.1    | Documented usage endpoints, concurrency guard service, and updated module maps after Sep 2025 stabilization.                               | Architect (codex) |
 | Server modularization doc update         | 2025-09-13 | v2.0    | Captured router/handler/service separation introduced during modularization refactor.                                                      | Architect (codex) |
 
@@ -79,15 +79,15 @@ Recent work centered on brownfield stabilization: enforcing streaming parity, ad
 
 ## Existing Technology Stack
 
-| Category         | Current Technology                      | Version          | Usage in Enhancement                                                         | Notes                                                                                                     |
-| ---------------- | --------------------------------------- | ---------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Runtime          | Node.js                                 | ≥ 22.x           | Hosts Express server and orchestrates Codex child processes.                 | ESM modules only; supports child process flags for parallel tool experiments.                             |
-| Web Framework    | Express                                 | 4.19.x           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                                |
-| Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Mounted from `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
-| Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                             |
-| Testing          | Vitest, Playwright                      | 3.2.4 / 1.55.0   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                           |
-| Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM         | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                                                                                  |
-| Containerization | Docker Compose                          | v2               | Prod/dev stacks, attaches to external `traefik` network.                     | Compose file is source of truth for routing labels.                                                       |
+| Category         | Current Technology                      | Version          | Usage in Enhancement                                                         | Notes                                                                                                   |
+| ---------------- | --------------------------------------- | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Runtime          | Node.js                                 | ≥ 22.x           | Hosts Express server and orchestrates Codex child processes.                 | ESM modules only; supports child process flags for parallel tool experiments.                           |
+| Web Framework    | Express                                 | 4.19.x           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
+| Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
+| Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                           |
+| Testing          | Vitest, Playwright                      | 3.2.4 / 1.55.0   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
+| Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM         | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                                                                                |
+| Containerization | Docker Compose                          | v2               | Prod/dev stacks, attaches to external `traefik` network.                     | Compose file is source of truth for routing labels.                                                     |
 
 ## New Technology Additions
 
