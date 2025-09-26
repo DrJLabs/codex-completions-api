@@ -20,7 +20,7 @@ updated: 2025-09-26
 
 # External Dependency
 
-- Codex CLI package (`@openai/codex`) mounted at `/usr/local/lib/codex-cli` inside containers; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Home/state in `CODEX_HOME` (dev: `.codev/`, prod: `.codex-api/`), workdir in `PROXY_CODEX_WORKDIR`.
+- Codex CLI package (`@openai/codex`) is baked into `/usr/local/lib/codex-cli` during image build; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Home/state in `CODEX_HOME` (dev: `.codev/`, prod: `.codex-api/`), workdir in `PROXY_CODEX_WORKDIR`.
 - Dev can optionally install ad-hoc Codex CLI builds under `~/.codex-dev/bin` for local experiments; production always uses the mounted package volume.
 
 # Authentication & Security
@@ -82,6 +82,6 @@ updated: 2025-09-26
 # Operational Notes
 
 - `.codex-api/` MUST be writable in production; do not mount read‑only.
-- Mount `/usr/local/lib/codex-cli` read-only from the project (`./node_modules/@openai/codex`) into both dev and prod stacks so Codex CLI binaries and vendor assets remain aligned.
+- Docker images bake `@openai/codex` into `/usr/local/lib/codex-cli`; runtime no longer depends on host mounts. Dev overrides can still bind a local CLI if `CODEX_BIN` is pointed at an alternate path.
 - Long‑lived SSE: budget file descriptors and timeouts accordingly; consider replica scaling and `PROXY_SSE_MAX_CONCURRENCY` for backpressure.
 - Enable `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` only in dev stacks when experimenting with Codex parallel tool execution; production leaves it unset/false to keep serialized tooling.
