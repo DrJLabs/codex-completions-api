@@ -82,6 +82,6 @@ updated: 2025-09-26
 # Operational Notes
 
 - `.codex-api/` MUST be writable in production; do not mount read‑only.
-- Mount `/usr/local/lib/codex-cli` read-only from host (`~/.local/share/npm/lib/node_modules/@openai/codex`) into both dev and prod stacks so Codex CLI binaries and vendor assets remain aligned.
+- Mount `/usr/local/lib/codex-cli` read-only from the project (`./node_modules/@openai/codex`) into both dev and prod stacks so Codex CLI binaries and vendor assets remain aligned.
 - Long‑lived SSE: budget file descriptors and timeouts accordingly; consider replica scaling and `PROXY_SSE_MAX_CONCURRENCY` for backpressure.
 - Enable `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` only in dev stacks when experimenting with Codex parallel tool execution; production leaves it unset/false to keep serialized tooling.

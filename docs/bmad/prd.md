@@ -89,7 +89,7 @@ Single repository containing the Node/Express proxy, documentation, tests, and o
 
 ## Service Architecture
 
-Monolithic Express server that shells out to Codex CLI (`codex proto`) per request, normalizes results, and runs behind Traefik + Cloudflare. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and mount the host Codex CLI package (`~/.local/share/npm/lib/node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) to keep binaries/vendor assets aligned.
+Monolithic Express server that shells out to Codex CLI (`codex proto`) per request, normalizes results, and runs behind Traefik + Cloudflare. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and mount the project Codex CLI package (`./node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) to keep binaries/vendor assets aligned.
 
 ## Testing Requirements
 

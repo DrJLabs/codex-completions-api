@@ -54,13 +54,13 @@
     "backup:data": "bash scripts/codex-data-backup.sh --mount-check --prune"
   },
   "dependencies": {
-    "@openai/codex": "^0.41.0",
     "express": "^4.19.2",
     "nanoid": "^5.0.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.7.0",
+    "@openai/codex": "^0.41.0",
     "@playwright/test": "^1.55.0",
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.7.0",
@@ -75,7 +75,6 @@
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
     "node-fetch": "^3.3.2",
-    "pidusage": "^4.0.1",
     "prettier": "^3.3.3",
     "vitest": "^3.2.4"
   },
