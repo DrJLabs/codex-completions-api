@@ -40,7 +40,7 @@ services:
       # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
       - ./scripts:/app/scripts:ro
       # Mount host Codex CLI package (bin/ + vendor) read-only inside container
-      - ~/.local/share/npm/lib/node_modules/@openai/codex:/usr/local/lib/codex-cli:ro
+      - ./node_modules/@openai/codex:/usr/local/lib/codex-cli:ro
     restart: unless-stopped
     networks:
       - traefik

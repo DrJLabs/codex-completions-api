@@ -1,8 +1,8 @@
 ---
 title: Codex Completions API — Product Requirements (PRD)
 status: active
-version: v1.1
-updated: 2025-09-24
+version: v1.2
+updated: 2025-09-26
 ---
 
 # Goals and Background Context
@@ -15,14 +15,15 @@ updated: 2025-09-24
 
 ## Background Context
 
-The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-24.
+The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-26.
 
 ## Change Log
 
-| Date       | Version | Description                                                                   | Author     |
-| ---------- | ------- | ----------------------------------------------------------------------------- | ---------- |
-| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update | PM (codex) |
-| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                       | PM (codex) |
+| Date       | Version | Description                                                                                | Author     |
+| ---------- | ------- | ------------------------------------------------------------------------------------------ | ---------- |
+| 2025-09-26 | v1.2    | Added dev parallel tool call passthrough, codex CLI mount guidance, and test/tooling notes | PO (codex) |
+| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update              | PM (codex) |
+| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                                    | PM (codex) |
 
 # Users & Use Cases
 
@@ -41,7 +42,7 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 5. **FR5:** Provide `POST /v1/completions` shim that maps prompt-based payloads onto the chat handlers, preserving auth, streaming options, and envelope parity.
 6. **FR6:** Surface usage telemetry via `GET /v1/usage` (aggregated metrics) and `GET /v1/usage/raw` (bounded NDJSON events) for internal QA/ops workflows.
 7. **FR7:** Offer optional in-app token-bucket rate limiting (`PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`) that defends POST chat/completions endpoints in addition to edge rate limiting.
-8. **FR8:** Enforce streaming concurrency guard and tool-response shaping toggles through env vars (`PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_TOOL_BLOCK_MAX`).
+8. **FR8:** Enforce streaming concurrency guard and tool-response shaping toggles through env vars (`PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS` for dev-only passthrough).
 9. **FR9:** When `PROXY_TEST_ENDPOINTS=true`, expose `GET /__test/conc` and `POST /__test/conc/release` to inspect/release SSE guard state for CI debugging only.
 
 ## Non-Functional Requirements
@@ -56,26 +57,52 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 
 # User Interface Design Goals
 
-Not applicable — service is API-only with no end-user UI. Surface consumer-facing behavior through OpenAI-compatible API responses and docs.
+## Overall UX Vision
+
+Not applicable — API-only project; documentation and contract tests are the primary consumer touchpoints.
+
+## Key Interaction Paradigms
+
+No end-user interface; integrations occur via OpenAI-compatible HTTP requests and streaming SSE responses.
+
+## Core Screens and Views
+
+None. All value is delivered through `/v1/*` API routes and automated runbooks.
+
+## Accessibility: None (API-only surface)
+
+Accessibility concerns are deferred to downstream clients that render Codex responses.
+
+## Branding
+
+Out of scope. Branding guidance lives in client SDKs and documentation portals, not the proxy service.
+
+## Target Device and Platforms: API-only
+
+Service targets any platform capable of making HTTPS requests; no direct UI clients exist.
 
 # Technical Assumptions & Constraints
 
-## Platform & Runtime
+## Repository Structure: Monorepo
+
+Single repository containing the Node/Express proxy, documentation, tests, and operational scripts; no sub-repos or secondary services.
+
+## Service Architecture
+
+Monolithic Express server that shells out to Codex CLI (`codex proto`) per request, normalizes results, and runs behind Traefik + Cloudflare. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and mount the project Codex CLI package (`./node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) to keep binaries/vendor assets aligned.
+
+## Testing Requirements
+
+Maintain the full testing pyramid: unit (Vitest), integration (Express handlers with deterministic shim), and Playwright E2E (streaming contract). CI and agents run `npm run verify:all`; targeted edits still honor policy (`npm run test:integration`, `npm test`).
+
+## Additional Technical Assumptions and Requests
 
 - Node.js ≥ 22.x, Express 4.19.x, `nanoid` for IDs; ESM modules only.
-- The proxy shells out to Codex CLI (`codex proto`) using `src/services/codex-runner.js`, respecting `CODEX_BIN`, `CODEX_HOME`, and sandbox/workdir envs.
-- Runs behind Traefik + Cloudflare; compose/service labels in `docker-compose.yml` are authoritative for prod.
-
-## External Integrations
-
-- Traefik ForwardAuth invokes `auth/server.mjs`; do not change the verify URL unless Traefik runs inside the same Docker network.
-- Edge smoke tests rely on `.env`/`.env.dev` keys and domains (`DOMAIN`, `DEV_DOMAIN`); maintain them for `scripts/prod-smoke.sh` and `scripts/dev-smoke.sh`.
-
-## Development & QA Practices
-
-- Default verification path: `npm run verify:all` (format → lint → unit → integration → Playwright E2E).
-- Contract coverage uses Playwright golden transcripts plus Vitest integration tests; Keploy snapshots are optional and currently paused per Story 3.6.
-- Follow BMAD branching (`feat/*`, `fix/*`, `chore/*`) and commit style (Conventional Commits) before PRs.
+- `src/services/codex-runner.js` respects `CODEX_HOME`, sandbox/workdir envs, and dev overrides such as `PROXY_ENABLE_PARALLEL_TOOL_CALLS`.
+- Traefik ForwardAuth hits `http://127.0.0.1:18080/verify`; forwarding URL must not change unless Traefik shares the container network.
+- Edge smoke scripts depend on `.env`/`.env.dev` (`KEY`/`PROXY_API_KEY`, `DOMAIN`/`DEV_DOMAIN`) to exercise real endpoints.
+- Contract coverage uses Playwright golden transcripts plus Vitest checks; Keploy snapshots remain optional per Story 3.6.
+- Branching follows BMAD conventions (`feat/*`, `fix/*`, `chore/*`) with Conventional Commits before PRs.
 
 # API Surface & Behavior
 
@@ -96,6 +123,7 @@ Not applicable — service is API-only with no end-user UI. Surface consumer-fac
 - Role-first SSE chunk, then content deltas, optional empty delta with `finish_reason`, optional usage chunk, and final `[DONE]` line.
 - `PROXY_SSE_KEEPALIVE_MS` emits keepalive comments (disabled for Electron/Obsidian UAs or when `X-No-Keepalive: 1` / `?no_keepalive=1`).
 - Tool-aware options: `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE` (`burst`|`first`), `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_MAX`.
+- Dev-only override: `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` forwards `parallel_tool_calls=true` to Codex CLI for experimentation while keeping prod serialized by default.
 
 ## Error Envelope & Validation
 
@@ -158,6 +186,7 @@ Not applicable — service is API-only with no end-user UI. Surface consumer-fac
 - Structured JSON access log (`src/middleware/access-log.js`) plus console text log.
 - Usage NDJSON logs aggregated by `GET /v1/usage`; raw events accessible via `GET /v1/usage/raw`.
 - Concurrency guard snapshot via `guardSnapshot()` and optional `/__test/conc` endpoints when enabled.
+- Streaming benchmark script (`scripts/benchmarks/stream-multi-choice.mjs`) now samples CPU/RSS via `ps` so developers can capture metrics without `pidusage`.
 - Runbooks: `docs/runbooks/operational.md`, `docs/dev-to-prod-playbook.md`, streaming parity notes in `docs/openai-chat-completions-parity.md`.
 
 # Success Metrics & KPIs
@@ -167,6 +196,12 @@ Not applicable — service is API-only with no end-user UI. Surface consumer-fac
 - Streaming TTFC p95 ≤ 2 s with keepalive cadence ≤ configured interval.
 - 5xx (minus auth) < 1% of total requests.
 - Concurrency per replica ≤ `PROXY_SSE_MAX_CONCURRENCY`; ensure `ulimit -n` ≥ 32 × concurrency.
+
+# Risks & Mitigations
+
+- **Risk 1 — Codex CLI drift between environments could break proxy tooling (especially parallel tool passthrough).** Mitigation: keep dev/prod compose files mounting the same CLI package path, record CLI version in release notes, and rerun `npm run verify:all` plus smoke tests after upgrades.
+- **Risk 2 — Traefik ForwardAuth misconfiguration can block traffic or bypass auth.** Mitigation: preserve `http://127.0.0.1:18080/verify`, validate compose labels before deploy, and run `npm run smoke:prod` immediately after rollout.
+- **Risk 3 — SSE concurrency guard mis-sizing may exhaust file descriptors under load.** Mitigation: monitor guard snapshots (`/__test/conc` in dev), size `PROXY_SSE_MAX_CONCURRENCY` to match pod capacity, and ensure `ulimit -n` stays ≥ 32 × configured concurrency.
 
 # Delivery Plan & Status
 
@@ -190,12 +225,19 @@ Not applicable — service is API-only with no end-user UI. Surface consumer-fac
 - Graceful shutdown SIGTERM integration test automation follow-up (`docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`).
 - Finish_reason telemetry enhancements (archived in `docs/bmad/issues/_archive/2025-09-22-finish-reason-follow-ups.md`).
 
+# Open Questions & Decisions Needed
+
+- What evidence format will satisfy the release/backup hardening follow-up (`docs/bmad/issues/_archive/2025-09-14-release-backup-hardening.md`)?
+- Who owns automation for the graceful shutdown SIGTERM integration test (`docs/bmad/issues/2025-09-12-graceful-shutdown-sigterm.md`)?
+- Which additional fields should be captured in finish_reason telemetry before re-enabling tooling (`docs/bmad/issues/_archive/2025-09-22-finish-reason-follow-ups.md`)?
+
 # Acceptance Criteria & Verification
 
 ## Automated Verification
 
 - `npm run verify:all` — primary gate (format, lint, unit, integration, Playwright E2E).
 - Targeted runs: `npm run test:unit`, `npm run test:integration`, `npm test`, and `npm run lint` when touching respective layers.
+- Live E2E (`tests/live.e2e.spec.ts`) now validates that `/v1/models` returns the environment-appropriate base model (`codev-5*` for dev stacks, `codex-5*` for prod hosts).
 
 ## Smoke Commands (local dev)
 
@@ -219,6 +261,8 @@ curl -s "$BASE/v1/completions" \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5","stream":false,"prompt":"Say hello."}' | jq '.choices[0].text'
 ```
+
+Expect `/v1/models` to list `codev-5` variants when targeting dev stacks (e.g., `codex-dev` domains) and `codex-5` variants in prod. A 401 remains acceptable when model listing is bearer-protected.
 
 # Out of Scope
 
