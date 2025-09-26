@@ -34,7 +34,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 - Traefik ForwardAuth must continue to target `http://127.0.0.1:18080/verify`; do not switch to container hostname unless Traefik is containerized.
 - `.codex-api/` must remain writable in prod; enforcing read-only breaks Codex session persistence and streaming state.
-- Containers must mount the Codex CLI package (`~/.local/share/npm/lib/node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) so CLI binaries and vendor assets remain in sync with host updates; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`.
+- Containers must mount the Codex CLI package (`./node_modules/@openai/codex` → `/usr/local/lib/codex-cli:ro`) so CLI binaries and vendor assets remain in sync with host updates; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`.
 - `PROXY_SSE_MAX_CONCURRENCY` governs active SSE streams per replica; ensure `ulimit -n` and resource sizing satisfy the concurrency envelope.
 - Dev edge relies on `PROXY_DEV_TRUNCATE_AFTER_MS` safeguards; maintain default zero in prod to avoid truncating real traffic.
 
@@ -228,7 +228,7 @@ None — stabilization leveraged the existing stack and toggles.
 - `npm run dev:stack:up` spins up dev stack with Traefik and dev domain; `npm run dev:stack:down` tears it down.
 - Prod deploy: `docker compose up -d --build --force-recreate` followed by `npm run smoke:prod`.
 - `npm run port:prod` automates dev → prod config sync and optional smoke tests.
-- `.codex-api/` houses Codex runtime state; ensure volume mounts persist across restarts and align CLI package mount with host path (`~/.local/share/npm/lib/node_modules/@openai/codex`).
+- `.codex-api/` houses Codex runtime state; ensure volume mounts persist across restarts and align CLI package mount with the project-local path (`./node_modules/@openai/codex`).
 - `scripts/stack-snapshot.sh` and `stack-rollback.sh` provide snapshot/rollback automation (dev and prod).
 
 # Troubleshooting Playbook Highlights

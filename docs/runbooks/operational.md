@@ -71,7 +71,7 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 
 - Symptoms: spawn errors referencing missing scripts or vendor modules; sudden behavior drift across environments.
 - Causes: container not mounting `/usr/local/lib/codex-cli` or using an outdated local CLI binary.
-- Checks: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`; confirm `CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js` at runtime; inspect host path `~/.local/share/npm/lib/node_modules/@openai/codex`.
+- Checks: `docker compose exec codex-api ls -1 /usr/local/lib/codex-cli`; confirm `CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js` at runtime; inspect host path `./node_modules/@openai/codex`.
 - Fixes: reinstall/update the host `@openai/codex` package; ensure compose files mount it read-only; restart the stack after syncing.
 
 ## Deploy, Restart, Rollback
