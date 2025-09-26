@@ -54,6 +54,7 @@
     "backup:data": "bash scripts/codex-data-backup.sh --mount-check --prune"
   },
   "dependencies": {
+    "@openai/codex": "^0.41.0",
     "express": "^4.19.2",
     "nanoid": "^5.0.7"
   },
