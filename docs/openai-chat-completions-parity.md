@@ -1,7 +1,7 @@
 ---
 title: OpenAI Chat Completions Parity — Spec & Streaming Contract
-version: 0.3
-updated: 2025-09-24
+version: 0.4
+updated: 2025-09-26
 source-of-truth: This repository’s server behavior and tests
 ---
 
@@ -24,6 +24,7 @@ Verification: Covered by integration tests —
 - tests/integration/chat.nonstream.shape.int.test.js (shape + stop)
 - tests/integration/chat.nonstream.length.int.test.js (truncation → length)
 - tests/integration/chat.model.consistency.int.test.js (model string parity stream vs non‑stream)
+- Playwright live E2E ensures `/v1/models` advertises `codev-5*` in dev stacks and `codex-5*` in prod hosts.
 
 Example (minimal):
 
@@ -69,7 +70,7 @@ Example (minimal):
      - Story 3.9 (2025‑09‑22): the streaming finalizer now propagates upstream finish reasons (`"stop"`, `"length"`, future values) and still emits the optional usage chunk immediately after the finalizer when `stream_usage=true`.
   5. Terminal sentinel line: `[DONE]`.
 
-Example usage chunk (Story 3.3):
+Example usage chunk (Stories 3.3 & 3.9):
 
 ```
 data: {"id":"chatcmpl-xyz","object":"chat.completion.chunk","created":1726646400,"model":"gpt-5","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,"time_to_first_token":null,"throughput_after_first_token":null,"emission_trigger":"token_count"}}
@@ -82,15 +83,17 @@ Notes:
 - `stream_options.include_usage=true` adds a final usage chunk after the finish_reason chunk and before `[DONE]`.
 - Providers that emit usage payloads even when `include_usage:false` are tolerated; the proxy logs the payload (`emission_trigger:"provider"`) but does not forward an extra chunk to clients.
 - All chunks in a stream share the same `id` and `created` values.
-- When `n>1`, the proxy broadcasts identical role/content/tool-call deltas to each `choices[i]` index so clients can group by index. Usage totals aggregate completion tokens across all choices while prompt tokens remain per request.
+- When `n>1`, the proxy would broadcast identical role/content/tool-call deltas to each `choices[i]` index; production currently rejects `n>1` with an `invalid_request_error`, but the envelope documented here remains the target shape.
 - Dev logging captures the propagated finish reason (and its source event) for observability dashboards and regressions.
+- Dev-only `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` forwards `--config parallel_tool_calls=true` to Codex but still serializes outbound tool deltas to preserve envelope parity; production leaves the flag unset for deterministic sequencing.
 
-## Release Guidance — Story 4.3 (2025-09-24)
+## Release Guidance — Story 4.3 (2025-09-26)
 
-- Update client documentation to note that `n` is now supported up to `PROXY_MAX_CHAT_CHOICES` (default 5) and that streaming payloads broadcast deltas for each index.
+- Update client documentation to note that `n` is now supported up to `PROXY_MAX_CHAT_CHOICES` (default 5) and that streaming payloads broadcast deltas for each index (still disabled in prod by policy).
 - Communicate that `completion_tokens` in usage objects represent the sum across all returned choices; prompt tokens remain unchanged.
 - Highlight that `response_format` values other than `"text"`, positive `logprobs`, and any `top_logprobs` now return canonical `invalid_request_error` responses with `param` pointers.
 - Surface the new `choice_count` field in internal telemetry dashboards for parity monitoring.
+- Call out the dev-only `PROXY_ENABLE_PARALLEL_TOOL_CALLS` flag and ensure production runbooks keep it unset to preserve ordering; serialized deltas remain the compatibility baseline.
 
 ### Golden Transcripts & Snapshots (Story 3.5)
 

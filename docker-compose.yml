@@ -25,7 +25,7 @@ services:
       - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
     # Optional: mount Codex CLI package (bin/ + vendor) from host
     volumes:
-      - ~/.local/share/npm/lib/node_modules/@openai/codex:/usr/local/lib/codex-cli:ro
+      - ./node_modules/@openai/codex:/usr/local/lib/codex-cli:ro
       # Mount production Codex HOME containing config/secrets (must be writable for rollouts)
       - ./.codex-api:/app/.codex-api
     networks:
