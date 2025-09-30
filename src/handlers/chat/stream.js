@@ -57,7 +57,8 @@ const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false
 const STREAM_IDLE_TIMEOUT_MS = CFG.PROXY_STREAM_IDLE_TIMEOUT_MS;
 const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
-const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
+const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
+const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
 const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
