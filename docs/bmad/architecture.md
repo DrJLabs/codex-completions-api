@@ -193,7 +193,7 @@ None — stabilization leveraged the existing stack and toggles.
 - In-app rate limiter (disabled by default) guards POST chat/completions; edge rate limiting via Traefik/Cloudflare is recommended primary defense.
 - Dev parallel tooling remains opt-in; production disables `PROXY_ENABLE_PARALLEL_TOOL_CALLS` to preserve deterministic sequencing and simplify audit trails.
 - Concurrency guard prevents SSE overload; guard telemetry logged for observability.
-- CORS enabled by default with origin echo and credentials support; can be disabled via `PROXY_ENABLE_CORS` when edge handles CORS.
+- CORS enabled by default with an allowlist (`PROXY_CORS_ALLOWED_ORIGINS`) and credentials support; disable via `PROXY_ENABLE_CORS` when the edge owns CORS entirely.
 
 # Rate Limiting & Concurrency Guard
 

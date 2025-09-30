@@ -44,30 +44,37 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 - Symptoms: browser OPTIONS gets 4xx; missing `Access-Control-Allow-*` headers.
 - Causes: `PROXY_ENABLE_CORS=false`; edge policy blocking.
 - Checks: curl -i -X OPTIONS http://127.0.0.1:${PORT:-11435}/v1/chat/completions -H 'Origin: http://app' -H 'Access-Control-Request-Method: POST'.
-- Fixes: set `PROXY_ENABLE_CORS=true` when browser clients call origin directly; otherwise enforce CORS at edge and keep origin permissive only as needed.
+- Fixes: set `PROXY_ENABLE_CORS=true` and include the caller in `PROXY_CORS_ALLOWED_ORIGINS` when browser clients call the origin directly; otherwise keep app CORS disabled and enforce headers at the edge.
 
-5. ForwardAuth 401 (invalid token)
+5. Obsidian “turn on CORS” warning despite 200s
+
+- Symptoms: Obsidian Copilot verifier shows “First ping attempt failed, trying with CORS…” or prompts to enable client-side CORS even though `/v1/chat/completions` succeeds.
+- Causes: (a) Cloudflare wildcard rule rewrites `Access-Control-Allow-Origin` to `*`; (b) `PROXY_ENABLE_CORS=false` in dev compose so Express omits headers; (c) non-stream replies take ~9 s, so the plugin cancels the first attempt before headers arrive.
+- Checks: DevTools network tab shows preflight 200 but first POST status `(canceled)`; origin logs show 200 with `dur_ms≈9000`; `/v1/usage/raw` contains only 200 statuses; `curl -i` reveals `Access-Control-Allow-Origin: *`.
+- Fixes: remove/disable Cloudflare rule for dev, ensure `PROXY_ENABLE_CORS=true` with `PROXY_CORS_ALLOWED_ORIGINS` listing the dev host, and tighten `PROXY_NONSTREAM_TRUNCATE_AFTER_MS` (e.g., 2500 via `.env.dev`) so the first probe returns quickly. Confirm headers with `curl -i -X OPTIONS ... -H 'Origin: app://obsidian.md'`.
+
+6. ForwardAuth 401 (invalid token)
 
 - Symptoms: 401 at edge with `WWW-Authenticate: Bearer`.
 - Causes: `PROXY_API_KEY` mismatch between app and ForwardAuth.
 - Checks: confirm both services read the same key; review `.env` vs runtime env.
 - Fixes: align keys; restart both services; rotate if leaked.
 
-6. SSE concurrency exceeded (429 concurrency_exceeded)
+7. SSE concurrency exceeded (429 concurrency_exceeded)
 
 - Symptoms: `{ error.code: "concurrency_exceeded" }` on stream start.
 - Causes: `PROXY_SSE_MAX_CONCURRENCY` too low for current load; low FD limits.
 - Checks: check current load; `ulimit -n` inside container.
 - Fixes: raise `PROXY_SSE_MAX_CONCURRENCY`; increase OS/file‑descriptor limits; scale replicas.
 
-7. In‑app rate limiting (429 rate_limited)
+8. In-app rate limiting (429 rate_limited)
 
 - Symptoms: 429 with `Retry-After` header.
 - Causes: `PROXY_RATE_LIMIT_ENABLED=true` and traffic exceeds `PROXY_RATE_LIMIT_MAX` per key/IP per window.
 - Checks: review env; confirm edge RL policy.
 - Fixes: tune `PROXY_RATE_LIMIT_*`; prefer enforcing RL at Traefik/Cloudflare.
 
-8. Codex CLI mismatch / missing vendor assets
+9. Codex CLI mismatch / missing vendor assets
 
 - Symptoms: spawn errors referencing missing scripts or vendor modules; sudden behavior drift across environments.
 - Causes: baked CLI missing from the image or an outdated local override.
@@ -103,7 +110,7 @@ DOMAIN=${DOMAIN:?set} KEY=${KEY:?set} npm run smoke:prod
 
 ## Environment Profiles (summary)
 
-- Dev: permissive CORS, advertise `codev-5*`, test endpoints allowed, low concurrency, optional `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` for Codex parallel tool experiments.
-- Prod: optionally restrict CORS at edge; advertise `codex-5*`; enable models gating; edge RL; set SSE concurrency and OS limits appropriately; keep `PROXY_ENABLE_PARALLEL_TOOL_CALLS` unset/false for deterministic sequencing.
+- Dev: app CORS enabled with an allowlist that includes the dev host and Obsidian origins, advertise `codev-5*`, test endpoints allowed, low concurrency, optional `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` for Codex parallel tool experiments.
+- Prod: keep Traefik and the app allowlists in sync (or disable app CORS entirely), advertise `codex-5*`; enable models gating; edge RL; set SSE concurrency and OS limits appropriately; keep `PROXY_ENABLE_PARALLEL_TOOL_CALLS` unset/false for deterministic sequencing.
 
 See `docs/bmad/prd.md` for a full Dev vs Prod table, KPIs/SLIs, and references.

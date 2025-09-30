@@ -112,4 +112,26 @@ describe("CORS utility", () => {
     applyCors({ headers: {} }, res, true);
     expect(headers["Access-Control-Allow-Origin"]).toBe("*");
   });
+  it("only reflects whitelisted origins when provided", () => {
+    const headers = {};
+    const res = {
+      setHeader: (k, v) => {
+        // test helper: dynamic header assignment
+        // eslint-disable-next-line security/detect-object-injection
+        headers[k] = v;
+      },
+    };
+    applyCors({ headers: { origin: "https://ok" } }, res, true, ["https://ok", "https://nope"]);
+    expect(headers["Access-Control-Allow-Origin"]).toBe("https://ok");
+
+    const denied = {};
+    const deniedRes = {
+      setHeader: (k, v) => {
+        // eslint-disable-next-line security/detect-object-injection
+        denied[k] = v;
+      },
+    };
+    applyCors({ headers: { origin: "https://evil" } }, deniedRes, true, ["https://ok"]);
+    expect(denied).not.toHaveProperty("Access-Control-Allow-Origin");
+  });
 });

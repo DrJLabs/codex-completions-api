@@ -231,9 +231,9 @@ Environment variables:
 
 #### Client tool batching cap (important)
 
-- Policy: group at most 7 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
-- Rationale: some clients exhibit instability when 8+ tools are requested concurrently in one message. The cap avoids that glitch and aligns with `.codev/AGENTS.md` guidance.
-- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=7` to cut the stream after 7 tool blocks and prevent over‑batching at the transport layer.
+- Policy: group at most 10 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
+- Rationale: earlier versions of Obsidian Copilot struggled with 8+ parallel tool requests; current builds tolerate up to 10, and raising the cap keeps the proxy aligned with `.codev/AGENTS.md` guidance.
+- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=10` to cut the stream after 10 tool blocks and prevent over‑batching at the transport layer.
 
 ## Quick start
 
@@ -360,7 +360,8 @@ Environment variables:
 - `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
-- `PROXY_ENABLE_CORS` (default: `true`) — set to `false` when fronted by Traefik/Cloudflare so edge owns CORS.
+- `PROXY_ENABLE_CORS` (default: `true`) — when `true`, Express emits CORS headers. Set to `false` if the edge fully manages CORS.
+- `PROXY_CORS_ALLOWED_ORIGINS` (default: `*`) — comma-separated allowlist used when app CORS is enabled. Include each trusted origin (e.g., `https://codex-api.onemainarmy.com,https://obsidian.md,app://obsidian.md`).
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `300000`) — overall request timeout (5 minutes).
 - `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
@@ -655,7 +656,7 @@ Notes
 
 This repository ships an edge-first security posture when deployed via Traefik and Cloudflare. Key elements:
 
-- CORS at the edge: App CORS is disabled (`PROXY_ENABLE_CORS=false` in Compose). Traefik emits CORS headers for actual and preflight responses; Cloudflare adds/normalizes these for OPTIONS and error paths.
+- Layered CORS: Traefik enforces an allowlist via `accessControlAllowOriginList`, and the app reflects only the origins present in `PROXY_CORS_ALLOWED_ORIGINS`. Disable app CORS (`PROXY_ENABLE_CORS=false`) if you prefer the edge to be the single enforcement point.
 - Preflight router: Host-scoped `OPTIONS` router uses `noop@internal` so the origin is never hit, with middlewares `codex-cors,codex-headers,codex-ratelimit`.
 - Security headers: HSTS, frame deny, nosniff, referrer policy, and a restrictive `Permissions-Policy` (includes `interest-cohort=()`).
 - Rate limiting: `codex-ratelimit` applied before ForwardAuth to shield the auth service.
