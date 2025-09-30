@@ -7,7 +7,8 @@ import { applyCors as applyCorsUtil } from "../utils.js";
 export default function modelsRouter() {
   const router = express.Router();
   const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
-  const applyCors = (_req, res) => applyCorsUtil(_req, res, CORS_ENABLED);
+  const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
+  const applyCors = (_req, res) => applyCorsUtil(_req, res, CORS_ENABLED, CORS_ALLOWED);
 
   const isDev = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
   const PUBLIC_MODEL_IDS = publicModelIds(isDev);

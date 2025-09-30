@@ -16,7 +16,8 @@ export default function createApp() {
 
   // Global CORS
   const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
-  const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED);
+  const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
+  const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
   app.use((req, res, next) => {
     applyCors(req, res);
     if (req.method === "OPTIONS") {

@@ -9,11 +9,12 @@ services:
       - PROXY_ENV=dev
       # Enable origin-level CORS while Cloudflare dev rule is disabled
       - PROXY_ENABLE_CORS=true
+      - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - CODEX_HOME=/home/node/.codex
       # Early finalize non-stream responses in DEV if backend is slow, to avoid edge 524
-      - PROXY_NONSTREAM_TRUNCATE_AFTER_MS=${PROXY_NONSTREAM_TRUNCATE_AFTER_MS:-9000}
-      - PROXY_DEV_TRUNCATE_AFTER_MS=${PROXY_DEV_TRUNCATE_AFTER_MS:-9000}
+      - PROXY_NONSTREAM_TRUNCATE_AFTER_MS=${PROXY_NONSTREAM_TRUNCATE_AFTER_MS:-2500}
+      - PROXY_DEV_TRUNCATE_AFTER_MS=${PROXY_DEV_TRUNCATE_AFTER_MS:-2500}
       - PROXY_LOG_PROTO=${PROXY_LOG_PROTO:-true}
       - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
