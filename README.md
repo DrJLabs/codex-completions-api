@@ -231,9 +231,9 @@ Environment variables:
 
 #### Client tool batching cap (important)
 
-- Policy: group at most 7 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
-- Rationale: some clients exhibit instability when 8+ tools are requested concurrently in one message. The cap avoids that glitch and aligns with `.codev/AGENTS.md` guidance.
-- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=7` to cut the stream after 7 tool blocks and prevent over‑batching at the transport layer.
+- Policy: group at most 10 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
+- Rationale: earlier versions of Obsidian Copilot struggled with 8+ parallel tool requests; current builds tolerate up to 10, and raising the cap keeps the proxy aligned with `.codev/AGENTS.md` guidance.
+- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=10` to cut the stream after 10 tool blocks and prevent over‑batching at the transport layer.
 
 ## Quick start
 

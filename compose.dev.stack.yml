@@ -7,8 +7,8 @@ services:
     environment:
       - PORT=11435
       - PROXY_ENV=dev
-      # Match prod: let Traefik handle CORS, not the app
-      - PROXY_ENABLE_CORS=false
+      # Enable origin-level CORS while Cloudflare dev rule is disabled
+      - PROXY_ENABLE_CORS=true
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - CODEX_HOME=/home/node/.codex
       # Early finalize non-stream responses in DEV if backend is slow, to avoid edge 524
@@ -23,6 +23,8 @@ services:
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
       - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
       - PROXY_SSE_KEEPALIVE_MS=${PROXY_SSE_KEEPALIVE_MS:-15000}
+      - PROXY_SSE_MAX_CONCURRENCY=${PROXY_SSE_MAX_CONCURRENCY:-20}
+      - PROXY_MAX_CHAT_CHOICES=${PROXY_MAX_CHAT_CHOICES:-20}
       # Streaming guards for tool-heavy clients (optional; disabled unless set in .env.dev)
       - PROXY_STOP_AFTER_TOOLS=${PROXY_STOP_AFTER_TOOLS:-}
       - PROXY_STOP_AFTER_TOOLS_MODE=${PROXY_STOP_AFTER_TOOLS_MODE:-burst}
@@ -79,8 +81,8 @@ services:
       # CORS middleware (edge)
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,OpenAI-Version,OpenAI-Project,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count,dangerously-allow-browser
-      - traefik.http.middlewares.codex-dev-cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
-      - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowCredentials=false
+      - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowOriginList=https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md
+      - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowCredentials=true
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlMaxAge=600
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-dev-cors.headers.addVaryHeader=true
@@ -96,8 +98,8 @@ services:
       - traefik.http.middlewares.codex-dev-headers.headers.customResponseHeaders.X-DNS-Prefetch-Control=off
 
       # Rate limit middleware
-      - traefik.http.middlewares.codex-dev-ratelimit.ratelimit.average=${DEV_RATE_LIMIT_AVG:-100}
-      - traefik.http.middlewares.codex-dev-ratelimit.ratelimit.burst=${DEV_RATE_LIMIT_BURST:-200}
+      - traefik.http.middlewares.codex-dev-ratelimit.ratelimit.average=${DEV_RATE_LIMIT_AVG:-2000}
+      - traefik.http.middlewares.codex-dev-ratelimit.ratelimit.burst=${DEV_RATE_LIMIT_BURST:-4000}
 
       # Public health router (no auth)
       - traefik.http.routers.codex-dev-health.rule=Host(`codex-dev.onemainarmy.com`) && Path(`/healthz`)
