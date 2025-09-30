@@ -138,21 +138,41 @@ export const normalizeModel = (
 };
 
 // CORS application as a pure function using request origin and enabled flag.
-export const applyCors = (req, res, enabled = true) => {
+export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
   if (!enabled) return;
+
+  const list = Array.isArray(allowedOrigins)
+    ? allowedOrigins
+    : String(allowedOrigins ?? "*")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+  const allowAll = list.length === 0 || list.includes("*");
+  const normalized = list.filter((item) => item && item !== "*").map((item) => item.toLowerCase());
   const origin = req?.headers?.origin;
+
+  const varyBase = "Access-Control-Request-Headers, Access-Control-Request-Method";
+  let allowOrigin = false;
+
   if (origin) {
-    res.setHeader?.("Access-Control-Allow-Origin", origin);
-    // Vary on origin and requested headers/method to prevent cache poisoning
-    res.setHeader?.(
-      "Vary",
-      "Origin, Access-Control-Request-Headers, Access-Control-Request-Method"
-    );
-    res.setHeader?.("Access-Control-Allow-Credentials", "true");
-  } else {
+    if (allowAll || normalized.includes(origin.toLowerCase())) {
+      res.setHeader?.("Access-Control-Allow-Origin", origin);
+      res.setHeader?.("Access-Control-Allow-Credentials", "true");
+      allowOrigin = true;
+      res.setHeader?.("Vary", `Origin, ${varyBase}`);
+    } else {
+      res.setHeader?.("Vary", `Origin, ${varyBase}`);
+    }
+  } else if (allowAll) {
     res.setHeader?.("Access-Control-Allow-Origin", "*");
-    res.setHeader?.("Vary", "Access-Control-Request-Headers, Access-Control-Request-Method");
+    res.setHeader?.("Vary", varyBase);
+    allowOrigin = true;
+  } else {
+    res.setHeader?.("Vary", varyBase);
   }
+
+  if (!allowOrigin) return;
+
   res.setHeader?.("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
 
   // Allow all headers requested by the browser during preflight, falling back to a
