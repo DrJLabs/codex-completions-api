@@ -9,7 +9,7 @@ services:
       - PROXY_ENV=dev
       # Enable origin-level CORS while Cloudflare dev rule is disabled
       - PROXY_ENABLE_CORS=true
-      - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md}
+      - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - CODEX_HOME=/home/node/.codex
       # Early finalize non-stream responses in DEV if backend is slow, to avoid edge 524
@@ -33,6 +33,7 @@ services:
       - PROXY_TOOL_BLOCK_MAX=${PROXY_TOOL_BLOCK_MAX:-0}
       - PROXY_SUPPRESS_TAIL_AFTER_TOOLS=${PROXY_SUPPRESS_TAIL_AFTER_TOOLS:-}
       - PROXY_ENABLE_PARALLEL_TOOL_CALLS=${PROXY_ENABLE_PARALLEL_TOOL_CALLS:-}
+      - PROXY_LOG_CORS_ORIGIN=${PROXY_LOG_CORS_ORIGIN:-true}
       # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
       - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
     ports:
@@ -82,7 +83,7 @@ services:
       # CORS middleware (edge)
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,OpenAI-Version,OpenAI-Project,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count,dangerously-allow-browser
-      - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowOriginList=https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md
+      - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowOriginList=https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlAllowCredentials=true
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlMaxAge=600
       - traefik.http.middlewares.codex-dev-cors.headers.accessControlExposeHeaders=Content-Type
