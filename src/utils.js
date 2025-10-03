@@ -137,7 +137,39 @@ export const normalizeModel = (
   return { requested: raw, effective: raw };
 };
 
+const CANONICAL_ORIGINS = [
+  "capacitor://localhost",
+  "app://obsidian.md",
+  "http://localhost",
+  "https://localhost",
+];
+
 // CORS application as a pure function using request origin and enabled flag.
+const normalizeOriginForMatch = (value = "") => {
+  const lower = value.toLowerCase();
+  if (!lower) return "";
+
+  for (const base of CANONICAL_ORIGINS) {
+    if (lower.startsWith(base)) return base;
+  }
+
+  const trimmed = lower.endsWith("/") ? lower.replace(/\/+$/, "") : lower;
+
+  try {
+    const parsed = new URL(trimmed);
+    const { protocol, hostname } = parsed;
+    if (
+      (protocol === "http:" || protocol === "https:") &&
+      (hostname === "localhost" || hostname === "127.0.0.1")
+    ) {
+      return `${protocol}//${hostname}`;
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+};
+
 export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
   if (!enabled) return;
 
@@ -148,14 +180,17 @@ export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
         .map((item) => item.trim())
         .filter(Boolean);
   const allowAll = list.length === 0 || list.includes("*");
-  const normalized = list.filter((item) => item && item !== "*").map((item) => item.toLowerCase());
+  const normalized = list
+    .filter((item) => item && item !== "*")
+    .map((item) => normalizeOriginForMatch(item));
   const origin = req?.headers?.origin;
 
   const varyBase = "Access-Control-Request-Headers, Access-Control-Request-Method";
   let allowOrigin = false;
 
   if (origin) {
-    if (allowAll || normalized.includes(origin.toLowerCase())) {
+    const originKey = normalizeOriginForMatch(origin);
+    if (allowAll || normalized.includes(originKey)) {
       res.setHeader?.("Access-Control-Allow-Origin", origin);
       res.setHeader?.("Access-Control-Allow-Credentials", "true");
       allowOrigin = true;

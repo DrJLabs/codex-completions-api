@@ -20,6 +20,15 @@ export default function createApp() {
   const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
   app.use((req, res, next) => {
     applyCors(req, res);
+    if (CFG.PROXY_LOG_CORS_ORIGIN) {
+      const origin = req.headers?.origin ?? "";
+      const acrMethod = req.headers?.["access-control-request-method"] ?? "";
+      const acrHeaders = req.headers?.["access-control-request-headers"] ?? "";
+      const ua = req.headers?.["user-agent"] ?? "";
+      console.log(
+        `[cors] method=${req.method} origin="${origin}" acr_method="${acrMethod}" acr_headers="${acrHeaders}" ua="${ua}"`
+      );
+    }
     if (req.method === "OPTIONS") {
       return res.status(204).end();
     }

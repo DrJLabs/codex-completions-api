@@ -44,14 +44,35 @@ Scope: origin service only (Node/Express + Codex child). Traefik/Cloudflare spec
 - Symptoms: browser OPTIONS gets 4xx; missing `Access-Control-Allow-*` headers.
 - Causes: `PROXY_ENABLE_CORS=false`; edge policy blocking.
 - Checks: curl -i -X OPTIONS http://127.0.0.1:${PORT:-11435}/v1/chat/completions -H 'Origin: http://app' -H 'Access-Control-Request-Method: POST'.
-- Fixes: set `PROXY_ENABLE_CORS=true` and include the caller in `PROXY_CORS_ALLOWED_ORIGINS` when browser clients call the origin directly; otherwise keep app CORS disabled and enforce headers at the edge.
+- Fixes: set `PROXY_ENABLE_CORS=true` and include the caller in `PROXY_CORS_ALLOWED_ORIGINS` (desktop `app://obsidian.md`; mobile `capacitor://localhost`; Android/Capacitor variants `http://localhost` and `https://localhost`) when browser clients call the origin directly; otherwise keep app CORS disabled and enforce headers at the edge.
 
 5. Obsidian “turn on CORS” warning despite 200s
 
 - Symptoms: Obsidian Copilot verifier shows “First ping attempt failed, trying with CORS…” or prompts to enable client-side CORS even though `/v1/chat/completions` succeeds.
 - Causes: (a) Cloudflare wildcard rule rewrites `Access-Control-Allow-Origin` to `*`; (b) `PROXY_ENABLE_CORS=false` in dev compose so Express omits headers; (c) non-stream replies take ~9 s, so the plugin cancels the first attempt before headers arrive.
 - Checks: DevTools network tab shows preflight 200 but first POST status `(canceled)`; origin logs show 200 with `dur_ms≈9000`; `/v1/usage/raw` contains only 200 statuses; `curl -i` reveals `Access-Control-Allow-Origin: *`.
-- Fixes: remove/disable Cloudflare rule for dev, ensure `PROXY_ENABLE_CORS=true` with `PROXY_CORS_ALLOWED_ORIGINS` listing the dev host, and tighten `PROXY_NONSTREAM_TRUNCATE_AFTER_MS` (e.g., 2500 via `.env.dev`) so the first probe returns quickly. Confirm headers with `curl -i -X OPTIONS ... -H 'Origin: app://obsidian.md'`.
+- Fixes: remove/disable Cloudflare rule for dev, ensure `PROXY_ENABLE_CORS=true` with `PROXY_CORS_ALLOWED_ORIGINS` listing the dev host (plus `app://obsidian.md`, `capacitor://localhost`, `http://localhost`, and `https://localhost`), and tighten `PROXY_NONSTREAM_TRUNCATE_AFTER_MS` (e.g., 2500 via `.env.dev`) so the first probe returns quickly. Confirm headers with `curl -i -X OPTIONS ... -H 'Origin: app://obsidian.md'` (repeat with `capacitor://localhost/` and `http://localhost:1313`).
+
+### Cloudflare CORS Worker
+
+- **Purpose:** Mirror browser-requested headers on edge preflights so Obsidian iOS (1.10+) and other Capacitor clients succeed without manual CORS toggles.
+- **Code:** `workers/cors-preflight-logger/src/index.js` keeps an allowlist (`capacitor://localhost`, `app://obsidian.md`, dev/prod hosts) and merges `Access-Control-Request-Headers` into the explicit allow set. It also logs each event for troubleshooting.
+- **Deploy:**
+  ```bash
+  cd workers/cors-preflight-logger
+  export WORKER_CLOUDFLARE_API_TOKEN=...  # Workers Scripts + Routes token
+  ./deploy.sh
+  ```
+- **Verification:**
+  ```bash
+  curl -i -X OPTIONS https://codex-dev.onemainarmy.com/v1/chat/completions \
+    -H 'Origin: capacitor://localhost' \
+    -H 'Access-Control-Request-Method: POST' \
+    -H 'Access-Control-Request-Headers: authorization,content-type,user-agent'
+  ```
+  Expect `Access-Control-Allow-Headers` to include the union and `Access-Control-Allow-Origin: capacitor://localhost`.
+- **Logs:** Stream recent preflights with `wrangler tail codex-preflight-logger --format json --sampling-rate 0.5` (token required). Each log entry records origin, requested headers, and UA.
+- **Maintenance:** Keep the allowlist aligned with `PROXY_CORS_ALLOWED_ORIGINS`/Traefik `codex-cors` middleware; add new origins or headers to the worker before releasing updated clients.
 
 6. ForwardAuth 401 (invalid token)
 
