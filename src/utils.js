@@ -138,6 +138,59 @@ export const normalizeModel = (
 };
 
 // CORS application as a pure function using request origin and enabled flag.
+const stripTrailingSlashes = (value) => value.replace(/\/+$/, "");
+
+const normalizeOriginForMatch = (value = "") => {
+  const input = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!input) return "";
+
+  const trimmed = stripTrailingSlashes(input);
+
+  const canonicalCustomSchemes = [
+    { scheme: "capacitor", host: "localhost" },
+    { scheme: "app", host: "obsidian.md" },
+  ];
+
+  for (const { scheme, host } of canonicalCustomSchemes) {
+    const prefix = `${scheme}://`;
+    if (!trimmed.startsWith(prefix)) continue;
+
+    const withoutScheme = trimmed.slice(prefix.length);
+    const authority = withoutScheme.split("/")[0];
+    const [hostname] = authority.split(":");
+
+    if (hostname === host) {
+      return `${scheme}://${host}`;
+    }
+
+    // Custom scheme that we do not recognize exactly – keep the original
+    // string so it cannot masquerade as an allowlisted origin by prefix.
+    return trimmed;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return trimmed;
+  }
+
+  const { protocol, hostname, port } = parsed;
+
+  if (!protocol || !hostname) return trimmed;
+
+  if (
+    (protocol === "http:" || protocol === "https:") &&
+    (hostname === "localhost" || hostname === "127.0.0.1")
+  ) {
+    return `${protocol}//${hostname}`;
+  }
+
+  return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
+};
+
 export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
   if (!enabled) return;
 
@@ -148,14 +201,17 @@ export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
         .map((item) => item.trim())
         .filter(Boolean);
   const allowAll = list.length === 0 || list.includes("*");
-  const normalized = list.filter((item) => item && item !== "*").map((item) => item.toLowerCase());
+  const normalized = list
+    .filter((item) => item && item !== "*")
+    .map((item) => normalizeOriginForMatch(item));
   const origin = req?.headers?.origin;
 
   const varyBase = "Access-Control-Request-Headers, Access-Control-Request-Method";
   let allowOrigin = false;
 
   if (origin) {
-    if (allowAll || normalized.includes(origin.toLowerCase())) {
+    const originKey = normalizeOriginForMatch(origin);
+    if (allowAll || normalized.includes(originKey)) {
       res.setHeader?.("Access-Control-Allow-Origin", origin);
       res.setHeader?.("Access-Control-Allow-Credentials", "true");
       allowOrigin = true;

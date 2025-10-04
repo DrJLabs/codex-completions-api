@@ -49,6 +49,7 @@ export const config = {
   // Misc
   PROXY_ENABLE_CORS: str("PROXY_ENABLE_CORS", "true"),
   PROXY_CORS_ALLOWED_ORIGINS: str("PROXY_CORS_ALLOWED_ORIGINS", "*"),
+  PROXY_LOG_CORS_ORIGIN: bool("PROXY_LOG_CORS_ORIGIN", "false"),
   PROXY_KILL_ON_DISCONNECT: str("PROXY_KILL_ON_DISCONNECT", "false"),
   PROXY_DEBUG_PROTO: str("PROXY_DEBUG_PROTO", ""),
   // Security

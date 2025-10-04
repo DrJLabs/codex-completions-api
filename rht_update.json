@@ -1,0 +1,80 @@
+{
+  "name": "zone-rht",
+  "description": "Response header transforms",
+  "kind": "zone",
+  "phase": "http_response_headers_transform",
+  "rules": [
+    {
+      "id": "22d79140d3e04dbab33b61712d1352d1",
+      "ref": "cors_set_headers",
+      "description": "CORS for codex-api",
+      "enabled": true,
+      "expression": "(http.host eq \"codex-api.onemainarmy.com\") and starts_with(http.request.uri.path, \"/v1\") and http.request.headers[\"origin\"][0] ne \"\"",
+      "action": "rewrite",
+      "action_parameters": {
+        "headers": {
+          "Access-Control-Allow-Origin": {
+            "operation": "set",
+            "expression": "http.request.headers[\"origin\"][0]"
+          },
+          "Access-Control-Allow-Methods": {
+            "operation": "set",
+            "value": "GET, POST, HEAD, OPTIONS"
+          },
+          "Access-Control-Allow-Headers": {
+            "operation": "set",
+            "value": "Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, OpenAI-Version, OpenAI-Project, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count, dangerously-allow-browser"
+          },
+          "Access-Control-Allow-Credentials": {
+            "operation": "set",
+            "value": "true"
+          },
+          "Access-Control-Max-Age": {
+            "operation": "set",
+            "value": "600"
+          },
+          "Vary": {
+            "operation": "set",
+            "value": "Origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "668ac192415d4e0ba36952ebc266abd0",
+      "ref": "668ac192415d4e0ba36952ebc266abd0",
+      "description": "CORS for codex-dev",
+      "enabled": true,
+      "expression": "(http.host eq \"codex-dev.onemainarmy.com\") and starts_with(http.request.uri.path, \"/v1\") and http.request.headers[\"origin\"][0] ne \"\"",
+      "action": "rewrite",
+      "action_parameters": {
+        "headers": {
+          "Access-Control-Allow-Origin": {
+            "operation": "set",
+            "expression": "http.request.headers[\"origin\"][0]"
+          },
+          "Access-Control-Allow-Methods": {
+            "operation": "set",
+            "value": "GET, POST, HEAD, OPTIONS"
+          },
+          "Access-Control-Allow-Headers": {
+            "operation": "set",
+            "value": "Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, OpenAI-Version, OpenAI-Project, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count, dangerously-allow-browser"
+          },
+          "Access-Control-Allow-Credentials": {
+            "operation": "set",
+            "value": "true"
+          },
+          "Access-Control-Max-Age": {
+            "operation": "set",
+            "value": "600"
+          },
+          "Vary": {
+            "operation": "set",
+            "value": "Origin"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -361,7 +361,7 @@ Environment variables:
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
 - `PROXY_ENABLE_CORS` (default: `true`) — when `true`, Express emits CORS headers. Set to `false` if the edge fully manages CORS.
-- `PROXY_CORS_ALLOWED_ORIGINS` (default: `*`) — comma-separated allowlist used when app CORS is enabled. Include each trusted origin (e.g., `https://codex-api.onemainarmy.com,https://obsidian.md,app://obsidian.md`).
+- `PROXY_CORS_ALLOWED_ORIGINS` (default: `*`) — comma-separated allowlist used when app CORS is enabled. Include each trusted origin (e.g., `https://codex-api.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost`).
 - `PROXY_PROTECT_MODELS` (default: `false`) — set to `true` to require auth on `/v1/models`.
 - `PROXY_TIMEOUT_MS` (default: `300000`) — overall request timeout (5 minutes).
 - `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
@@ -661,14 +661,21 @@ This repository ships an edge-first security posture when deployed via Traefik a
 - Security headers: HSTS, frame deny, nosniff, referrer policy, and a restrictive `Permissions-Policy` (includes `interest-cohort=()`).
 - Rate limiting: `codex-ratelimit` applied before ForwardAuth to shield the auth service.
 
-Cloudflare Response Header Transform (dashboard)
+Cloudflare CORS Worker
+
+- Worker name: `codex-preflight-logger`. Lives under `workers/cors-preflight-logger` and reflects the incoming Origin plus _all_ requested preflight headers for trusted origins (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`, `https://localhost`, and the hosted domains).
+- Deploy with `./workers/cors-preflight-logger/deploy.sh` (requires `WORKER_CLOUDFLARE_API_TOKEN` granting Workers Scripts + Routes). The `wrangler.toml` attaches the worker to both `codex-dev` and `codex-api` hostnames.
+- The worker logs every OPTIONS/POST via `console.log`, making `wrangler tail codex-preflight-logger --format json --sampling-rate 0.5` ideal for on-call investigations.
+- Keep Traefik’s `codex-cors` middleware and `PROXY_CORS_ALLOWED_ORIGINS` in sync with the worker allowlist. Traefik still guards preflights with `noop@internal` so the origin only sees vetted requests.
+
+Optional Transform Rule (only if Workers unavailable)
 
 - Rules → Transform Rules → Response Header Modification → Create
   - When: Host equals your domain + Path starts with `/v1/` + Method in OPTIONS, GET, POST, HEAD
   - Set headers:
-    - Access-Control-Allow-Origin: `*`
+    - Access-Control-Allow-Origin: explicit origin string or `$http_origin` (if supported)
     - Access-Control-Allow-Methods: `GET, POST, HEAD, OPTIONS`
-    - Access-Control-Allow-Headers: `Authorization, Content-Type, Accept, OpenAI-Organization, OpenAI-Beta, X-Requested-With, X-Stainless-OS, X-Stainless-Lang, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Package-Version, X-Stainless-Timeout, X-Stainless-Retry-Count`
+    - Access-Control-Allow-Headers: include all headers sent by your clients (Stainless adds `X-Stainless-*`, Obsidian iOS sends `user-agent`)
     - Access-Control-Max-Age: `600`
 
 Preflight smoke test
@@ -678,13 +685,14 @@ curl -i -X OPTIONS 'https://codex-api.onemainarmy.com/v1/chat/completions' \
   -H 'Origin: app://obsidian.md' \
   -H 'Access-Control-Request-Method: POST' \
   -H 'Access-Control-Request-Headers: authorization, content-type, x-stainless-os'
-# Expect: ACAO: *, Allow-Methods present, Allow-Headers includes X-Stainless-*
+# Expect: ACAO echoes the Origin, Allow-Methods present, Allow-Headers includes union (e.g., X-Stainless-* + user-agent).
+# Mobile smoke: swap the Origin header to `capacitor://localhost` (or `capacitor://localhost/`) to emulate Obsidian iOS; use `http://localhost:1313` to mimic Android.
 ```
 
 Tightening origins
 
 - Default is `Access-Control-Allow-Origin: *` (safe with bearer tokens; no cookies). To restrict:
-  - Set a Traefik allowlist via `accessControlAllowOriginList[...]` and regex entries (include `app://obsidian.md`, localhost, and trusted web origins).
+- Set a Traefik allowlist via `accessControlAllowOriginList[...]` and regex entries (include `app://obsidian.md`, `capacitor://localhost`, `http://localhost`, `https://localhost`, and trusted web origins).
   - Update the Cloudflare transform rule to either reflect the request `Origin` (Worker) or set an explicit allowlist value.
 - Streaming usage event (in-band): Include `"stream_options": { "include_usage": true }` to receive a final SSE usage event: `data: {"event":"usage","usage":{"prompt_tokens":N,"completion_tokens":M,"total_tokens":N+M}}`.
 - Ask the model directly: Send a user message like `usage today`, `usage yesterday`, `usage last 7d`, or `usage start=2025-09-01 end=2025-09-02 group=hour`. The proxy detects these simple queries and responds with a usage summary without invoking the backend model.
