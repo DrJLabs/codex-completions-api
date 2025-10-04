@@ -27,9 +27,7 @@ const DEFAULT_ALLOWED_HEADERS = [
   "dangerously-allow-browser",
 ];
 
-function stripTrailingSlashes(value) {
-  return value.replace(/\/+$/, "");
-}
+const stripTrailingSlashes = (value) => value.replace(/\/+$/, "");
 
 function normalizeOrigin(origin) {
   if (!origin) return "";
@@ -38,19 +36,31 @@ function normalizeOrigin(origin) {
 
   const trimmed = stripTrailingSlashes(input);
 
+  const canonicalCustomSchemes = [
+    { scheme: "capacitor", host: "localhost" },
+    { scheme: "app", host: "obsidian.md" },
+  ];
+
+  for (const { scheme, host } of canonicalCustomSchemes) {
+    const prefix = `${scheme}://`;
+    if (!trimmed.startsWith(prefix)) continue;
+
+    const withoutScheme = trimmed.slice(prefix.length);
+    const authority = withoutScheme.split("/")[0];
+    const [hostname] = authority.split(":");
+
+    if (hostname === host) {
+      return `${scheme}://${host}`;
+    }
+
+    return trimmed;
+  }
+
   try {
     const parsed = new URL(trimmed);
     const { protocol, hostname, port } = parsed;
 
     if (!protocol || !hostname) return trimmed;
-
-    if (protocol === "capacitor:" && hostname === "localhost") {
-      return "capacitor://localhost";
-    }
-
-    if (protocol === "app:" && hostname === "obsidian.md") {
-      return "app://obsidian.md";
-    }
 
     if (
       (protocol === "http:" || protocol === "https:") &&

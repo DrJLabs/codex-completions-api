@@ -166,13 +166,27 @@ describe("CORS utility", () => {
       expect(headers["Access-Control-Allow-Origin"]).toBe(origin);
     }
 
-    const denied = {};
-    applyCors(
-      { headers: { origin: "capacitor://example.com" } },
-      { setHeader: (k, v) => (denied[k] = v) },
-      true,
-      allowlist
-    );
-    expect(denied).not.toHaveProperty("Access-Control-Allow-Origin");
+    const deniedOrigins = [
+      "capacitor://example.com",
+      "capacitor://localhost.attacker",
+      "app://obsidian.md.fake",
+    ];
+
+    for (const deniedOrigin of deniedOrigins) {
+      let allowOriginSet = false;
+      applyCors(
+        { headers: { origin: deniedOrigin } },
+        {
+          setHeader: (k) => {
+            if (k === "Access-Control-Allow-Origin") {
+              allowOriginSet = true;
+            }
+          },
+        },
+        true,
+        allowlist
+      );
+      expect(allowOriginSet).toBe(false);
+    }
   });
 });
