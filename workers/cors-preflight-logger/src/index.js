@@ -4,7 +4,7 @@ const ALLOWED = [
   "app://obsidian.md",
   "capacitor://localhost",
   "http://localhost",
-  "https://localhost"
+  "https://localhost",
 ];
 
 const DEFAULT_ALLOWED_HEADERS = [
@@ -24,20 +24,48 @@ const DEFAULT_ALLOWED_HEADERS = [
   "X-Stainless-Package-Version",
   "X-Stainless-Timeout",
   "X-Stainless-Retry-Count",
-  "dangerously-allow-browser"
+  "dangerously-allow-browser",
 ];
 
-const NORMALIZED = ALLOWED.map((value) => value.toLowerCase());
+function stripTrailingSlashes(value) {
+  return value.replace(/\/+$/, "");
+}
 
 function normalizeOrigin(origin) {
   if (!origin) return "";
-  const lower = origin.toLowerCase();
-  if (lower.startsWith("capacitor://localhost")) return "capacitor://localhost";
-  if (lower.startsWith("app://obsidian.md")) return "app://obsidian.md";
-  if (lower.startsWith("http://localhost")) return "http://localhost";
-  if (lower.startsWith("https://localhost")) return "https://localhost";
-  return lower;
+  const input = String(origin).trim().toLowerCase();
+  if (!input) return "";
+
+  const trimmed = stripTrailingSlashes(input);
+
+  try {
+    const parsed = new URL(trimmed);
+    const { protocol, hostname, port } = parsed;
+
+    if (!protocol || !hostname) return trimmed;
+
+    if (protocol === "capacitor:" && hostname === "localhost") {
+      return "capacitor://localhost";
+    }
+
+    if (protocol === "app:" && hostname === "obsidian.md") {
+      return "app://obsidian.md";
+    }
+
+    if (
+      (protocol === "http:" || protocol === "https:") &&
+      (hostname === "localhost" || hostname === "127.0.0.1")
+    ) {
+      return `${protocol}//${hostname}`;
+    }
+
+    return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
+  } catch {
+    return trimmed;
+  }
 }
+
+const NORMALIZED = ALLOWED.map((value) => normalizeOrigin(value));
 
 function mergeAllowedHeaders(rawRequested = "") {
   const seen = new Map(DEFAULT_ALLOWED_HEADERS.map((header) => [header.toLowerCase(), header]));
@@ -67,8 +95,8 @@ function buildCorsHeaders(request) {
     "Access-Control-Allow-Headers": mergeAllowedHeaders(requestedHeaders),
     "Access-Control-Max-Age": "600",
     "Access-Control-Expose-Headers": "Content-Type",
-    "Vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
-    "X-CORS-Worker": "1"
+    Vary: "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+    "X-CORS-Worker": "1",
   };
 
   if (allow) {
@@ -85,16 +113,18 @@ function logRequest(request) {
   const acrHeaders = request.headers.get("Access-Control-Request-Headers") ?? "";
   const ua = request.headers.get("User-Agent") ?? "";
   const url = new URL(request.url);
-  console.log(JSON.stringify({
-    ts: new Date().toISOString(),
-    host: url.host,
-    path: url.pathname + url.search,
-    method: request.method,
-    origin,
-    acrMethod,
-    acrHeaders,
-    ua
-  }));
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      host: url.host,
+      path: url.pathname + url.search,
+      method: request.method,
+      origin,
+      acrMethod,
+      acrHeaders,
+      ua,
+    })
+  );
 }
 
 export default {
@@ -116,7 +146,7 @@ export default {
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers: newHeaders
+      headers: newHeaders,
     });
-  }
+  },
 };

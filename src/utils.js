@@ -145,29 +145,47 @@ const CANONICAL_ORIGINS = [
 ];
 
 // CORS application as a pure function using request origin and enabled flag.
-const normalizeOriginForMatch = (value = "") => {
-  const lower = value.toLowerCase();
-  if (!lower) return "";
+const stripTrailingSlashes = (value) => value.replace(/\/+$/, "");
 
-  for (const base of CANONICAL_ORIGINS) {
-    if (lower.startsWith(base)) return base;
+const normalizeOriginForMatch = (value = "") => {
+  const input = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!input) return "";
+
+  const trimmed = stripTrailingSlashes(input);
+
+  if (CANONICAL_ORIGINS.includes(trimmed)) {
+    return trimmed;
   }
 
-  const trimmed = lower.endsWith("/") ? lower.replace(/\/+$/, "") : lower;
-
+  let parsed;
   try {
-    const parsed = new URL(trimmed);
-    const { protocol, hostname } = parsed;
-    if (
-      (protocol === "http:" || protocol === "https:") &&
-      (hostname === "localhost" || hostname === "127.0.0.1")
-    ) {
-      return `${protocol}//${hostname}`;
-    }
-    return trimmed;
+    parsed = new URL(trimmed);
   } catch {
     return trimmed;
   }
+
+  const { protocol, hostname, port } = parsed;
+
+  if (!protocol || !hostname) return trimmed;
+
+  if (protocol === "capacitor:" && hostname === "localhost") {
+    return "capacitor://localhost";
+  }
+
+  if (protocol === "app:" && hostname === "obsidian.md") {
+    return "app://obsidian.md";
+  }
+
+  if (
+    (protocol === "http:" || protocol === "https:") &&
+    (hostname === "localhost" || hostname === "127.0.0.1")
+  ) {
+    return `${protocol}//${hostname}`;
+  }
+
+  return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
 };
 
 export const applyCors = (req, res, enabled = true, allowedOrigins = "*") => {
