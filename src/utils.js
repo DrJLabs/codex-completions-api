@@ -137,13 +137,6 @@ export const normalizeModel = (
   return { requested: raw, effective: raw };
 };
 
-const CANONICAL_ORIGINS = [
-  "capacitor://localhost",
-  "app://obsidian.md",
-  "http://localhost",
-  "https://localhost",
-];
-
 // CORS application as a pure function using request origin and enabled flag.
 const stripTrailingSlashes = (value) => value.replace(/\/+$/, "");
 
@@ -155,7 +148,25 @@ const normalizeOriginForMatch = (value = "") => {
 
   const trimmed = stripTrailingSlashes(input);
 
-  if (CANONICAL_ORIGINS.includes(trimmed)) {
+  const canonicalCustomSchemes = [
+    { scheme: "capacitor", host: "localhost" },
+    { scheme: "app", host: "obsidian.md" },
+  ];
+
+  for (const { scheme, host } of canonicalCustomSchemes) {
+    const prefix = `${scheme}://`;
+    if (!trimmed.startsWith(prefix)) continue;
+
+    const withoutScheme = trimmed.slice(prefix.length);
+    const authority = withoutScheme.split("/")[0];
+    const [hostname] = authority.split(":");
+
+    if (hostname === host) {
+      return `${scheme}://${host}`;
+    }
+
+    // Custom scheme that we do not recognize exactly – keep the original
+    // string so it cannot masquerade as an allowlisted origin by prefix.
     return trimmed;
   }
 
@@ -169,14 +180,6 @@ const normalizeOriginForMatch = (value = "") => {
   const { protocol, hostname, port } = parsed;
 
   if (!protocol || !hostname) return trimmed;
-
-  if (protocol === "capacitor:" && hostname === "localhost") {
-    return "capacitor://localhost";
-  }
-
-  if (protocol === "app:" && hostname === "obsidian.md") {
-    return "app://obsidian.md";
-  }
 
   if (
     (protocol === "http:" || protocol === "https:") &&
