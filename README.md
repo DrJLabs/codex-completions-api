@@ -663,7 +663,7 @@ This repository ships an edge-first security posture when deployed via Traefik a
 
 Cloudflare CORS Worker
 
-- Worker name: `codex-preflight-logger`. Lives under `workers/cors-preflight-logger` and reflects the incoming Origin plus *all* requested preflight headers for trusted origins (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`, `https://localhost`, and the hosted domains).
+- Worker name: `codex-preflight-logger`. Lives under `workers/cors-preflight-logger` and reflects the incoming Origin plus _all_ requested preflight headers for trusted origins (`app://obsidian.md`, `capacitor://localhost`, `http://localhost`, `https://localhost`, and the hosted domains).
 - Deploy with `./workers/cors-preflight-logger/deploy.sh` (requires `WORKER_CLOUDFLARE_API_TOKEN` granting Workers Scripts + Routes). The `wrangler.toml` attaches the worker to both `codex-dev` and `codex-api` hostnames.
 - The worker logs every OPTIONS/POST via `console.log`, making `wrangler tail codex-preflight-logger --format json --sampling-rate 0.5` ideal for on-call investigations.
 - Keep Traefik’s `codex-cors` middleware and `PROXY_CORS_ALLOWED_ORIGINS` in sync with the worker allowlist. Traefik still guards preflights with `noop@internal` so the origin only sees vetted requests.
