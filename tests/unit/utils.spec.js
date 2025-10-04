@@ -134,4 +134,59 @@ describe("CORS utility", () => {
     applyCors({ headers: { origin: "https://evil" } }, deniedRes, true, ["https://ok"]);
     expect(denied).not.toHaveProperty("Access-Control-Allow-Origin");
   });
+
+  it("normalizes capacitor, Obsidian, and localhost origins", () => {
+    const allowlist = [
+      "capacitor://localhost",
+      "app://obsidian.md",
+      "http://localhost",
+      "https://localhost",
+    ];
+
+    const variants = [
+      "Capacitor://LOCALHOST",
+      "capacitor://localhost/",
+      "capacitor://localhost:8080",
+      "app://obsidian.md/",
+      "http://localhost:5173",
+      "HTTP://LOCALHOST",
+      "https://localhost/",
+      "https://localhost:443",
+    ];
+
+    for (const origin of variants) {
+      const headers = {};
+      const res = {
+        setHeader: (k, v) => {
+          // eslint-disable-next-line security/detect-object-injection
+          headers[k] = v;
+        },
+      };
+      applyCors({ headers: { origin } }, res, true, allowlist);
+      expect(headers["Access-Control-Allow-Origin"]).toBe(origin);
+    }
+
+    const deniedOrigins = [
+      "capacitor://example.com",
+      "capacitor://localhost.attacker",
+      "app://obsidian.md.fake",
+    ];
+
+    for (const deniedOrigin of deniedOrigins) {
+      let allowOriginSet = false;
+      applyCors(
+        { headers: { origin: deniedOrigin } },
+        {
+          setHeader: (k) => {
+            if (k === "Access-Control-Allow-Origin") {
+              allowOriginSet = true;
+            }
+          },
+        },
+        true,
+        allowlist
+      );
+      expect(allowOriginSet).toBe(false);
+    }
+  });
 });

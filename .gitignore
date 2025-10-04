@@ -6,6 +6,7 @@
 .npmrc
 local-server.log
 .server.pid
+.server_pid
 .server.log
 logs/
 # Dependencies
