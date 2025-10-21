@@ -369,6 +369,7 @@ export async function postChatStream(req, res) {
   let finalFinishSource = null;
   let finalFinishTrail = [];
   let finalFinishUnknown = [];
+  let lengthEvidence = false;
   const finishTracker = createFinishReasonTracker({
     fallback: "stop",
     onUnknown: (info) => {
@@ -389,6 +390,7 @@ export async function postChatStream(req, res) {
   const resetStreamIdle = () => {
     if (streamIdleTimer) clearTimeout(streamIdleTimer);
     streamIdleTimer = setTimeout(() => {
+      if (!finalized) trackFinishReason("length", "stream_idle_timeout");
       try {
         child.kill("SIGTERM");
       } catch {}
@@ -473,8 +475,10 @@ export async function postChatStream(req, res) {
   };
 
   const trackFinishReason = (raw, source) => {
-    if (raw === null || raw === undefined) return;
-    finishTracker.record(raw, source);
+    if (raw === null || raw === undefined) return null;
+    const canonical = finishTracker.record(raw, source);
+    if (canonical === "length") lengthEvidence = true;
+    return canonical;
   };
 
   const scheduleStopAfterTools = () => {
@@ -490,6 +494,7 @@ export async function postChatStream(req, res) {
       try {
         finishSSE();
       } catch {}
+      if (!finalized) trackFinishReason("length", "tool_cutoff");
       try {
         child.kill("SIGTERM");
       } catch {}
@@ -796,10 +801,10 @@ export async function postChatStream(req, res) {
             { provider: true }
           );
         } else if (t === "task_complete") {
-          const finishReason =
-            extractFinishReasonFromMessage(evt.msg) ||
-            (usageState.trigger === "token_count" ? "length" : null);
+          const finishReason = extractFinishReasonFromMessage(evt.msg);
           if (finishReason) trackFinishReason(finishReason, "task_complete");
+          else if (!emitted) trackFinishReason("length", "task_complete");
+          else if (lengthEvidence) trackFinishReason("length", "task_complete");
           const promptTokens = Number(
             evt.msg?.prompt_tokens ?? evt.msg?.token_count?.prompt_tokens
           );
@@ -852,6 +857,9 @@ export async function postChatStream(req, res) {
   } catch {}
   child.on("close", () => {
     if (finalized) return;
+    if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
+      trackFinishReason("length", "token_count_fallback");
+    }
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
       sendChunk({
@@ -874,7 +882,7 @@ export async function postChatStream(req, res) {
     const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
     const inferredReason = finishSent
       ? finalFinishReason
-      : usageState.trigger === "token_count"
+      : !emitted || lengthEvidence
         ? "length"
         : "stop";
     finalizeStream({ reason: inferredReason, trigger });
