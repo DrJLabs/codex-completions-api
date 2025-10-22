@@ -882,7 +882,7 @@ export async function postChatStream(req, res) {
     const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
     const inferredReason = finishSent
       ? finalFinishReason
-      : !emitted || lengthEvidence
+      : lengthEvidence || (!emitted && !hasToolCallEvidence() && !hasFunctionCall)
         ? "length"
         : "stop";
     finalizeStream({ reason: inferredReason, trigger });
