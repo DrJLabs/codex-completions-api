@@ -87,6 +87,8 @@ const CONTENT_FILTER_HINT_REGEX = /(content[_-]?filter|safety|moderation|policy)
 
 const SOURCE_PRIORITY = new Map([
   ["token_count", 0],
+  ["stream_idle_timeout", 0],
+  ["tool_cutoff", 0],
   ["provider", 1],
   ["task_complete", 1],
   ["finalizer", 2],
