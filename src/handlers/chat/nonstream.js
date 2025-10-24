@@ -632,53 +632,41 @@ export async function postChatNonStream(req, res) {
           trackToolSignals(payload);
         }
         const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(payload) : null;
-        if (tp === "agent_message_delta") {
-          const deltaPayload = evt.msg?.delta ?? evt.delta;
-          if (typeof deltaPayload === "string") {
-            const segment = SANITIZE_METADATA
-              ? applyMetadataSanitizer(deltaPayload, metadataInfo, {
-                  stage: "agent_message_delta",
-                  eventType: tp,
-                })
-              : deltaPayload;
-            content += segment || "";
-          } else if (deltaPayload && typeof deltaPayload === "object") {
-            const { updated } = toolCallAggregator.ingestDelta(deltaPayload);
-            if (updated) hasToolCalls = true;
-            const rawText = coerceAssistantContent(deltaPayload.content ?? deltaPayload.text ?? "");
-            const segment = SANITIZE_METADATA
-              ? applyMetadataSanitizer(rawText, metadataInfo, {
-                  stage: "agent_message_delta",
-                  eventType: tp,
-                })
-              : rawText;
-            content += segment || "";
-          }
-        } else if (tp === "agent_message") {
-          const messagePayload = evt.msg?.message ?? evt.message;
-          if (typeof messagePayload === "string") {
-            if (SANITIZE_METADATA) {
-              content = applyMetadataSanitizer(messagePayload, metadataInfo, {
-                stage: "agent_message",
-                eventType: tp,
-              });
+        if (tp === "agent_message_delta" || tp === "agent_message") {
+          const isDelta = tp === "agent_message_delta";
+          const payloadData = isDelta
+            ? (evt.msg?.delta ?? evt.delta)
+            : (evt.msg?.message ?? evt.message);
+
+          let textSegment = "";
+          let hasTextSegment = false;
+
+          if (typeof payloadData === "string") {
+            textSegment = payloadData;
+            hasTextSegment = Boolean(textSegment);
+          } else if (payloadData && typeof payloadData === "object") {
+            if (isDelta) {
+              const { updated } = toolCallAggregator.ingestDelta(payloadData);
+              if (updated) hasToolCalls = true;
             } else {
-              content = messagePayload;
+              toolCallAggregator.ingestMessage(payloadData);
+              if (toolCallAggregator.hasCalls()) hasToolCalls = true;
             }
-          } else if (messagePayload && typeof messagePayload === "object") {
-            toolCallAggregator.ingestMessage(messagePayload);
-            if (toolCallAggregator.hasCalls()) hasToolCalls = true;
-            const textValue = coerceAssistantContent(
-              messagePayload.content ?? messagePayload.text ?? ""
-            );
-            if (SANITIZE_METADATA) {
-              content = applyMetadataSanitizer(textValue, metadataInfo, {
-                stage: "agent_message",
+            textSegment = coerceAssistantContent(payloadData.content ?? payloadData.text ?? "");
+            hasTextSegment = Boolean(textSegment);
+          }
+
+          const sanitizedSegment = SANITIZE_METADATA
+            ? applyMetadataSanitizer(textSegment, metadataInfo, {
+                stage: tp,
                 eventType: tp,
-              });
-            } else if (textValue) {
-              content = textValue;
-            }
+              })
+            : textSegment;
+
+          if (isDelta) {
+            content += sanitizedSegment || "";
+          } else if (hasTextSegment && sanitizedSegment) {
+            content = sanitizedSegment;
           }
         } else if (tp === "metadata") {
           if (SANITIZE_METADATA && metadataInfo) {
