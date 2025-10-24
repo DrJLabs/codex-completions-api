@@ -61,6 +61,8 @@ test("sanitizes metadata when toggle enabled", async () => {
   expect(usageEntry.sanitized_metadata_count).toBeGreaterThanOrEqual(2);
   expect(usageEntry.sanitized_metadata_keys).toContain("rollout_path");
   expect(usageEntry.sanitized_metadata_keys).toContain("session_id");
+  expect(Array.isArray(usageEntry.sanitized_metadata_sources)).toBe(true);
+  expect(usageEntry.sanitized_metadata_sources).toContain("message.metadata");
 });
 
 test("retains metadata when toggle disabled", async () => {
@@ -97,4 +99,6 @@ test("retains metadata when toggle disabled", async () => {
   expect(usageEntry.sanitized_metadata_count).toBe(0);
   expect(Array.isArray(usageEntry.sanitized_metadata_keys)).toBe(true);
   expect(usageEntry.sanitized_metadata_keys).toHaveLength(0);
+  expect(Array.isArray(usageEntry.sanitized_metadata_sources)).toBe(true);
+  expect(usageEntry.sanitized_metadata_sources).toHaveLength(0);
 });
