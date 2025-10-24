@@ -54,6 +54,15 @@ const main = async () => {
   }
 
   const parallelToolCalls = !/^false$/i.test(String(process.env.FAKE_CODEX_PARALLEL || "true"));
+  const metadataMode = String(process.env.FAKE_CODEX_METADATA || "").toLowerCase();
+  const metadataPayload =
+    metadataMode && metadataMode !== "false"
+      ? {
+          rollout_path: "/app/.codex-api/sessions/fake-rollout",
+          session_id: "fake-session-123",
+          ...(metadataMode === "extra" ? { build_id: "fake-build" } : {}),
+        }
+      : null;
   const toolCalls =
     scenario === "tool_call"
       ? [
@@ -77,9 +86,14 @@ const main = async () => {
       : null;
 
   const baseMessage = "Hello from fake-codex.";
-  const messageText = ["content_filter", "tool_call", "function_call"].includes(scenario)
-    ? ""
-    : baseMessage;
+  const includeMessageText = !["content_filter", "tool_call", "function_call"].includes(scenario);
+  let messageText = includeMessageText ? baseMessage : "";
+  if (includeMessageText && metadataPayload) {
+    const lines = Object.entries(metadataPayload)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("\n");
+    messageText = `${baseMessage}\n${lines}`;
+  }
 
   if (toolCalls && parallelToolCalls) {
     write({
@@ -127,6 +141,7 @@ const main = async () => {
   };
   if (toolCalls) assistantMessage.tool_calls = toolCalls;
   if (functionCall) assistantMessage.function_call = functionCall;
+  if (metadataPayload) assistantMessage.metadata = metadataPayload;
 
   const messageEnvelope = { message: assistantMessage };
   if (!parallelToolCalls) messageEnvelope.parallel_tool_calls = false;

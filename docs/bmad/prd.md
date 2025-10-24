@@ -1,7 +1,7 @@
 ---
 title: Codex Completions API — Product Requirements (PRD)
 status: active
-version: v1.2
+version: v1.3
 updated: 2025-09-26
 ---
 
@@ -19,11 +19,12 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 
 ## Change Log
 
-| Date       | Version | Description                                                                                | Author     |
-| ---------- | ------- | ------------------------------------------------------------------------------------------ | ---------- |
-| 2025-09-26 | v1.2    | Added dev parallel tool call passthrough, codex CLI mount guidance, and test/tooling notes | PO (codex) |
-| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update              | PM (codex) |
-| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                                    | PM (codex) |
+| Date       | Version | Description                                                                                                                      | Author     |
+| ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 2025-09-26 | v1.3    | Added response-integrity requirement to strip Codex telemetry metadata, feature toggle rollout plan, and monitoring expectations | PM (codex) |
+| 2025-09-26 | v1.2    | Added dev parallel tool call passthrough, codex CLI mount guidance, and test/tooling notes                                       | PO (codex) |
+| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update                                                    | PM (codex) |
+| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                                                                          | PM (codex) |
 
 # Users & Use Cases
 
@@ -44,6 +45,8 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 7. **FR7:** Offer optional in-app token-bucket rate limiting (`PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`) that defends POST chat/completions endpoints in addition to edge rate limiting.
 8. **FR8:** Enforce streaming concurrency guard and tool-response shaping toggles through env vars (`PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS` for dev-only passthrough).
 9. **FR9:** When `PROXY_TEST_ENDPOINTS=true`, expose `GET /__test/conc` and `POST /__test/conc/release` to inspect/release SSE guard state for CI debugging only.
+10. **FR10:** Strip Codex rollout telemetry (for example `rollout_path`, `session_id`) from assistant-visible responses while preserving the OpenAI envelope and logging metadata internally for debugging; guard the behavior behind a `PROXY_SANITIZE_METADATA` toggle so operators can canary before enforcing globally.
+11. **FR11:** Surface success/failure telemetry for the sanitizer (structured log line + alert hook) and document QA smoke steps (curl + downstream parser) required when enabling/disabling the toggle in each environment.
 
 ## Non-Functional Requirements
 
@@ -54,6 +57,7 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 5. **NFR5:** Service remains stateless; `.codex-api/` must stay writable in prod for Codex sessions. Sandbox defaults to `danger-full-access`; `PROXY_CODEX_WORKDIR` isolates Codex runtime files (default `/tmp/codex-work`).
 6. **NFR6:** Protect streaming stability with `PROXY_SSE_MAX_CONCURRENCY`, optional `PROXY_KILL_ON_DISCONNECT`, and dev-only truncate guard (`PROXY_DEV_TRUNCATE_AFTER_MS`) without regressing contract order.
 7. **NFR7:** Respect Test Selection Policy — touching `server.js`, handlers, or streaming code mandates `npm run test:integration` and `npm test`; broader changes run `npm run verify:all`.
+8. **NFR8:** Maintain observability for the sanitizer rollout: monitoring must alert on unexpected drops of metadata events and capture toggle state changes in deployment logs.
 
 # User Interface Design Goals
 
@@ -179,12 +183,14 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 - **Streaming & Tools:** `PROXY_SSE_KEEPALIVE_MS`, `PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS` (dev override), `PROXY_KILL_ON_DISCONNECT`.
 - **Timeouts & Limits:** `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`, `PROXY_DEV_TRUNCATE_AFTER_MS`, `PROXY_MAX_PROMPT_TOKENS`.
 - **Security & Rate Limits:** `PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`.
+- **Response Integrity:** `PROXY_SANITIZE_METADATA` (feature toggle for telemetry redaction; defaults off until canary complete).
 - **Diagnostics:** `PROXY_ENABLE_CORS`, `PROXY_DEBUG_PROTO`, `PROXY_TEST_ENDPOINTS`, `STREAM_RELEASE_FILE` (test harness only), `TOKEN_LOG_PATH` (via `src/dev-logging.js`).
 
 # Observability, Logging & Tooling
 
 - Structured JSON access log (`src/middleware/access-log.js`) plus console text log.
 - Usage NDJSON logs aggregated by `GET /v1/usage`; raw events accessible via `GET /v1/usage/raw`.
+- Sanitizer telemetry: each toggle change must log a `proxy_sanitize_metadata` event with flag state; monitoring should alert if sanitized metadata count drops to zero unexpectedly while flag is enabled.
 - Concurrency guard snapshot via `guardSnapshot()` and optional `/__test/conc` endpoints when enabled.
 - Streaming benchmark script (`scripts/benchmarks/stream-multi-choice.mjs`) now samples CPU/RSS via `ps` so developers can capture metrics without `pidusage`.
 - Runbooks: `docs/runbooks/operational.md`, `docs/dev-to-prod-playbook.md`, streaming parity notes in `docs/openai-chat-completions-parity.md`.
