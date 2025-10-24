@@ -9,6 +9,12 @@ if ! command -v npx >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "[husky][pre-commit] running secretlint"
+if ! npm run --silent secret-scan; then
+  echo "[husky][pre-commit] secretlint detected potential secrets. Review and resolve." >&2
+  exit 1
+fi
+
 echo "[husky][pre-commit] running lint-staged (autofix)"
 if ! npx --no-install lint-staged; then
   echo "[husky][pre-commit] lint-staged failed. See output above." >&2
