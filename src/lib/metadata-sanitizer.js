@@ -164,20 +164,51 @@ const processContentCandidate = (candidate, source, out) => {
   }
 };
 
+const getValueAtPath = (payload, path) => {
+  let current = payload;
+  /* eslint-disable security/detect-object-injection */
+  for (const key of path) {
+    if (!current || typeof current !== "object") {
+      current = undefined;
+      break;
+    }
+    current = current[key];
+  }
+  /* eslint-enable security/detect-object-injection */
+  return current;
+};
+
+const METADATA_SOURCES = [
+  { path: ["metadata"], source: "payload.metadata" },
+  { path: ["msg", "metadata"], source: "msg.metadata" },
+  { path: ["message", "metadata"], source: "message.metadata" },
+  { path: ["msg", "message", "metadata"], source: "msg.message.metadata" },
+  { path: ["delta", "metadata"], source: "delta.metadata" },
+  { path: ["msg", "delta", "metadata"], source: "msg.delta.metadata" },
+];
+
+const CONTENT_SOURCES = [
+  { path: ["content"], source: "payload.content" },
+  { path: ["message", "content"], source: "message.content" },
+  { path: ["msg", "message", "content"], source: "msg.message.content" },
+  { path: ["delta", "content"], source: "delta.content" },
+  { path: ["msg", "delta", "content"], source: "msg.delta.content" },
+];
+
 export const extractMetadataFromPayload = (payload) => {
   if (!payload || typeof payload !== "object") return null;
   const acc = { metadata: new Map(), sources: new Set() };
-  addCandidateMetadata(payload.metadata, "payload.metadata", acc);
-  addCandidateMetadata(payload.msg?.metadata, "msg.metadata", acc);
-  addCandidateMetadata(payload.message?.metadata, "message.metadata", acc);
-  addCandidateMetadata(payload.msg?.message?.metadata, "msg.message.metadata", acc);
-  addCandidateMetadata(payload.delta?.metadata, "delta.metadata", acc);
-  addCandidateMetadata(payload.msg?.delta?.metadata, "msg.delta.metadata", acc);
-  processContentCandidate(payload.content, "payload.content", acc);
-  processContentCandidate(payload.message?.content, "message.content", acc);
-  processContentCandidate(payload.msg?.message?.content, "msg.message.content", acc);
-  processContentCandidate(payload.delta?.content, "delta.content", acc);
-  processContentCandidate(payload.msg?.delta?.content, "msg.delta.content", acc);
+
+  for (const { path, source } of METADATA_SOURCES) {
+    const candidate = getValueAtPath(payload, path);
+    addCandidateMetadata(candidate, source, acc);
+  }
+
+  for (const { path, source } of CONTENT_SOURCES) {
+    const candidate = getValueAtPath(payload, path);
+    processContentCandidate(candidate, source, acc);
+  }
+
   const keys = Array.from(acc.metadata.keys());
   if (!keys.length) return null;
   return {
