@@ -35,6 +35,7 @@ import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
+  normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
 
 const API_KEY = CFG.API_KEY;
@@ -120,6 +121,13 @@ export async function postChatNonStream(req, res) {
   let hasFunctionCall = false;
 
   const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
+  const seenSanitizedRemovalSignatures = new Set();
+
+  const getSanitizerSummaryData = () => ({
+    count: sanitizedMetadataSummary.count,
+    keys: Array.from(sanitizedMetadataSummary.keys),
+    sources: Array.from(sanitizedMetadataSummary.sources),
+  });
 
   const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
     if (!SANITIZE_METADATA) return;
@@ -129,19 +137,29 @@ export async function postChatNonStream(req, res) {
       ? removed.filter((entry) => entry && typeof entry === "object")
       : [];
     if (metadataObject) {
-      for (const key of Object.keys(metadataObject)) sanitizedMetadataSummary.keys.add(key);
-    }
-    if (removedEntries.length) {
-      sanitizedMetadataSummary.count += removedEntries.length;
-      for (const entry of removedEntries) {
-        if (entry?.key) sanitizedMetadataSummary.keys.add(entry.key);
+      for (const key of Object.keys(metadataObject)) {
+        const normalizedKey = normalizeMetadataKey(key);
+        if (normalizedKey) sanitizedMetadataSummary.keys.add(normalizedKey);
       }
+    }
+    const uniqueRemovedEntries = [];
+    if (removedEntries.length) {
+      for (const entry of removedEntries) {
+        const normalizedKey = normalizeMetadataKey(entry.key);
+        const signature = `${normalizedKey || ""}::${entry.raw || ""}`;
+        if (!signature.trim()) continue;
+        if (seenSanitizedRemovalSignatures.has(signature)) continue;
+        seenSanitizedRemovalSignatures.add(signature);
+        if (normalizedKey) sanitizedMetadataSummary.keys.add(normalizedKey);
+        uniqueRemovedEntries.push({ ...entry, key: normalizedKey || entry.key });
+      }
+      sanitizedMetadataSummary.count += uniqueRemovedEntries.length;
     }
     const sourceList = Array.isArray(sources)
       ? sources.filter((source) => typeof source === "string" && source)
       : [];
     for (const source of sourceList) sanitizedMetadataSummary.sources.add(source);
-    if (!metadataObject && !removedEntries.length) return;
+    if (!metadataObject && !uniqueRemovedEntries.length) return;
     appendProtoEvent({
       ts: Date.now(),
       req_id: reqId,
@@ -152,7 +170,7 @@ export async function postChatNonStream(req, res) {
       stage,
       event_type: eventType,
       metadata: metadataObject || undefined,
-      removed_lines: removedEntries.length ? removedEntries : undefined,
+      removed_lines: uniqueRemovedEntries.length ? uniqueRemovedEntries : undefined,
       metadata_sources: sourceList.length ? sourceList : undefined,
     });
   };
@@ -474,9 +492,11 @@ export async function postChatNonStream(req, res) {
           });
         }
       } catch {}
-      const sanitizedMetadataCount = sanitizedMetadataSummary.count;
-      const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
-      const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
+      const {
+        count: sanitizedMetadataCount,
+        keys: sanitizedMetadataKeys,
+        sources: sanitizedMetadataSources,
+      } = getSanitizerSummaryData();
       appendUsage({
         ts: Date.now(),
         req_id: reqId,

@@ -43,6 +43,8 @@ import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-
 import {
   extractMetadataFromPayload,
   sanitizeMetadataTextSegment,
+  metadataKeys,
+  normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
 
 const API_KEY = CFG.API_KEY;
@@ -383,6 +385,132 @@ export async function postChatStream(req, res) {
     },
   });
   const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
+  const seenSanitizedRemovalSignatures = new Set();
+  const mergedMetadata = { metadata: {}, sources: new Set() };
+  const metadataKeyRegister = new Set(metadataKeys());
+
+  const mergeMetadataInfo = (info) => {
+    if (!info || typeof info !== "object") {
+      const hasMetadata = Object.keys(mergedMetadata.metadata).length > 0;
+      const hasSources = mergedMetadata.sources.size > 0;
+      if (!hasMetadata && !hasSources) return null;
+      return {
+        metadata: { ...mergedMetadata.metadata },
+        sources: Array.from(mergedMetadata.sources),
+      };
+    }
+    const incomingMetadata =
+      info.metadata && typeof info.metadata === "object" ? info.metadata : {};
+    for (const [rawKey, rawValue] of Object.entries(incomingMetadata)) {
+      const normalized = normalizeMetadataKey(rawKey);
+      if (!normalized) continue;
+      // Keys derive from deterministic sanitizer allowlist.
+      // eslint-disable-next-line security/detect-object-injection
+      mergedMetadata.metadata[normalized] = rawValue;
+      metadataKeyRegister.add(normalized);
+    }
+    if (Array.isArray(info.sources)) {
+      for (const source of info.sources) {
+        if (typeof source === "string" && source) mergedMetadata.sources.add(source);
+      }
+    }
+    const hasMetadata = Object.keys(mergedMetadata.metadata).length > 0;
+    const hasSources = mergedMetadata.sources.size > 0;
+    if (!hasMetadata && !hasSources) return null;
+    return {
+      metadata: { ...mergedMetadata.metadata },
+      sources: Array.from(mergedMetadata.sources),
+    };
+  };
+
+  const getSanitizerSummaryData = () => ({
+    count: sanitizedMetadataSummary.count,
+    keys: Array.from(sanitizedMetadataSummary.keys),
+    sources: Array.from(sanitizedMetadataSummary.sources),
+  });
+
+  const sanitizedContentState = {
+    pending: "",
+    lastContext: { stage: "agent_message_delta", eventType: "agent_message_delta" },
+  };
+
+  const shouldHoldPartialLine = (candidate, keys) => {
+    if (!candidate) return false;
+    const trimmed = candidate.trimStart();
+    if (!trimmed) return false;
+    const withoutContainers = trimmed.replace(/^[[{]\s*/, "");
+    const match = withoutContainers.match(/^['"]?([A-Za-z0-9._-]+)/);
+    if (!match) return false;
+    const candidateKey = normalizeMetadataKey(match[1]);
+    if (!candidateKey) return false;
+    const hasSeparator = /[:=]/.test(withoutContainers);
+    if (hasSeparator) return keys.has(candidateKey);
+    for (const key of keys) {
+      if (key.startsWith(candidateKey)) return true;
+    }
+    return false;
+  };
+
+  const drainPendingSanitized = ({ flush = false, metadataInfo = null } = {}) => {
+    if (!SANITIZE_METADATA || !sanitizedContentState.pending) return;
+    const info = metadataInfo || mergeMetadataInfo(null);
+    const emitPortion = (portion) => {
+      if (!portion) return;
+      const sanitizedPortion = applyMetadataSanitizer(
+        portion,
+        info,
+        sanitizedContentState.lastContext
+      );
+      if (sanitizedPortion) {
+        appendContentSegment(sanitizedPortion);
+      } else if (portion.trim()) {
+        scheduleStopAfterTools();
+      }
+    };
+    while (sanitizedContentState.pending) {
+      if (!flush) {
+        const newlineIdx = sanitizedContentState.pending.indexOf("\n");
+        if (newlineIdx >= 0) {
+          const portion = sanitizedContentState.pending.slice(0, newlineIdx + 1);
+          sanitizedContentState.pending = sanitizedContentState.pending.slice(newlineIdx + 1);
+          emitPortion(portion);
+          continue;
+        }
+        if (shouldHoldPartialLine(sanitizedContentState.pending, metadataKeyRegister)) break;
+      }
+      const portion = sanitizedContentState.pending;
+      sanitizedContentState.pending = "";
+      emitPortion(portion);
+      if (!flush) break;
+    }
+  };
+
+  const enqueueSanitizedSegment = (segment, metadataInfo, context = {}, { flush = false } = {}) => {
+    if (!SANITIZE_METADATA) {
+      if (segment) appendContentSegment(segment);
+      return;
+    }
+    if (context.stage || context.eventType) {
+      sanitizedContentState.lastContext = {
+        stage: context.stage || sanitizedContentState.lastContext.stage,
+        eventType: context.eventType || sanitizedContentState.lastContext.eventType,
+      };
+    }
+    const mergedInfo = mergeMetadataInfo(metadataInfo);
+    if (segment) sanitizedContentState.pending += segment;
+    drainPendingSanitized({ flush, metadataInfo: mergedInfo });
+  };
+
+  const flushSanitizedSegments = (context = {}) => {
+    if (!SANITIZE_METADATA) return;
+    if (context.stage || context.eventType) {
+      sanitizedContentState.lastContext = {
+        stage: context.stage || sanitizedContentState.lastContext.stage,
+        eventType: context.eventType || sanitizedContentState.lastContext.eventType,
+      };
+    }
+    drainPendingSanitized({ flush: true });
+  };
 
   const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
     if (!SANITIZE_METADATA) return;
@@ -392,19 +520,35 @@ export async function postChatStream(req, res) {
       ? removed.filter((entry) => entry && typeof entry === "object")
       : [];
     if (metadataObject) {
-      for (const key of Object.keys(metadataObject)) sanitizedMetadataSummary.keys.add(key);
-    }
-    if (removedEntries.length) {
-      sanitizedMetadataSummary.count += removedEntries.length;
-      for (const entry of removedEntries) {
-        if (entry?.key) sanitizedMetadataSummary.keys.add(entry.key);
+      for (const key of Object.keys(metadataObject)) {
+        const normalizedKey = normalizeMetadataKey(key);
+        if (normalizedKey) {
+          sanitizedMetadataSummary.keys.add(normalizedKey);
+          metadataKeyRegister.add(normalizedKey);
+        }
       }
+    }
+    const uniqueRemovedEntries = [];
+    if (removedEntries.length) {
+      for (const entry of removedEntries) {
+        const normalizedKey = normalizeMetadataKey(entry.key);
+        const signature = `${normalizedKey || ""}::${entry.raw || ""}`;
+        if (!signature.trim()) continue;
+        if (seenSanitizedRemovalSignatures.has(signature)) continue;
+        seenSanitizedRemovalSignatures.add(signature);
+        if (normalizedKey) {
+          sanitizedMetadataSummary.keys.add(normalizedKey);
+          metadataKeyRegister.add(normalizedKey);
+        }
+        uniqueRemovedEntries.push({ ...entry, key: normalizedKey || entry.key });
+      }
+      sanitizedMetadataSummary.count += uniqueRemovedEntries.length;
     }
     const sourceList = Array.isArray(sources)
       ? sources.filter((source) => typeof source === "string" && source)
       : [];
     for (const source of sourceList) sanitizedMetadataSummary.sources.add(source);
-    if (!metadataObject && !removedEntries.length) return;
+    if (!metadataObject && !uniqueRemovedEntries.length) return;
     appendProtoEvent({
       ts: Date.now(),
       req_id: reqId,
@@ -415,7 +559,7 @@ export async function postChatStream(req, res) {
       stage,
       event_type: eventType,
       metadata: metadataObject || undefined,
-      removed_lines: removedEntries.length ? removedEntries : undefined,
+      removed_lines: uniqueRemovedEntries.length ? uniqueRemovedEntries : undefined,
       metadata_sources: sourceList.length ? sourceList : undefined,
     });
   };
@@ -630,9 +774,11 @@ export async function postChatStream(req, res) {
     const resolved = finalFinishReason
       ? { reason: finalFinishReason, source: finalFinishSource }
       : resolveFinishReason();
-    const sanitizedMetadataCount = sanitizedMetadataSummary.count;
-    const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
-    const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
+    const {
+      count: sanitizedMetadataCount,
+      keys: sanitizedMetadataKeys,
+      sources: sanitizedMetadataSources,
+    } = getSanitizerSummaryData();
     try {
       appendUsage({
         ts: Date.now(),
@@ -677,6 +823,13 @@ export async function postChatStream(req, res) {
   const finalizeStream = ({ reason, trigger } = {}) => {
     if (finalized) return;
     finalized = true;
+    try {
+      if (cutTimer) {
+        clearTimeout(cutTimer);
+        cutTimer = null;
+      }
+    } catch {}
+    flushSanitizedSegments({ stage: "agent_message_delta", eventType: "finalize" });
     const resolvedTrigger =
       trigger ||
       usageState.trigger ||
@@ -713,9 +866,11 @@ export async function postChatStream(req, res) {
       choiceCount,
     });
     if (SANITIZE_METADATA) {
-      const sanitizedMetadataCount = sanitizedMetadataSummary.count;
-      const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
-      const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
+      const {
+        count: sanitizedMetadataCount,
+        keys: sanitizedMetadataKeys,
+        sources: sanitizedMetadataSources,
+      } = getSanitizerSummaryData();
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
@@ -778,13 +933,14 @@ export async function postChatStream(req, res) {
         if (t === "agent_message_delta") {
           const deltaPayload = evt.msg?.delta ?? evt.delta;
           if (typeof deltaPayload === "string") {
-            const sanitized = SANITIZE_METADATA
-              ? applyMetadataSanitizer(deltaPayload, metadataInfo, {
-                  stage: "agent_message_delta",
-                  eventType: t,
-                })
-              : deltaPayload;
-            if (sanitized) appendContentSegment(sanitized);
+            if (SANITIZE_METADATA) {
+              enqueueSanitizedSegment(deltaPayload, metadataInfo, {
+                stage: "agent_message_delta",
+                eventType: t,
+              });
+            } else if (deltaPayload) {
+              appendContentSegment(deltaPayload);
+            }
           } else if (deltaPayload && typeof deltaPayload === "object") {
             const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload);
             if (updated) {
@@ -813,22 +969,35 @@ export async function postChatStream(req, res) {
             const textDelta = coerceAssistantContent(
               deltaPayload.content ?? deltaPayload.text ?? ""
             );
-            const sanitizedTextDelta = SANITIZE_METADATA
-              ? applyMetadataSanitizer(textDelta, metadataInfo, {
-                  stage: "agent_message_delta",
-                  eventType: t,
-                })
-              : textDelta;
-            if (sanitizedTextDelta) appendContentSegment(sanitizedTextDelta);
-            else scheduleStopAfterTools();
+            if (SANITIZE_METADATA) {
+              enqueueSanitizedSegment(textDelta, metadataInfo, {
+                stage: "agent_message_delta",
+                eventType: t,
+              });
+            } else if (textDelta) {
+              appendContentSegment(textDelta);
+            }
           }
         } else if (t === "agent_message") {
           const messagePayload = evt.msg?.message ?? evt.message;
           if (typeof messagePayload === "string") {
             const rawMessage = messagePayload;
             if (rawMessage) {
+              let aggregatedInfo = null;
+              if (SANITIZE_METADATA) {
+                enqueueSanitizedSegment(
+                  "",
+                  metadataInfo,
+                  {
+                    stage: "agent_message",
+                    eventType: t,
+                  },
+                  { flush: true }
+                );
+                aggregatedInfo = mergeMetadataInfo(null);
+              }
               const sanitizedMessage = SANITIZE_METADATA
-                ? applyMetadataSanitizer(rawMessage, metadataInfo, {
+                ? applyMetadataSanitizer(rawMessage, aggregatedInfo, {
                     stage: "agent_message",
                     eventType: t,
                   })
@@ -878,8 +1047,21 @@ export async function postChatStream(req, res) {
             const text = coerceAssistantContent(
               messagePayload.content ?? messagePayload.text ?? ""
             );
+            let aggregatedInfo = null;
+            if (SANITIZE_METADATA) {
+              enqueueSanitizedSegment(
+                "",
+                metadataInfo,
+                {
+                  stage: "agent_message",
+                  eventType: t,
+                },
+                { flush: true }
+              );
+              aggregatedInfo = mergeMetadataInfo(null);
+            }
             const sanitizedText = SANITIZE_METADATA
-              ? applyMetadataSanitizer(text, metadataInfo, {
+              ? applyMetadataSanitizer(text, aggregatedInfo, {
                   stage: "agent_message",
                   eventType: t,
                 })
@@ -896,6 +1078,7 @@ export async function postChatStream(req, res) {
           }
         } else if (t === "metadata") {
           if (SANITIZE_METADATA && metadataInfo) {
+            mergeMetadataInfo(metadataInfo);
             recordSanitizedMetadata({
               stage: "metadata_event",
               eventType: t,
@@ -980,6 +1163,7 @@ export async function postChatStream(req, res) {
     child.stdin.write(JSON.stringify(submission) + "\n");
   } catch {}
   child.on("close", () => {
+    flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
     if (finalized) return;
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
       trackFinishReason("length", "token_count_fallback");
