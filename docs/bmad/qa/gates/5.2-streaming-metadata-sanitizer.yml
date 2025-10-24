@@ -1,0 +1,64 @@
+schema: 1
+story: "5.2"
+story_title: "Story 5.2 — Streaming Metadata Sanitizer"
+gate: PASS
+status_reason: >-
+  Streaming metadata sanitization validated with integration + Playwright coverage and
+  shared helper reuse; telemetry logging parity confirmed. Sanitizer-on finish-order
+  assertion complete, no open QA gaps.
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-24T15:35:00Z"
+quality_score: 100
+expires: "2025-11-07T15:35:00Z"
+
+top_issues: []
+
+waiver:
+  active: false
+
+evidence:
+  tests_reviewed: 3
+  risks_identified: 4
+  trace:
+    ac_covered: [1, 2, 3, 4]
+    ac_gaps: []
+  trace_ref: "docs/bmad/qa/assessments/5.2-trace-20251024.md"
+  nfr_ref: "docs/bmad/qa/assessments/5.2-nfr-20251024.md"
+  risk_ref: "docs/bmad/qa/assessments/5.2-risk-20251024.md"
+
+test_evidence:
+  - "npm run test:unit"
+  - "npm run test:integration -- chat.stream.metadata.int.test.js"
+  - "npm test -- chat-stream-metadata.spec.ts"
+
+trace:
+  totals:
+    requirements: 4
+    full: 4
+    partial: 0
+    none: 0
+  uncovered: []
+  notes: "All ACs fully covered; sanitizer-on ordering assertion landed."
+
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: PASS
+    notes: "Telemetry stripped from streamed deltas; logging retains sanitized keys + sources."
+  performance:
+    status: PASS
+    notes: "Helper reuse keeps per-chunk work bounded; integration/E2E timings stable."
+  reliability:
+    status: PASS
+    notes: "Toggle default-off with logging parity; sanitizer-on ordering assertion guards regressions."
+  maintainability:
+    status: PASS
+    notes: "Shared helper + documented toggle minimize duplication and aid rollout."
+
+recommendations:
+  immediate: []
+  future:
+    - action: "Monitor sanitized key metrics in staging once toggle enabled to confirm telemetry parity."
+      refs:
+        - "docs/bmad/stories/5.2.streaming-metadata-sanitizer.md"
+        - "src/handlers/chat/stream.js"
