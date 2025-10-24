@@ -119,9 +119,9 @@ export async function postChatNonStream(req, res) {
   let hasToolCalls = false;
   let hasFunctionCall = false;
 
-  const sanitizedMetadataSummary = { count: 0, keys: new Set() };
+  const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
 
-  const recordSanitizedMetadata = ({ stage, eventType, metadata, removed }) => {
+  const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
     if (!SANITIZE_METADATA) return;
     const metadataObject =
       metadata && typeof metadata === "object" && Object.keys(metadata).length ? metadata : null;
@@ -137,6 +137,10 @@ export async function postChatNonStream(req, res) {
         if (entry?.key) sanitizedMetadataSummary.keys.add(entry.key);
       }
     }
+    const sourceList = Array.isArray(sources)
+      ? sources.filter((source) => typeof source === "string" && source)
+      : [];
+    for (const source of sourceList) sanitizedMetadataSummary.sources.add(source);
     if (!metadataObject && !removedEntries.length) return;
     appendProtoEvent({
       ts: Date.now(),
@@ -149,6 +153,7 @@ export async function postChatNonStream(req, res) {
       event_type: eventType,
       metadata: metadataObject || undefined,
       removed_lines: removedEntries.length ? removedEntries : undefined,
+      metadata_sources: sourceList.length ? sourceList : undefined,
     });
   };
 
@@ -162,6 +167,7 @@ export async function postChatNonStream(req, res) {
         eventType,
         metadata: metadataInfo ? metadata : null,
         removed,
+        sources: metadataInfo?.sources,
       });
     }
     return sanitizedText;
@@ -470,6 +476,7 @@ export async function postChatNonStream(req, res) {
       } catch {}
       const sanitizedMetadataCount = sanitizedMetadataSummary.count;
       const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
+      const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
       appendUsage({
         ts: Date.now(),
         req_id: reqId,
@@ -494,6 +501,7 @@ export async function postChatNonStream(req, res) {
         metadata_sanitizer_enabled: SANITIZE_METADATA,
         sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
         sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
+        sanitized_metadata_sources: SANITIZE_METADATA ? sanitizedMetadataSources : [],
       });
       logFinishReasonTelemetry({
         route: "/v1/chat/completions",
@@ -515,6 +523,7 @@ export async function postChatNonStream(req, res) {
           kind: "metadata_sanitizer_summary",
           sanitized_count: sanitizedMetadataCount,
           sanitized_keys: sanitizedMetadataKeys,
+          sanitized_sources: sanitizedMetadataSources,
         });
       }
     }
@@ -675,6 +684,7 @@ export async function postChatNonStream(req, res) {
               eventType: tp,
               metadata: metadataInfo.metadata,
               removed: [],
+              sources: metadataInfo.sources,
             });
           }
         } else if (tp === "token_count") {
