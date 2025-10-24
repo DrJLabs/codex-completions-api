@@ -40,6 +40,10 @@ import {
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
+import {
+  extractMetadataFromPayload,
+  sanitizeMetadataTextSegment,
+} from "../../lib/metadata-sanitizer.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -62,6 +66,7 @@ const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOW
 const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
+const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
 
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
@@ -377,6 +382,59 @@ export async function postChatStream(req, res) {
       if (value) unknownFinishReasons.add(value);
     },
   });
+  const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
+
+  const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
+    if (!SANITIZE_METADATA) return;
+    const metadataObject =
+      metadata && typeof metadata === "object" && Object.keys(metadata).length ? metadata : null;
+    const removedEntries = Array.isArray(removed)
+      ? removed.filter((entry) => entry && typeof entry === "object")
+      : [];
+    if (metadataObject) {
+      for (const key of Object.keys(metadataObject)) sanitizedMetadataSummary.keys.add(key);
+    }
+    if (removedEntries.length) {
+      sanitizedMetadataSummary.count += removedEntries.length;
+      for (const entry of removedEntries) {
+        if (entry?.key) sanitizedMetadataSummary.keys.add(entry.key);
+      }
+    }
+    const sourceList = Array.isArray(sources)
+      ? sources.filter((source) => typeof source === "string" && source)
+      : [];
+    for (const source of sourceList) sanitizedMetadataSummary.sources.add(source);
+    if (!metadataObject && !removedEntries.length) return;
+    appendProtoEvent({
+      ts: Date.now(),
+      req_id: reqId,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      kind: "metadata_sanitizer",
+      toggle_enabled: true,
+      stage,
+      event_type: eventType,
+      metadata: metadataObject || undefined,
+      removed_lines: removedEntries.length ? removedEntries : undefined,
+      metadata_sources: sourceList.length ? sourceList : undefined,
+    });
+  };
+
+  const applyMetadataSanitizer = (segment, metadataInfo, { stage, eventType }) => {
+    if (!SANITIZE_METADATA) return segment;
+    const metadata = metadataInfo?.metadata || {};
+    const { text: sanitizedText, removed } = sanitizeMetadataTextSegment(segment ?? "", metadata);
+    if (metadataInfo || (removed && removed.length)) {
+      recordSanitizedMetadata({
+        stage,
+        eventType,
+        metadata: metadataInfo ? metadata : null,
+        removed,
+        sources: metadataInfo?.sources,
+      });
+    }
+    return sanitizedText;
+  };
   const usageState = {
     prompt: 0,
     completion: 0,
@@ -572,6 +630,9 @@ export async function postChatStream(req, res) {
     const resolved = finalFinishReason
       ? { reason: finalFinishReason, source: finalFinishSource }
       : resolveFinishReason();
+    const sanitizedMetadataCount = sanitizedMetadataSummary.count;
+    const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
+    const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
     try {
       appendUsage({
         ts: Date.now(),
@@ -602,6 +663,10 @@ export async function postChatStream(req, res) {
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
         choice_count: choiceCount,
+        metadata_sanitizer_enabled: SANITIZE_METADATA,
+        sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
+        sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
+        sanitized_metadata_sources: SANITIZE_METADATA ? sanitizedMetadataSources : [],
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -647,6 +712,21 @@ export async function postChatStream(req, res) {
       trail: finalFinishTrail,
       choiceCount,
     });
+    if (SANITIZE_METADATA) {
+      const sanitizedMetadataCount = sanitizedMetadataSummary.count;
+      const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
+      const sanitizedMetadataSources = Array.from(sanitizedMetadataSummary.sources);
+      appendProtoEvent({
+        ts: Date.now(),
+        req_id: reqId,
+        route: "/v1/chat/completions",
+        mode: "chat_stream",
+        kind: "metadata_sanitizer_summary",
+        sanitized_count: sanitizedMetadataCount,
+        sanitized_keys: sanitizedMetadataKeys,
+        sanitized_sources: sanitizedMetadataSources,
+      });
+    }
     try {
       finishSSE();
     } catch {}
@@ -689,6 +769,7 @@ export async function postChatStream(req, res) {
           event: evt,
         });
         const payload = evt.msg || evt;
+        const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(payload) : null;
         if (payload) {
           trackToolSignals(payload);
           const finishCandidate = extractFinishReasonFromMessage(payload);
@@ -697,7 +778,13 @@ export async function postChatStream(req, res) {
         if (t === "agent_message_delta") {
           const deltaPayload = evt.msg?.delta ?? evt.delta;
           if (typeof deltaPayload === "string") {
-            appendContentSegment(deltaPayload);
+            const sanitized = SANITIZE_METADATA
+              ? applyMetadataSanitizer(deltaPayload, metadataInfo, {
+                  stage: "agent_message_delta",
+                  eventType: t,
+                })
+              : deltaPayload;
+            if (sanitized) appendContentSegment(sanitized);
           } else if (deltaPayload && typeof deltaPayload === "object") {
             const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload);
             if (updated) {
@@ -726,18 +813,38 @@ export async function postChatStream(req, res) {
             const textDelta = coerceAssistantContent(
               deltaPayload.content ?? deltaPayload.text ?? ""
             );
-            if (textDelta) appendContentSegment(textDelta);
+            const sanitizedTextDelta = SANITIZE_METADATA
+              ? applyMetadataSanitizer(textDelta, metadataInfo, {
+                  stage: "agent_message_delta",
+                  eventType: t,
+                })
+              : textDelta;
+            if (sanitizedTextDelta) appendContentSegment(sanitizedTextDelta);
             else scheduleStopAfterTools();
           }
         } else if (t === "agent_message") {
           const messagePayload = evt.msg?.message ?? evt.message;
           if (typeof messagePayload === "string") {
-            const m = messagePayload;
-            if (m) {
-              let suffix = "";
-              if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
-              else if (!sentAny) suffix = m;
-              if (suffix) appendContentSegment(suffix);
+            const rawMessage = messagePayload;
+            if (rawMessage) {
+              const sanitizedMessage = SANITIZE_METADATA
+                ? applyMetadataSanitizer(rawMessage, metadataInfo, {
+                    stage: "agent_message",
+                    eventType: t,
+                  })
+                : rawMessage;
+              if (sanitizedMessage) {
+                let suffix = "";
+                if (sanitizedMessage.startsWith(emitted)) {
+                  suffix = sanitizedMessage.slice(emitted.length);
+                } else if (!sentAny) {
+                  suffix = sanitizedMessage;
+                }
+                if (suffix) appendContentSegment(suffix);
+                else if (SANITIZE_METADATA) scheduleStopAfterTools();
+              } else if (SANITIZE_METADATA) {
+                scheduleStopAfterTools();
+              }
             }
           } else if (messagePayload && typeof messagePayload === "object") {
             const { deltas, updated } = toolCallAggregator.ingestMessage(messagePayload, {
@@ -771,14 +878,31 @@ export async function postChatStream(req, res) {
             const text = coerceAssistantContent(
               messagePayload.content ?? messagePayload.text ?? ""
             );
-            if (text) {
+            const sanitizedText = SANITIZE_METADATA
+              ? applyMetadataSanitizer(text, metadataInfo, {
+                  stage: "agent_message",
+                  eventType: t,
+                })
+              : text;
+            if (sanitizedText) {
               let suffix = "";
-              if (text.startsWith(emitted)) suffix = text.slice(emitted.length);
-              else if (!sentAny) suffix = text;
+              if (sanitizedText.startsWith(emitted)) suffix = sanitizedText.slice(emitted.length);
+              else if (!sentAny) suffix = sanitizedText;
               if (suffix) appendContentSegment(suffix);
+              else if (SANITIZE_METADATA) scheduleStopAfterTools();
             } else {
               scheduleStopAfterTools();
             }
+          }
+        } else if (t === "metadata") {
+          if (SANITIZE_METADATA && metadataInfo) {
+            recordSanitizedMetadata({
+              stage: "metadata_event",
+              eventType: t,
+              metadata: metadataInfo.metadata,
+              removed: [],
+              sources: metadataInfo.sources,
+            });
           }
         } else if (t === "token_count") {
           const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
