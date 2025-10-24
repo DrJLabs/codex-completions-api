@@ -1,7 +1,7 @@
 ---
 title: Codex Completions API — Architecture
 status: active
-version: v2.2
+version: v2.3
 updated: 2025-09-26
 ---
 
@@ -42,6 +42,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 | Change                                   | Date       | Version | Description                                                                                                                                | Author            |
 | ---------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| Response sanitization requirement        | 2025-09-26 | v2.3    | Captured metadata filtering guard in chat handlers, feature toggle rollout plan, and monitoring expectations.                              | PM (codex)        |
 | Parallel tools + CLI packaging           | 2025-09-26 | v2.2    | Documented dev parallel tool passthrough, baked Codex CLI into the image, refreshed testing/observability references, updated ops guidance | Architect (codex) |
 | Architecture refresh post-stability epic | 2025-09-24 | v2.1    | Documented usage endpoints, concurrency guard service, and updated module maps after Sep 2025 stabilization.                               | Architect (codex) |
 | Server modularization doc update         | 2025-09-13 | v2.0    | Captured router/handler/service separation introduced during modularization refactor.                                                      | Architect (codex) |
@@ -54,7 +55,7 @@ Recent work centered on brownfield stabilization: enforcing streaming parity, ad
 
 **Enhancement Type:** Brownfield stabilization & parity
 
-**Scope:** Maintain Chat Completions compatibility, ensure deterministic streaming and usage telemetry, and expose observability tooling.
+**Scope:** Maintain Chat Completions compatibility, ensure deterministic streaming and usage telemetry, expose observability tooling, and sanitize Codex-only metadata before responses are returned to clients with a feature toggle and monitoring guardrails.
 
 **Integration Impact:** Medium — touches streaming handlers (`src/handlers/chat/*`), concurrency guard, usage router, logging, and documentation/runbooks.
 
@@ -165,15 +166,17 @@ None — stabilization leveraged the existing stack and toggles.
 1. Request validated (`nonstream.validatePayload`); Bearer required (`Authorization` header).
 2. Model normalized via `normalizeModel`; tool-tail toggles and dev-only `enableParallelTools` inspected.
 3. `codex-runner` spawns `codex proto` with sandbox/workdir and optional provider/effort overrides (`CODEX_FORCE_PROVIDER`, `PROXY_STOP_AFTER_TOOLS*`, plus `parallel_tool_calls=true` when permitted).
-4. Handler accumulates stdout events, tracks `<use_tool>` blocks (via `extractUseToolBlocks`), and enforces idle/overall timeouts.
-5. Deterministic finalize path returns JSON with aggregated content, `finish_reason`, and usage estimates; dev truncate guard returns `finish_reason:"length"` when configured.
+4. Handler accumulates stdout events, tracks `<use_tool>` blocks (via `extractUseToolBlocks`), enforces idle/overall timeouts, and captures metadata-only events.
+5. `PROXY_SANITIZE_METADATA` toggle controls whether metadata redaction runs; when enabled, payloads (for example `rollout_path`, `session_id`) are logged for debugging but redacted from assistant-visible content before finalization.
+6. Deterministic finalize path returns JSON with aggregated content, `finish_reason`, and usage estimates; dev truncate guard returns `finish_reason:"length"` when configured.
 
 ## POST /v1/chat/completions — Stream (SSE)
 
 1. `setupStreamGuard` enforces `PROXY_SSE_MAX_CONCURRENCY`; rejected requests emit 429 with guard headers/logs.
 2. SSE headers set (`text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`). Keepalive scheduler respects UA overrides and `X-No-Keepalive` hints.
-3. Stream emits role-first delta chunk, successive content deltas, optional tool-tail suppression, optional finish-reason and usage chunks, and final `[DONE]` sentinel. Dev-only parallel tool calls may interleave tool responses; suppression toggles ensure serialized tails in prod.
-4. Cleanup releases concurrency guard token, clears keepalive intervals, and optionally kills child process if `PROXY_KILL_ON_DISCONNECT` is true.
+3. Stream emits role-first delta chunk, successive content deltas (excluding telemetry-only events when `PROXY_SANITIZE_METADATA` is on), optional tool-tail suppression, optional finish-reason and usage chunks, and final `[DONE]` sentinel. Dev-only parallel tool calls may interleave tool responses; suppression toggles ensure serialized tails in prod.
+4. Telemetry-only events are logged but never forwarded to clients while the toggle is active, ensuring SSE consumers do not receive rollout metadata.
+5. Cleanup releases concurrency guard token, clears keepalive intervals, and optionally kills child process if `PROXY_KILL_ON_DISCONNECT` is true.
 
 ## POST /v1/completions (Legacy Shim)
 
@@ -206,7 +209,9 @@ None — stabilization leveraged the existing stack and toggles.
 - Structured request logs (`[http]` text and JSON) capture latency, auth presence, and user agents.
 - Concurrency guard events logged with `[proxy]` prefix for guard monitoring.
 - Usage NDJSON and optional proto event logs support `/v1/usage` reporting and debugging.
+- Sanitizer monitoring: emit structured events for toggle changes (`proxy_sanitize_metadata` with state) and alert when sanitized metadata counts fall outside expected windows during canary/production runs.
 - Runbooks detail analysis steps for non-stream truncation, streaming order, and dev edge timeouts.
+- Support communication: rollout notes should include guidance for downstream parser owners on reporting anomalies observed after the toggle is enabled.
 - `scripts/benchmarks/stream-multi-choice.mjs` now samples CPU/RSS via `ps`, removing the `pidusage` dependency for streaming diagnostics.
 
 # Configuration & Environment Profiles

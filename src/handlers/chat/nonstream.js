@@ -32,6 +32,10 @@ import {
   validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import {
+  sanitizeMetadataTextSegment,
+  extractMetadataFromPayload,
+} from "../../lib/metadata-sanitizer.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -48,6 +52,7 @@ const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
+const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
 
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
@@ -113,6 +118,54 @@ export async function postChatNonStream(req, res) {
   let assistantFunctionCall = null;
   let hasToolCalls = false;
   let hasFunctionCall = false;
+
+  const sanitizedMetadataSummary = { count: 0, keys: new Set() };
+
+  const recordSanitizedMetadata = ({ stage, eventType, metadata, removed }) => {
+    if (!SANITIZE_METADATA) return;
+    const metadataObject =
+      metadata && typeof metadata === "object" && Object.keys(metadata).length ? metadata : null;
+    const removedEntries = Array.isArray(removed)
+      ? removed.filter((entry) => entry && typeof entry === "object")
+      : [];
+    if (metadataObject) {
+      for (const key of Object.keys(metadataObject)) sanitizedMetadataSummary.keys.add(key);
+    }
+    if (removedEntries.length) {
+      sanitizedMetadataSummary.count += removedEntries.length;
+      for (const entry of removedEntries) {
+        if (entry?.key) sanitizedMetadataSummary.keys.add(entry.key);
+      }
+    }
+    if (!metadataObject && !removedEntries.length) return;
+    appendProtoEvent({
+      ts: Date.now(),
+      req_id: reqId,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      kind: "metadata_sanitizer",
+      toggle_enabled: true,
+      stage,
+      event_type: eventType,
+      metadata: metadataObject || undefined,
+      removed_lines: removedEntries.length ? removedEntries : undefined,
+    });
+  };
+
+  const applyMetadataSanitizer = (segment, metadataInfo, { stage, eventType }) => {
+    if (!SANITIZE_METADATA) return segment;
+    const metadata = metadataInfo?.metadata || {};
+    const { text: sanitizedText, removed } = sanitizeMetadataTextSegment(segment ?? "", metadata);
+    if (metadataInfo || (removed && removed.length)) {
+      recordSanitizedMetadata({
+        stage,
+        eventType,
+        metadata: metadataInfo ? metadata : null,
+        removed,
+      });
+    }
+    return sanitizedText;
+  };
 
   const trackToolSignals = (payload) => {
     if (!payload || typeof payload !== "object") return;
@@ -244,6 +297,16 @@ export async function postChatNonStream(req, res) {
   }
 
   const child = spawnCodex(args);
+  if (SANITIZE_METADATA) {
+    appendProtoEvent({
+      ts: Date.now(),
+      req_id: reqId,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      kind: "metadata_sanitizer_state",
+      toggle_enabled: true,
+    });
+  }
   let out = "",
     err = "";
 
@@ -405,6 +468,8 @@ export async function postChatNonStream(req, res) {
           });
         }
       } catch {}
+      const sanitizedMetadataCount = sanitizedMetadataSummary.count;
+      const sanitizedMetadataKeys = Array.from(sanitizedMetadataSummary.keys);
       appendUsage({
         ts: Date.now(),
         req_id: reqId,
@@ -426,6 +491,9 @@ export async function postChatNonStream(req, res) {
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
         choice_count: choiceCount,
+        metadata_sanitizer_enabled: SANITIZE_METADATA,
+        sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
+        sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
       });
       logFinishReasonTelemetry({
         route: "/v1/chat/completions",
@@ -438,6 +506,17 @@ export async function postChatNonStream(req, res) {
         trail: reasonTrail,
         choiceCount,
       });
+      if (SANITIZE_METADATA) {
+        appendProtoEvent({
+          ts: Date.now(),
+          req_id: reqId,
+          route: "/v1/chat/completions",
+          mode: "chat_nonstream",
+          kind: "metadata_sanitizer_summary",
+          sanitized_count: sanitizedMetadataCount,
+          sanitized_keys: sanitizedMetadataKeys,
+        });
+      }
     }
 
     if (IS_DEV_ENV && statusCode === 200) {
@@ -552,29 +631,63 @@ export async function postChatNonStream(req, res) {
           if (finishCandidate) finishReasonTracker.record(finishCandidate, tp || "event");
           trackToolSignals(payload);
         }
+        const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(payload) : null;
         if (tp === "agent_message_delta") {
           const deltaPayload = evt.msg?.delta ?? evt.delta;
           if (typeof deltaPayload === "string") {
-            content += deltaPayload;
+            const segment = SANITIZE_METADATA
+              ? applyMetadataSanitizer(deltaPayload, metadataInfo, {
+                  stage: "agent_message_delta",
+                  eventType: tp,
+                })
+              : deltaPayload;
+            content += segment || "";
           } else if (deltaPayload && typeof deltaPayload === "object") {
             const { updated } = toolCallAggregator.ingestDelta(deltaPayload);
             if (updated) hasToolCalls = true;
-            const textDelta = coerceAssistantContent(
-              deltaPayload.content ?? deltaPayload.text ?? ""
-            );
-            if (textDelta) content += textDelta;
+            const rawText = coerceAssistantContent(deltaPayload.content ?? deltaPayload.text ?? "");
+            const segment = SANITIZE_METADATA
+              ? applyMetadataSanitizer(rawText, metadataInfo, {
+                  stage: "agent_message_delta",
+                  eventType: tp,
+                })
+              : rawText;
+            content += segment || "";
           }
         } else if (tp === "agent_message") {
           const messagePayload = evt.msg?.message ?? evt.message;
           if (typeof messagePayload === "string") {
-            content = messagePayload;
+            if (SANITIZE_METADATA) {
+              content = applyMetadataSanitizer(messagePayload, metadataInfo, {
+                stage: "agent_message",
+                eventType: tp,
+              });
+            } else {
+              content = messagePayload;
+            }
           } else if (messagePayload && typeof messagePayload === "object") {
             toolCallAggregator.ingestMessage(messagePayload);
             if (toolCallAggregator.hasCalls()) hasToolCalls = true;
             const textValue = coerceAssistantContent(
               messagePayload.content ?? messagePayload.text ?? ""
             );
-            if (textValue) content = textValue;
+            if (SANITIZE_METADATA) {
+              content = applyMetadataSanitizer(textValue, metadataInfo, {
+                stage: "agent_message",
+                eventType: tp,
+              });
+            } else if (textValue) {
+              content = textValue;
+            }
+          }
+        } else if (tp === "metadata") {
+          if (SANITIZE_METADATA && metadataInfo) {
+            recordSanitizedMetadata({
+              stage: "metadata_event",
+              eventType: tp,
+              metadata: metadataInfo.metadata,
+              removed: [],
+            });
           }
         } else if (tp === "token_count") {
           prompt_tokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens ?? prompt_tokens);
