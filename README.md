@@ -2,6 +2,8 @@
 
 Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CLI as if it were a standard model API. The proxy exposes `/v1/models` and `/v1/chat/completions`, streams with SSE (role-first delta, `[DONE]`), and keeps output shaping minimal so existing tools work without changes.
 
+> **Disclaimer:** This project is an independent community effort and is not affiliated with or endorsed by OpenAI.
+
 ## Features
 
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
@@ -12,6 +14,35 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
 - Process model: one Codex proto process per request (stateless).
+
+## Quick Start
+
+### Local Docker (example compose)
+
+1. Copy the example compose file and adjust environment variables as needed:
+
+   ```bash
+   cp docker-compose.local.example.yml docker-compose.local.yml
+   # edit docker-compose.local.yml to set PROXY_API_KEY or other overrides
+   ```
+
+2. Ensure you have a Codex CLI config available under `.codex-api/` (ignored by Git). At minimum place your `config.toml` and `auth.json` there.
+
+3. Launch the stack:
+
+   ```bash
+   docker compose -f docker-compose.local.yml up --build
+   ```
+
+4. Query the API on `http://127.0.0.1:11435`:
+
+   ```bash
+   curl -s http://127.0.0.1:11435/v1/models | jq .
+   ```
+
+### Node.js (without Docker)
+
+Install dependencies (`npm install`) and run `npm run dev` (or `npm run dev:shim` to use the fake proto shim). The server listens on port `18000` by default and expects Codex CLI binaries/config under `.codev/`.
 
 ## Project Structure (high‑level)
 
@@ -34,7 +65,7 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 
 ## Environments: PROD vs DEV
 
-See docs/dev-to-prod-playbook.md for a step-by-step Dev → Prod method and invariants enforced by the checks.
+See docs/README.md for documentation pointers. Internal runbooks (Dev → Prod, architecture diagrams, etc.) live in `docs/private/` locally and are not committed.
 
 ### Production
 
@@ -80,7 +111,7 @@ Notes:
 
 - The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
   - For this project the source of truth is `~/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
-- See `docs/dev-to-prod-playbook.md` for the full Dev → Prod procedure including optional checks (`npm run port:check`) and end‑to-end smoke (`npm run port:prod`).
+- Detailed Dev → Prod procedures are available in the private documentation bundle (`docs/private/`).
 
 ### Release & Backup shortcuts
 
@@ -192,26 +223,13 @@ Behavior:
 - Origin (host only): checks `https://127.0.0.1/healthz` and `/v1/models` with `Host: $DOMAIN`.
 - Edge (Cloudflare): checks `/healthz`, `/v1/models`, and an optional authenticated non‑stream chat.
 
-## Diagrams
+## Documentation
 
-Architecture (PROD routing & components):
+This repository ships with a minimal public documentation stub (`docs/README.md`). Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. See `docs/README.md` for guidance on structuring local-only docs.
 
-![Architecture](docs/architecture.png)
+## License
 
-Development modes (Node vs Container):
-
-![Dev Modes](docs/dev-modes.png)
-
-Request Flow (Auth, Routers, SSE):
-
-![Request Flow](docs/request-flow.png)
-
-### Prompt & Tooling References
-
-- Obsidian Copilot System Prompt (captured): `docs/obsidian-copilot-prompt.md`
-- Codex CLI System Prompt & Tools: `docs/codex-cli-prompt-and-tools.md`
-- Client Tool Integration Findings (root cause + plan): `docs/client-tool-integration-findings.md`
-- Obsidian Copilot Tool Parsing (how the client runs tools): `docs/obsidian-copilot-tool-parsing.md`
+This project is released under the [MIT License](LICENSE).
 
 ### Streaming shaping for tool-heavy clients
 
