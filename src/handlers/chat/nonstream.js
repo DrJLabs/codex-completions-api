@@ -674,9 +674,9 @@ export async function postChatNonStream(req, res) {
 
           if (isDelta) {
             content += sanitizedSegment || "";
-} else if (hasTextSegment) {
-  content = sanitizedSegment;
-}
+          } else if (hasTextSegment) {
+            content = sanitizedSegment;
+          }
         } else if (tp === "metadata") {
           if (SANITIZE_METADATA && metadataInfo) {
             recordSanitizedMetadata({
