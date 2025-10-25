@@ -46,7 +46,7 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 8. **FR8:** Enforce streaming concurrency guard and tool-response shaping toggles through env vars (`PROXY_SSE_MAX_CONCURRENCY`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_STOP_AFTER_TOOLS_GRACE_MS`, `PROXY_TOOL_BLOCK_MAX`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS` for dev-only passthrough).
 9. **FR9:** When `PROXY_TEST_ENDPOINTS=true`, expose `GET /__test/conc` and `POST /__test/conc/release` to inspect/release SSE guard state for CI debugging only.
 10. **FR10:** Strip Codex rollout telemetry (for example `rollout_path`, `session_id`) from assistant-visible responses while preserving the OpenAI envelope and logging metadata internally for debugging; guard the behavior behind a `PROXY_SANITIZE_METADATA` toggle so operators can canary before enforcing globally.
-11. **FR11:** Surface success/failure telemetry for the sanitizer (structured log line + alert hook) and document QA smoke steps (curl + downstream parser) required when enabling/disabling the toggle in each environment.
+11. **FR11:** Surface success/failure telemetry for the sanitizer by writing `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` entries (sanitized counts, keys, sources) to `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`), and document QA smoke steps (curl + downstream parser) required when enabling/disabling the toggle in each environment.
 
 ## Non-Functional Requirements
 
@@ -190,7 +190,7 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 
 - Structured JSON access log (`src/middleware/access-log.js`) plus console text log.
 - Usage NDJSON logs aggregated by `GET /v1/usage`; raw events accessible via `GET /v1/usage/raw`.
-- Sanitizer telemetry: each toggle change must log a `proxy_sanitize_metadata` event with flag state; monitoring should alert if sanitized metadata count drops to zero unexpectedly while flag is enabled.
+- Sanitizer telemetry: `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`) captures `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` rows; monitoring should alert if sanitized counts fall to zero unexpectedly while the flag is enabled.
 - Concurrency guard snapshot via `guardSnapshot()` and optional `/__test/conc` endpoints when enabled.
 - Streaming benchmark script (`scripts/benchmarks/stream-multi-choice.mjs`) now samples CPU/RSS via `ps` so developers can capture metrics without `pidusage`.
 - Runbooks: `docs/runbooks/operational.md`, `docs/dev-to-prod-playbook.md`, streaming parity notes in `docs/openai-chat-completions-parity.md`.
