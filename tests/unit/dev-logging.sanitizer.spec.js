@@ -19,7 +19,9 @@ const readTelemetryFile = async (file) => {
   }
 };
 
-const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+const flushAsync = async (mod, filePath) => {
+  await mod.__whenAppendIdle(filePath);
+};
 
 describe("dev-logging sanitizer telemetry", () => {
   let telemetryPath;
@@ -46,7 +48,7 @@ describe("dev-logging sanitizer telemetry", () => {
     mod.logSanitizerToggle({ enabled: true, trigger: "unit", mode: "test", reqId: "req-1" });
     mod.logSanitizerToggle({ enabled: false, trigger: "unit", mode: "test", reqId: "req-1" });
 
-    await flushAsync();
+    await flushAsync(mod, telemetryPath);
     const entries = await readTelemetryFile(telemetryPath);
     expect(entries).toHaveLength(2);
     expect(entries[0].kind).toBe("proxy_sanitize_metadata");
@@ -69,7 +71,7 @@ describe("dev-logging sanitizer telemetry", () => {
       sources: ["message.metadata", "delta.metadata"],
     });
 
-    await flushAsync();
+    await flushAsync(mod, telemetryPath);
     const entries = await readTelemetryFile(telemetryPath);
     expect(entries).toHaveLength(1);
     const [entry] = entries;
