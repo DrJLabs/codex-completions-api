@@ -9,12 +9,11 @@ local-server.log
 .server_pid
 .server.log
 logs/
+logging/
 # Dependencies
 node_modules/
 # Playwright artifacts
 test-results/*
-!test-results/chat-completions/
-!test-results/chat-completions/**
 playwright-report/
 blob-report/
 # BMAD (local only)
