@@ -5,11 +5,33 @@ import os from "node:os";
 import path from "node:path";
 
 const IS_DEV_ENV = (process.env.PROXY_ENV || "").toLowerCase() === "dev";
+const DEFAULT_SANITIZER_LOG_NAME = "codex-sanitizer.ndjson";
+const SANITIZER_LOG_BASE_DIR = path.resolve(process.env.SANITIZER_LOG_BASE_DIR || os.tmpdir());
+
+const resolveSanitizerLogPath = (envValue) => {
+  const fallback = path.join(SANITIZER_LOG_BASE_DIR, DEFAULT_SANITIZER_LOG_NAME);
+  if (!envValue) return fallback;
+
+  const candidate = path.resolve(SANITIZER_LOG_BASE_DIR, envValue);
+  const relative = path.relative(SANITIZER_LOG_BASE_DIR, candidate);
+  const escapesBase = relative.startsWith("..");
+
+  if (escapesBase) {
+    process.emitWarning(
+      `Ignoring unsafe sanitizer log path outside ${SANITIZER_LOG_BASE_DIR}: ${envValue}`,
+      { code: "CODEX_SANITIZER_LOG_OUTSIDE_BASE" }
+    );
+    return fallback;
+  }
+
+  return candidate;
+};
 
 export const TOKEN_LOG_PATH =
   process.env.TOKEN_LOG_PATH || path.join(os.tmpdir(), "codex-usage.ndjson");
 export const PROTO_LOG_PATH =
   process.env.PROTO_LOG_PATH || path.join(os.tmpdir(), "codex-proto-events.ndjson");
+export const SANITIZER_LOG_PATH = resolveSanitizerLogPath(process.env.SANITIZER_LOG_PATH);
 export const LOG_PROTO =
   IS_DEV_ENV && String(process.env.PROXY_LOG_PROTO || "true").toLowerCase() !== "false";
 
@@ -19,21 +41,76 @@ try {
   fs.mkdirSync(path.dirname(TOKEN_LOG_PATH), { recursive: true });
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- directories derived from env/tmpdir
   fs.mkdirSync(path.dirname(PROTO_LOG_PATH), { recursive: true });
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- directories derived from env/tmpdir
+  fs.mkdirSync(path.dirname(SANITIZER_LOG_PATH), { recursive: true });
 } catch {}
 
-export const appendUsage = (obj = {}) => {
+const appendJsonLine = (filePath, obj = {}) => {
   try {
+    const payload = JSON.stringify(obj) + "\n";
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
-    fs.appendFileSync(TOKEN_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
+    fs.appendFile(filePath, payload, { encoding: "utf8" }, () => {});
   } catch {}
+};
+
+export const appendUsage = (obj = {}) => {
+  appendJsonLine(TOKEN_LOG_PATH, obj);
 };
 
 export const appendProtoEvent = (obj = {}) => {
   if (!LOG_PROTO) return;
-  try {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
-    fs.appendFileSync(PROTO_LOG_PATH, JSON.stringify(obj) + "\n", { encoding: "utf8" });
-  } catch {}
+  appendJsonLine(PROTO_LOG_PATH, obj);
+};
+
+const sanitizerState = {
+  lastEnabled: undefined,
+};
+
+export const logSanitizerToggle = ({
+  enabled,
+  trigger = "request",
+  route = "/v1/chat/completions",
+  mode,
+  reqId,
+} = {}) => {
+  const normalized = Boolean(enabled);
+  if (sanitizerState.lastEnabled === normalized) return;
+  sanitizerState.lastEnabled = normalized;
+  appendJsonLine(SANITIZER_LOG_PATH, {
+    ts: Date.now(),
+    kind: "proxy_sanitize_metadata",
+    enabled: normalized,
+    trigger,
+    route,
+    mode,
+    req_id: reqId || null,
+  });
+};
+
+export const logSanitizerSummary = ({
+  enabled,
+  route = "/v1/chat/completions",
+  mode,
+  reqId,
+  count = 0,
+  keys = [],
+  sources = [],
+} = {}) => {
+  appendJsonLine(SANITIZER_LOG_PATH, {
+    ts: Date.now(),
+    kind: "metadata_sanitizer_summary",
+    enabled: Boolean(enabled),
+    route,
+    mode,
+    req_id: reqId || null,
+    sanitized_count: count,
+    sanitized_keys: Array.from(new Set(keys || [])),
+    sanitized_sources: Array.from(new Set(sources || [])),
+  });
+};
+
+export const __resetSanitizerTelemetryStateForTests = () => {
+  sanitizerState.lastEnabled = undefined;
 };
 
 // Lightweight parser for <use_tool ...>...</use_tool> blocks

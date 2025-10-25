@@ -22,6 +22,8 @@ import {
   appendProtoEvent,
   extractUseToolBlocks,
   LOG_PROTO,
+  logSanitizerSummary,
+  logSanitizerToggle,
 } from "../../dev-logging.js";
 import {
   buildProtoArgs,
@@ -122,6 +124,14 @@ export async function postChatNonStream(req, res) {
 
   const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
   const seenSanitizedRemovalSignatures = new Set();
+
+  logSanitizerToggle({
+    enabled: SANITIZE_METADATA,
+    trigger: "request",
+    route: "/v1/chat/completions",
+    mode: "chat_nonstream",
+    reqId,
+  });
 
   const getSanitizerSummaryData = () => ({
     count: sanitizedMetadataSummary.count,
@@ -497,6 +507,17 @@ export async function postChatNonStream(req, res) {
         keys: sanitizedMetadataKeys,
         sources: sanitizedMetadataSources,
       } = getSanitizerSummaryData();
+      if (SANITIZE_METADATA) {
+        logSanitizerSummary({
+          enabled: true,
+          route: "/v1/chat/completions",
+          mode: "chat_nonstream",
+          reqId,
+          count: sanitizedMetadataCount,
+          keys: sanitizedMetadataKeys,
+          sources: sanitizedMetadataSources,
+        });
+      }
       appendUsage({
         ts: Date.now(),
         req_id: reqId,

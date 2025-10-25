@@ -29,6 +29,8 @@ import {
   appendUsage,
   appendProtoEvent,
   extractUseToolBlocks,
+  logSanitizerSummary,
+  logSanitizerToggle,
 } from "../../dev-logging.js";
 import {
   buildProtoArgs,
@@ -385,6 +387,13 @@ export async function postChatStream(req, res) {
     },
   });
   const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
+  logSanitizerToggle({
+    enabled: SANITIZE_METADATA,
+    trigger: "request",
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    reqId,
+  });
   const seenSanitizedRemovalSignatures = new Set();
   const mergedMetadata = { metadata: {}, sources: new Set() };
   const metadataKeyRegister = new Set(metadataKeys());
@@ -779,6 +788,17 @@ export async function postChatStream(req, res) {
       keys: sanitizedMetadataKeys,
       sources: sanitizedMetadataSources,
     } = getSanitizerSummaryData();
+    if (SANITIZE_METADATA) {
+      logSanitizerSummary({
+        enabled: true,
+        route: "/v1/chat/completions",
+        mode: "chat_stream",
+        reqId,
+        count: sanitizedMetadataCount,
+        keys: sanitizedMetadataKeys,
+        sources: sanitizedMetadataSources,
+      });
+    }
     try {
       appendUsage({
         ts: Date.now(),

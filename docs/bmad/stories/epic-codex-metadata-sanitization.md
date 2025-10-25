@@ -1,8 +1,8 @@
 ---
 title: Epic — Codex Metadata Sanitization
 status: In Progress
-version: 0.2
-updated: 2025-10-24
+version: 0.3
+updated: 2025-10-25
 owner: Product (PM)
 labels: [brownfield, response-integrity, telemetry]
 ---
@@ -33,8 +33,8 @@ Prevent Codex rollout telemetry from surfacing in client-visible content without
 # Stories
 
 1. **Guard metadata in non-stream responses** (Done 2025-10-24) — Update `chat/nonstream` event ingestion to ignore or redact metadata messages before finalizing assistant content; add unit coverage and integration regression. See [Story 5.1](./5.1.nonstream-metadata-sanitizer.md).
-2. **Guard metadata in streaming responses** — Apply identical filtering in the stream handler so SSE deltas never include rollout telemetry; add Playwright stream assertion.
-3. **Telemetry + documentation updates** — Record sanitized metadata in structured logs for debugging, update PRD/architecture requirements, and document QA verification (curl + parser smoke) plus alerting coverage.
+2. **Guard metadata in streaming responses** (Done 2025-10-24) — Apply identical filtering in the stream handler so SSE deltas never include rollout telemetry; add Playwright stream assertion.
+3. **Telemetry + documentation updates** (Done 2025-10-25) — Record sanitized metadata in structured logs for debugging, update PRD/architecture requirements, and document QA verification (curl + parser smoke) plus alerting coverage.
 4. **Flagged rollout & comms** — Implement the `PROXY_SANITIZE_METADATA` toggle, script the canary/rollback steps, and coordinate downstream communication so consumers know how to report anomalies.
 
 # Compatibility Requirements
