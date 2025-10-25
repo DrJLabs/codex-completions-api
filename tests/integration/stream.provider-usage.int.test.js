@@ -4,6 +4,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { wait } from "./helpers.js";
+import { __whenAppendIdle } from "../../src/dev-logging.js";
 
 let PORT;
 let child;
@@ -119,14 +121,25 @@ test("provider usage event is logged without emitting client usage chunk", async
   });
   expect(finishChunk).toBeTruthy();
 
-  let logRaw = "";
-  try {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
-    if (fs.existsSync(tokenLogPath)) {
+  const readLogs = () => {
+    try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
-      logRaw = fs.readFileSync(tokenLogPath, "utf8");
-    }
-  } catch {}
+      if (fs.existsSync(tokenLogPath)) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
+        return fs.readFileSync(tokenLogPath, "utf8");
+      }
+    } catch {}
+    return "";
+  };
+
+  await __whenAppendIdle(tokenLogPath);
+  let logRaw = readLogs();
+  const pollStart = Date.now();
+  while (!logRaw.trim() && Date.now() - pollStart < 1000) {
+    await wait(25);
+    await __whenAppendIdle(tokenLogPath);
+    logRaw = readLogs();
+  }
   const entries = logRaw
     .split(/\n/)
     .map((line) => line.trim())

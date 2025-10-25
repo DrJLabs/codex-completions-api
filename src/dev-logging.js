@@ -45,12 +45,56 @@ try {
   fs.mkdirSync(path.dirname(SANITIZER_LOG_PATH), { recursive: true });
 } catch {}
 
+const appendQueues = new Map();
+
 const appendJsonLine = (filePath, obj = {}) => {
+  let payload;
   try {
-    const payload = JSON.stringify(obj) + "\n";
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
-    fs.appendFile(filePath, payload, { encoding: "utf8" }, () => {});
-  } catch {}
+    payload = JSON.stringify(obj) + "\n";
+  } catch (err) {
+    try {
+      console.error(`[dev-logging] JSON stringify failed for ${filePath}:`, err);
+      process.emitWarning(
+        `appendJsonLine stringify failed for ${filePath}: ${String(err?.message || err)}`,
+        { code: "CODEX_APPEND_STRINGIFY_FAILURE" }
+      );
+    } catch {}
+    return Promise.resolve();
+  }
+
+  const previous = appendQueues.get(filePath) || Promise.resolve();
+  const appendTask = () =>
+    new Promise((resolve) => {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- internal file path; not user controlled
+      fs.appendFile(filePath, payload, { encoding: "utf8" }, (err) => {
+        if (err) {
+          try {
+            console.error(`[dev-logging] Failed to append to ${filePath}:`, err);
+            process.emitWarning(
+              `appendJsonLine failed for ${filePath}: ${String(err?.message || err)}`,
+              { code: "CODEX_APPEND_FAILURE" }
+            );
+          } catch {}
+        }
+        resolve();
+      });
+    });
+  const next = previous.then(() => appendTask());
+  const tracked = next.finally(() => {
+    if (appendQueues.get(filePath) === tracked) {
+      appendQueues.delete(filePath);
+    }
+  });
+  appendQueues.set(filePath, tracked);
+  return tracked;
+};
+
+export const __whenAppendIdle = (filePath) => {
+  if (filePath) {
+    const pending = appendQueues.get(filePath);
+    return pending ? pending.then(() => undefined) : Promise.resolve();
+  }
+  return Promise.all(Array.from(appendQueues.values())).then(() => undefined);
 };
 
 export const appendUsage = (obj = {}) => {
