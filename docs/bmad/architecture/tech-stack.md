@@ -39,6 +39,7 @@ updated: 2025-09-26
 - Timeouts: `PROXY_TIMEOUT_MS`, `PROXY_IDLE_TIMEOUT_MS`, `PROXY_STREAM_IDLE_TIMEOUT_MS`, `PROXY_PROTO_IDLE_MS`.
 - Rate limit: `PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`.
 - CORS/Debug: `PROXY_ENABLE_CORS`, `PROXY_DEBUG_PROTO`, `PROXY_TEST_ENDPOINTS`.
+- Telemetry: `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`) stores `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` rows for rollout audits.
 
 # Testing & QA
 

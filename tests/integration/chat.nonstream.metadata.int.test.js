@@ -26,12 +26,32 @@ const readLastLogEntry = async (filePath) => {
   return JSON.parse(lines[lines.length - 1]);
 };
 
+const readTelemetryEntries = async (filePath) => {
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- controlled test path
+    const data = await fs.readFile(filePath, "utf8");
+    return data
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error && error.code === "ENOENT") return [];
+    throw error;
+  }
+};
+
 test("sanitizes metadata when toggle enabled", async () => {
   const tokenLogPath = path.join(os.tmpdir(), `metadata-enabled-${Date.now()}-usage.ndjson`);
+  const telemetryLogPath = path.join(
+    os.tmpdir(),
+    `metadata-enabled-${Date.now()}-telemetry.ndjson`
+  );
   const { PORT, child: proc } = await startServer({
     PROXY_SANITIZE_METADATA: "true",
     FAKE_CODEX_METADATA: "true",
     TOKEN_LOG_PATH: tokenLogPath,
+    SANITIZER_LOG_PATH: telemetryLogPath,
   });
   child = proc;
 
@@ -63,14 +83,36 @@ test("sanitizes metadata when toggle enabled", async () => {
   expect(usageEntry.sanitized_metadata_keys).toContain("session_id");
   expect(Array.isArray(usageEntry.sanitized_metadata_sources)).toBe(true);
   expect(usageEntry.sanitized_metadata_sources).toContain("message.metadata");
+
+  const telemetryEntries = await readTelemetryEntries(telemetryLogPath);
+  const toggleEntries = telemetryEntries.filter(
+    (entry) => entry.kind === "proxy_sanitize_metadata"
+  );
+  expect(toggleEntries).not.toHaveLength(0);
+  expect(toggleEntries[0].enabled).toBe(true);
+  const summaryEntry = telemetryEntries.find(
+    (entry) => entry.kind === "metadata_sanitizer_summary"
+  );
+  expect(summaryEntry).toBeDefined();
+  expect(summaryEntry.enabled).toBe(true);
+  expect(summaryEntry.sanitized_count).toBeGreaterThanOrEqual(2);
+  expect(summaryEntry.sanitized_keys).toEqual(
+    expect.arrayContaining(["rollout_path", "session_id"])
+  );
+  expect(summaryEntry.sanitized_sources).toEqual(expect.arrayContaining(["message.metadata"]));
 });
 
 test("retains metadata when toggle disabled", async () => {
   const tokenLogPath = path.join(os.tmpdir(), `metadata-disabled-${Date.now()}-usage.ndjson`);
+  const telemetryLogPath = path.join(
+    os.tmpdir(),
+    `metadata-disabled-${Date.now()}-telemetry.ndjson`
+  );
   const { PORT, child: proc } = await startServer({
     PROXY_SANITIZE_METADATA: "false",
     FAKE_CODEX_METADATA: "true",
     TOKEN_LOG_PATH: tokenLogPath,
+    SANITIZER_LOG_PATH: telemetryLogPath,
   });
   child = proc;
 
@@ -101,4 +143,15 @@ test("retains metadata when toggle disabled", async () => {
   expect(usageEntry.sanitized_metadata_keys).toHaveLength(0);
   expect(Array.isArray(usageEntry.sanitized_metadata_sources)).toBe(true);
   expect(usageEntry.sanitized_metadata_sources).toHaveLength(0);
+
+  const telemetryEntries = await readTelemetryEntries(telemetryLogPath);
+  const toggleEntries = telemetryEntries.filter(
+    (entry) => entry.kind === "proxy_sanitize_metadata"
+  );
+  expect(toggleEntries).toHaveLength(1);
+  expect(toggleEntries[0].enabled).toBe(false);
+  const summaryEntries = telemetryEntries.filter(
+    (entry) => entry.kind === "metadata_sanitizer_summary"
+  );
+  expect(summaryEntries).toHaveLength(0);
 });

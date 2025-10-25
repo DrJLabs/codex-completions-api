@@ -209,7 +209,7 @@ None — stabilization leveraged the existing stack and toggles.
 - Structured request logs (`[http]` text and JSON) capture latency, auth presence, and user agents.
 - Concurrency guard events logged with `[proxy]` prefix for guard monitoring.
 - Usage NDJSON and optional proto event logs support `/v1/usage` reporting and debugging.
-- Sanitizer monitoring: emit structured events for toggle changes (`proxy_sanitize_metadata` with state) and alert when sanitized metadata counts fall outside expected windows during canary/production runs.
+- Sanitizer monitoring: `SANITIZER_LOG_PATH` captures `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` entries; alert when sanitized counts fall outside expected windows during canary/production runs.
 - Runbooks detail analysis steps for non-stream truncation, streaming order, and dev edge timeouts.
 - Support communication: rollout notes should include guidance for downstream parser owners on reporting anomalies observed after the toggle is enabled.
 - `scripts/benchmarks/stream-multi-choice.mjs` now samples CPU/RSS via `ps`, removing the `pidusage` dependency for streaming diagnostics.
