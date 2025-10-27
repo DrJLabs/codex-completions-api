@@ -86,6 +86,16 @@ const respondWithJson = (res, statusCode, payload) => {
       if (transformed !== undefined) body = transformed;
     } catch (transformErr) {
       console.error("[proxy][chat.nonstream] response transform failed", transformErr);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: {
+            message: "Internal server error during response transformation.",
+            type: "server_error",
+            code: "response_transform_failed",
+          },
+        });
+      }
+      return;
     }
   }
 
