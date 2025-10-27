@@ -57,6 +57,8 @@ const extractTextFromInputItems = (items) => {
       }
     }
   }
+  // TODO(responses): preserve non-text multimodal content once Codex supports passing through
+  // rich input blocks instead of flattening to text.
   return parts.flat().join(" ").trim();
 };
 
