@@ -6,6 +6,7 @@ import { config as CFG } from "./config/index.js";
 import healthRouter from "./routes/health.js";
 import modelsRouter from "./routes/models.js";
 import chatRouter from "./routes/chat.js";
+import responsesRouter from "./routes/responses.js";
 import usageRouter from "./routes/usage.js";
 import rateLimit from "./middleware/rate-limit.js";
 import { guardSnapshot } from "./services/concurrency-guard.js";
@@ -88,6 +89,7 @@ export default function createApp() {
   app.use(healthRouter());
   app.use(modelsRouter());
   app.use(chatRouter());
+  app.use(responsesRouter());
   app.use(usageRouter());
 
   return app;

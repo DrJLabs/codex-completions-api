@@ -99,6 +99,26 @@ export async function postChatStream(req, res) {
   let responded = false;
   let responseWritable = true;
 
+  const streamAdapter = res.locals?.streamAdapter || null;
+  const invokeAdapter = (method, ...args) => {
+    if (!streamAdapter) return undefined;
+    if (method === "onChunk" && typeof streamAdapter.onChunk === "function") {
+      try {
+        return streamAdapter.onChunk(...args);
+      } catch {
+        return undefined;
+      }
+    }
+    if (method === "onDone" && typeof streamAdapter.onDone === "function") {
+      try {
+        return streamAdapter.onDone(...args);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  };
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
@@ -276,6 +296,7 @@ export async function postChatStream(req, res) {
     res.write(`: keepalive ${Date.now()}\n\n`);
   };
   const finishSSE = () => {
+    if (invokeAdapter("onDone") === true) return;
     finishSSEUtil(res);
   };
 
@@ -283,13 +304,16 @@ export async function postChatStream(req, res) {
   const completionId = `chatcmpl-${nanoid()}`;
   const created = Math.floor(Date.now() / 1000);
   const sendChunk = (payload) => {
-    sendSSE({
+    const chunkPayload = {
       id: completionId,
       object: "chat.completion.chunk",
       created,
       model: requestedModel,
       ...payload,
-    });
+    };
+    const handled = invokeAdapter("onChunk", chunkPayload);
+    if (handled === true) return;
+    sendSSE(chunkPayload);
   };
   const buildChoiceFrames = (builder) => {
     if (choiceCount === 1) return [builder(0)];
