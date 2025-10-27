@@ -78,13 +78,34 @@ const normalizeChoiceCount = (raw) => {
 };
 
 const respondWithJson = (res, statusCode, payload) => {
+  let body = payload;
+  const transform = res?.locals?.responseTransform;
+  if (typeof transform === "function") {
+    try {
+      const transformed = transform(payload, statusCode);
+      if (transformed !== undefined) body = transformed;
+    } catch (transformErr) {
+      console.error("[proxy][chat.nonstream] response transform failed", transformErr);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: {
+            message: "Internal server error during response transformation.",
+            type: "server_error",
+            code: "response_transform_failed",
+          },
+        });
+      }
+      return;
+    }
+  }
+
   if (res.headersSent) {
     console.error("[proxy][chat.nonstream] attempted to send JSON after headers were already sent");
     return;
   }
 
   try {
-    res.status(statusCode).json(payload);
+    res.status(statusCode).json(body);
     return;
   } catch (err) {
     console.error("[proxy][chat.nonstream] res.json() failed, falling back", err);
@@ -97,7 +118,7 @@ const respondWithJson = (res, statusCode, payload) => {
 
   try {
     res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(payload));
+    res.end(JSON.stringify(body));
   } catch (fallbackErr) {
     console.error("[proxy][chat.nonstream] fallback JSON response failed", fallbackErr);
   }
