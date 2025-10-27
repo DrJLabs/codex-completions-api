@@ -1,8 +1,8 @@
 ---
 title: Codex Completions API — Product Requirements (PRD)
 status: active
-version: v1.3
-updated: 2025-09-26
+version: v1.4
+updated: 2025-10-26
 ---
 
 # Goals and Background Context
@@ -19,12 +19,13 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 
 ## Change Log
 
-| Date       | Version | Description                                                                                                                      | Author     |
-| ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 2025-09-26 | v1.3    | Added response-integrity requirement to strip Codex telemetry metadata, feature toggle rollout plan, and monitoring expectations | PM (codex) |
-| 2025-09-26 | v1.2    | Added dev parallel tool call passthrough, codex CLI mount guidance, and test/tooling notes                                       | PO (codex) |
-| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update                                                    | PM (codex) |
-| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                                                                          | PM (codex) |
+| Date       | Version | Description                                                                                                                                      | Author     |
+| ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| 2025-10-26 | v1.4    | Delivered `/v1/responses` parity (non-stream + typed SSE), refreshed chat completions contract per golden transcripts, and updated testing scope | PM (codex) |
+| 2025-09-26 | v1.3    | Added response-integrity requirement to strip Codex telemetry metadata, feature toggle rollout plan, and monitoring expectations                 | PM (codex) |
+| 2025-09-26 | v1.2    | Added dev parallel tool call passthrough, codex CLI mount guidance, and test/tooling notes                                                       | PO (codex) |
+| 2025-09-24 | v1.1    | Rebuilt PRD to match BMAD template, added usage endpoints, epics, KPIs update                                                                    | PM (codex) |
+| 2025-09-14 | v1.0    | Initial proxy requirements, routes, and smoke checklist                                                                                          | PM (codex) |
 
 # Users & Use Cases
 
@@ -38,8 +39,8 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 
 1. **FR1:** Expose `GET /healthz` returning `{ ok: true, sandbox_mode }` without auth for liveness and sandbox telemetry.
 2. **FR2:** Expose `GET|HEAD|OPTIONS /v1/models` to advertise environment-specific models (`codev-5*` in dev, `codex-5*` in prod) while respecting `PROXY_PROTECT_MODELS` bearer-gating.
-3. **FR3:** Support `POST /v1/chat/completions` (non-stream) with OpenAI-compatible response body, including stable `id`, `object:"chat.completion"`, `created`, normalized `model`, `choices`, `usage`, and `finish_reason` semantics (`stop`, `length`, etc.).
-4. **FR4:** When `stream:true`, emit SSE chunks with role-first delta, deterministic `created`/`id`/`model`, optional usage chunk when `stream_options.include_usage:true`, keepalive comments, and final `[DONE]` line. Honor tool-tail controls and concurrency guard outcomes.
+3. **FR3:** Support `POST /v1/chat/completions` (non-stream) with OpenAI-compatible response body, including stable `id`, `object:"chat.completion"`, `created`, normalized `model`, `choices`, `usage`, and `finish_reason` semantics (`stop`, `length`, etc.) exactly as documented in `docs/openai-endpoint-golden-parity.md`.
+4. **FR4:** When `stream:true`, emit SSE chunks with role-first delta, deterministic `created`/`id`/`model`, optional usage chunk when `stream_options.include_usage:true`, keepalive comments, and final `[DONE]` line, matching the golden transcripts in `docs/openai-endpoint-golden-parity.md`. Honor tool-tail controls and concurrency guard outcomes.
 5. **FR5:** Provide `POST /v1/completions` shim that maps prompt-based payloads onto the chat handlers, preserving auth, streaming options, and envelope parity.
 6. **FR6:** Surface usage telemetry via `GET /v1/usage` (aggregated metrics) and `GET /v1/usage/raw` (bounded NDJSON events) for internal QA/ops workflows.
 7. **FR7:** Offer optional in-app token-bucket rate limiting (`PROXY_RATE_LIMIT_ENABLED`, `PROXY_RATE_LIMIT_WINDOW_MS`, `PROXY_RATE_LIMIT_MAX`) that defends POST chat/completions endpoints in addition to edge rate limiting.
@@ -47,6 +48,8 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 9. **FR9:** When `PROXY_TEST_ENDPOINTS=true`, expose `GET /__test/conc` and `POST /__test/conc/release` to inspect/release SSE guard state for CI debugging only.
 10. **FR10:** Strip Codex rollout telemetry (for example `rollout_path`, `session_id`) from assistant-visible responses while preserving the OpenAI envelope and logging metadata internally for debugging; guard the behavior behind a `PROXY_SANITIZE_METADATA` toggle so operators can canary before enforcing globally.
 11. **FR11:** Surface success/failure telemetry for the sanitizer by writing `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` entries (sanitized counts, keys, sources) to `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`), and document QA smoke steps (curl + downstream parser) required when enabling/disabling the toggle in each environment.
+12. **FR12:** Implement `POST /v1/responses` (non-stream) with OpenAI Responses-compatible envelopes (`id`, `status`, `output[]`, `usage`, tool outputs, `previous_response_id`) and field semantics per `docs/openai-endpoint-golden-parity.md`, including support for `instructions`, `input` array items, and JSON tool definitions.
+13. **FR13:** Provide `/v1/responses` streaming with typed SSE events (`response.created`, `response.output_text.delta`, `response.output_text.done`, `response.completed`, `done`) and ensure both `/v1/responses` and `/v1/chat/completions` share golden transcripts and contract tests sourced from `docs/openai-endpoint-golden-parity.md`.
 
 ## Non-Functional Requirements
 
@@ -58,6 +61,8 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 6. **NFR6:** Protect streaming stability with `PROXY_SSE_MAX_CONCURRENCY`, optional `PROXY_KILL_ON_DISCONNECT`, and dev-only truncate guard (`PROXY_DEV_TRUNCATE_AFTER_MS`) without regressing contract order.
 7. **NFR7:** Respect Test Selection Policy — touching `server.js`, handlers, or streaming code mandates `npm run test:integration` and `npm test`; broader changes run `npm run verify:all`.
 8. **NFR8:** Maintain observability for the sanitizer rollout: monitoring must alert on unexpected drops of metadata events and capture toggle state changes in deployment logs.
+9. **NFR9:** Preserve parity fixtures by version controlling golden transcripts for both `/v1/responses` and `/v1/chat/completions`, regenerating them via scripted captures, and failing CI when responses diverge from `docs/openai-endpoint-golden-parity.md`.
+10. **NFR10:** Maintain stateless architecture — `/v1/responses` introduces no new data stores or schema changes; existing Codex CLI session files remain the only persistence mechanism and must stay writable.
 
 # User Interface Design Goals
 
@@ -97,7 +102,7 @@ Monolithic Express server that shells out to Codex CLI (`codex proto`) per reque
 
 ## Testing Requirements
 
-Maintain the full testing pyramid: unit (Vitest), integration (Express handlers with deterministic shim), and Playwright E2E (streaming contract). CI and agents run `npm run verify:all`; targeted edits still honor policy (`npm run test:integration`, `npm test`).
+Maintain the full testing pyramid: unit (Vitest), integration (Express handlers with deterministic shim), and Playwright E2E (streaming contract). CI and agents run `npm run verify:all`; targeted edits still honor policy (`npm run test:integration`, `npm test`). Golden transcript suites for `/v1/responses` and `/v1/chat/completions` must remain in lockstep with `docs/openai-endpoint-golden-parity.md`, regenerating fixtures through the documented capture scripts when the spec evolves. Confirm during release reviews that no database or schema migrations are required for this change.
 
 ## Additional Technical Assumptions and Requests
 
@@ -107,20 +112,22 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 - Edge smoke scripts depend on `.env`/`.env.dev` (`KEY`/`PROXY_API_KEY`, `DOMAIN`/`DEV_DOMAIN`) to exercise real endpoints.
 - Contract coverage uses Playwright golden transcripts plus Vitest checks; Keploy snapshots remain optional per Story 3.6.
 - Branching follows BMAD conventions (`feat/*`, `fix/*`, `chore/*`) with Conventional Commits before PRs.
+- No relational or document databases are introduced by this epic; `/v1/responses` shares the existing stateless Codex CLI invocation path, so rollback remains a container image revert with no data migration concerns.
 
 # API Surface & Behavior
 
 ## Endpoint Summary
 
-| Endpoint                   | Methods              | Auth                                          | Notes                                                                                |
-| -------------------------- | -------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `/healthz`                 | `GET`                | None                                          | Returns `{ ok: true, sandbox_mode }` for liveness.                                   |
-| `/v1/models`               | `GET, HEAD, OPTIONS` | Optional (see `PROXY_PROTECT_MODELS`)         | Advertises environment-specific models; HEAD responds 200 with JSON content-type.    |
-| `/v1/chat/completions`     | `POST`               | Bearer required                               | Core Chat Completions route; supports streaming and non-stream with OpenAI envelope. |
-| `/v1/completions`          | `POST`               | Bearer required                               | Legacy shim translating prompt payloads to chat backend.                             |
-| `/v1/usage`                | `GET`                | Bearer required (via ForwardAuth)             | Aggregated usage counts (`parseTime` query filters).                                 |
-| `/v1/usage/raw`            | `GET`                | Bearer required (via ForwardAuth)             | Returns bounded NDJSON events with `limit` (default 200, max 10000).                 |
-| `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only.                                    |
+| Endpoint                   | Methods              | Auth                                          | Notes                                                                                 |
+| -------------------------- | -------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `/healthz`                 | `GET`                | None                                          | Returns `{ ok: true, sandbox_mode }` for liveness.                                    |
+| `/v1/models`               | `GET, HEAD, OPTIONS` | Optional (see `PROXY_PROTECT_MODELS`)         | Advertises environment-specific models; HEAD responds 200 with JSON content-type.     |
+| `/v1/chat/completions`     | `POST`               | Bearer required                               | Core Chat Completions route; supports streaming and non-stream with OpenAI envelope.  |
+| `/v1/responses`            | `POST`               | Bearer required                               | Primary Responses endpoint; non-stream and typed SSE events match golden transcripts. |
+| `/v1/completions`          | `POST`               | Bearer required                               | Legacy shim translating prompt payloads to chat backend.                              |
+| `/v1/usage`                | `GET`                | Bearer required (via ForwardAuth)             | Aggregated usage counts (`parseTime` query filters).                                  |
+| `/v1/usage/raw`            | `GET`                | Bearer required (via ForwardAuth)             | Returns bounded NDJSON events with `limit` (default 200, max 10000).                  |
+| `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only.                                     |
 
 ## Streaming Contract & Tool Controls
 
