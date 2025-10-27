@@ -264,14 +264,14 @@ data: [DONE]
 
 ## 6) **Field mapping: Chat Completions → Responses**
 
-| Chat Completions                 | Responses               | Notes                                                         |
-| -------------------------------- | ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
-| `messages: [{role, content}, …]` | `input: string          | items[]`                                                      | Single string or an array of typed parts. citeturn13view0 |
-| `system`/`developer` message     | `instructions`          | Move steerage here. citeturn5view0                         |
-| `max_tokens`                     | `max_output_tokens`     | Semantics unchanged. citeturn2search3                      |
-| `tools` (functions)              | `tools` + `tool_choice` | JSON Schema functions supported in both. citeturn17view0   |
-| `stream: true`                   | `stream: true`          | SSE in both; **typed events** in Responses. citeturn5view0 |
-| (n/a)                            | `previous_response_id`  | Optional server‑side conversation state. citeturn2search1  |
+| Chat Completions                 | Responses                  | Notes                                                         |
+| -------------------------------- | -------------------------- | ------------------------------------------------------------- |
+| `messages: [{role, content}, …]` | `input: string \| items[]` | Single string or an array of typed parts. citeturn13view0  |
+| `system`/`developer` message     | `instructions`             | Move steerage here. citeturn5view0                         |
+| `max_tokens`                     | `max_output_tokens`        | Semantics unchanged. citeturn2search3                      |
+| `tools` (functions)              | `tools` + `tool_choice`    | JSON Schema functions supported in both. citeturn17view0   |
+| `stream: true`                   | `stream: true`             | SSE in both; **typed events** in Responses. citeturn5view0 |
+| (n/a)                            | `previous_response_id`     | Optional server‑side conversation state. citeturn2search1  |
 
 > For larger migrations, see the **Completions → Responses Migration Pack**. citeturn21search0
 

@@ -51,7 +51,6 @@ describe("responses shared helpers", () => {
         type: "tool_use",
         id: expect.any(String),
         name: "lookup_user",
-        tool_type: "function",
         input: { id: "42" },
       },
     ]);
@@ -119,7 +118,6 @@ describe("responses shared helpers", () => {
               type: "tool_use",
               id: "tool_known",
               name: "lookup_user",
-              tool_type: "function",
               input: { id: "42" },
             },
           ],

@@ -18,15 +18,24 @@ export async function postResponsesNonStream(req, res) {
     }
     return convertChatResponseToResponses(payload, originalBody);
   };
-  locals.responseTransform = transform;
 
+  let cleanedUp = false;
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     if (locals.responseTransform === transform) {
       delete locals.responseTransform;
     }
-    res.off("finish", cleanup);
-    res.off("close", cleanup);
+    if (typeof res.off === "function") {
+      res.off("finish", cleanup);
+      res.off("close", cleanup);
+    } else {
+      res.removeListener?.("finish", cleanup);
+      res.removeListener?.("close", cleanup);
+    }
   };
+
+  locals.responseTransform = transform;
   res.once("finish", cleanup);
   res.once("close", cleanup);
 
