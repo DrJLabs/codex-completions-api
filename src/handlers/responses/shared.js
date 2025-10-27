@@ -5,14 +5,28 @@ const MESSAGE_ID_PREFIX = "msg_";
 
 const sanitizeIdentifier = (value, prefix) => {
   if (typeof value === "string" && value.trim()) {
-    const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "");
+    const cleaned = value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
     if (cleaned) return `${prefix}${cleaned}`;
   }
   return `${prefix}${nanoid()}`;
 };
 
-export const normalizeResponseId = (value) => sanitizeIdentifier(value, RESPONSE_ID_PREFIX);
-export const normalizeMessageId = (value) => sanitizeIdentifier(value, MESSAGE_ID_PREFIX);
+export const normalizeResponseId = (value) => {
+  let base = typeof value === "string" ? value.trim() : "";
+  if (base.startsWith(RESPONSE_ID_PREFIX)) {
+    base = base.slice(RESPONSE_ID_PREFIX.length);
+  }
+  base = base.replace(/^chatcmpl-/, "");
+  return sanitizeIdentifier(base, RESPONSE_ID_PREFIX);
+};
+
+export const normalizeMessageId = (value) => {
+  let base = typeof value === "string" ? value.trim() : "";
+  if (base.startsWith(MESSAGE_ID_PREFIX)) {
+    base = base.slice(MESSAGE_ID_PREFIX.length);
+  }
+  return sanitizeIdentifier(base, MESSAGE_ID_PREFIX);
+};
 
 const tryParseJson = (input) => {
   if (typeof input !== "string" || !input.trim()) return null;
@@ -168,9 +182,8 @@ export const mapChoiceToOutput = (choice, index = 0) => {
 
 const mapUsage = (usage) => {
   if (!usage || typeof usage !== "object") return undefined;
-  const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? usage.total_tokens ?? undefined;
-  const outputTokens =
-    usage.output_tokens ?? usage.completion_tokens ?? usage.total_tokens ?? undefined;
+  const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? undefined;
+  const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? undefined;
   const totalTokens =
     usage.total_tokens ??
     (inputTokens !== undefined && outputTokens !== undefined
