@@ -1,13 +1,13 @@
 ---
 title: Codex Completions API — Architecture
 status: active
-version: v2.3
-updated: 2025-09-26
+version: v2.4
+updated: 2025-10-26
 ---
 
 # Introduction
 
-Codex Completions API is a Node/Express proxy that fronts the Codex CLI (`codex proto`) with an OpenAI Chat Completions-compatible surface. The service now follows the modular structure introduced during the server refactor and has since been hardened by streaming parity and stability epics. This document captures the current architecture, integration points, and operational invariants required for continued enhancements as of 2025-09-26.
+Codex Completions API is a Node/Express proxy that fronts the Codex CLI (`codex proto`) with an OpenAI Chat Completions-compatible surface. The service now follows the modular structure introduced during the server refactor and has since been hardened by streaming parity and stability epics. This document captures the current architecture, integration points, and operational invariants required for continued enhancements, updated for the `/v1/responses` parity effort as of 2025-10-26.
 
 ## Starter Template or Existing Project
 
@@ -25,7 +25,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 ## Available Documentation
 
 - `docs/bmad/prd.md` — Product requirements, KPIs, smoke tests.
-- `docs/openai-chat-completions-parity.md` — Contract notes for streaming order and error envelopes.
+- `docs/openai-endpoint-golden-parity.md` — Canonical envelope definitions and golden transcripts for `/v1/responses` and `/v1/chat/completions`.
 - `docs/bmad/stories/*` — Epic and story execution details (parity, modularization, stability).
 - `docs/runbooks/operational.md` and `docs/dev-to-prod-playbook.md` — Operational runbooks and deployment guidance.
 - `docs/bmad/architecture/*` — Deeper breakdowns (source tree, tech stack, modularization references).
@@ -40,28 +40,29 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 ## Change Log
 
-| Change                                   | Date       | Version | Description                                                                                                                                | Author            |
-| ---------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| Response sanitization requirement        | 2025-09-26 | v2.3    | Captured metadata filtering guard in chat handlers, feature toggle rollout plan, and monitoring expectations.                              | PM (codex)        |
-| Parallel tools + CLI packaging           | 2025-09-26 | v2.2    | Documented dev parallel tool passthrough, baked Codex CLI into the image, refreshed testing/observability references, updated ops guidance | Architect (codex) |
-| Architecture refresh post-stability epic | 2025-09-24 | v2.1    | Documented usage endpoints, concurrency guard service, and updated module maps after Sep 2025 stabilization.                               | Architect (codex) |
-| Server modularization doc update         | 2025-09-13 | v2.0    | Captured router/handler/service separation introduced during modularization refactor.                                                      | Architect (codex) |
+| Change                                   | Date       | Version | Description                                                                                                                                     | Author            |
+| ---------------------------------------- | ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Responses parity & golden transcripts    | 2025-10-26 | v2.4    | Delivered `/v1/responses` router/handlers, shared streaming adapter, and transcript tooling aligned to `docs/openai-endpoint-golden-parity.md`. | Architect (codex) |
+| Response sanitization requirement        | 2025-09-26 | v2.3    | Captured metadata filtering guard in chat handlers, feature toggle rollout plan, and monitoring expectations.                                   | PM (codex)        |
+| Parallel tools + CLI packaging           | 2025-09-26 | v2.2    | Documented dev parallel tool passthrough, baked Codex CLI into the image, refreshed testing/observability references, updated ops guidance      | Architect (codex) |
+| Architecture refresh post-stability epic | 2025-09-24 | v2.1    | Documented usage endpoints, concurrency guard service, and updated module maps after Sep 2025 stabilization.                                    | Architect (codex) |
+| Server modularization doc update         | 2025-09-13 | v2.0    | Captured router/handler/service separation introduced during modularization refactor.                                                           | Architect (codex) |
 
 # Enhancement Scope and Integration Strategy
 
-Recent work centered on brownfield stabilization: enforcing streaming parity, adding usage telemetry endpoints, hardening concurrency guards, and documenting dev/prod operational contracts.
+Recent work centers on brownfield stabilization: enforcing streaming parity, adding usage telemetry endpoints, hardening concurrency guards, documenting dev/prod operational contracts, and now expanding coverage to the `/v1/responses` API alongside chat completions.
 
 ## Enhancement Overview
 
 **Enhancement Type:** Brownfield stabilization & parity
 
-**Scope:** Maintain Chat Completions compatibility, ensure deterministic streaming and usage telemetry, expose observability tooling, and sanitize Codex-only metadata before responses are returned to clients with a feature toggle and monitoring guardrails.
+**Scope:** Maintain Chat Completions compatibility while adding a first-class `/v1/responses` implementation that mirrors OpenAI envelopes, regenerate golden transcripts from `docs/openai-endpoint-golden-parity.md`, and ensure deterministic streaming, usage telemetry, and metadata sanitization across both endpoints. No new persistence layers are introduced; Codex interactions remain stateless aside from existing CLI session files.
 
-**Integration Impact:** Medium — touches streaming handlers (`src/handlers/chat/*`), concurrency guard, usage router, logging, and documentation/runbooks.
+**Integration Impact:** Medium/High — introduces a new responses router/handlers, shared abstractions for Codex invocation and transcript shaping, updates to chat handlers, concurrency guard touch points, transcript tooling, and documentation/runbooks.
 
 ## Integration Approach
 
-**Code Integration Strategy:** Modular Express app configured in `src/app.js`; routers mount handlers that orchestrate Codex CLI child processes with shared services and middleware. Development stacks can enable `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` so `codex-runner` passes `--config parallel_tool_calls=true`, while production keeps serialized tool execution for determinism.
+**Code Integration Strategy:** Modular Express app configured in `src/app.js`; routers mount handlers that orchestrate Codex CLI child processes with shared services and middleware. The responses initiative adds a dedicated `responsesRouter`, wraps the chat non-stream handler via shared shaping utilities, and plugs a typed SSE adapter into the chat streaming pipeline so `/v1/responses` can reuse concurrency guard and keepalive logic without duplicating code. Development stacks can enable `PROXY_ENABLE_PARALLEL_TOOL_CALLS=true` so `codex-runner` passes `--config parallel_tool_calls=true`, while production keeps serialized tool execution for determinism.
 
 **Database Integration:** None; persistence is limited to NDJSON telemetry files written to `${TMPDIR}` or configured paths.
 
@@ -112,13 +113,17 @@ None — stabilization leveraged the existing stack and toggles.
 - `health.js` — `/healthz` liveness.
 - `models.js` — `/v1/models` with optional auth gating.
 - `chat.js` — `/v1/chat/completions` and `/v1/completions` (HEAD + POST) delegating to stream/non-stream handlers.
+- `responses.js` — `/v1/responses` router that mirrors chat auth/CORS behavior and mounts both handlers.
 - `usage.js` — `/v1/usage` and `/v1/usage/raw` for telemetry queries.
 
-## Handlers (`src/handlers/chat/*`)
+## Handlers (`src/handlers/*`)
 
-- `nonstream.js` — Validates payloads, normalizes models, interacts with Codex proto, aggregates content/usage, enforces dev truncate guard.
-- `stream.js` — Streams SSE chunks, manages concurrency guard, keepalives, tool suppression, usage chunk emission, and final cleanup.
-- `shared.js` — Builds Codex CLI argument lists, configures environment, and injects sandbox/workdir settings.
+- `chat/nonstream.js` — Validates payloads, normalizes models, interacts with Codex proto, aggregates content/usage, enforces dev truncate guard, and now leans on shared transcript shaping utilities.
+- `chat/stream.js` — Streams SSE chunks, manages concurrency guard, keepalives, tool suppression, usage chunk emission, and final cleanup for chat-format envelopes.
+- `responses/nonstream.js` — Maps Responses payloads (`input`, `instructions`, `previous_response_id`) into Codex invocations and assembles `output[]` segments and status per the OpenAI spec.
+- `responses/stream.js` — Reuses the chat streaming pipeline by installing a typed SSE adapter into `res.locals.streamAdapter` before invoking `postChatStream`.
+- `responses/stream-adapter.js` — Translates chat chunks into Responses typed events (`response.created`, successive `response.output_text.delta`, `response.output_text.done`, `response.completed`, `done`) while aggregating tool calls and usage for the final envelope.
+- `handlers/shared/*` — Shared utilities extracted from chat (`buildProtoArgs`, finish-reason tracking, tool aggregation, metadata sanitizer hooks) so both endpoints produce identical telemetry and golden transcripts.
 
 ## Services (`src/services/*`)
 
@@ -148,6 +153,7 @@ None — stabilization leveraged the existing stack and toggles.
 - Smoke & live tests (`dev-smoke.sh`, `prod-smoke.sh`, `test-live.sh`).
 - Porting utilities (`port-dev-to-prod.sh`, `sync-codex-config.sh`).
 - Ops automation (`stack-snapshot.sh`, `stack-rollback.sh`).
+- Golden transcript capture (`scripts/generate-chat-transcripts.mjs`, `scripts/generate-responses-transcripts.mjs`) keeps fixtures aligned with the parity doc.
 
 # Request Lifecycles
 
@@ -177,6 +183,23 @@ None — stabilization leveraged the existing stack and toggles.
 3. Stream emits role-first delta chunk, successive content deltas (excluding telemetry-only events when `PROXY_SANITIZE_METADATA` is on), optional tool-tail suppression, optional finish-reason and usage chunks, and final `[DONE]` sentinel. Dev-only parallel tool calls may interleave tool responses; suppression toggles ensure serialized tails in prod.
 4. Telemetry-only events are logged but never forwarded to clients while the toggle is active, ensuring SSE consumers do not receive rollout metadata.
 5. Cleanup releases concurrency guard token, clears keepalive intervals, and optionally kills child process if `PROXY_KILL_ON_DISCONNECT` is true.
+6. Downstream handlers (for example `/v1/responses`) can install `res.locals.streamAdapter` with `onChunk`/`onDone` hooks to transform Codex chunks into alternative envelopes while reusing the same guard and keepalive flow.
+
+## POST /v1/responses — Non-stream
+
+1. Payload accepts `input` (string or array), optional `instructions`, `metadata`, `previous_response_id`, and `response_format`; bearer auth is mandatory.
+2. Shared validator normalizes model IDs, enforces max token constraints, and converts multimodal inputs into Codex-friendly prompts while preserving tool schema definitions.
+3. Codex runner is invoked with the same sandbox/workdir controls as chat; tool calls are captured and surfaced as structured entries in `output[]` alongside text segments.
+4. Handler intercepts the chat response via `res.locals.responseTransform`, invoking `convertChatResponseToResponses` to normalize tool calls, `output[]` content, usage, and status per the spec while honoring metadata sanitizer rules.
+5. Golden transcript regeneration asserts byte-level parity (ignoring normalized IDs/timestamps) before the fixture set is updated.
+
+## POST /v1/responses — Stream (Typed SSE)
+
+1. The handler installs a typed SSE adapter (`createResponsesStreamAdapter`) on `res.locals.streamAdapter` and then delegates to `postChatStream`, reusing concurrency guard, keepalive, and sandbox controls.
+2. Adapter observes raw chat chunks and emits Responses events in order: `response.created`, repeating `response.output_text.delta`, `response.output_text.done`, `response.completed`, and final `done`. Tool calls are aggregated into the terminal payload rather than streamed as separate events.
+3. When `stream_options.include_usage` is true, aggregated token counts are surfaced inside the `response.completed` envelope; otherwise usage is omitted. Keepalive behavior follows the chat handler’s UA/header-based overrides.
+4. Metadata sanitization hooks mirror chat streaming—rollout/session keys are redacted from deltas while evidence is logged via `metadata_sanitizer_summary` entries, keeping typed streams free of Codex telemetry.
+5. `scripts/generate-responses-transcripts.mjs` captures these typed events into `test-results/responses/`, normalizing IDs/timestamps so integration and Playwright suites can diff against `docs/openai-endpoint-golden-parity.md` fixtures.
 
 ## POST /v1/completions (Legacy Shim)
 
@@ -224,7 +247,7 @@ None — stabilization leveraged the existing stack and toggles.
 
 - Unit tests cover utilities (`tests/unit`); integration tests focus on routes, error envelopes, rate limiting, truncation determinism.
 - Playwright E2E suite validates `/v1/models`, non-stream chat, streaming order, and `[DONE]` termination; the live suite additionally asserts dev stacks expose `codev-5*` models while prod exposes `codex-5*` to detect misconfigured environments.
-- Golden transcripts stored under `test-results/` back contract checks.
+- Golden transcripts stored under `test-results/chat-completions/` and `test-results/responses/` back contract checks; regeneration scripts in `scripts/generate-*-transcripts.mjs` must be run whenever `docs/openai-endpoint-golden-parity.md` changes.
 - Test selection policy: changes to handlers/server require `npm run test:integration` + `npm test`; broad changes execute `npm run verify:all`.
 - QA gates and risk assessments tracked under `docs/bmad/qa/` per story.
 
@@ -235,6 +258,7 @@ None — stabilization leveraged the existing stack and toggles.
 - `npm run port:prod` automates dev → prod config sync and optional smoke tests.
 - `.codex-api/` houses Codex runtime state; ensure volume mounts persist across restarts and align CLI package mount with the project-local path (`./node_modules/@openai/codex`).
 - `scripts/stack-snapshot.sh` and `stack-rollback.sh` provide snapshot/rollback automation (dev and prod).
+- `/v1/responses` rollout plan: deploy behind existing compose stack, run golden transcript verification (`scripts/generate-*-transcripts.mjs`) in canary; if regressions surface, revert by reapplying the prior image tag via `scripts/stack-rollback.sh` and disabling the new router release until parity issues are resolved.
 
 # Troubleshooting Playbook Highlights
 
@@ -246,7 +270,7 @@ None — stabilization leveraged the existing stack and toggles.
 # Related Documents
 
 - `docs/bmad/prd.md` — authoritative requirements and KPIs.
-- `docs/openai-chat-completions-parity.md` — detailed streaming parity checklist.
+- `docs/openai-endpoint-golden-parity.md` — canonical parity specification and transcript library.
 - `docs/bmad/architecture/source-tree.md` — directory-level breakdown.
 - `docs/bmad/stories/epic-stability-ci-hardening-sep-2025.md` — stability epic outcomes driving current architecture.
 - `docs/runbooks/operational.md` — incident response and smoke guidance.
