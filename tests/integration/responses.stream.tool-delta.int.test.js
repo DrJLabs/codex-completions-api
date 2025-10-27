@@ -63,7 +63,6 @@ test("aggregates streaming tool-call fragments into final response", async () =>
   expect(content.some((node) => node.type === "tool_use")).toBe(true);
   const toolNode = content.find((node) => node.type === "tool_use");
   expect(toolNode.name).toBe("lookup_user");
-  expect(toolNode.tool_type).toBe("function");
   expect(toolNode.input).toEqual({ id: "42" });
 
   // No output_text nodes since Codex only produced tool deltas.

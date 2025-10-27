@@ -6,7 +6,9 @@ const MESSAGE_ID_PREFIX = "msg_";
 const sanitizeIdentifier = (value, prefix) => {
   if (typeof value === "string" && value.trim()) {
     const cleaned = value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
-    if (cleaned) return `${prefix}${cleaned}`;
+    if (cleaned) {
+      return cleaned.startsWith(prefix) ? cleaned : `${prefix}${cleaned}`;
+    }
   }
   return `${prefix}${nanoid()}`;
 };
@@ -128,7 +130,6 @@ const mapToolCallToContent = (call, fallbackIndex = 0) => {
     type: "tool_use",
     id: call.id || `call_${fallbackIndex}_${nanoid()}`,
     name: call.function?.name || call.id || "function_call",
-    tool_type: call.type || "function",
     input:
       parsedArgs === null ? {} : typeof parsedArgs === "string" ? { raw: parsedArgs } : parsedArgs,
   };
@@ -186,13 +187,11 @@ const mapUsage = (usage) => {
   const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? undefined;
   const totalTokens =
     usage.total_tokens ??
-    (inputTokens !== undefined && outputTokens !== undefined
-      ? inputTokens + outputTokens
-      : undefined);
+    (inputTokens != null && outputTokens != null ? inputTokens + outputTokens : undefined);
   const result = {};
-  if (inputTokens !== undefined) result.input_tokens = inputTokens;
-  if (outputTokens !== undefined) result.output_tokens = outputTokens;
-  if (totalTokens !== undefined) result.total_tokens = totalTokens;
+  if (inputTokens != null) result.input_tokens = inputTokens;
+  if (outputTokens != null) result.output_tokens = outputTokens;
+  if (totalTokens != null) result.total_tokens = totalTokens;
   return Object.keys(result).length ? result : undefined;
 };
 

@@ -105,14 +105,16 @@ export async function postChatStream(req, res) {
     if (method === "onChunk" && typeof streamAdapter.onChunk === "function") {
       try {
         return streamAdapter.onChunk(...args);
-      } catch {
+      } catch (err) {
+        console.error("[proxy][chat.stream] stream adapter onChunk failed", err);
         return undefined;
       }
     }
     if (method === "onDone" && typeof streamAdapter.onDone === "function") {
       try {
         return streamAdapter.onDone(...args);
-      } catch {
+      } catch (err) {
+        console.error("[proxy][chat.stream] stream adapter onDone failed", err);
         return undefined;
       }
     }
