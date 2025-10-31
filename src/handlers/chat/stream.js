@@ -48,7 +48,8 @@ import {
   metadataKeys,
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
-import { selectBackendMode } from "../../services/backend-mode.js";
+import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
+import { isWorkerSupervisorReady, getWorkerStatus } from "../../services/worker/supervisor.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -195,6 +196,19 @@ export async function postChatStream(req, res) {
   }
 
   const backendMode = selectBackendMode();
+  if (backendMode === BACKEND_APP_SERVER && !isWorkerSupervisorReady()) {
+    console.warn("[proxy][worker-supervisor] worker not ready; returning 503 backend_unavailable");
+    applyCors(null, res);
+    return res.status(503).json({
+      error: {
+        message: "app-server worker is not ready",
+        type: "backend_unavailable",
+        code: "worker_not_ready",
+        retryable: true,
+      },
+      worker_status: getWorkerStatus(),
+    });
+  }
   const args = buildBackendArgs({
     backendMode,
     SANDBOX_MODE,
@@ -1325,6 +1339,19 @@ export async function postCompletionsStream(req, res) {
   }
 
   const backendMode = selectBackendMode();
+  if (backendMode === BACKEND_APP_SERVER && !isWorkerSupervisorReady()) {
+    console.warn("[proxy][worker-supervisor] worker not ready; returning 503 backend_unavailable");
+    applyCors(null, res);
+    return res.status(503).json({
+      error: {
+        message: "app-server worker is not ready",
+        type: "backend_unavailable",
+        code: "worker_not_ready",
+        retryable: true,
+      },
+      worker_status: getWorkerStatus(),
+    });
+  }
   const args = buildBackendArgs({
     backendMode,
     SANDBOX_MODE,
