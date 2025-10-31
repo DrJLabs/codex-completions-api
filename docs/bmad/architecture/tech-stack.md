@@ -45,7 +45,7 @@ updated: 2025-09-26
 
 - Unit & Integration: `vitest@^3` (+ `@vitest/coverage-v8`).
 - E2E/API/SSE: `@playwright/test@^1.55` with streaming transcript fixtures.
-- Smoke harness: `npm run smoke:dev` / `npm run smoke:prod` executes `codex app-server --help` before HTTP probes; run smoke prior to `npm run verify:all` so CLI packaging regressions fail fast.
+- Smoke harness: `npm run smoke:dev` / `npm run smoke:prod` executes `codex app-server --help` before HTTP probes; run smoke before `npm run verify:all` so CLI packaging regressions fail fast.
 - Coverage target configured in `vitest.config.ts` (V8 engine).
 - CI baseline (2025-09-25): GitHub Actions runners and Docker images must install Playwright 1.55 browsers (Chromium 140 / Firefox 141 / WebKit 26) and Vitest 3.2.x; live E2E asserts `/v1/models` advertises `codev-5*` in dev and `codex-5*` in prod.
 - Benchmark harness: `scripts/benchmarks/stream-multi-choice.mjs` now shells out to `ps` for RSS/CPU instead of `pidusage`, avoiding additional deps.
