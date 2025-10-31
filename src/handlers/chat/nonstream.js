@@ -34,7 +34,8 @@ import {
   validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
-import { selectBackendMode } from "../../services/backend-mode.js";
+import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
+import { isWorkerSupervisorReady, getWorkerStatus } from "../../services/worker/supervisor.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
@@ -319,6 +320,19 @@ export async function postChatNonStream(req, res) {
   }
 
   const backendMode = selectBackendMode();
+  if (backendMode === BACKEND_APP_SERVER && !isWorkerSupervisorReady()) {
+    console.warn("[proxy][worker-supervisor] worker not ready; returning 503 backend_unavailable");
+    applyCors(null, res);
+    return res.status(503).json({
+      error: {
+        message: "app-server worker is not ready",
+        type: "backend_unavailable",
+        code: "worker_not_ready",
+        retryable: true,
+      },
+      worker_status: getWorkerStatus(),
+    });
+  }
   const args = buildBackendArgs({
     backendMode,
     SANDBOX_MODE,
