@@ -128,6 +128,44 @@ spawn("codex", [
 - **Profiles/models:** if callers specify `model`, run multiple app-server **instances** (one per model/profile) and route based on the request. Do not rely on in‑process model switching unless officially supported.
 - **Upgrades:** pin a tested CLI version; track release notes for JSON‑RPC/event name changes.
 - **Secrets:** keep credentials outside the image—mount them into `/app/.codex-api` and ensure the directory stays writable for Codex rollouts and session state.
+- **Probes & orchestration:**
+  - _Docker Compose:_ add explicit HTTP health checks so orchestrators only send traffic once `/readyz` reports ready. Example:
+
+    ```yaml
+    services:
+      codex-api:
+        healthcheck:
+          test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-11435}/readyz || exit 1"]
+          interval: 10s
+          timeout: 3s
+          retries: 5
+          start_period: 15s
+    ```
+
+    Compose keeps restarting the container if `/livez` fails; the readiness endpoint flips back to `503` within ~5s of a worker exit, so the check above gates deployment rolls until the worker handshake succeeds again.
+
+  - _systemd:_ ensure units rely on the new probes and restart counters. Recommended unit fragment:
+
+    ```ini
+    [Service]
+    ExecStart=/usr/bin/node /opt/codex/server.js
+    ExecStartPost=/usr/bin/curl --fail --silent --retry 5 --retry-connrefused http://127.0.0.1:${PORT:-11435}/livez
+    Restart=on-failure
+    RestartSec=5s
+    ```
+
+    Systemd will only report the service healthy after `/livez` succeeds; readiness remains false until the supervisor announces the JSON-RPC handshake.
+
+  - _Traefik:_ wire the external load balancer to `/readyz` so traffic drains instantly when the worker restarts:
+
+    ```yaml
+    labels:
+      - "traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz"
+      - "traefik.http.services.codex-api.loadbalancer.healthCheck.interval=5s"
+      - "traefik.http.services.codex-api.loadbalancer.healthCheck.timeout=2s"
+    ```
+
+    Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
 
 ---
 
@@ -198,6 +236,10 @@ spawn("codex", [
 ## L. Feature flag rollout defaults
 
 The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy proto backend or the new app-server implementation. The defaults below match the rollout plan documented in the implementation readiness report.
+
+## M. Runbook checklist updates
+
+- [ ] Stage and production monitors include `/readyz` latency and `worker_supervisor.restarts_total`; alert when readiness remains false for >30s or when restarts increase by more than 1 within a 10-minute window.
 
 | Environment       | Default backend | Toggle procedure                                                                                            | Notes                                                                                               |
 | ----------------- | --------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
