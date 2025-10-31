@@ -33,7 +33,7 @@ spawn("codex", [
 ```
 
 - Keep the same `CODEX_BIN` resolution; only subcommand changes.
-- Bump CLI dependency (`@openai/codex`) to a version with `app-server` and no `proto` (e.g., ≥ 0.49/0.50).
+- Pin the CLI dependency (`@openai/codex`) to version **0.53.0** so the `app-server` binary ships with the image.
 
 ---
 
@@ -121,12 +121,13 @@ spawn("codex", [
 - **Docker/compose:** mount credentials into the container, e.g.:
   ```yaml
   volumes:
-    - ~/.codex:/app/.codex-api:ro
+    - ~/.codex:/app/.codex-api:rw
   environment:
     - CODEX_HOME=/app/.codex-api
   ```
 - **Profiles/models:** if callers specify `model`, run multiple app-server **instances** (one per model/profile) and route based on the request. Do not rely on in‑process model switching unless officially supported.
 - **Upgrades:** pin a tested CLI version; track release notes for JSON‑RPC/event name changes.
+- **Secrets:** keep credentials outside the image—mount them into `/app/.codex-api` and ensure the directory stays writable for Codex rollouts and session state.
 
 ---
 

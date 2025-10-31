@@ -1,0 +1,75 @@
+<story-context id="codex-completions-api:stories:1-2-package-codex-cli-with-app-server-capability" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>2</storyId>
+    <title>Package Codex CLI with App-Server Capability</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-31T05:20:21+00:00</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-2-package-codex-cli-with-app-server-capability.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>platform engineer</asA>
+    <iWant>the runtime image to include the required Codex CLI version and assets</iWant>
+    <soThat>the proxy can launch the app-server worker reliably across environments</soThat>
+    <tasks>- AC#1 – Harden Codex CLI packaging in Docker build output:
+  - Pin `@openai/codex` ≥0.49 in `package.json`/lockfile and call out the version in migration docs.
+  - Add a Dockerfile check ensuring `/usr/local/lib/codex-cli` exposes the `app-server` subcommand before switching to `USER node`.
+  - Build the image and run `docker run --rm codex-completions-api:latest codex --version` (or `codex app-server --help`) to prove the binary ships correctly.
+- AC#2 – Guarantee writable `CODEX_HOME` inside the container without bundling secrets:
+  - Create and chown `/app/.codex-api` during build and confirm compose keeps the mount read/write.
+  - Sync `.env.example` / `.env.dev` and migration guide instructions so operators mount secrets externally.
+  - Run `docker run --rm codex-completions-api:latest sh -c 'touch /app/.codex-api/.write-test'` to verify permissions.
+- AC#3 – Wire Codex CLI checks into smoke/CI workflows:
+  - Extend `scripts/prod-smoke.sh` and `scripts/dev-smoke.sh` to fail fast when `codex app-server --help` exits non-zero.
+  - Update onboarding docs/README to require the CLI availability check before `npm run verify:all`.
+  - Execute `npm run smoke:prod` (or dev) plus `npm run test:integration` to confirm the new check integrates cleanly with existing suites.</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Dockerfile installs and pins `@openai/codex` ≥0.49 with JSON-RPC support, baking the `codex app-server` entrypoint into `/usr/local/lib/codex-cli` so the proxy can spawn the worker without host mounts. (docs/epics.md#L85-L95; docs/app-server-migration/codex-completions-api-migration.md#L7-L36; docs/research-technical-2025-10-30.md#option-1-codex-app-server-migration)
+2. Container image exposes a writable `CODEX_HOME` (default `/app/.codex-api`) without bundling secrets, matching the deployment and security guidance documented for production hosts. (docs/epics.md#L85-L95; docs/architecture.md#L13-L22; docs/architecture.md#L84-L116)
+3. Build and smoke workflows execute a Codex CLI availability check (for example, `codex app-server --help`) during image build/test so regressions surface before deploy. (docs/epics.md#L85-L95; docs/bmad/architecture/tech-stack.md#L8-L76; docs/app-server-migration/codex-completions-api-migration.md#L199-L207)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/epics.md#L85-L95 — Story 1.2 scope and acceptance criteria.
+- docs/PRD.md#L14-L52 — Goals and FR005/FR014 guiding CLI packaging and smoke coverage.
+- docs/app-server-migration/codex-completions-api-migration.md#L7-L36 — Required CLI invocation changes for `codex app-server`.
+- docs/app-server-migration/codex-completions-api-migration.md#L199-L207 — Feature flag rollout defaults mirrored in env samples.
+- docs/architecture.md#L13-L22 — Decision summary enforcing writable `.codex-api/` and feature flag expectations.
+- docs/architecture.md#L84-L116 — Deployment notes keeping `.codex-api/` writable and documentation aligned.
+- docs/bmad/architecture/tech-stack.md#L8-L76 — Runtime packaging, CLI baking, and testing standards.
+- docs/bmad/architecture/source-tree.md#L12-L36 — Repository layout for Dockerfile, scripts, and docs.
+- docs/stories/1-1-add-app-server-feature-flag-scaffold.md#L35-L114 — Prior story learnings, helper modules, and doc/test coverage to reuse.</docs>
+    <code>- Dockerfile#L1-L34 — Current container build baking `@openai/codex` into `/usr/local/lib/codex-cli` and switching to `USER node`.
+- docker-compose.yml#L1-L40 — Mounts `.codex-api/` read/write and exports `CODEX_BIN`.
+- package.json#L1-L83 — Scripts and dependency pin for `@openai/codex` plus smoke/test commands.
+- scripts/prod-smoke.sh#L1-L70 — Production smoke harness to extend with CLI availability checks.
+- scripts/dev-smoke.sh#L1-L59 — Dev smoke harness that should mirror the CLI verification.
+- .env.example#L1-L12 — Documented `PROXY_USE_APP_SERVER` default and writable `.codex-api` guidance.
+- .env.dev#L1-L11 — Dev stack defaults mirroring production toggle expectations.
+- src/services/backend-mode.js#L1-L35 — Helper that resolves the proto vs app-server backend based on the feature flag.
+- tests/unit/config/backend-mode.spec.js#L1-L41 — Unit coverage for the feature flag toggle.
+- tests/unit/docs/app-server-flag-docs.spec.js#L1-L35 — Lint ensuring migration table and env samples stay aligned.
+- tests/integration/backend-mode.int.test.js#L1-L98 — Integration coverage verifying backend selection logs and health surface.</code>
+    <dependencies>- Base image `node:22-alpine` (Dockerfile#L1-L18) satisfies the Node ≥22 requirement.
+- Runtime packages: `@openai/codex@^0.49.0`, `express@^4.21.2`, `nanoid@^5.1.6` (package.json#L57-L61).
+- Tooling: Vitest, Playwright, ESLint, and Secretlint suites for verification (package.json#L62-L82).</dependencies>
+  </artifacts>
+
+  <constraints>- `.codex-api/` must stay writable in every environment; secrets live outside the image. (docs/architecture.md#L13-L22; docs/architecture.md#L84-L116)
+- Keep `PROXY_USE_APP_SERVER` defaulting to `false` until rollout gates pass; env samples and migration guide must remain synchronized. (docs/app-server-migration/codex-completions-api-migration.md#L199-L207; .env.example#L1-L12)
+- Docker image continues running as non-root `node`; all build steps must finish before `USER node`. (Dockerfile#L1-L34)
+- CLI updates must align with docs lint and prior story decisions to avoid drift. (docs/stories/1-1-add-app-server-feature-flag-scaffold.md#L35-L114)</constraints>
+  <interfaces>- Docker build pipeline (`Dockerfile`, `package.json` scripts) producing the runtime image.
+- Environment toggles `PROXY_USE_APP_SERVER`, `CODEX_BIN`, and `CODEX_HOME` supplied via compose/.env files.
+- Smoke harness entrypoints (`scripts/prod-smoke.sh`, `scripts/dev-smoke.sh`) that will execute the CLI verification.
+- Backend selection helper `src/services/backend-mode.js` reused for logging and health signals.</interfaces>
+  <tests>
+    <standards>Use Vitest for unit and integration suites, Playwright for E2E, and retain the `npm run verify:all` chain that runs format, lint, unit, integration, and streaming tests. (docs/bmad/architecture/tech-stack.md#L8-L76)</standards>
+    <locations>tests/unit/**, tests/integration/**, tests/e2e/**, scripts/prod-smoke.sh, scripts/dev-smoke.sh</locations>
+    <ideas>- AC#1 – Add a CI build step that runs `codex --version` inside the freshly built image and fails if the output is missing `app-server` or reports &lt;0.49.
+- AC#2 – Execute a container smoke (`docker run ... touch /app/.codex-api/.write-test`) and reject read-only mounts to ensure `.codex-api/` remains writable.
+- AC#3 – Extend smoke scripts to invoke `codex app-server --help`; capture non-zero exit codes and wire the check into `npm run smoke:prod` / dev.</ideas>
+  </tests>
+</story-context>
