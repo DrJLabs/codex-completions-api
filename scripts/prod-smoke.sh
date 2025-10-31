@@ -26,7 +26,20 @@ fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
 curl_cf() { curl -sS -m "$REQUEST_TIMEOUT" -f "$@"; }
 curl_origin() { curl -sS -m "$REQUEST_TIMEOUT" -f -k -H "Host: $DOMAIN" "https://$ORIGIN_HOST$1"; }
 
+IMAGE="${IMAGE:-codex-completions-api:latest}"
+
 echo "== Prod smoke for $DOMAIN =="
+
+if ! command -v docker >/dev/null 2>&1; then
+  fail "docker binary is required for CLI availability check"
+fi
+
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  fail "docker image $IMAGE not present locally for CLI availability check"
+fi
+
+docker run --rm "$IMAGE" codex app-server --help >/dev/null && \
+  pass "image codex app-server --help" || fail "image codex app-server --help"
 
 if [[ "${SKIP_ORIGIN:-0}" != "1" ]]; then
   # Origin health
