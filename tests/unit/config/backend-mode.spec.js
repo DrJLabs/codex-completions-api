@@ -30,13 +30,13 @@ describe("backend mode selector", () => {
     process.env.PROXY_USE_APP_SERVER = "true";
     vi.resetModules();
     const { config } = await import("../../../src/config/index.js");
-    const { selectBackendMode, isAppServerMode, isProtoMode, BACKEND_APP_SERVER, BACKEND_PROTO } =
-      await import("../../../src/services/backend-mode.js");
+    const { selectBackendMode, isAppServerMode, isProtoMode, BACKEND_APP_SERVER } = await import(
+      "../../../src/services/backend-mode.js"
+    );
 
     expect(config.PROXY_USE_APP_SERVER).toBe(true);
     expect(selectBackendMode()).toBe(BACKEND_APP_SERVER);
     expect(isAppServerMode()).toBe(true);
     expect(isProtoMode()).toBe(false);
-    expect(selectBackendMode()).not.toBe(BACKEND_PROTO);
   });
 });
