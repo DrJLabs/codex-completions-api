@@ -131,7 +131,7 @@ const main = async () => {
       await delay(5);
     }
   } else if (messageText) {
-    write({ type: "agent_message_delta", msg: { delta: messageText.slice(0, 7) } });
+    write({ type: "agent_message_delta", msg: { delta: messageText } });
     await delay(5);
   }
 

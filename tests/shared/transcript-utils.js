@@ -102,7 +102,7 @@ export function parseSSE(raw) {
     }
     if (dataLines.length > 0) {
       const payload = dataLines.join("");
-      if (payload === "[DONE]") {
+      if (payload === "[DONE]" || payload === '"[DONE]"') {
         const doneEntry = { type: "done" };
         if (eventName) doneEntry.event = eventName;
         entries.push(doneEntry);
