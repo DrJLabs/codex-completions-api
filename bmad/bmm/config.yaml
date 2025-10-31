@@ -15,3 +15,5 @@ user_name: drj
 communication_language: English
 document_output_language: English
 output_folder: "{project-root}/docs"
+run_tests_command: "npm run test:all"
+run_until_complete: true
