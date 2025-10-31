@@ -27,7 +27,7 @@ function buildSupervisorArgs() {
   if (provider) pushConfig("model_provider", quote(provider));
 
   if (CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS) {
-    pushConfig("parallel_tool_calls", "true");
+    pushConfig("parallel_tool_calls", quote("true"));
   }
 
   return args;
@@ -60,6 +60,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       lastExit: null,
       lastReadyAt: null,
       startupLatencyMs: null,
+      launchStartedAt: null,
       nextBackoffMs: this.cfg.WORKER_BACKOFF_INITIAL_MS,
       restartTimer: null,
       lastLogSample: null,
@@ -126,6 +127,7 @@ class CodexWorkerSupervisor extends EventEmitter {
     if (this.state.shutdownInFlight) return;
     this.state.shutdownInFlight = true;
     this.state.ready = false;
+    this.state.launchStartedAt = null;
     const child = this.state.child;
     this.#clearRestartTimer();
     if (!child) {
@@ -174,7 +176,8 @@ class CodexWorkerSupervisor extends EventEmitter {
     this.state.startAttempts += 1;
     this.state.ready = false;
     this.state.startupLatencyMs = null;
-    const startedAt = performance.now();
+    this.state.launchStartedAt = performance.now();
+    const startedAt = this.state.launchStartedAt;
     const launchArgs = buildSupervisorArgs();
     console.log(
       `${LOG_PREFIX} launching app-server attempt=${this.state.startAttempts} args=${launchArgs
@@ -254,6 +257,11 @@ class CodexWorkerSupervisor extends EventEmitter {
       if (ready) {
         this.state.ready = true;
         this.state.consecutiveFailures = 0;
+        if (this.state.startupLatencyMs == null && this.state.launchStartedAt != null) {
+          const now = performance.now();
+          this.state.startupLatencyMs = Math.round(now - this.state.launchStartedAt);
+          this.state.lastReadyAt = nowIso();
+        }
       }
     }
   }
@@ -270,6 +278,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       error: error ? error.message || String(error) : null,
     };
     this.state.lastExit = exitInfo;
+    this.state.launchStartedAt = null;
     if (this.state.shutdownInFlight) {
       this.state.child = null;
       this.state.running = false;

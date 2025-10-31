@@ -7,8 +7,11 @@ export default function healthRouter() {
   const router = express.Router();
   router.get("/healthz", (_req, res) => {
     const backendMode = selectBackendMode();
+    const supervisorStatus = getWorkerStatus();
     const workerStatus =
-      backendMode === BACKEND_APP_SERVER ? getWorkerStatus() : { enabled: false };
+      backendMode === BACKEND_APP_SERVER
+        ? supervisorStatus
+        : { ...supervisorStatus, enabled: false };
     res.json({
       ok: true,
       sandbox_mode: CFG.PROXY_SANDBOX_MODE,
