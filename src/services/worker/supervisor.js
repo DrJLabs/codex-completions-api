@@ -45,6 +45,27 @@ function parseMaybeJson(line) {
   }
 }
 
+function createInitialHealthState(reason = "worker_not_started") {
+  const ts = nowIso();
+  return {
+    readiness: {
+      ready: false,
+      reason,
+      since: ts,
+      last_change_at: ts,
+      handshake: null,
+      details: {},
+    },
+    liveness: {
+      live: false,
+      reason,
+      since: ts,
+      last_change_at: ts,
+      details: {},
+    },
+  };
+}
+
 class CodexWorkerSupervisor extends EventEmitter {
   constructor(config) {
     super();
@@ -64,7 +85,67 @@ class CodexWorkerSupervisor extends EventEmitter {
       nextBackoffMs: this.cfg.WORKER_BACKOFF_INITIAL_MS,
       restartTimer: null,
       lastLogSample: null,
+      health: createInitialHealthState(),
     };
+  }
+
+  #updateReadiness({ ready, reason, handshake, details }) {
+    const prev = this.state.health.readiness;
+    const changed = prev.ready !== ready || prev.reason !== reason;
+    const ts = nowIso();
+    const nextHandshake = handshake === undefined ? prev.handshake : handshake;
+    const nextDetails =
+      details === undefined ? prev.details : { ...(prev.details ?? {}), ...details };
+    this.state.health.readiness = {
+      ready,
+      reason,
+      since: changed ? ts : prev.since,
+      last_change_at: ts,
+      handshake: nextHandshake,
+      details: nextDetails,
+    };
+  }
+
+  #updateLiveness({ live, reason, details }) {
+    const prev = this.state.health.liveness;
+    const changed = prev.live !== live || prev.reason !== reason;
+    const ts = nowIso();
+    const nextDetails =
+      details === undefined ? prev.details : { ...(prev.details ?? {}), ...details };
+    this.state.health.liveness = {
+      live,
+      reason,
+      since: changed ? ts : prev.since,
+      last_change_at: ts,
+      details: nextDetails,
+    };
+  }
+
+  #extractHandshakeDetails(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    const models = Array.isArray(payload.models)
+      ? payload.models
+      : Array.isArray(payload.advertised_models)
+        ? payload.advertised_models
+        : Array.isArray(payload.available_models)
+          ? payload.available_models
+          : undefined;
+    const handshake = {
+      event: payload.event ?? payload.status ?? payload.type ?? null,
+      received_at: nowIso(),
+    };
+    if (Array.isArray(models)) {
+      handshake.models = models;
+    }
+    if (typeof payload.model === "string") {
+      handshake.model = payload.model;
+    }
+    if (typeof payload.version === "string") {
+      handshake.version = payload.version;
+    }
+    return handshake;
   }
 
   start() {
@@ -76,6 +157,12 @@ class CodexWorkerSupervisor extends EventEmitter {
       this.state.shutdownInFlight = false;
     }
     this.state.running = true;
+    const nextAttempt = this.state.startAttempts + 1;
+    this.#updateLiveness({
+      live: true,
+      reason: "worker_starting",
+      details: { attempt: nextAttempt },
+    });
     this.#launch();
   }
 
@@ -92,6 +179,8 @@ class CodexWorkerSupervisor extends EventEmitter {
       codex_worker_restarts_total: this.state.restarts,
       codex_worker_latency_ms: this.state.startupLatencyMs,
     };
+    const readiness = this.state.health.readiness;
+    const liveness = this.state.health.liveness;
     return {
       enabled: true,
       running: this.state.running,
@@ -106,6 +195,12 @@ class CodexWorkerSupervisor extends EventEmitter {
       next_restart_delay_ms: this.state.restartTimer ? this.state.nextBackoffMs : 0,
       last_log_sample: this.state.lastLogSample,
       metrics,
+      readiness: readiness ? { ...readiness } : undefined,
+      liveness: liveness ? { ...liveness } : undefined,
+      health: {
+        readiness: readiness ? { ...readiness } : undefined,
+        liveness: liveness ? { ...liveness } : undefined,
+      },
     };
   }
 
@@ -128,10 +223,26 @@ class CodexWorkerSupervisor extends EventEmitter {
     this.state.shutdownInFlight = true;
     this.state.ready = false;
     this.state.launchStartedAt = null;
+    const shutdownReason = reason;
+    this.#updateReadiness({
+      ready: false,
+      reason: "shutdown_initiated",
+      details: { signal, reason: shutdownReason },
+    });
+    this.#updateLiveness({
+      live: false,
+      reason: "shutdown_in_progress",
+      details: { signal, reason: shutdownReason },
+    });
     const child = this.state.child;
     this.#clearRestartTimer();
     if (!child) {
       this.state.running = false;
+      this.#updateLiveness({
+        live: false,
+        reason: "shutdown_complete",
+        details: { signal, reason: shutdownReason },
+      });
       return;
     }
     console.log(
@@ -145,6 +256,11 @@ class CodexWorkerSupervisor extends EventEmitter {
 
     if (child.exitCode !== null || child.signalCode !== null) {
       this.state.running = false;
+      this.#updateLiveness({
+        live: false,
+        reason: "shutdown_complete",
+        details: { exit: { code: child.exitCode, signal: child.signalCode } },
+      });
       return;
     }
 
@@ -169,6 +285,11 @@ class CodexWorkerSupervisor extends EventEmitter {
     } finally {
       this.state.running = false;
       this.state.child = null;
+      this.#updateLiveness({
+        live: false,
+        reason: "shutdown_complete",
+        details: { signal, reason: shutdownReason },
+      });
     }
   }
 
@@ -177,6 +298,11 @@ class CodexWorkerSupervisor extends EventEmitter {
     this.state.ready = false;
     this.state.startupLatencyMs = null;
     this.state.launchStartedAt = performance.now();
+    this.#updateReadiness({
+      ready: false,
+      reason: "worker_launching",
+      details: { attempt: this.state.startAttempts },
+    });
     const startedAt = this.state.launchStartedAt;
     const launchArgs = buildSupervisorArgs();
     console.log(
@@ -208,6 +334,11 @@ class CodexWorkerSupervisor extends EventEmitter {
 
     child.on("spawn", () => {
       console.log(`${LOG_PREFIX} spawned pid=${child.pid}`);
+      this.#updateLiveness({
+        live: true,
+        reason: "worker_running",
+        details: { pid: child.pid, restarts_total: this.state.restarts },
+      });
     });
 
     child.on("error", (err) => {
@@ -231,6 +362,14 @@ class CodexWorkerSupervisor extends EventEmitter {
         console.log(
           `${LOG_PREFIX} worker ready pid=${child.pid} latency_ms=${this.state.startupLatencyMs}`
         );
+        this.#updateReadiness({
+          ready: true,
+          reason: "handshake_complete",
+          details: {
+            startup_latency_ms: this.state.startupLatencyMs,
+            restarts_total: this.state.restarts,
+          },
+        });
       } catch (err) {
         console.warn(`${LOG_PREFIX} readiness wait timed out: ${err.message}`);
       }
@@ -262,6 +401,14 @@ class CodexWorkerSupervisor extends EventEmitter {
       if (ready) {
         this.state.ready = true;
         this.state.consecutiveFailures = 0;
+        this.#updateReadiness({
+          ready: true,
+          reason: "handshake_complete",
+          handshake: this.#extractHandshakeDetails(parsed),
+          details: {
+            event: parsed.event ?? parsed.status ?? parsed.type ?? "ready",
+          },
+        });
         if (this.state.startupLatencyMs == null && this.state.launchStartedAt != null) {
           const now = performance.now();
           this.state.startupLatencyMs = Math.round(now - this.state.launchStartedAt);
@@ -292,6 +439,16 @@ class CodexWorkerSupervisor extends EventEmitter {
     if (this.state.shutdownInFlight) {
       this.state.child = null;
       this.state.running = false;
+      this.#updateReadiness({
+        ready: false,
+        reason: "shutdown_in_progress",
+        details: { exit: exitInfo },
+      });
+      this.#updateLiveness({
+        live: false,
+        reason: "shutdown_in_progress",
+        details: { exit: exitInfo },
+      });
       console.log(`${LOG_PREFIX} worker exited during shutdown code=${code} signal=${signal}`);
       return;
     }
@@ -299,6 +456,14 @@ class CodexWorkerSupervisor extends EventEmitter {
     this.state.child = null;
     this.state.restarts += 1;
     this.state.consecutiveFailures += 1;
+    this.#updateReadiness({
+      ready: false,
+      reason: "worker_exit",
+      details: {
+        exit: exitInfo,
+        restarts_total: this.state.restarts,
+      },
+    });
     console.warn(
       `${LOG_PREFIX} worker exited code=${code} signal=${signal} restarts_total=${this.state.restarts}`
     );
@@ -307,11 +472,28 @@ class CodexWorkerSupervisor extends EventEmitter {
         `${LOG_PREFIX} reached WORKER_RESTART_MAX=${this.cfg.WORKER_RESTART_MAX}; supervisor halted`
       );
       this.state.running = false;
+      this.#updateLiveness({
+        live: false,
+        reason: "restart_limit_exceeded",
+        details: {
+          exit: exitInfo,
+          restarts_total: this.state.restarts,
+        },
+      });
       return;
     }
     const delayMs = Math.min(this.state.nextBackoffMs, this.cfg.WORKER_BACKOFF_MAX_MS);
     console.warn(`${LOG_PREFIX} scheduling restart in ${delayMs}ms`);
     this.state.nextBackoffMs = Math.min(delayMs * 2, this.cfg.WORKER_BACKOFF_MAX_MS);
+    this.#updateLiveness({
+      live: true,
+      reason: "worker_restarting",
+      details: {
+        exit: exitInfo,
+        restarts_total: this.state.restarts,
+        next_restart_delay_ms: delayMs,
+      },
+    });
     this.state.restartTimer = setTimeout(() => {
       this.state.restartTimer = null;
       if (this.state.shutdownInFlight) return;
@@ -369,7 +551,28 @@ export function isWorkerSupervisorRunning() {
 
 export function getWorkerStatus() {
   if (!supervisor) {
-    return { enabled: false, ready: false, running: false, restarts_total: 0 };
+    const health = createInitialHealthState("supervisor_not_initialized");
+    return {
+      enabled: false,
+      running: false,
+      ready: false,
+      shutdown_in_flight: false,
+      pid: null,
+      restarts_total: 0,
+      consecutive_failures: 0,
+      last_exit: null,
+      last_ready_at: null,
+      startup_latency_ms: null,
+      next_restart_delay_ms: 0,
+      last_log_sample: null,
+      metrics: {
+        codex_worker_restarts_total: 0,
+        codex_worker_latency_ms: null,
+      },
+      readiness: { ...health.readiness },
+      liveness: { ...health.liveness },
+      health,
+    };
   }
   return supervisor.status();
 }
