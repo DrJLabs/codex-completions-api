@@ -18,7 +18,22 @@ export class JsonRpcChildAdapter extends EventEmitter {
     this.stdout = new EventEmitter();
     this.stderr = new EventEmitter();
     this.stdin = {
-      write: (chunk) => this.#handleWrite(chunk),
+      write: (chunk) => {
+        try {
+          const result = this.#handleWrite(chunk);
+          if (result && typeof result.then === "function") {
+            result.catch((err) => {
+              console.warn(`${LOG_PREFIX} stdin.write rejected`, err);
+            });
+            return true;
+          }
+          if (typeof result === "boolean") return result;
+          return result ?? true;
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} stdin.write threw`, err);
+          throw err;
+        }
+      },
     };
 
     // Align with Node streams API expectations
