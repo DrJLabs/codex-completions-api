@@ -33,6 +33,7 @@ export default [
       "test-results/**",
       ".codev/**",
       ".codex-api/**",
+      "bmad/**",
     ],
   },
   js.configs.recommended,

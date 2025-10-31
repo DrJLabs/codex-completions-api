@@ -32,6 +32,39 @@ export function buildProtoArgs({
   return args;
 }
 
+export function buildAppServerArgs({
+  SANDBOX_MODE,
+  effectiveModel,
+  FORCE_PROVIDER,
+  reasoningEffort,
+  allowEffort,
+  enableParallelTools = false,
+}) {
+  const args = ["app-server", "--model", effectiveModel];
+  const pushConfig = (key, value) => {
+    args.push("--config", `${key}=${value}`);
+  };
+
+  pushConfig("preferred_auth_method", '"chatgpt"');
+  pushConfig("sandbox_mode", `"${SANDBOX_MODE}"`);
+
+  if (FORCE_PROVIDER) pushConfig("model_provider", `"${FORCE_PROVIDER}"`);
+  if (enableParallelTools) pushConfig("parallel_tool_calls", "true");
+  if (allowEffort?.has?.(reasoningEffort)) {
+    pushConfig("model_reasoning_effort", `"${reasoningEffort}"`);
+    pushConfig("reasoning.effort", `"${reasoningEffort}"`);
+  }
+
+  return args;
+}
+
+export function buildBackendArgs({ backendMode, ...rest }) {
+  if ((backendMode || "").toLowerCase() === "app-server") {
+    return buildAppServerArgs(rest);
+  }
+  return buildProtoArgs(rest);
+}
+
 const CANONICAL_FINISH_REASONS = new Set([
   "stop",
   "length",
