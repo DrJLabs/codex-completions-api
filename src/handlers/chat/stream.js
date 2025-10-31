@@ -33,7 +33,7 @@ import {
   logSanitizerToggle,
 } from "../../dev-logging.js";
 import {
-  buildProtoArgs,
+  buildBackendArgs,
   createFinishReasonTracker,
   extractFinishReasonFromMessage,
   logFinishReasonTelemetry,
@@ -48,6 +48,7 @@ import {
   metadataKeys,
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
+import { selectBackendMode } from "../../services/backend-mode.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -193,7 +194,9 @@ export async function postChatStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = buildProtoArgs({
+  const backendMode = selectBackendMode();
+  const args = buildBackendArgs({
+    backendMode,
     SANDBOX_MODE,
     effectiveModel,
     FORCE_PROVIDER,
@@ -254,7 +257,7 @@ export async function postChatStream(req, res) {
 
   try {
     console.log(
-      "[proxy] spawning (proto):",
+      `[proxy] spawning backend=${backendMode}:`,
       resolvedCodexBin,
       args.join(" "),
       " prompt_len=",
@@ -1321,7 +1324,9 @@ export async function postCompletionsStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = buildProtoArgs({
+  const backendMode = selectBackendMode();
+  const args = buildBackendArgs({
+    backendMode,
     SANDBOX_MODE,
     effectiveModel,
     FORCE_PROVIDER,
@@ -1336,7 +1341,7 @@ export async function postCompletionsStream(req, res) {
 
   try {
     console.log(
-      "[proxy] spawning (proto completions):",
+      `[proxy] spawning backend=${backendMode} (completions):`,
       resolvedCodexBin,
       args.join(" "),
       " prompt_len=",

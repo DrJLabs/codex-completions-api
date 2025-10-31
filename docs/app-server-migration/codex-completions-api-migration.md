@@ -188,6 +188,20 @@ spawn("codex", [
 
 1. **No CI/dev mock:** add a lightweight JSON‑RPC fake app-server for tests (fixtures for initialize, deltas, final).
 2. **Cancellation:** if/when Codex surfaces a cancel RPC, wire it; until then rely on timeouts and selective restarts.
-3. **Schema evolution:** feature‑flag method handlers; ignore unknown notifications; log for observability.
-4. **Per‑request models:** prefer instance routing; optionally queue per‑model workers.
+3. **Schema evolution:** feature-flag method handlers; ignore unknown notifications; log for observability.
+4. **Per-request models:** prefer instance routing; optionally queue per-model workers.
 5. **Tool events:** ensure function/tool call deltas continue to map to OpenAI tool_calls if you expose them.
+
+---
+
+## L. Feature flag rollout defaults
+
+The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy proto backend or the new app-server implementation. The defaults below match the rollout plan documented in the implementation readiness report.
+
+| Environment       | Default backend | Toggle procedure                                                                                            | Notes                                                                                               |
+| ----------------- | --------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Local / Dev stack | proto (`false`) | Set `PROXY_USE_APP_SERVER=true` in `.env.dev` (or export before `npm run dev:stack:up`) to trial app-server | Keeps deterministic proto behavior for day-to-day development while allowing opt-in validation.     |
+| Staging           | proto (`false`) | Update the staging compose/.env files and redeploy `docker compose up -d --build` when ready                | Staging adopts app-server only after integration tests verify parity with production workloads.     |
+| Production        | proto (`false`) | Flip the systemd environment (`/etc/systemd/system/codex-openai-proxy.service.d/env.conf`) and reload       | Production remains on proto until rollout gates pass; toggling requires maintenance window + smoke. |
+
+These defaults are mirrored in `.env.example` and `.env.dev`. CI enforces alignment with a docs lint that compares the table values against the sample environment files.

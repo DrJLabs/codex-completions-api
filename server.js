@@ -1,7 +1,9 @@
 import { config as CFG } from "./src/config/index.js";
+import { selectBackendMode } from "./src/services/backend-mode.js";
 import createApp from "./src/app.js";
 
 // Thin bootstrap only. All routing and business logic reside under src/.
+selectBackendMode();
 const app = createApp();
 const PORT = CFG.PORT;
 
