@@ -191,6 +191,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       },
     });
     this.state.child = child;
+    this.emit("spawn", child);
 
     try {
       child.stdout?.setEncoding?.("utf8");
@@ -237,6 +238,10 @@ class CodexWorkerSupervisor extends EventEmitter {
     readyWatcher();
   }
 
+  getChildProcess() {
+    return this.state.child;
+  }
+
   #handleStreamLine(streamName, rawLine) {
     const line = rawLine?.toString?.() ?? "";
     const trimmed = line.trim();
@@ -262,6 +267,10 @@ class CodexWorkerSupervisor extends EventEmitter {
           this.state.startupLatencyMs = Math.round(now - this.state.launchStartedAt);
           this.state.lastReadyAt = nowIso();
         }
+        this.emit("ready", {
+          child: this.state.child,
+          payload: parsed,
+        });
       }
     }
   }
@@ -278,6 +287,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       error: error ? error.message || String(error) : null,
     };
     this.state.lastExit = exitInfo;
+    this.emit("exit", exitInfo);
     this.state.launchStartedAt = null;
     if (this.state.shutdownInFlight) {
       this.state.child = null;
@@ -330,6 +340,21 @@ export function ensureWorkerSupervisor() {
   const instance = getWorkerSupervisor();
   instance.start();
   return instance;
+}
+
+export function getWorkerChildProcess() {
+  const instance = getWorkerSupervisor();
+  return instance.getChildProcess();
+}
+
+export function onWorkerSupervisorEvent(event, listener) {
+  const instance = getWorkerSupervisor();
+  instance.on(event, listener);
+  return () => {
+    try {
+      instance.off(event, listener);
+    } catch {}
+  };
 }
 
 export function isWorkerSupervisorReady() {

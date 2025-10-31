@@ -68,7 +68,11 @@ describe("backend mode feature flag", () => {
   });
 
   it("switches to app-server mode and logs when flag enabled", async () => {
-    const started = await startServerWithLogs({ PROXY_USE_APP_SERVER: "true" });
+    const started = await startServerWithLogs({
+      PROXY_USE_APP_SERVER: "true",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      CODEX_WORKER_SUPERVISED: "true",
+    });
     child = started.child;
     const response = await fetch(`http://127.0.0.1:${started.PORT}/healthz`);
     expect(response.status).toBe(200);
