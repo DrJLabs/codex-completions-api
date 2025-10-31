@@ -362,6 +362,7 @@ These are optional for CI/Codex Cloud. The default test configs work without sec
 
 ### Which tests to run when
 
+- Before running the full verification chain (`npm run verify:all`), execute the smoke script (`npm run smoke:dev` locally or `npm run smoke:prod` on hosts). The smoke workflow now fails fast by running `codex app-server --help`; failures surface immediately if the CLI is missing the app-server entrypoint.
 - Changed `src/utils.js` only → run unit: `npm run test:unit`.
 - Changed `server.js` routing/handlers/streaming → run integration: `npm run test:integration`, then E2E: `npm test`.
 - Changed `docker-compose.yml` (labels/ports/ForwardAuth) or Traefik‑related behavior → run production smoke: `npm run smoke:prod` (on the origin host) and E2E.
