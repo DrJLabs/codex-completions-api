@@ -17,7 +17,15 @@ RUN npm ci --omit=dev --ignore-scripts || npm install --omit=dev --ignore-script
 RUN cp -R node_modules/@openai/codex /usr/local/lib/codex-cli && \
     ln -sf /usr/local/lib/codex-cli/bin/codex.js /usr/local/bin/codex
 
+# Ensure the baked CLI exposes the app-server entrypoint
+RUN codex app-server --help >/dev/null
+
 ENV CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js
+ENV CODEX_HOME=/app/.codex-api
+
+# Provision writable Codex home before switching users
+RUN install -d -m 0775 /app/.codex-api && \
+    chown node:node /app/.codex-api
 
 # Copy application sources
 COPY server.js ./
