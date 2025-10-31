@@ -17,7 +17,7 @@ const write = (obj) => {
   } catch {}
 };
 
-const main = async () => {
+const runProto = async () => {
   let submission = "";
   try {
     // Read first line from stdin
@@ -175,4 +175,60 @@ const main = async () => {
   } catch {}
 };
 
-main().catch(() => process.exit(0));
+const runAppServerSupervised = async () => {
+  const readyDelay = Number(process.env.FAKE_CODEX_WORKER_READY_DELAY_MS ?? 50);
+  const heartbeatMs = Number(process.env.FAKE_CODEX_WORKER_HEARTBEAT_MS ?? 500);
+  const autoExitMs = Number(process.env.FAKE_CODEX_WORKER_AUTOEXIT_MS ?? 0);
+  const shutdownDelayMs = Number(process.env.FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS ?? 50);
+  const exitCode = Number(process.env.FAKE_CODEX_WORKER_EXIT_CODE ?? 0);
+
+  const log = (payload) => {
+    try {
+      process.stdout.write(JSON.stringify({ ts: Date.now(), ...payload }) + "\n");
+    } catch {}
+  };
+
+  log({ event: "starting" });
+  await delay(readyDelay);
+  log({ event: "ready" });
+
+  const heartbeat = setInterval(() => log({ event: "heartbeat" }), heartbeatMs);
+  let autoExitTimer = null;
+  if (autoExitMs > 0) {
+    autoExitTimer = setTimeout(() => {
+      clearInterval(heartbeat);
+      log({ event: "exit", reason: "auto" });
+      process.exit(exitCode);
+    }, autoExitMs);
+  }
+
+  const teardown = (signal) => {
+    log({ event: "shutdown", phase: "signal", signal });
+    clearInterval(heartbeat);
+    if (autoExitTimer) {
+      clearTimeout(autoExitTimer);
+      autoExitTimer = null;
+    }
+    setTimeout(() => {
+      log({ event: "shutdown", phase: "complete" });
+      process.exit(0);
+    }, shutdownDelayMs);
+  };
+
+  process.on("SIGTERM", () => teardown("SIGTERM"));
+  process.on("SIGINT", () => teardown("SIGINT"));
+
+  // Keep process alive
+  await new Promise(() => {});
+};
+
+const modeArg = process.argv[2];
+const supervised =
+  String(process.env.CODEX_WORKER_SUPERVISED || "")
+    .trim()
+    .toLowerCase() === "true";
+if (modeArg === "app-server" && supervised) {
+  runAppServerSupervised().catch(() => process.exit(0));
+} else {
+  runProto().catch(() => process.exit(0));
+}

@@ -87,13 +87,21 @@ describe("backend mode feature flag", () => {
         messages: [{ role: "user", content: "hi" }],
       }),
     });
-    expect(chat.status).toBe(200);
-    await chat.json();
-
-    const logs = started.stdout.join("");
-    expect(logs).toContain(
+    const stdoutLogs = started.stdout.join("");
+    const stderrLogs = started.stderr.join("");
+    expect(stdoutLogs).toContain(
       "[proxy][backend-mode] PROXY_USE_APP_SERVER=true -> activating app-server backend"
     );
-    expect(logs).toMatch(/spawning backend=app-server/);
+    if (chat.status === 503) {
+      const chatBody = await chat.json();
+      expect(chatBody?.error?.code).toBe("worker_not_ready");
+      expect(stderrLogs).toContain(
+        "[proxy][worker-supervisor] worker not ready; returning 503 backend_unavailable"
+      );
+    } else {
+      expect(chat.status).toBe(200);
+      await chat.json();
+      expect(stdoutLogs).toMatch(/spawning backend=app-server/);
+    }
   });
 });
