@@ -57,6 +57,7 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
 - Commits: concise, imperative subject (e.g., "Add SSE headers for streaming").
 - PRs: include purpose, linked issue, summary of API changes, and sample `curl` output. Keep diffs small and focused.
 - If a `git push`/`gh push` fails (e.g., pre-commit or pre-push hooks), address the hook feedback, rerun the necessary command(s), and attempt the push again instead of aborting after the first failure.
+- When addressing code review feedback, append fixes as a new commit (do **not** amend or rewrite existing commits). Keeping review changes in their own commit preserves review context and avoids confusing force pushes.
 
 ## Security & Configuration Tips
 
