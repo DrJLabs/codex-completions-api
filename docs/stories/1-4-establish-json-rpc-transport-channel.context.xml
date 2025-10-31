@@ -1,0 +1,71 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>4</storyId>
+    <title>Establish JSON-RPC transport channel</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-31T12:30:57Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1-4-establish-json-rpc-transport-channel.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an application developer</asA>
+    <iWant>I want the proxy to open and maintain the JSON-RPC connection to the Codex App Server worker</iWant>
+    <soThat>so that higher-level adapters can send requests without reimplementing transport details. [Source](docs/epics.md#story-14-establish-json-rpc-transport-channel)</soThat>
+    <tasks>- [ ] (AC #1) Implement JSON-RPC client bootstrap (`initialize`, `sendUserTurn`, `sendUserMessage`) and refuse requests until handshake succeeds. [Source](docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read)
+  - [ ] (AC #1) Consume supervisor readiness signals so adapters dispatch only after advertised models arrive. [Source](docs/stories/1-3-implement-worker-supervisor-and-lifecycle-hooks.md#dev-notes)
+  - [ ] (AC #1 Testing) Add unit coverage for handshake success/failure branches and model advertisement parsing. [Source](docs/bmad/architecture/tech-stack.md#testing--qa)
+- [ ] (AC #2) Build request-context tracking that maps IDs to timers, retries, and error envelopes using shared error helpers. [Source](docs/PRD.md#functional-requirements) [Source](docs/architecture.md#error-handling)
+  - [ ] (AC #2) Ensure timeout paths coordinate with supervisor restart/backoff without collapsing the transport. [Source](docs/architecture.md#health--lifecycle)
+  - [ ] (AC #2 Testing) Extend integration tests to assert retry hints and timeout behaviour when the worker stalls. [Source](tests/integration/backend-mode.int.test.js)
+- [ ] (AC #3) Create integration fixtures that simulate JSON-RPC notifications/deltas and confirm streaming + non-streaming adapters consume them correctly. [Source](docs/app-server-migration/codex-completions-api-migration.md#d-streaming-path-sse)
+  - [ ] (AC #3) Record a golden transcript for handshake and delta flow to guard against regressions. [Source](docs/bmad/architecture/tech-stack.md#testing--qa)
+  - [ ] (AC #3 Testing) Add the round-trip to `npm run test:integration` and `npm test` pipelines. [Source](docs/bmad/architecture/tech-stack.md#testing--qa)</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Transport startup performs the JSON-RPC handshake that validates worker readiness and advertised models before exposing the channel to adapters. [Source](docs/epics.md#story-14-establish-json-rpc-transport-channel) [Source](docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read)
+2. Transport tracks request IDs, enforces per-request timeouts, and classifies retryable failures while preserving documented error envelopes. [Source](docs/epics.md#story-14-establish-json-rpc-transport-channel) [Source](docs/PRD.md#functional-requirements)
+3. Integration test exercises a mock JSON-RPC request/response round trip verifying handshake, message dispatch, and error shaping. [Source](docs/epics.md#story-14-establish-json-rpc-transport-channel) [Source](docs/app-server-migration/codex-completions-api-migration.md#d-streaming-path-sse)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 1.4: Establish JSON-RPC transport channel | snippet: Story 1.4 requires the transport handshake to validate worker readiness and advertised models, handle request IDs/timeouts/retryable failures, and prove the flow with a mock request/response round-trip integration test.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document (PRD) | section: Functional Requirements (FR003–FR004) | snippet: FR003 states the proxy must translate OpenAI-formatted requests into Codex JSON-RPC calls covering model selection, tool metadata, and conversation context, while FR004 keeps HTTP status codes, error bodies, and retry hints identical to current behavior.
+- path: docs/architecture.md | title: Decision Architecture | section: Integration Points | snippet: The JSON-RPC transport is documented as a single worker channel managed in src/services/transport, responsible for request IDs, timeouts, and concurrency limits, with implementation patterns enforcing structured logging and layered responsibilities.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: C. JSON-RPC client: write & read | snippet: Section C prescribes sending `initialize`, `sendUserTurn`, and `sendUserMessage` calls per request, tracking unique RPC ids, and routing notifications like `agentMessageDelta` or `tokenCount` through per-request contexts to keep streams aligned.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: D. Streaming path (SSE) | snippet: Streaming guidance keeps external SSE output identical—map each `agentMessageDelta` to a role-first chunk, emit the final `agentMessage`, and terminate with `[DONE]` while preserving tool-call shaping.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: G. Concurrency & timeouts | snippet: The concurrency guidance caps SSE concurrency, enforces per-request timeouts, and restarts the worker only when truly stuck so transport resilience matches production expectations.
+- path: docs/research-technical-2025-10-30.md | title: Tech Research Report | section: Implementation Roadmap | snippet: The roadmap prioritizes refactoring adapters to consume JSON-RPC notifications, capturing transcripts for deterministic mocks, and running verify suites against the new transport before flipping production traffic.</docs>
+    <code>- path: src/services/codex-runner.js | kind: service | symbol: spawnCodex | lines: 1-40 | reason: Existing child-process launcher whose startup options must evolve from proto args to the JSON-RPC app-server command while preserving workdir/env handling.
+- path: src/services/backend-mode.js | kind: service | symbol: selectBackendMode | lines: 1-45 | reason: Determines proto vs app-server mode; transport should hook readiness and handshake logic when app-server is active.
+- path: src/handlers/chat/stream.js | kind: route handler | symbol: postChatStream | lines: 1-400 | reason: Streaming endpoint currently shells to proto; refactor to call the JSON-RPC transport while keeping SSE framing and error envelopes intact.
+- path: src/handlers/chat/nonstream.js | kind: route handler | symbol: postChatNonStream | lines: 1-380 | reason: Non-streaming adapter will consume transport responses to assemble OpenAI-compatible payloads and usage accounting.
+- path: src/lib/errors.js | kind: library | symbol: sseErrorBody | lines: 1-200 | reason: Central error envelope helpers ensure retry semantics match PRD expectations when transport timeouts or worker failures occur.
+- path: tests/integration/backend-mode.int.test.js | kind: integration test | symbol: describe('backend mode feature flag') | lines: 1-160 | reason: Validates feature-flag switching and readiness telemetry; expand with JSON-RPC mocks and transport handshake assertions.</code>
+    <dependencies>- node:
+  - @openai/codex 0.53.0 — Provides the Codex App Server CLI whose JSON-RPC handshake and notifications the transport will drive.
+  - express ^4.21.2 — HTTP framework exposing /v1/chat/completions routes that must route through the new transport.
+  - nanoid ^5.1.6 — Generates request identifiers reused inside the JSON-RPC context map.
+- node-dev:
+  - vitest ^4.0.3 — Primary unit/integration harness for transport round-trip and timeout coverage.
+  - @playwright/test ^1.56.1 — Ensures streaming SSE behavior remains identical under JSON-RPC.
+  - get-port ^7.0.0 — Spins ephemeral ports for integration tests when launching the proxy in app-server mode.</dependencies>
+  </artifacts>
+
+  <constraints>- Maintain a single supervised JSON-RPC channel per architecture guidance—reuse the worker supervisor, do not spawn per-request processes, and respect readiness gating.
+- Preserve OpenAI-compatible response and error envelopes so status codes, retry hints, and SSE chunk shapes stay unchanged during transport refactor.
+- Enforce per-request timeouts, concurrency caps, and restart heuristics outlined in migration guidance to avoid collapsing the shared worker.
+- Keep .codex-api/ writable and reuse existing configuration surfaces (src/config/index.js) instead of introducing ad-hoc env reads.
+- Follow structured logging and metrics patterns described in architecture docs so transport telemetry integrates with existing observability.</constraints>
+  <interfaces>- name: POST /v1/chat/completions (stream=true) | kind: REST endpoint | signature: postChatStream(req, res) | path: src/handlers/chat/stream.js
+- name: POST /v1/chat/completions (stream=false) | kind: REST endpoint | signature: postChatNonStream(req, res) | path: src/handlers/chat/nonstream.js
+- name: selectBackendMode() | kind: service function | signature: selectBackendMode(): 'proto' | 'app-server' | path: src/services/backend-mode.js
+- name: spawnCodex(args, options) | kind: service function | signature: spawnCodex(args = [], options = {}) | path: src/services/codex-runner.js</interfaces>
+  <tests>
+    <standards>Follow the tech stack playbook: run Vitest unit/integration suites, Playwright SSE/E2E checks, and smoke scripts so JSON-RPC transport code maintains parity across all layers before rollout.</standards>
+    <locations>tests/unit/**; tests/integration/**; tests/e2e/**; scripts/dev-smoke.sh; scripts/prod-smoke.sh</locations>
+    <ideas>- AC #1 – Start the proxy in app-server mode with a JSON-RPC mock, assert the handshake advertises models before postChatStream releases responses, and verify readiness telemetry.
+- AC #2 – Simulate worker stalls via mock delays, assert timeout errors use documented retry hints, and ensure supervisor restart counters increment without killing the channel.
+- AC #3 – Record and replay a JSON-RPC transcript in integration tests, confirming streaming/non-streaming adapters relay deltas and [DONE] exactly once.</ideas>
+  </tests>
+</story-context>
