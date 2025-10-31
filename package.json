@@ -18,7 +18,7 @@
     "smoke:stream-tool-call": "node scripts/smoke/stream-tool-call.js --include-usage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:runbooks": "prettier -c docs/runbooks",
+    "lint:runbooks": "prettier -c docs/app-server-migration",
     "format": "prettier -w .",
     "format:check": "prettier -c .",
     "secret-scan": "secretlint .",

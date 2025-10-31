@@ -239,12 +239,40 @@ The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy prot
 
 ## M. Runbook checklist updates
 
-- [ ] Stage and production monitors include `/readyz` latency and `worker_supervisor.restarts_total`; alert when readiness remains false for >30s or when restarts increase by more than 1 within a 10-minute window.
+### M.1 Prerequisites before toggling `PROXY_USE_APP_SERVER`
 
-| Environment       | Default backend | Toggle procedure                                                                                            | Notes                                                                                               |
-| ----------------- | --------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Local / Dev stack | proto (`false`) | Set `PROXY_USE_APP_SERVER=true` in `.env.dev` (or export before `npm run dev:stack:up`) to trial app-server | Keeps deterministic proto behavior for day-to-day development while allowing opt-in validation.     |
-| Staging           | proto (`false`) | Update the staging compose/.env files and redeploy `docker compose up -d --build` when ready                | Staging adopts app-server only after integration tests verify parity with production workloads.     |
-| Production        | proto (`false`) | Flip the systemd environment (`/etc/systemd/system/codex-openai-proxy.service.d/env.conf`) and reload       | Production remains on proto until rollout gates pass; toggling requires maintenance window + smoke. |
+1. Verify `@openai/codex@0.53.0` is installed in the target image or host before enabling the app-server to guarantee the bundled binary includes the `app-server` subcommand (Source: Section A, [../architecture.md#decision-summary](../architecture.md#decision-summary)).
+2. Confirm the environment mounts a writable `CODEX_HOME` (`.codev` for dev, `.codex-api` for containerized deployments) so the supervisor can persist rollout and session state (Source: Section H; [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes)).
+3. Stage and production monitors must track `/readyz` latency plus `worker_supervisor.restarts_total`; alert if readiness stays false for longer than 30 s or restarts increase by >1 within 10 minutes (Source: Section H; [../architecture.md#decision-summary](../architecture.md#decision-summary)).
 
-These defaults are mirrored in `.env.example` and `.env.dev`. CI enforces alignment with a docs lint that compares the table values against the sample environment files.
+### M.2 Toggle workflow by environment
+
+- **Docker Compose (dev & staging):**
+  1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; keep proto default (`false`) elsewhere until rollout gates pass (Source: [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
+  2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
+  3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
+- **systemd (production host):**
+  1. Update `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` so `Environment=PROXY_USE_APP_SERVER=true`.
+  2. Reload units with `systemctl daemon-reload && systemctl restart codex-openai-proxy`.
+  3. Run `npm run smoke:prod` for the public domain, ensuring `/readyz` flips to `200` before reopening traffic (Source: [../../scripts/prod-smoke.sh](../../scripts/prod-smoke.sh)).
+- **Traefik health gating:** ensure `traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz` remains configured so traffic drains during worker restarts (Source: Section H; [../architecture.md#decision-summary](../architecture.md#decision-summary)).
+
+### M.3 Verification checklist after toggling
+
+1. `curl -f https://{domain}/readyz` returns `200` with `"ready":true` within five seconds (Source: [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes)).
+2. `curl -f https://{domain}/livez` stays `200`; any `503` requires paging the on-call and rolling back the flag (Source: Section H).
+3. Run `npm run lint:runbooks` before publishing documentation updates to satisfy formatting and link linting (Source: [../bmad/architecture/tech-stack.md#testing--qa](../bmad/architecture/tech-stack.md#testing--qa)).
+
+### M.4 Environment configuration matrix
+
+| Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
+| ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Local / Dev stack | proto (`false`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`)                     | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
+| Staging           | proto (`false`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true`) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
+| Production        | proto (`false`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf`  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
+
+Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
+
+### M.5 Operational change log additions
+
+- 2025-10-31 — Documented feature flag rollout, environment matrix, and probe verification steps for the app-server cutover. Linked smoke harnesses and Story 1.5 probe evidence so partner teams can reuse readiness data (Source: [../epics.md#story-16-document-foundation-and-operational-controls](../epics.md#story-16-document-foundation-and-operational-controls); [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log)).
