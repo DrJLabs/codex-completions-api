@@ -354,9 +354,7 @@ export async function postChatNonStream(req, res) {
     }
   }
 
-  try {
-    console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
-  } catch {}
+  console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
   const child = spawnCodex(args);
   if (SANITIZE_METADATA) {
@@ -891,9 +889,7 @@ export async function postCompletionsNonStream(req, res) {
   const toSend = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
 
-  try {
-    console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
-  } catch {}
+  console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
   const child = spawnCodex(args);
   let out = "",

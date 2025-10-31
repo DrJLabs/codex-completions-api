@@ -103,8 +103,8 @@ so that we can enable or disable the new backend without redeploying.
 ### Completion Notes List
 
 - AC#1: Introduced the `PROXY_USE_APP_SERVER` config flag, new `src/services/backend-mode.js`, startup logging, and `/healthz` telemetry while keeping proto as the default backend.
-- AC#2: Documented dev/staging/prod rollout defaults in the migration guide and synced `.env.example` / `.env.dev`; added a docs lint to keep the table and env samples aligned.
-- AC#3: Added unit coverage (`tests/unit/config/backend-mode.spec.js`, `tests/unit/docs/app-server-flag-docs.spec.js`) plus targeted integrations (`tests/integration/backend-mode.int.test.js`); refreshed streaming transcripts, tightened concurrency harness, and ran `npm run test:unit` + `npm run test:integration` locally.
+- For AC#2 we documented dev/staging/prod rollout defaults in the migration guide, synced `.env.example` / `.env.dev`, and added a docs lint to keep the table and env samples aligned.
+- AC#3 received unit coverage (`tests/unit/config/backend-mode.spec.js`, `tests/unit/docs/app-server-flag-docs.spec.js`) plus targeted integrations (`tests/integration/backend-mode.int.test.js`); refreshed streaming transcripts, tightened concurrency harness, and ran `npm run test:unit` + `npm run test:integration` locally.
 - 2025-10-31: Updated handlers and shared helpers to route spawn arguments based on `selectBackendMode()`, enabling the feature flag to toggle proto vs app-server command paths.
 
 ### File List
@@ -127,17 +127,17 @@ so that we can enable or disable the new backend without redeploying.
 **Date:** 2025-10-31  
 **Outcome:** Approve — `PROXY_USE_APP_SERVER` now selects the appropriate backend while documentation and tests stay aligned.
 
-**Summary**
+### Summary
 
 - `buildBackendArgs()` feeds the spawn path so the flag drives proto vs app-server selection (`src/handlers/chat/shared.js:35-69`, `src/handlers/chat/stream.js:197-267`, `src/handlers/chat/nonstream.js:288-420`).
 - Spawn logs surface the active backend and the integration suite exercises both modes (`tests/integration/backend-mode.int.test.js:40-97`).
 - Rollout documentation and sample env defaults remain synchronized (`docs/app-server-migration/codex-completions-api-migration.md:197-207`, `.env.example:7-8`, `.env.dev:7-8`).
 
-**Key Findings**
+### Key Findings
 
 - None.
 
-**Acceptance Criteria Coverage**
+### Acceptance Criteria Coverage
 
 | AC# | Description                                                                        | Status      | Evidence                                                                                                                                                                                           |
 | --- | ---------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -147,7 +147,7 @@ so that we can enable or disable the new backend without redeploying.
 
 **Summary:** 3 of 3 acceptance criteria fully implemented.
 
-**Task Completion Validation**
+### Task Completion Validation
 
 | Task                                              | Marked As | Verified As       | Evidence                                                                                                       |
 | ------------------------------------------------- | --------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -163,24 +163,24 @@ so that we can enable or disable the new backend without redeploying.
 
 **Summary:** Verified 9 of 9 completed tasks; 0 questionable; 0 falsely marked complete.
 
-**Test Coverage and Gaps**
+### Test Coverage and Gaps
 
 - `npm run test:unit` and `npm run test:integration` both pass, exercising proto/app-server toggles and documentation alignment.
 
-**Architectural Alignment**
+### Architectural Alignment
 
 - Runtime configuration decisions are now honored: the feature flag controls the spawned backend path while retaining existing logging and health surfaces.
 
-**Security Notes**
+### Security Notes
 
 - None.
 
-**Best-Practices and References**
+### Best-Practices and References
 
 - docs/architecture.md — Runtime Config decision summary
 - docs/tech-spec-epic-1.md — Runtime flag helper expectations
 
-**Action Items**
+### Action Items
 
 **Code Changes Required:**
 
