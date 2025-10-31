@@ -1,4 +1,4 @@
-import { spawnCodex } from "../../services/codex-runner.js";
+import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
 import { nanoid } from "nanoid";
 import {
   stripAnsi,
@@ -26,7 +26,7 @@ import {
   logSanitizerToggle,
 } from "../../dev-logging.js";
 import {
-  buildProtoArgs,
+  buildBackendArgs,
   createFinishReasonTracker,
   extractFinishReasonFromMessage,
   logFinishReasonTelemetry,
@@ -34,6 +34,7 @@ import {
   validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import { selectBackendMode } from "../../services/backend-mode.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
@@ -317,7 +318,9 @@ export async function postChatNonStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = buildProtoArgs({
+  const backendMode = selectBackendMode();
+  const args = buildBackendArgs({
+    backendMode,
     SANDBOX_MODE,
     effectiveModel,
     FORCE_PROVIDER,
@@ -350,6 +353,10 @@ export async function postChatNonStream(req, res) {
       console.error("[dev][prompt][chat] error:", e);
     }
   }
+
+  try {
+    console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
+  } catch {}
 
   const child = spawnCodex(args);
   if (SANITIZE_METADATA) {
@@ -869,7 +876,9 @@ export async function postCompletionsNonStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const args = buildProtoArgs({
+  const backendMode = selectBackendMode();
+  const args = buildBackendArgs({
+    backendMode,
     SANDBOX_MODE,
     effectiveModel,
     FORCE_PROVIDER,
@@ -881,6 +890,10 @@ export async function postCompletionsNonStream(req, res) {
   const messages = [{ role: "user", content: prompt }];
   const toSend = joinMessages(messages);
   const promptTokensEst = estTokensForMessages(messages);
+
+  try {
+    console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
+  } catch {}
 
   const child = spawnCodex(args);
   let out = "",
