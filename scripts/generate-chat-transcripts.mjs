@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { relative } from "node:path";
 import fetch from "node-fetch";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
@@ -8,6 +9,7 @@ import {
   PROTO_TRANSCRIPT_ROOT,
   APP_TRANSCRIPT_ROOT,
   saveTranscript,
+  saveTranscriptManifest,
   sanitizeNonStreamResponse,
   sanitizeStreamTranscript,
   parseSSE,
@@ -60,6 +62,13 @@ const toStreamResponse = async (res) => {
   const chunks = parseSSE(raw);
   return { stream: sanitizeStreamTranscript(chunks) };
 };
+
+const toErrorResponse = async (res) => ({
+  error: {
+    status: res.status,
+    body: await res.json(),
+  },
+});
 
 const SCENARIOS = [
   {
@@ -285,6 +294,17 @@ const SCENARIOS = [
     codexOverride: { proto: TRUNCATION_PROTO_CODEX },
     processResponse: toNonStreamResponse,
   },
+  {
+    filename: "nonstream-invalid-request.json",
+    requestBody: {
+      model: "codex-5",
+      stream: false,
+      messages: "This is not a valid message array",
+    },
+    expectStatus: 400,
+    processResponse: toErrorResponse,
+    metadata: { severity: "invalid_request" },
+  },
 ];
 
 async function waitForBackendReady(backend, port, { timeoutMs = 15000, intervalMs = 200 } = {}) {
@@ -320,6 +340,7 @@ async function runCapture({
     ...(backend?.env ?? {}),
     ...(serverEnv || {}),
   });
+  let result;
   try {
     await waitForBackendReady(backend, ctx.PORT);
     const transcriptPayload = await createPayload(ctx.PORT);
@@ -339,10 +360,14 @@ async function runCapture({
       }),
       ...transcriptPayload,
     };
-    await saveTranscript(filename, transcript, { backend: backend?.saveKey });
+    const savePath = await saveTranscript(filename, transcript, {
+      backend: backend?.saveKey,
+    });
+    result = { transcript, path: savePath };
   } finally {
     await stopServer(ctx.child);
   }
+  return result;
 }
 
 async function captureChatScenario({ backend, scenario, commitSha }) {
@@ -353,10 +378,12 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
     stream = false,
     beforeRequest,
     processResponse,
+    processError,
     errorLabel,
     env,
     codexOverride,
     metadata,
+    expectStatus = 200,
   } = scenario;
 
   const codexBin = codexOverride?.[backend.id] ?? backend.codexBin;
@@ -369,7 +396,7 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
     serverEnv: env,
     metadata: {
       scenario: filename.replace(/\.json$/, ""),
-      extra: metadata,
+      extra: { expected_status: expectStatus, ...(metadata || {}) },
     },
     createPayload: async (port) => {
       if (beforeRequest) await beforeRequest();
@@ -380,12 +407,18 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
         headers: BASE_HEADERS,
         body: JSON.stringify(requestBody),
       });
-      if (!res.ok) {
+      if (res.status !== expectStatus) {
         const text = await res.text();
         const label = errorLabel ?? (stream ? "streaming" : "non-stream");
-        throw new Error(`${label} request failed (${res.status}): ${text}`);
+        throw new Error(
+          `${label} request failed (${res.status}, expected ${expectStatus}): ${text}`
+        );
       }
-      const payload = await processResponse(res);
+      const handler =
+        res.status >= 400
+          ? (processError ?? processResponse ?? toErrorResponse)
+          : (processResponse ?? toNonStreamResponse);
+      const payload = await handler(res);
       return {
         request: requestBody,
         ...payload,
@@ -405,13 +438,51 @@ async function main() {
 
   const commitSha = gitCommitSha();
 
+  const manifest = {
+    generated_at: new Date().toISOString(),
+    commit: commitSha,
+    scenarios: {},
+    backends: {},
+  };
+
   for (const backend of BACKENDS) {
     for (const scenario of SCENARIOS) {
-      await captureChatScenario({ backend, scenario, commitSha });
+      const result = await captureChatScenario({ backend, scenario, commitSha });
+      const transcript = result?.transcript ?? {};
+      const savedPath = result?.path ?? null;
+
+      if (transcript?.metadata?.cli_version && !manifest.cli_version) {
+        manifest.cli_version = transcript.metadata.cli_version;
+      }
+      manifest.backends[backend.saveKey] = {
+        id: backend.id,
+        codex_bin: transcript?.metadata?.codex_bin ?? backend.codexBin,
+      };
+
+      const existing = manifest.scenarios[scenario.filename] ?? {
+        filename: scenario.filename,
+        stream: Boolean(scenario.stream),
+        expect_status: scenario.expectStatus ?? 200,
+        request: scenario.requestBody,
+        captures: {},
+      };
+      existing.captures[backend.saveKey] = {
+        backend: transcript?.metadata?.backend ?? backend.metadata,
+        backend_storage: transcript?.metadata?.backend_storage ?? backend.saveKey,
+        captured_at: transcript?.metadata?.captured_at ?? null,
+        include_usage: Boolean(transcript?.metadata?.include_usage),
+        cli_version: transcript?.metadata?.cli_version ?? null,
+        codex_bin: transcript?.metadata?.codex_bin ?? backend.codexBin,
+        metadata: transcript?.metadata ?? null,
+        path: savedPath ? relative(TRANSCRIPT_ROOT, savedPath) : null,
+      };
+      manifest.scenarios[scenario.filename] = existing;
     }
     const targetRoot = backend.saveKey === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
     console.log(`Captured ${backend.metadata} transcripts in`, targetRoot);
   }
+
+  await saveTranscriptManifest(manifest);
 
   console.log("Transcripts refreshed in", TRANSCRIPT_ROOT);
 }

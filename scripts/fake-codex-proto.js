@@ -36,10 +36,10 @@ const runProto = async () => {
   write({ type: "session_configured" });
   write({ type: "task_started" });
   await delay(10);
-  write({ type: "agent_reasoning_delta", msg: { delta: "…" } });
-  await delay(10);
 
   const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
+  write({ type: "agent_reasoning_delta", msg: { delta: "…" } });
+  await delay(10);
   const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
     .trim()
     .toLowerCase();
