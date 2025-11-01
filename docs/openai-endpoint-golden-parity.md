@@ -303,10 +303,29 @@ HTTP/1.1 429 Too Many Requests
 
 ---
 
-## 8) Golden transcripts (copy‑ready)
+## 8) Golden transcripts (copy-ready)
 
 > **How to use**: Treat these as fixtures in integration tests for your proxy. The JSON is representative of **real** shapes and field names from official SDKs/spec.
 > Capture scripts: `scripts/generate-chat-transcripts.mjs` and `scripts/generate-responses-transcripts.mjs` regenerate fixtures under `test-results/chat-completions/` and `test-results/responses/`, normalizing IDs/timestamps for contract tests.
+
+### 8.1 Capture workflow (proto ↔ app-server parity)
+
+Use this procedure whenever you refresh fixtures for `/v1/chat/completions`:
+
+1. **Regenerate paired transcripts**
+   ```bash
+   npm run transcripts:generate
+   ```
+   This writes deterministic outputs to `test-results/chat-completions/proto/` and `test-results/chat-completions/app/`, embedding metadata such as `backend`, `backend_storage`, `codex_bin`, and the repo `commit` SHA in each file.
+2. **Validate parity harness** – run the dedicated diff suite to assert proto/app transcripts remain aligned:
+   ```bash
+   npm run test:parity
+   ```
+   The harness fails fast when a scenario is missing or a payload diverges, ensuring regressions are caught before CI.
+3. **Record baseline versions** – note the Codex CLI/App Server build used for capture (the values are stamped in the `metadata` block of every transcript). Copy these into the release notes or migration runbook when updating fixtures.
+4. **Smoke the stack** – execute `npm run test:integration` and `npm test` before publishing refreshed transcripts to guarantee the Epic 1 baseline remains healthy.
+
+> Tip: If a deliberate mismatch is required for debugging, edit a single transcript, run `npm run test:parity` to observe the failure output, then regenerate fixtures with `npm run transcripts:generate` to restore the canonical corpus.
 
 ### GT‑1 — Responses (non‑streaming, text only)
 

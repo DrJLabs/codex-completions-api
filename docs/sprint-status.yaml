@@ -39,16 +39,17 @@ development_status:
   epic-1: contexted
   1-1-add-app-server-feature-flag-scaffold: done
   1-2-package-codex-cli-with-app-server-capability: done
-  1-3-implement-worker-supervisor-and-lifecycle-hooks: review
-  1-4-establish-json-rpc-transport-channel: backlog
-  1-5-wire-readiness-and-liveness-probes-to-worker-state: backlog
-  1-6-document-foundation-and-operational-controls: backlog
-  epic-1-retrospective: optional
+  1-3-implement-worker-supervisor-and-lifecycle-hooks: done
+  1-4-establish-json-rpc-transport-channel: done
+  1-5-wire-readiness-and-liveness-probes-to-worker-state: done
+  1-6-document-foundation-and-operational-controls: done
+  epic-1-retrospective: completed
   epic-2: backlog
   2-1-define-json-rpc-schema-bindings-for-chat: backlog
   2-2-implement-request-translation-layer: backlog
   2-3-implement-streaming-response-adapter: backlog
   2-4-align-error-handling-and-retries: backlog
+  2-0-establish-parity-verification-infrastructure: done
   2-5-update-regression-suite-for-parity-evidence: backlog
   2-6-document-parity-verification-and-rollout-checklist: backlog
   epic-2-retrospective: optional

@@ -34,12 +34,14 @@ import {
   validateOptionalChatParams,
 } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
-import { selectBackendMode } from "../../services/backend-mode.js";
+import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
+import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
+import { mapTransportError } from "../../services/transport/index.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -356,7 +358,10 @@ export async function postChatNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
-  const child = spawnCodex(args);
+  const child =
+    backendMode === BACKEND_APP_SERVER
+      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
+      : spawnCodex(args);
   if (SANITIZE_METADATA) {
     appendProtoEvent({
       ts: Date.now(),
@@ -784,8 +789,22 @@ export async function postChatNonStream(req, res) {
   });
 
   const finalizeSuccess = () => finalizeResponse();
-  const finalizeFailure = (message) =>
-    finalizeResponse({
+  const finalizeFailure = (
+    error,
+    fallbackMessage = "Internal server error from backend process."
+  ) => {
+    const mapped = mapTransportError(error);
+    if (mapped) {
+      return finalizeResponse({
+        statusCode: mapped.statusCode,
+        errorBody: mapped.body,
+      });
+    }
+    const message =
+      typeof error === "string"
+        ? error
+        : error?.message || fallbackMessage || "Internal server error";
+    return finalizeResponse({
       statusCode: 500,
       errorBody: {
         error: {
@@ -795,17 +814,18 @@ export async function postChatNonStream(req, res) {
         },
       },
     });
+  };
 
   // Stabilize: respond when stdout ends or the process exits, whichever happens first
   child.stdout.on("end", finalizeSuccess);
   child.on("exit", finalizeSuccess);
   child.on("error", (error) => {
     console.error("[proxy][chat.nonstream] child process error", error);
-    finalizeFailure("Internal server error from backend process.");
+    finalizeFailure(error);
   });
   child.stdout.on("error", (error) => {
     console.error("[proxy][chat.nonstream] stdout error", error);
-    finalizeFailure("Internal server error from backend stdout.");
+    finalizeFailure(error, "Internal server error from backend stdout.");
   });
   try {
     const submission = {
