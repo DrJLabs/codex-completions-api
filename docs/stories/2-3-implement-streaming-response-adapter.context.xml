@@ -1,0 +1,82 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>3</storyId>
+    <title>Implement streaming response adapter</title>
+    <status>done</status>
+    <generatedAt>$now</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-3-implement-streaming-response-adapter.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an application developer. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#story)</asA>
+    <iWant>I want JSON-RPC streaming events converted back into SSE deltas. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#story)</iWant>
+    <soThat>So that clients observe identical role/token sequencing. [Source](docs/epics.md#story-23-implement-streaming-response-adapter)</soThat>
+    <tasks>
+- [x] (AC #1) Implement JSON-RPC streaming adapter in `src/handlers/chat/stream.js`, subscribing to `agentMessageDelta`, `agentMessage`, and `tokenCount` notifications and emitting matching SSE chunks plus `[DONE]`. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+  - [x] (AC #1) Integrate transport hooks via `createJsonRpcChildAdapter`/`appServerClient` so streaming context reuses Story 2.2 normalization outputs without duplicating request bookkeeping. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+  - [x] (AC #1) Handle tool-call payloads and usage accumulation while respecting concurrency guard and disconnect semantics already enforced by the SSE gateway. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+- [x] (AC #2) Record first-token and total stream latency plus usage metrics, emitting structured logs and Prometheus updates before closing responses. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+  - [x] (AC #2) Ensure aggregated usage surfaces in final SSE `[DONE]` and non-stream fallback paths consistent with FR002/FR004. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+- [x] (AC #3) Extend parity tests (`tests/integration/chat-jsonrpc.int.test.js` + golden fixture harness) to compare proto vs. app-server streaming transcripts and fail on ordering or finish-reason drift. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+  - [x] (AC #3) Update `scripts/fake-codex-jsonrpc.js` and captured fixtures so tool-call and error streams exercise the adapter. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#tasks--subtasks)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. Streaming adapter consumes `agentMessageDelta`, `agentMessage`, and `tokenCount` notifications from the JSON-RPC transport and emits OpenAI-compatible SSE deltas, tool-call blocks, and terminal `[DONE]` events without altering existing payload shapes. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#acceptance-criteria) [Source](docs/epics.md#story-23-implement-streaming-response-adapter) [Source](docs/app-server-migration/codex-completions-api-migration.md#d-streaming-path-sse)
+2. Adapter records per-request first-token and total latency, propagates usage totals, and logs structured telemetry consistent with current observability patterns before closing the stream. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#acceptance-criteria) [Source](docs/tech-spec-epic-2.md#performance) [Source](docs/architecture.md#integration-points)
+3. Deterministic parity evidence covers streaming scenarios: golden transcript diff passes for baseline + tool-call flows, and integration tests fail if delta ordering or finish reasons diverge. [Source](docs/stories/2-3-implement-streaming-response-adapter.md#acceptance-criteria) [Source](docs/test-design-epic-2.md#test-coverage-plan) [Source](docs/openai-endpoint-golden-parity.md#54-streaming-sse--golden-chunk-pattern)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 2.3: Implement streaming response adapter | snippet: Defines adapter requirements for partial deltas, terminal `[DONE]`, latency logging, and golden transcript comparisons.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document | section: Functional Requirements FR002 | snippet: Streaming outputs must preserve role-first SSE deltas, finish reasons, tool-call payloads, and final `[DONE]` markers.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: APIs and Interfaces / Workflows Step 3 | snippet: `handleStreamingResponse(rpcStream, res)` writes SSE chunks while Story 2.3 wires transport notifications for `[DONE]` and latency telemetry.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Non-Functional Requirements – Performance | snippet: Record first-token and total durations via metrics to satisfy NFR002’s ±5 % latency budget.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: C.2 Reader (responses & notifications) | snippet: Route `agentMessageDelta`, `agentMessage`, and `tokenCount` notifications while maintaining per-request context and buffers.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: D. Streaming path (SSE) | snippet: Emit `chat.completion.chunk` events for each delta and `data: [DONE]` at completion, preserving tool/function call shaping.
+- path: docs/openai-endpoint-golden-parity.md | title: OpenAI Endpoint Golden Parity | section: 5.4 Streaming (SSE) — golden chunk pattern | snippet: Documents canonical streaming frame structure used to diff proto vs. app-server transcripts.
+- path: docs/test-design-epic-2.md | title: Test Design: Epic 2 | section: P0 (Critical) – Streaming delta parity | snippet: P0 integration test asserts SSE ordering, finish reasons, and token accounting remain deterministic.
+- path: docs/architecture.md | title: Decision Architecture | section: Integration Points – SSE Gateway | snippet: `/v1/chat/completions` streams deltas through `src/handlers/chat/stream.js` with role-first events and `[DONE]` terminator.
+    </docs>
+    <code>
+- path: src/handlers/chat/stream.js | type: file | reason: Houses SSE adapter logic, gating, and JSON-RPC normalization branch used for streaming responses. | hint: Lines 240-360 manage `BACKEND_APP_SERVER` flow and chunk emission.
+- path: src/services/transport/child-adapter.js | type: file | reason: Bridges Codex JSON-RPC events into `agent_message_delta`, `agent_message`, and `token_count` payloads consumed by the stream handler. | hint: Lines 35-110 normalize notifications and usage totals.
+- path: src/services/transport/index.js | type: file | reason: Provides `createChatRequest`, `sendUserMessage`, and timeout handling that supply context metadata and latency hooks. | hint: Lines 260-320 manage send operations and error translation.
+- path: src/services/sse.js | type: file | reason: Sets SSE headers, keepalives, and emits `[DONE]` terminators; streaming adapter must reuse utilities. | hint: Lines 1-60 configure SSE framing.
+- path: src/services/concurrency-guard.js | type: file | reason: `setupStreamGuard` enforces `PROXY_SSE_MAX_CONCURRENCY`; adapter must release tokens on completion. | hint: Lines 1-120 implement semaphore logging.
+- path: tests/integration/chat-jsonrpc.int.test.js | type: file | reason: Verifies JSON-RPC chat payloads flag `stream`/`include_usage`, forming baseline for additional streaming parity assertions. | hint: Lines 190-220 assert streaming metadata propagation.
+- path: scripts/fake-codex-jsonrpc.js | type: file | reason: Deterministic Codex shim captures RPC traffic for integration/parity fixtures; needs updates for new streaming events. | hint: Lines 17-40 emit capture records.
+    </code>
+    <dependencies>
+- node | version: &gt;=22 (package.json engines)
+- npm | packages: `@openai/codex@0.53.0` (Codex app-server CLI), `express@4.21.2` (SSE endpoint), `nanoid@5` (request ids), `vitest@4` &amp; `@playwright/test@1.56` (parity test harness)
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Preserve FR002 SSE contract: role-first deltas, finish reasons, tool-call payloads, and `data: [DONE]` must remain unchanged. [Source](docs/PRD.md#functional-requirements) [Source](docs/app-server-migration/codex-completions-api-migration.md#d-streaming-path-sse)
+- Maintain per-request context, IDs, and usage tracking while routing notifications to the correct stream, avoiding cross-request leakage. [Source](docs/app-server-migration/codex-completions-api-migration.md#c2-reader-responses--notifications)
+- Capture first-token and total latency within ±5 % of baseline by reusing existing metrics/logging instrumentation. [Source](docs/tech-spec-epic-2.md#performance)
+- Enforce SSE concurrency limits (`PROXY_SSE_MAX_CONCURRENCY`) and release guard tokens on completion or error paths. [Source](docs/app-server-migration/codex-completions-api-migration.md#g-concurrency--timeouts) [Source](src/services/concurrency-guard.js#L1-L120)
+- Keep `@openai/codex` pinned to 0.53.0 and regenerate schema via `npm run jsonrpc:schema` when upgrading to avoid drift flagged in Story 2.2 learnings. [Source](package.json) [Source](docs/stories/2-3-implement-streaming-response-adapter.md#learnings-from-previous-story)
+  </constraints>
+  <interfaces>
+    <apis>- name: Codex JSON-RPC notifications | contract: Emits `agentMessageDelta`, `agentMessage`, `tokenCount`, and `task_complete` events that must map to SSE chunks, terminal payloads, and usage counters. | path: docs/app-server-migration/codex-completions-api-migration.md#c2-reader-responses--notifications</apis>
+    <services>- path: src/services/transport/child-adapter.js | contract: `JsonRpcChildAdapter` wires delta/message/usage emitters and raises errors; streaming adapter consumes stdout events. | path: src/services/transport/child-adapter.js#L1-L120</services>
+    <services>- path: src/services/sse.js | contract: `sendSSE` and `finishSSE` produce compliant SSE frames; adapter must route all deltas through these helpers. | path: src/services/sse.js#L1-L60</services>
+    <services>- path: src/services/concurrency-guard.js | contract: `setupStreamGuard` returns a token requiring explicit release to maintain concurrency accounting. | path: src/services/concurrency-guard.js#L1-L120</services>
+  </interfaces>
+  <tests>
+    <standards>Follow Epic 2 P0 streaming parity plan: Vitest integration + golden transcript diff ensure SSE ordering, `[DONE]`, and usage totals remain deterministic before rollout. [Source](docs/test-design-epic-2.md#test-coverage-plan) [Source](docs/openai-endpoint-golden-parity.md#54-streaming-sse--golden-chunk-pattern)</standards>
+    <locations>tests/integration/chat-jsonrpc.int.test.js; docs/app-server-migration/parity-fixtures/**/*; scripts/fake-codex-jsonrpc.js</locations>
+    <ideas>
+- AC #1: Add JSON-RPC streaming integration test asserting deltas emitted by `src/handlers/chat/stream.js` match expected SSE frames for baseline and tool-call transcripts.
+- AC #2: Instrument integration tests to capture latency metrics and usage totals, verifying logs/Prometheus counters update before stream closure.
+- AC #3: Expand parity fixtures to cover streaming scenarios and run `diff-fixtures` to fail builds when chunk ordering or finish reasons drift.
+    </ideas>
+  </tests>
+</story-context>

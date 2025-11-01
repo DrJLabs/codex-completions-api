@@ -31,6 +31,10 @@ export function sanitizeStreamChunk(chunk) {
   const clone = structuredClone(chunk);
   clone.id = PLACEHOLDER_ID;
   clone.created = PLACEHOLDER_CREATED;
+  if (clone.usage && typeof clone.usage === "object") {
+    delete clone.usage.time_to_first_token_ms;
+    delete clone.usage.total_duration_ms;
+  }
   return clone;
 }
 
