@@ -92,6 +92,30 @@ const postChatCompletions = async (port, payload) => {
   return response;
 };
 
+const readSSEBody = async (body) => {
+  if (!body) throw new Error("Expected response body for streaming request");
+  const chunks = [];
+  for await (const chunk of body) {
+    chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+  }
+  return chunks.join("");
+};
+
+const parseSSEPayloads = (raw) => {
+  if (!raw) return [];
+  return raw
+    .split(/\n\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split(/\n/).map((line) => line.trim());
+      const dataLine = lines.find((line) => line.startsWith("data:"));
+      if (!dataLine) return null;
+      return dataLine.slice("data:".length).trimStart();
+    })
+    .filter((value) => value !== null);
+};
+
 describe("chat JSON-RPC normalization", () => {
   let server;
 
@@ -240,6 +264,120 @@ describe("chat JSON-RPC normalization", () => {
     const body = await response.json();
     expect(body.error?.type).toBe("invalid_request_error");
     expect(body.error?.param).toBe("temperature");
+  }, 20000);
+
+  it("streams SSE deltas and usage metrics for baseline responses", async () => {
+    server = await startServerWithCapture({ PROXY_API_KEY: "test-sk-ci" });
+
+    const payload = {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Say hello" }],
+    };
+
+    const response = await postChatCompletions(server.PORT, payload);
+    expect(response.status).toBe(200);
+
+    const raw = await readSSEBody(response.body);
+    const payloads = parseSSEPayloads(raw);
+    expect(payloads.length).toBeGreaterThan(2);
+    expect(payloads[payloads.length - 1]).toBe("[DONE]");
+
+    const jsonEvents = payloads
+      .filter((entry) => entry !== "[DONE]")
+      .map((entry) => JSON.parse(entry));
+
+    const roleChunk = jsonEvents[0];
+    expect(roleChunk.choices?.[0]?.delta?.role).toBe("assistant");
+
+    const contentChunk = jsonEvents.find((evt) => evt.choices?.[0]?.delta?.content);
+    expect(contentChunk?.choices?.[0]?.delta?.content).toContain("Hello from fake-codex");
+
+    const usageChunk = jsonEvents.find(
+      (evt) => Array.isArray(evt.choices) && evt.choices.length === 0 && evt.usage
+    );
+    expect(usageChunk).toBeDefined();
+    expect(typeof usageChunk.usage.prompt_tokens).toBe("number");
+    expect(typeof usageChunk.usage.completion_tokens).toBe("number");
+    expect(typeof usageChunk.usage.time_to_first_token_ms).toBe("number");
+    expect(usageChunk.usage.time_to_first_token_ms).toBeGreaterThanOrEqual(0);
+    expect(typeof usageChunk.usage.total_duration_ms).toBe("number");
+    expect(usageChunk.usage.total_duration_ms).toBeGreaterThanOrEqual(
+      usageChunk.usage.time_to_first_token_ms ?? 0
+    );
+
+    const finishChunk = jsonEvents
+      .slice()
+      .reverse()
+      .find(
+        (evt) =>
+          Array.isArray(evt.choices) &&
+          evt.choices.length > 0 &&
+          evt.choices.every((choice) => choice.finish_reason)
+      );
+    expect(finishChunk?.choices?.[0]?.finish_reason).toBe("stop");
+  }, 20000);
+
+  it("streams tool call deltas and reports finish reasons", async () => {
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      FAKE_CODEX_MODE: "tool_call",
+    });
+
+    const payload = {
+      model: "codex-5",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user", content: "Plan a tool call" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_user",
+            description: "Lookup user by id",
+            parameters: { type: "object", properties: { id: { type: "string" } } },
+          },
+        },
+      ],
+    };
+
+    const response = await postChatCompletions(server.PORT, payload);
+    expect(response.status).toBe(200);
+
+    const raw = await readSSEBody(response.body);
+    const payloads = parseSSEPayloads(raw);
+    expect(payloads[payloads.length - 1]).toBe("[DONE]");
+    const jsonEvents = payloads
+      .filter((entry) => entry !== "[DONE]")
+      .map((entry) => JSON.parse(entry));
+
+    const toolDelta = jsonEvents.find(
+      (evt) => evt.choices?.[0]?.delta?.tool_calls && evt.choices[0].delta.tool_calls.length
+    );
+    expect(toolDelta).toBeDefined();
+    expect(toolDelta.choices[0].delta.tool_calls[0]).toMatchObject({
+      id: expect.any(String),
+      type: "function",
+    });
+
+    const finishChunk = jsonEvents
+      .slice()
+      .reverse()
+      .find(
+        (evt) =>
+          Array.isArray(evt.choices) &&
+          evt.choices.length > 0 &&
+          evt.choices.every((choice) => choice.finish_reason)
+      );
+    expect(finishChunk?.choices?.[0]?.finish_reason).toBe("tool_calls");
+
+    const usageChunk = jsonEvents.find(
+      (evt) => Array.isArray(evt.choices) && evt.choices.length === 0 && evt.usage
+    );
+    expect(usageChunk).toBeDefined();
+    expect(typeof usageChunk.usage.time_to_first_token_ms).toBe("number");
+    expect(usageChunk.usage.time_to_first_token_ms).toBeGreaterThanOrEqual(0);
   }, 20000);
 
   it("rejects invalid tool definitions", async () => {

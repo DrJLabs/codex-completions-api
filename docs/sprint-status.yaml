@@ -47,7 +47,7 @@ development_status:
   epic-2: contexted
   2-1-define-json-rpc-schema-bindings-for-chat: done
   2-2-implement-request-translation-layer: done
-  2-3-implement-streaming-response-adapter: backlog
+  2-3-implement-streaming-response-adapter: done
   2-4-align-error-handling-and-retries: backlog
   2-0-establish-parity-verification-infrastructure: done
   2-5-update-regression-suite-for-parity-evidence: backlog
