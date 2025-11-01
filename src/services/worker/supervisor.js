@@ -179,8 +179,8 @@ class CodexWorkerSupervisor extends EventEmitter {
       codex_worker_restarts_total: this.state.restarts,
       codex_worker_latency_ms: this.state.startupLatencyMs,
     };
-    const readiness = this.state.health.readiness;
-    const liveness = this.state.health.liveness;
+    const readiness = this.state.health.readiness ? { ...this.state.health.readiness } : undefined;
+    const liveness = this.state.health.liveness ? { ...this.state.health.liveness } : undefined;
     return {
       enabled: true,
       running: this.state.running,
@@ -195,11 +195,9 @@ class CodexWorkerSupervisor extends EventEmitter {
       next_restart_delay_ms: this.state.restartTimer ? this.state.nextBackoffMs : 0,
       last_log_sample: this.state.lastLogSample,
       metrics,
-      readiness: readiness ? { ...readiness } : undefined,
-      liveness: liveness ? { ...liveness } : undefined,
       health: {
-        readiness: readiness ? { ...readiness } : undefined,
-        liveness: liveness ? { ...liveness } : undefined,
+        readiness,
+        liveness,
       },
     };
   }
@@ -569,9 +567,10 @@ export function getWorkerStatus() {
         codex_worker_restarts_total: 0,
         codex_worker_latency_ms: null,
       },
-      readiness: { ...health.readiness },
-      liveness: { ...health.liveness },
-      health,
+      health: {
+        readiness: { ...health.readiness },
+        liveness: { ...health.liveness },
+      },
     };
   }
   return supervisor.status();

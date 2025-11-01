@@ -40,10 +40,13 @@ vi.mock("../../../src/services/worker/supervisor.js", () => ({
   },
 }));
 
-const { getJsonRpcTransport, resetJsonRpcTransport } = await import(
+const { getJsonRpcTransport, resetJsonRpcTransport, TransportError } = await import(
   "../../../src/services/transport/index.js"
 );
 const { __setChild } = await import("../../../src/services/worker/supervisor.js");
+const { config: CFG } = await import("../../../src/config/index.js");
+
+const ORIGINAL_MAX_CONCURRENCY = CFG.WORKER_MAX_CONCURRENCY;
 
 function createMockChild() {
   const stdout = new PassThrough({ encoding: "utf8" });
@@ -69,6 +72,7 @@ beforeEach(() => {
   state.handlers = new Map();
   supervisorMock.waitForReady.mockResolvedValue();
   vi.clearAllMocks();
+  CFG.WORKER_MAX_CONCURRENCY = ORIGINAL_MAX_CONCURRENCY;
 });
 
 afterEach(() => {
@@ -144,5 +148,200 @@ describe("JsonRpcTransport handshake", () => {
 
     await vi.runAllTimersAsync();
     await expectation;
+  });
+});
+
+describe("JsonRpcTransport request lifecycle", () => {
+  it("rejects new requests when the worker is at capacity", async () => {
+    CFG.WORKER_MAX_CONCURRENCY = 1;
+    const child = createMockChild();
+    child.stdin.on("data", (chunk) => {
+      const text = chunk.toString().trim();
+      if (!text) return;
+      for (const line of text.split(/\n+/)) {
+        if (!line) continue;
+        const message = JSON.parse(line);
+        if (message.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
+        }
+        if (message.method === "sendUserTurn") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-1" });
+    context.emitter.on("error", () => {});
+
+    await expect(transport.createChatRequest({ requestId: "req-2" })).rejects.toMatchObject({
+      code: "worker_busy",
+    });
+
+    const pending = context.promise.catch((err) => err);
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await expect(pending).resolves.toMatchObject({ code: "request_aborted" });
+
+    const next = await transport.createChatRequest({ requestId: "req-3" });
+    next.emitter.on("error", () => {});
+    const nextPending = next.promise.catch((err) => err);
+    transport.cancelContext(
+      next,
+      new TransportError("request aborted", { code: "request_aborted" })
+    );
+    await expect(nextPending).resolves.toMatchObject({ code: "request_aborted" });
+  });
+
+  it("emits notifications and finalizes request payloads", async () => {
+    CFG.WORKER_MAX_CONCURRENCY = 2;
+    const child = createMockChild();
+    child.stdin.on("data", (chunk) => {
+      const text = chunk.toString().trim();
+      if (!text) return;
+      for (const line of text.split(/\n+/)) {
+        if (!line) continue;
+        const message = JSON.parse(line);
+        if (message.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
+        }
+        if (message.method === "sendUserTurn") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+        if (message.method === "sendUserMessage") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: { conversation_id: "server-conv", delta: "Hi" },
+            }) + "\n"
+          );
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "agentMessage",
+              params: { conversation_id: "server-conv", text: "Hello world!" },
+            }) + "\n"
+          );
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "tokenCount",
+              params: {
+                conversation_id: "server-conv",
+                prompt_tokens: 5,
+                completion_tokens: 7,
+                finish_reason: "stop",
+              },
+            }) + "\n"
+          );
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { status: "complete", finish_reason: "stop" },
+            }) + "\n"
+          );
+        }
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-10" });
+
+    const deltas = [];
+    const messages = [];
+    const usageEvents = [];
+    context.emitter.on("delta", (payload) => deltas.push(payload));
+    context.emitter.on("message", (payload) => messages.push(payload));
+    context.emitter.on("usage", (payload) => usageEvents.push(payload));
+
+    transport.sendUserMessage(context, { text: "Hello" });
+    const result = await context.promise;
+
+    expect(deltas).toEqual([{ conversation_id: "server-conv", delta: "Hi" }]);
+    expect(messages).toEqual([{ conversation_id: "server-conv", text: "Hello world!" }]);
+    expect(usageEvents.at(-1)).toMatchObject({
+      prompt_tokens: 5,
+      completion_tokens: 7,
+      finish_reason: "stop",
+    });
+    expect(result).toMatchObject({
+      conversationId: "server-conv",
+      finishReason: "stop",
+      finalMessage: { conversation_id: "server-conv", text: "Hello world!" },
+      usage: { prompt_tokens: 5, completion_tokens: 7 },
+      deltas: [{ conversation_id: "server-conv", delta: "Hi" }],
+      result: { status: "complete", finish_reason: "stop" },
+    });
+
+    const followUp = await transport.createChatRequest({ requestId: "req-11" });
+    followUp.emitter.on("error", () => {});
+    const followUpPending = followUp.promise.catch((err) => err);
+    transport.cancelContext(
+      followUp,
+      new TransportError("request aborted", { code: "request_aborted" })
+    );
+    await expect(followUpPending).resolves.toMatchObject({ code: "request_aborted" });
+  });
+
+  it("cancels contexts with a default abort error when none is provided", async () => {
+    CFG.WORKER_MAX_CONCURRENCY = 1;
+    const child = createMockChild();
+    child.stdin.on("data", (chunk) => {
+      const text = chunk.toString().trim();
+      if (!text) return;
+      for (const line of text.split(/\n+/)) {
+        if (!line) continue;
+        const message = JSON.parse(line);
+        if (message.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
+        }
+        if (message.method === "sendUserTurn") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-20" });
+    context.emitter.on("error", () => {});
+
+    const pending = context.promise.catch((err) => err);
+    transport.cancelContext(context);
+
+    await expect(pending).resolves.toMatchObject({
+      message: "request aborted",
+      code: "request_aborted",
+    });
+
+    const replacement = await transport.createChatRequest({ requestId: "req-21" });
+    replacement.emitter.on("error", () => {});
+    const replacementPending = replacement.promise.catch((err) => err);
+    transport.cancelContext(replacement);
+    await expect(replacementPending).resolves.toMatchObject({ code: "request_aborted" });
   });
 });
