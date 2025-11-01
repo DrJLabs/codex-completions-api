@@ -404,3 +404,136 @@ describe("chat JSON-RPC normalization", () => {
     expect(body.error?.param).toBe("tools[0].function.name");
   }, 20000);
 });
+
+describe("chat JSON-RPC error handling", () => {
+  let server;
+
+  afterEach(async () => {
+    if (server?.child) {
+      await stopServer(server.child);
+      server = null;
+    }
+  });
+
+  const buildPayload = () => ({
+    model: "codex-5",
+    stream: false,
+    messages: [{ role: "user", content: "trigger" }],
+  });
+
+  const authHeaders = () => ({
+    "Content-Type": "application/json",
+    Authorization: "Bearer test-sk-ci",
+  });
+
+  const requestUrl = (port) => `http://127.0.0.1:${port}/v1/chat/completions`;
+
+  it("surfaces worker_busy as 429 rate limit with retryable hint", async () => {
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      WORKER_MAX_CONCURRENCY: "1",
+      WORKER_REQUEST_TIMEOUT_MS: "5000",
+      FAKE_CODEX_JSONRPC_HANG: "message",
+    });
+
+    await waitForUrlOk(`http://127.0.0.1:${server.PORT}/readyz`);
+
+    const controller = new AbortController();
+    const firstPromise = fetch(requestUrl(server.PORT), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildPayload()),
+      signal: controller.signal,
+    }).catch(() => {});
+
+    await wait(200);
+
+    const secondResponse = await fetch(requestUrl(server.PORT), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildPayload()),
+    });
+
+    expect(secondResponse.status).toBe(429);
+    const body = await secondResponse.json();
+    expect(body.error).toMatchObject({
+      code: "worker_busy",
+      type: "rate_limit_error",
+      retryable: true,
+    });
+
+    controller.abort();
+    await firstPromise;
+  }, 20000);
+
+  it("surfaces handshake timeout as 503 backend_unavailable with retryable hint", async () => {
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      WORKER_HANDSHAKE_TIMEOUT_MS: "200",
+      FAKE_CODEX_HANDSHAKE_MODE: "timeout",
+    });
+
+    await waitForUrlOk(`http://127.0.0.1:${server.PORT}/readyz`);
+
+    const response = await fetch(requestUrl(server.PORT), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildPayload()),
+    });
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toMatchObject({
+      code: "handshake_timeout",
+      type: "backend_unavailable",
+      retryable: true,
+    });
+  }, 20000);
+
+  it("surfaces worker request timeout as 504 timeout_error with retryable hint", async () => {
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      WORKER_REQUEST_TIMEOUT_MS: "200",
+      FAKE_CODEX_JSONRPC_HANG: "message",
+    });
+
+    await waitForUrlOk(`http://127.0.0.1:${server.PORT}/readyz`);
+
+    const response = await fetch(requestUrl(server.PORT), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildPayload()),
+    });
+
+    expect(response.status).toBe(504);
+    const body = await response.json();
+    expect(body.error).toMatchObject({
+      code: "worker_request_timeout",
+      type: "timeout_error",
+      retryable: true,
+    });
+  }, 20000);
+
+  it("surfaces worker exit as 503 backend_unavailable with retryable hint", async () => {
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      FAKE_CODEX_MODE: "crash",
+    });
+
+    await waitForUrlOk(`http://127.0.0.1:${server.PORT}/readyz`);
+
+    const response = await fetch(requestUrl(server.PORT), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildPayload()),
+    });
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toMatchObject({
+      code: "worker_exited",
+      type: "backend_unavailable",
+      retryable: true,
+    });
+  }, 20000);
+});
