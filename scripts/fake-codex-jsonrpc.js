@@ -14,6 +14,13 @@ const write = (payload) => {
 };
 
 const hangMode = String(process.env.FAKE_CODEX_JSONRPC_HANG || "").toLowerCase();
+const captureRpc = /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_CAPTURE_RPCS || ""));
+const emitCapture = (direction, payload) => {
+  if (!captureRpc) return;
+  try {
+    process.stderr.write(`${JSON.stringify({ capture: { direction, payload } })}\n`);
+  } catch {}
+};
 
 async function runJsonRpcWorker() {
   process.stdin.setEncoding("utf8");
@@ -43,6 +50,7 @@ async function runJsonRpcWorker() {
 
     switch (method) {
       case "initialize": {
+        emitCapture("request", message);
         write({
           jsonrpc: "2.0",
           id,
@@ -51,11 +59,13 @@ async function runJsonRpcWorker() {
         break;
       }
       case "sendUserTurn": {
+        emitCapture("request", message);
         const convId = resolveConversationId(params);
         write({ jsonrpc: "2.0", id, result: { conversation_id: convId } });
         break;
       }
       case "sendUserMessage": {
+        emitCapture("request", message);
         const convId = resolveConversationId(params);
         if (hangMode === "message") {
           // Simulate a stalled worker by not emitting any response.

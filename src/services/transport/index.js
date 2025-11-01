@@ -224,7 +224,7 @@ class JsonRpcTransport {
     return this.handshakePromise;
   }
 
-  async createChatRequest({ requestId, timeoutMs, signal }) {
+  async createChatRequest({ requestId, timeoutMs, signal, turnParams }) {
     if (this.destroyed) throw new TransportError("transport destroyed", { retryable: true });
     if (!this.child)
       throw new TransportError("worker not available", {
@@ -277,7 +277,7 @@ class JsonRpcTransport {
       context.emitter.once("error", () => signal.removeEventListener("abort", abortHandler));
     }
 
-    this.#sendUserTurn(context);
+    this.#sendUserTurn(context, turnParams);
     return context;
   }
 
@@ -324,12 +324,22 @@ class JsonRpcTransport {
       },
     });
 
+    const textValue = payload?.text;
     const params = {
       conversation_id: context.conversationId ?? context.clientConversationId,
       request_id: context.clientConversationId,
-      text: payload?.text ?? "",
-      metadata: payload?.metadata ?? null,
+      text: typeof textValue === "string" ? textValue : String(textValue ?? ""),
     };
+
+    if (payload?.metadata !== undefined) params.metadata = payload.metadata;
+    if (payload?.stream !== undefined) params.stream = payload.stream;
+    if (payload?.include_usage !== undefined) params.include_usage = payload.include_usage;
+    if (payload?.temperature !== undefined) params.temperature = payload.temperature;
+    if (payload?.top_p !== undefined) params.top_p = payload.top_p;
+    if (payload?.max_output_tokens !== undefined)
+      params.max_output_tokens = payload.max_output_tokens;
+    if (payload?.tools !== undefined) params.tools = payload.tools;
+    if (payload?.response_format !== undefined) params.response_format = payload.response_format;
 
     try {
       this.#write({
@@ -357,10 +367,8 @@ class JsonRpcTransport {
             code: "request_aborted",
             retryable: false,
           });
-    let handledByPending = false;
     for (const [rpcId, pending] of this.pending.entries()) {
       if (pending.context !== context) continue;
-      handledByPending = true;
       clearTimeout(pending.timeout);
       this.pending.delete(rpcId);
       try {
@@ -374,7 +382,7 @@ class JsonRpcTransport {
     }
   }
 
-  #sendUserTurn(context) {
+  #sendUserTurn(context, payload) {
     if (!this.child) {
       this.#failContext(
         context,
@@ -420,14 +428,16 @@ class JsonRpcTransport {
     });
 
     try {
+      const params = {
+        ...(payload && typeof payload === "object" ? payload : {}),
+        conversation_id: context.clientConversationId,
+        request_id: context.clientConversationId,
+      };
       this.#write({
         jsonrpc: JSONRPC_VERSION,
         id: turnRpcId,
         method: "sendUserTurn",
-        params: {
-          conversation_id: context.clientConversationId,
-          request_id: context.clientConversationId,
-        },
+        params,
       });
     } catch (err) {
       clearTimeout(timeout);

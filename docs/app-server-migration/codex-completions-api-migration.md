@@ -34,6 +34,7 @@ spawn("codex", [
 
 - Keep the same `CODEX_BIN` resolution; only subcommand changes.
 - Pin the CLI dependency (`@openai/codex`) to version **0.53.0** so the `app-server` binary ships with the image.
+- After bumping the CLI, run `npm run jsonrpc:schema` to regenerate `src/lib/json-rpc/schema.ts`. The script stamps the recorded CLI version and is deterministic, so re-running when nothing changed should produce a zero-diff output.
 
 ---
 
