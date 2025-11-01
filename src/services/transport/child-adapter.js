@@ -192,9 +192,16 @@ export class JsonRpcChildAdapter extends EventEmitter {
   kill() {
     if (this.closed) return;
     if (this.context) {
-      this.context.reject(
-        new TransportError("request aborted", { code: "request_aborted", retryable: false })
-      );
+      const error = new TransportError("request aborted", {
+        code: "request_aborted",
+        retryable: false,
+      });
+      if (typeof this.transport?.cancelContext === "function") {
+        this.transport.cancelContext(this.context, error);
+      } else {
+        this.context.reject(error);
+      }
+      this.context = null;
     }
     this.#finalize(null);
   }

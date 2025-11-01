@@ -196,8 +196,10 @@ spawn("codex", [
 
 **Turn + message:**
 
-````json
+```json
 {"jsonrpc":"2.0","id":2,"method":"sendUserTurn","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"sendUserMessage","params":{"text":"[system] …\n[user] …"}}
+```
 
 ---
 
@@ -209,18 +211,16 @@ spawn("codex", [
    ```bash
    npm run test:integration
    npm test
-````
-
-This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record. 4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks into the deployment notes so downstream stories know which baseline the fixtures represent. 5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
-{"jsonrpc":"2.0","id":3,"method":"sendUserMessage","params":{"text":"[system] …\n[user] …"}}
-
-````
+   ```
+   This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
+4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks into the deployment notes so downstream stories know which baseline the fixtures represent.
+5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
 
 **Streaming delta (notification):**
 
 ```json
 { "jsonrpc": "2.0", "method": "agentMessageDelta", "params": { "delta": "Hello" } }
-````
+```
 
 **Final message (notification):**
 

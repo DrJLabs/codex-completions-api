@@ -10,20 +10,25 @@ export default function healthRouter() {
     const backendMode = selectBackendMode();
     const supervisorStatus = getWorkerStatus();
     const appServerEnabled = backendMode === BACKEND_APP_SERVER;
+    const supervisorHealth = supervisorStatus.health || {};
     const readiness = appServerEnabled
-      ? (supervisorStatus.readiness ?? {
-          ready: false,
-          reason: "worker_not_started",
-        })
+      ? {
+          ...(supervisorHealth.readiness ?? {
+            ready: false,
+            reason: "worker_not_started",
+          }),
+        }
       : {
           ready: true,
           reason: "app_server_disabled",
         };
     const liveness = appServerEnabled
-      ? (supervisorStatus.liveness ?? {
-          live: false,
-          reason: "worker_not_started",
-        })
+      ? {
+          ...(supervisorHealth.liveness ?? {
+            live: false,
+            reason: "worker_not_started",
+          }),
+        }
       : {
           live: true,
           reason: "app_server_disabled",
@@ -34,8 +39,6 @@ export default function healthRouter() {
           ...supervisorStatus,
           enabled: false,
           ready: true,
-          readiness,
-          liveness,
           health: {
             readiness,
             liveness,

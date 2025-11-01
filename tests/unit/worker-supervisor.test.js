@@ -75,21 +75,21 @@ describe("CodexWorkerSupervisor health snapshots", () => {
   test("readiness toggles on handshake and exit events", async () => {
     expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
     const initial = getWorkerStatus();
-    expect(initial.readiness.ready).toBe(false);
-    expect(initial.readiness.reason).toBe("worker_launching");
-    expect(initial.liveness.live).toBe(true);
-    expect(["worker_starting", "worker_running"]).toContain(initial.liveness.reason);
+    expect(initial.health.readiness.ready).toBe(false);
+    expect(initial.health.readiness.reason).toBe("worker_launching");
+    expect(initial.health.liveness.live).toBe(true);
+    expect(["worker_starting", "worker_running"]).toContain(initial.health.liveness.reason);
 
     const child = mockChildren[mockChildren.length - 1];
     child.stdout.write(`${JSON.stringify({ event: "ready", models: ["codex-5"] })}\n`);
     await settle();
 
     const afterReady = getWorkerStatus();
-    expect(afterReady.readiness.ready).toBe(true);
-    expect(afterReady.readiness.reason).toBe("handshake_complete");
-    expect(afterReady.readiness.handshake?.models).toEqual(["codex-5"]);
-    expect(afterReady.liveness.live).toBe(true);
-    expect(afterReady.liveness.reason).toBe("worker_running");
+    expect(afterReady.health.readiness.ready).toBe(true);
+    expect(afterReady.health.readiness.reason).toBe("handshake_complete");
+    expect(afterReady.health.readiness.handshake?.models).toEqual(["codex-5"]);
+    expect(afterReady.health.liveness.live).toBe(true);
+    expect(afterReady.health.liveness.reason).toBe("worker_running");
 
     child.exitCode = 0;
     child.signalCode = null;
@@ -97,11 +97,11 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     await settle(10);
 
     const afterExit = getWorkerStatus();
-    expect(afterExit.readiness.ready).toBe(false);
-    expect(afterExit.readiness.reason).toBe("worker_exit");
-    expect(afterExit.readiness.details?.restarts_total).toBeGreaterThanOrEqual(1);
-    expect(afterExit.liveness.live).toBe(true);
-    expect(afterExit.liveness.reason).toBe("worker_restarting");
+    expect(afterExit.health.readiness.ready).toBe(false);
+    expect(afterExit.health.readiness.reason).toBe("worker_exit");
+    expect(afterExit.health.readiness.details?.restarts_total).toBeGreaterThanOrEqual(1);
+    expect(afterExit.health.liveness.live).toBe(true);
+    expect(afterExit.health.liveness.reason).toBe("worker_restarting");
 
     // Restart should spawn a new child after backoff window passes
     await settle(45);

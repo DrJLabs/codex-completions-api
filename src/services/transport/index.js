@@ -336,6 +336,18 @@ class JsonRpcTransport {
     }
   }
 
+  cancelContext(context, error = null) {
+    if (!context) return;
+    const reason =
+      error instanceof TransportError
+        ? error
+        : new TransportError(String(error?.message || "request aborted"), {
+            code: "request_aborted",
+            retryable: false,
+          });
+    this.#failContext(context, reason);
+  }
+
   #sendUserTurn(context) {
     if (!this.child) {
       this.#failContext(
