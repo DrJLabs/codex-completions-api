@@ -50,7 +50,7 @@ development_status:
   2-3-implement-streaming-response-adapter: done
   2-4-align-error-handling-and-retries: done
   2-0-establish-parity-verification-infrastructure: done
-  2-5-update-regression-suite-for-parity-evidence: backlog
+  2-5-update-regression-suite-for-parity-evidence: done
   2-6-document-parity-verification-and-rollout-checklist: backlog
   epic-2-retrospective: optional
   epic-3: backlog

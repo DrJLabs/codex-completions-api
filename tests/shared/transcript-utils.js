@@ -3,12 +3,18 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+ 
+const codexPkg = require("@openai/codex/package.json");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
 const TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "chat-completions");
 const PROTO_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "proto");
 const APP_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "app");
+const TRANSCRIPT_MANIFEST_PATH = resolve(TRANSCRIPT_ROOT, "manifest.json");
 const RESPONSES_TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "responses");
 
 const PLACEHOLDER_ID = "<dynamic-id>";
@@ -17,6 +23,8 @@ const RESP_PLACEHOLDER_ID = "<dynamic-response-id>";
 const RESP_PLACEHOLDER_MSG_ID = "<dynamic-response-message-id>";
 const RESP_PLACEHOLDER_TOOL_ID = "<dynamic-response-tool-id>";
 const RESP_PLACEHOLDER_PREVIOUS_ID = "<dynamic-previous-response-id>";
+
+const CODEX_CLI_VERSION = codexPkg?.version ?? "unknown";
 
 export function sanitizeNonStreamResponse(payload) {
   if (typeof payload !== "object" || payload === null) return payload;
@@ -99,12 +107,27 @@ export async function saveTranscript(filename, payload, { backend = "proto" } = 
   return fullPath;
 }
 
+export async function saveTranscriptManifest(manifest) {
+   
+  await mkdir(dirname(TRANSCRIPT_MANIFEST_PATH), { recursive: true });
+  await writeFile(TRANSCRIPT_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  return TRANSCRIPT_MANIFEST_PATH;
+}
+
+export async function loadTranscriptManifest() {
+   
+  const raw = await readFile(TRANSCRIPT_MANIFEST_PATH, "utf8");
+  return JSON.parse(raw);
+}
+
 export function buildMetadata({ includeUsage = false, codexBin, commit, extra = {} }) {
   return {
     captured_at: new Date().toISOString(),
     include_usage: includeUsage,
     codex_bin: codexBin,
     commit,
+    cli_version: CODEX_CLI_VERSION,
+    node_version: process.version,
     ...extra,
   };
 }
@@ -161,6 +184,7 @@ const REQUIRED_TRANSCRIPTS = [
   "nonstream-tool-calls.json",
   "nonstream-content-filter.json",
   "nonstream-function-call.json",
+  "nonstream-invalid-request.json",
   "streaming-usage.json",
   "streaming-usage-length.json",
   "streaming-tool-calls.json",
@@ -202,6 +226,7 @@ export {
   TRANSCRIPT_ROOT,
   PROTO_TRANSCRIPT_ROOT,
   APP_TRANSCRIPT_ROOT,
+  TRANSCRIPT_MANIFEST_PATH,
   PLACEHOLDER_ID,
   PLACEHOLDER_CREATED,
   REQUIRED_TRANSCRIPTS,
