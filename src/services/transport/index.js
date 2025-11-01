@@ -698,54 +698,127 @@ export function resetJsonRpcTransport() {
   }
 }
 
+const TRANSPORT_ERROR_DETAILS = {
+  worker_request_timeout: {
+    statusCode: 504,
+    type: "timeout_error",
+    message: "app-server request timeout",
+    retryable: true,
+  },
+  request_timeout: {
+    statusCode: 504,
+    type: "timeout_error",
+    message: "app-server request timeout",
+    retryable: true,
+  },
+  handshake_timeout: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "app-server handshake timed out",
+    retryable: true,
+  },
+  handshake_failed: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "app-server handshake failed",
+    retryable: true,
+  },
+  worker_unavailable: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "app-server worker unavailable",
+    retryable: true,
+  },
+  worker_not_ready: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "app-server worker is not ready",
+    retryable: true,
+  },
+  worker_exited: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "app-server worker exited",
+    retryable: true,
+  },
+  worker_busy: {
+    statusCode: 429,
+    type: "rate_limit_error",
+    message: "app-server worker at capacity",
+    retryable: true,
+  },
+  app_server_disabled: {
+    statusCode: 500,
+    type: "server_error",
+    retryable: false,
+  },
+  transport_destroyed: {
+    statusCode: 503,
+    type: "backend_unavailable",
+    message: "JSON-RPC transport destroyed",
+    retryable: true,
+  },
+  worker_error: {
+    statusCode: 500,
+    type: "server_error",
+    retryable: false,
+  },
+  request_aborted: {
+    statusCode: 499,
+    type: "request_cancelled",
+    message: "request aborted by client",
+    retryable: false,
+  },
+};
+
 export function mapTransportError(err) {
   if (!(err instanceof TransportError)) return null;
-  const code = err.code || "transport_error";
-  const retryable = err.retryable === true;
+  const rawCode = err.code ?? "transport_error";
+  const normalizedCode = typeof rawCode === "string" ? rawCode : String(rawCode);
+  const lookupKey = normalizedCode.toLowerCase();
+  const hasMapping = Object.prototype.hasOwnProperty.call(TRANSPORT_ERROR_DETAILS, lookupKey);
+  // eslint-disable-next-line security/detect-object-injection -- lookupKey guarded by hasOwnProperty
+  const mapping = hasMapping ? TRANSPORT_ERROR_DETAILS[lookupKey] : undefined;
+
+  let retryable = err.retryable === true;
+  let statusCode = retryable ? 503 : 500;
+  let type = retryable ? "backend_unavailable" : "server_error";
+  let message = err.message || "transport error";
+
+  if (mapping) {
+    if (typeof mapping.statusCode === "number") {
+      statusCode = mapping.statusCode;
+    }
+    if (mapping.type) {
+      type = mapping.type;
+    }
+    if (mapping.message) {
+      message = mapping.message;
+    } else if (err.message) {
+      message = err.message;
+    } else {
+      message = "transport error";
+    }
+    if (mapping.retryable === true) {
+      retryable = true;
+    } else if (mapping.retryable === false) {
+      retryable = false;
+    }
+  } else if (retryable) {
+    type = "backend_unavailable";
+    statusCode = 503;
+  }
+
   const body = {
     error: {
-      message: err.message || "transport error",
-      type: retryable ? "backend_unavailable" : "server_error",
-      code,
+      message,
+      type,
+      code: rawCode,
     },
   };
-  if (retryable) body.error.retryable = true;
 
-  let statusCode = retryable ? 503 : 500;
-
-  switch (code) {
-    case "worker_request_timeout":
-      body.error.message = "app-server request timeout";
-      body.error.type = "timeout_error";
-      body.error.retryable = true;
-      statusCode = 504;
-      break;
-    case "worker_unavailable":
-    case "worker_exited":
-    case "worker_not_ready":
-      body.error.message = err.message || "app-server worker unavailable";
-      body.error.type = "backend_unavailable";
-      body.error.retryable = true;
-      statusCode = 503;
-      break;
-    case "worker_busy":
-      body.error.message = err.message || "app-server worker at capacity";
-      body.error.type = "rate_limit_error";
-      body.error.retryable = true;
-      statusCode = 429;
-      break;
-    case "request_aborted":
-      body.error.message = err.message || "request aborted by client";
-      body.error.type = "request_cancelled";
-      statusCode = 499;
-      delete body.error.retryable;
-      break;
-    default:
-      if (retryable) {
-        body.error.type = "backend_unavailable";
-        statusCode = 503;
-      }
-      break;
+  if (retryable) {
+    body.error.retryable = true;
   }
 
   return { statusCode, body };

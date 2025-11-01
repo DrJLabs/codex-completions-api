@@ -14,6 +14,8 @@ const write = (payload) => {
 };
 
 const hangMode = String(process.env.FAKE_CODEX_JSONRPC_HANG || "").toLowerCase();
+const handshakeMode = String(process.env.FAKE_CODEX_HANDSHAKE_MODE || "").toLowerCase();
+const skipReadyEvent = /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_SKIP_READY || ""));
 const captureRpc = /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_CAPTURE_RPCS || ""));
 const emitCapture = (direction, payload) => {
   if (!captureRpc) return;
@@ -26,7 +28,9 @@ async function runJsonRpcWorker() {
   process.stdin.setEncoding("utf8");
   write({ event: "starting" });
   await delay(20);
-  write({ event: "ready", ready: true });
+  if (!skipReadyEvent) {
+    write({ event: "ready", ready: true });
+  }
 
   let conversationSeq = 0;
   const resolveConversationId = (params = {}) =>
@@ -51,6 +55,25 @@ async function runJsonRpcWorker() {
     switch (method) {
       case "initialize": {
         emitCapture("request", message);
+        if (handshakeMode === "timeout") {
+          return;
+        }
+        if (handshakeMode === "error") {
+          write({
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: "handshake_failed",
+              message: "handshake failed",
+              data: { retryable: true },
+            },
+          });
+          break;
+        }
+        if (handshakeMode === "exit") {
+          process.nextTick(() => process.exit(1));
+          return;
+        }
         write({
           jsonrpc: "2.0",
           id,
@@ -72,6 +95,22 @@ async function runJsonRpcWorker() {
           return;
         }
         const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
+        if (scenario === "crash") {
+          process.nextTick(() => process.exit(1));
+          return;
+        }
+        if (scenario === "error") {
+          write({
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: "worker_error",
+              message: "synthetic worker error",
+              data: { retryable: false },
+            },
+          });
+          return;
+        }
         const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
           .trim()
           .toLowerCase();
