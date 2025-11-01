@@ -249,10 +249,6 @@ spawn("codex", [
 
 ---
 
-## M. Feature flag rollout defaults
-
-The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy proto backend or the new app-server implementation. The defaults below match the rollout plan documented in the implementation readiness report.
-
 ## N. Runbook checklist updates
 
 ### N.1 Prerequisites before toggling `PROXY_USE_APP_SERVER`
