@@ -33,6 +33,7 @@
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest --dir tests/unit",
     "test:integration": "vitest run tests/integration --reporter=default",
+    "test:parity": "vitest run tests/parity --reporter=default",
     "test:all": "npm run test:unit && npm run test:integration && npm test",
     "transcripts:generate": "node scripts/generate-chat-transcripts.mjs",
     "verify:all": "npm run format:check && npm run lint && npm run test:all",

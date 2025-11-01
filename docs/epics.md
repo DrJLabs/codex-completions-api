@@ -160,6 +160,20 @@ Achieve full functional parity for `/v1/chat/completions` by translating request
 
 ### Stories
 
+**Story 2.0: Establish parity verification infrastructure**
+
+As a QA engineer,
+I want deterministic parity fixtures and automation in place before feature work,
+So that Epic 2 development can rely on fast regression feedback and confident cutover readiness.
+
+**Acceptance Criteria:**
+
+1. Transcript capture tooling records paired proto and app-server outputs for baseline chat, streaming, tool-call, and error scenarios, normalizing dynamic fields and storing version metadata in the repo.
+2. A parity diff harness runs in CI, comparing the paired fixtures with developer-friendly diagnostics, failing when transcripts diverge or required scenarios are missing.
+3. The Epic 1 app-server baseline is deployed and smoke-tested, with the capture process documented so fixtures reflect production-ready behavior.
+
+**Prerequisites:** Epic 1 stories delivering transport channel and worker lifecycle.
+
 **Story 2.1: Define JSON-RPC schema bindings for chat**
 
 As a backend developer,
