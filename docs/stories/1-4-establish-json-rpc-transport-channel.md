@@ -1,6 +1,6 @@
 # Story 1.4: Establish JSON-RPC transport channel
 
-Status: review
+Status: done
 
 ## Requirements Context Summary
 

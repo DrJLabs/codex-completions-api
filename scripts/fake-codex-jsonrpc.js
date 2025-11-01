@@ -59,48 +59,185 @@ async function runJsonRpcWorker() {
       }
       case "sendUserMessage": {
         const convId = resolveConversationId(params);
-        const text = String(params.text || "");
         if (hangMode === "message") {
           // Simulate a stalled worker by not emitting any response.
           continue;
         }
-        write({
-          jsonrpc: "2.0",
-          method: "agentMessageDelta",
-          params: {
-            conversation_id: convId,
-            request_id: params.request_id || convId,
-            delta: text ? `echo:${text}` : "hello",
-          },
-        });
+        const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
+        const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
+          .trim()
+          .toLowerCase();
+        let finishReason = "stop";
+        if (
+          ["length", "max_tokens", "token_limit", "token_limit_reached"].includes(requestedFinish)
+        ) {
+          finishReason = "length";
+        }
+        if (scenario === "truncation") {
+          finishReason = "length";
+        }
+        if (scenario === "content_filter") {
+          finishReason = "content_filter";
+        } else if (scenario === "function_call" && finishReason !== "length") {
+          finishReason = "function_call";
+        } else if (scenario === "tool_call" && finishReason !== "length") {
+          finishReason = "tool_calls";
+        }
+
+        const parallelToolCalls = !/^false$/i.test(
+          String(process.env.FAKE_CODEX_PARALLEL || "true")
+        );
+        const metadataMode = String(process.env.FAKE_CODEX_METADATA || "").toLowerCase();
+        const metadataPayload =
+          metadataMode && metadataMode !== "false"
+            ? {
+                rollout_path: "/app/.codex-api/sessions/fake-rollout",
+                session_id: "fake-session-123",
+                ...(metadataMode === "extra" ? { build_id: "fake-build" } : {}),
+              }
+            : null;
+
+        const toolCalls =
+          scenario === "tool_call"
+            ? [
+                {
+                  id: "tool_fake_1",
+                  type: "function",
+                  function: {
+                    name: "lookup_user",
+                    arguments: '{"id":"42"}',
+                  },
+                },
+              ]
+            : null;
+
+        const functionCall =
+          scenario === "function_call"
+            ? {
+                name: "lookup_user",
+                arguments: '{"id":"42"}',
+              }
+            : null;
+
+        const baseMessage = "Hello from fake-codex.";
+        const includeMessageText = !["content_filter", "tool_call", "function_call"].includes(
+          scenario
+        );
+        let messageText = includeMessageText ? baseMessage : "";
+        if (includeMessageText && metadataPayload) {
+          const lines = Object.entries(metadataPayload)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join("\n");
+          messageText = `${baseMessage}\n${lines}`;
+        }
+
+        if (scenario === "truncation" && !toolCalls && !functionCall) {
+          messageText = "Hello (truncated) from fake-codex.";
+        }
+
+        if (toolCalls && parallelToolCalls) {
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessageDelta",
+            params: {
+              conversation_id: convId,
+              request_id: params.request_id || convId,
+              parallel_tool_calls: true,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: toolCalls[0].id,
+                    type: toolCalls[0].type,
+                    function: { name: toolCalls[0].function.name },
+                  },
+                ],
+              },
+            },
+          });
+          const argChunks = ['{"id":"', "42", '"}'];
+          for (const chunk of argChunks) {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: params.request_id || convId,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { arguments: chunk },
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        } else if (messageText) {
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessageDelta",
+            params: {
+              conversation_id: convId,
+              request_id: params.request_id || convId,
+              delta: messageText,
+            },
+          });
+        }
+
+        const assistantMessage = {
+          role: "assistant",
+          content: toolCalls || functionCall ? null : messageText,
+        };
+        if (toolCalls) assistantMessage.tool_calls = toolCalls;
+        if (functionCall) assistantMessage.function_call = functionCall;
+        if (metadataPayload) assistantMessage.metadata = metadataPayload;
+
+        const messageEnvelope = {
+          conversation_id: convId,
+          request_id: params.request_id || convId,
+          message: assistantMessage,
+        };
+        if (toolCalls) {
+          messageEnvelope.parallel_tool_calls = parallelToolCalls;
+        }
         write({
           jsonrpc: "2.0",
           method: "agentMessage",
-          params: {
-            conversation_id: convId,
-            request_id: params.request_id || convId,
-            message: {
-              role: "assistant",
-              content: text ? `Echo: ${text}` : "Hello from fake jsonrpc",
-            },
-          },
+          params: messageEnvelope,
         });
+
+        let promptTokens = 8;
+        let completionTokens = toolCalls || functionCall ? 0 : Math.ceil(messageText.length / 4);
+        if (scenario === "truncation" && !toolCalls && !functionCall) {
+          promptTokens = 5;
+          completionTokens = 9;
+        }
+        const usagePayload = {
+          conversation_id: convId,
+          request_id: params.request_id || convId,
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+        };
+        if (finishReason === "length") {
+          usagePayload.finish_reason = "length";
+          usagePayload.reason = "length";
+          usagePayload.token_limit_reached = true;
+        } else if (finishReason === "content_filter") {
+          usagePayload.finish_reason = "content_filter";
+        }
         write({
           jsonrpc: "2.0",
           method: "tokenCount",
-          params: {
-            conversation_id: convId,
-            request_id: params.request_id || convId,
-            prompt_tokens: 8,
-            completion_tokens: 6,
-            finish_reason: "stop",
-          },
+          params: usagePayload,
         });
+
         write({
           jsonrpc: "2.0",
           id,
           result: {
-            finish_reason: "stop",
+            finish_reason: finishReason,
           },
         });
         break;

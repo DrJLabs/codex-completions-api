@@ -181,7 +181,7 @@ spawn("codex", [
 
 ---
 
-## J. Example JSON‑RPC shapes
+## J. Example JSON-RPC shapes
 
 **Initialize:**
 
@@ -196,16 +196,31 @@ spawn("codex", [
 
 **Turn + message:**
 
-```json
+````json
 {"jsonrpc":"2.0","id":2,"method":"sendUserTurn","params":{}}
+
+---
+
+## K. Parity fixture maintenance workflow
+
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator now writes to `test-results/chat-completions/{proto,app}/` and stamps each artifact with `backend`, `backend_storage`, `codex_bin`, and the current Git `commit`.
+2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs.
+3. **Smoke the baseline** – before publishing updated fixtures, run:
+   ```bash
+   npm run test:integration
+   npm test
+````
+
+This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record. 4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks into the deployment notes so downstream stories know which baseline the fixtures represent. 5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
 {"jsonrpc":"2.0","id":3,"method":"sendUserMessage","params":{"text":"[system] …\n[user] …"}}
-```
+
+````
 
 **Streaming delta (notification):**
 
 ```json
 { "jsonrpc": "2.0", "method": "agentMessageDelta", "params": { "delta": "Hello" } }
-```
+````
 
 **Final message (notification):**
 

@@ -48,7 +48,7 @@ describe("json-rpc transport", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(Array.isArray(body.choices)).toBe(true);
-    expect(body.choices[0]?.message?.content || "").toContain("Echo:");
+    expect(body.choices[0]?.message?.content || "").toContain("Hello from fake-codex.");
     expect(body.choices[0]?.finish_reason).toBe("stop");
     expect(body.usage?.prompt_tokens).toBeDefined();
     expect(body.usage?.completion_tokens).toBeDefined();
