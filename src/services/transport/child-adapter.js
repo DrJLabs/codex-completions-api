@@ -59,6 +59,17 @@ export class JsonRpcChildAdapter extends EventEmitter {
         requestId: this.reqId,
         timeoutMs: this.timeoutMs,
       });
+      if (this.closed) {
+        this.transport.cancelContext(
+          this.context,
+          new TransportError("request aborted", {
+            code: "request_aborted",
+            retryable: false,
+          })
+        );
+        await this.context.promise.catch(() => {});
+        return;
+      }
       this.#wireContext(this.context);
       this.transport.sendUserMessage(this.context, { text: prompt });
       await this.context.promise;
@@ -196,11 +207,7 @@ export class JsonRpcChildAdapter extends EventEmitter {
         code: "request_aborted",
         retryable: false,
       });
-      if (typeof this.transport?.cancelContext === "function") {
-        this.transport.cancelContext(this.context, error);
-      } else {
-        this.context.reject(error);
-      }
+      this.transport.cancelContext?.(this.context, error);
       this.context = null;
     }
     this.#finalize(null);

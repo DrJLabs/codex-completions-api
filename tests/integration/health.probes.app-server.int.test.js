@@ -43,7 +43,7 @@ test("readyz falls within 5s of worker exit while livez stays healthy", async ()
       const res = await fetch(readinessUrl());
       if (res.status !== 200) return false;
       const body = await res.json();
-      return body.readiness?.ready ? body : false;
+      return body.health?.readiness?.ready ? body : false;
     },
     { timeoutMs: 4000, intervalMs: 40 }
   );
@@ -54,20 +54,20 @@ test("readyz falls within 5s of worker exit while livez stays healthy", async ()
       const res = await fetch(readinessUrl());
       if (res.status !== 503) return false;
       const body = await res.json();
-      return body.readiness?.ready === false ? body : false;
+      return body.health?.readiness?.ready === false ? body : false;
     },
     { timeoutMs: 5000, intervalMs: 40 }
   );
 
   expect(readyDrop.matchedAt - readyOk.matchedAt).toBeLessThan(5000);
-  expect(readyDrop.value.readiness.reason).toBe("worker_exit");
+  expect(readyDrop.value.health.readiness.reason).toBe("worker_exit");
 
   // Livez should remain healthy while the supervisor restarts the worker.
   const liveRes = await fetch(livenessUrl());
   expect(liveRes.status).toBe(200);
   const liveBody = await liveRes.json();
-  expect(liveBody.liveness.live).toBe(true);
-  expect(["worker_running", "worker_restarting"]).toContain(liveBody.liveness.reason);
+  expect(liveBody.health.liveness.live).toBe(true);
+  expect(["worker_running", "worker_restarting"]).toContain(liveBody.health.liveness.reason);
 
   // Ensure readiness recovers after the restart cycle.
   const readyRecovered = await waitForCondition(
@@ -75,11 +75,11 @@ test("readyz falls within 5s of worker exit while livez stays healthy", async ()
       const res = await fetch(readinessUrl());
       if (res.status !== 200) return false;
       const body = await res.json();
-      return body.readiness?.ready ? body : false;
+      return body.health?.readiness?.ready ? body : false;
     },
     { timeoutMs: 5000, intervalMs: 40 }
   );
 
   expect(readyRecovered.matchedAt - readyDrop.matchedAt).toBeLessThan(5000);
-  expect(readyRecovered.value.readiness.ready).toBe(true);
+  expect(readyRecovered.value.health.readiness.ready).toBe(true);
 });

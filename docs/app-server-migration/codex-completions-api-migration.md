@@ -198,6 +198,7 @@ spawn("codex", [
 
 ```json
 {"jsonrpc":"2.0","id":2,"method":"sendUserTurn","params":{}}
+
 {"jsonrpc":"2.0","id":3,"method":"sendUserMessage","params":{"text":"[system] …\n[user] …"}}
 ```
 
@@ -238,7 +239,7 @@ spawn("codex", [
 
 ---
 
-## K. Remaining gaps
+## L. Remaining gaps
 
 1. **No CI/dev mock:** add a lightweight JSON‑RPC fake app-server for tests (fixtures for initialize, deltas, final).
 2. **Cancellation:** if/when Codex surfaces a cancel RPC, wire it; until then rely on timeouts and selective restarts.
@@ -248,19 +249,19 @@ spawn("codex", [
 
 ---
 
-## L. Feature flag rollout defaults
+## M. Feature flag rollout defaults
 
 The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy proto backend or the new app-server implementation. The defaults below match the rollout plan documented in the implementation readiness report.
 
-## M. Runbook checklist updates
+## N. Runbook checklist updates
 
-### M.1 Prerequisites before toggling `PROXY_USE_APP_SERVER`
+### N.1 Prerequisites before toggling `PROXY_USE_APP_SERVER`
 
 1. Verify `@openai/codex@0.53.0` is installed in the target image or host before enabling the app-server to guarantee the bundled binary includes the `app-server` subcommand (Source: Section A, [../architecture.md#decision-summary](../architecture.md#decision-summary)).
 2. Confirm the environment mounts a writable `CODEX_HOME` (`.codev` for dev, `.codex-api` for containerized deployments) so the supervisor can persist rollout and session state (Source: Section H; [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes)).
 3. Stage and production monitors must track `/readyz` latency plus `worker_supervisor.restarts_total`; alert if readiness stays false for longer than 30 s or restarts increase by >1 within 10 minutes (Source: Section H; [../architecture.md#decision-summary](../architecture.md#decision-summary)).
 
-### M.2 Toggle workflow by environment
+### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
   1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; keep proto default (`false`) elsewhere until rollout gates pass (Source: [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
@@ -272,13 +273,13 @@ The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy prot
   3. Run `npm run smoke:prod` for the public domain, ensuring `/readyz` flips to `200` before reopening traffic (Source: [../../scripts/prod-smoke.sh](../../scripts/prod-smoke.sh)).
 - **Traefik health gating:** ensure `traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz` remains configured so traffic drains during worker restarts (Source: Section H; [../architecture.md#decision-summary](../architecture.md#decision-summary)).
 
-### M.3 Verification checklist after toggling
+### N.3 Verification checklist after toggling
 
 1. `curl -f https://{domain}/readyz` returns `200` with `"ready":true` within five seconds (Source: [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes)).
 2. `curl -f https://{domain}/livez` stays `200`; any `503` requires paging the on-call and rolling back the flag (Source: Section H).
 3. Run `npm run lint:runbooks` before publishing documentation updates to satisfy formatting and link linting (Source: [../bmad/architecture/tech-stack.md#testing--qa](../bmad/architecture/tech-stack.md#testing--qa)).
 
-### M.4 Environment configuration matrix
+### N.4 Environment configuration matrix
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -288,6 +289,6 @@ The `PROXY_USE_APP_SERVER` flag controls whether the proxy boots the legacy prot
 
 Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
 
-### M.5 Operational change log additions
+### N.5 Operational change log additions
 
 - 2025-10-31 — Documented feature flag rollout, environment matrix, and probe verification steps for the app-server cutover. Linked smoke harnesses and Story 1.5 probe evidence so partner teams can reuse readiness data (Source: [../epics.md#story-16-document-foundation-and-operational-controls](../epics.md#story-16-document-foundation-and-operational-controls); [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log)).

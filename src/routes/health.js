@@ -33,22 +33,19 @@ export default function healthRouter() {
           live: true,
           reason: "app_server_disabled",
         };
+    const health = { readiness, liveness };
     const workerSupervisor = appServerEnabled
-      ? supervisorStatus
+      ? { ...supervisorStatus, health }
       : {
           ...supervisorStatus,
           enabled: false,
           ready: true,
-          health: {
-            readiness,
-            liveness,
-          },
+          health,
         };
     return {
       backendMode,
       appServerEnabled,
-      readiness,
-      liveness,
+      health,
       workerSupervisor,
     };
   }
@@ -56,14 +53,14 @@ export default function healthRouter() {
   router.get("/healthz", (_req, res) => {
     const snapshot = buildWorkerSnapshots();
     const healthy =
-      snapshot.liveness.live && (!snapshot.appServerEnabled || snapshot.readiness.ready);
+      snapshot.health.liveness.live &&
+      (!snapshot.appServerEnabled || snapshot.health.readiness.ready);
     res.json({
       ok: healthy,
       sandbox_mode: CFG.PROXY_SANDBOX_MODE,
       backend_mode: snapshot.backendMode,
       app_server_enabled: snapshot.appServerEnabled,
-      readiness: snapshot.readiness,
-      liveness: snapshot.liveness,
+      health: snapshot.health,
       worker_supervisor: snapshot.workerSupervisor,
     });
   });
@@ -75,15 +72,15 @@ export default function healthRouter() {
         ok: true,
         backend_mode: snapshot.backendMode,
         app_server_enabled: false,
-        readiness: snapshot.readiness,
+        health: { readiness: snapshot.health.readiness },
       });
     }
-    const statusCode = snapshot.readiness.ready ? 200 : 503;
+    const statusCode = snapshot.health.readiness.ready ? 200 : 503;
     return res.status(statusCode).json({
-      ok: snapshot.readiness.ready,
+      ok: snapshot.health.readiness.ready,
       backend_mode: snapshot.backendMode,
       app_server_enabled: true,
-      readiness: snapshot.readiness,
+      health: { readiness: snapshot.health.readiness },
       worker_supervisor: snapshot.workerSupervisor,
     });
   });
@@ -95,15 +92,15 @@ export default function healthRouter() {
         ok: true,
         backend_mode: snapshot.backendMode,
         app_server_enabled: false,
-        liveness: snapshot.liveness,
+        health: { liveness: snapshot.health.liveness },
       });
     }
-    const statusCode = snapshot.liveness.live ? 200 : 503;
+    const statusCode = snapshot.health.liveness.live ? 200 : 503;
     return res.status(statusCode).json({
-      ok: snapshot.liveness.live,
+      ok: snapshot.health.liveness.live,
       backend_mode: snapshot.backendMode,
       app_server_enabled: true,
-      liveness: snapshot.liveness,
+      health: { liveness: snapshot.health.liveness },
       worker_supervisor: snapshot.workerSupervisor,
     });
   });

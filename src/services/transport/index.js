@@ -345,7 +345,21 @@ class JsonRpcTransport {
             code: "request_aborted",
             retryable: false,
           });
-    this.#failContext(context, reason);
+    let handledByPending = false;
+    for (const [rpcId, pending] of this.pending.entries()) {
+      if (pending.context !== context) continue;
+      handledByPending = true;
+      clearTimeout(pending.timeout);
+      this.pending.delete(rpcId);
+      try {
+        pending.reject?.(reason);
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} pending reject failed`, err);
+      }
+    }
+    if (!context.completed) {
+      this.#failContext(context, reason);
+    }
   }
 
   #sendUserTurn(context) {

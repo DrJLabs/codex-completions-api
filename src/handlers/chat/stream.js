@@ -1393,17 +1393,28 @@ export async function postCompletionsStream(req, res) {
     backendMode === BACKEND_APP_SERVER
       ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
       : spawnCodex(args);
-  const onChildError = (e) => {
+  const onChildError = (error) => {
     try {
-      console.log("[proxy] child error (completions):", e?.message || String(e));
+      console.log("[proxy] child error (completions):", error?.message || String(error));
     } catch {}
     if (responded) return;
     responded = true;
     try {
-      sendSSEUtil(res, sseErrorBody(e));
+      clearTimeout(timeout);
+    } catch {}
+    const mapped = mapTransportError(error);
+    try {
+      if (mapped) {
+        sendSSEUtil(res, mapped.body);
+      } else {
+        sendSSEUtil(res, sseErrorBody(error));
+      }
     } catch {}
     try {
       finishSSEUtil(res);
+    } catch {}
+    try {
+      releaseGuard("error");
     } catch {}
   };
   child.on("error", onChildError);

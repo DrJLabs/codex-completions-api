@@ -290,27 +290,12 @@ const SCENARIOS = [
 async function waitForBackendReady(backend, port, { timeoutMs = 15000, intervalMs = 200 } = {}) {
   if (backend?.id !== "app") return;
   const deadline = Date.now() + timeoutMs;
-  const url = new URL(`http://127.0.0.1:${port}/healthz`);
-
-  // Local helper to determine readiness from health payload
-  const hasReadyFlag = (payload) => {
-    if (!payload) return false;
-    if (payload.readiness?.ready === true) return true;
-    if (payload.worker_supervisor?.ready === true) return true;
-    if (payload.worker_supervisor?.readiness?.ready === true) return true;
-    if (payload.worker_status?.ready === true) return true;
-    if (payload.worker_status?.readiness?.ready === true) return true;
-    if (payload.worker_status?.health?.readiness?.ready === true) return true;
-    return false;
-  };
+  const url = new URL(`http://127.0.0.1:${port}/readyz`);
 
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url);
-      if (res.ok) {
-        const body = await res.json();
-        if (body?.app_server_enabled === true && hasReadyFlag(body)) return;
-      }
+      if (res.ok) return;
     } catch {
       // Ignore transient failures while waiting for readiness
     }
