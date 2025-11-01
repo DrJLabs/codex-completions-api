@@ -160,7 +160,19 @@ class JsonRpcTransport {
   async ensureHandshake() {
     if (this.handshakeCompleted && this.handshakeData) return this.handshakeData;
     if (this.handshakePromise) return this.handshakePromise;
-    await this.supervisor.waitForReady(CFG.WORKER_STARTUP_TIMEOUT_MS);
+    try {
+      await this.supervisor.waitForReady(CFG.WORKER_STARTUP_TIMEOUT_MS);
+    } catch (err) {
+      if (err instanceof TransportError) throw err;
+      const message =
+        err instanceof Error && err.message ? err.message : "worker did not become ready";
+      const wrapped = new TransportError(message, {
+        code: "worker_not_ready",
+        retryable: true,
+      });
+      if (err !== wrapped) wrapped.cause = err;
+      throw wrapped;
+    }
     this.handshakePromise = new Promise((resolve, reject) => {
       const rpcId = this.#nextRpcId();
       const timeout = setTimeout(() => {
