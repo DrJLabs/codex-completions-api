@@ -44,9 +44,9 @@ development_status:
   1-5-wire-readiness-and-liveness-probes-to-worker-state: done
   1-6-document-foundation-and-operational-controls: done
   epic-1-retrospective: completed
-  epic-2: backlog
-  2-1-define-json-rpc-schema-bindings-for-chat: backlog
-  2-2-implement-request-translation-layer: backlog
+  epic-2: contexted
+  2-1-define-json-rpc-schema-bindings-for-chat: done
+  2-2-implement-request-translation-layer: review
   2-3-implement-streaming-response-adapter: backlog
   2-4-align-error-handling-and-retries: backlog
   2-0-establish-parity-verification-infrastructure: done

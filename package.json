@@ -29,6 +29,7 @@
     "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
     "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
     "smoke": "bash scripts/smoke.sh",
+    "jsonrpc:schema": "node scripts/jsonrpc/render-schema.mjs",
     "test": "playwright test",
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest --dir tests/unit",
