@@ -41,7 +41,7 @@ so that teams know how to configure environments during later rollout. [Source: 
 
 ### Review Follow-ups (AI)
 
-- [x] [AI-Review][High] Fix `npm run lint:runbooks` so it covers runbook docs and returns success (AC #1 Testing). Resolved 2025-10-31T19:21:35Z by pointing script at `docs/app-server-migration` and re-running lint. Reference: package.json lint script / docs/app-server-migration/codex-completions-api-migration.md.
+- [x] **AI-Review (High):** Fix `npm run lint:runbooks` so it covers runbook docs and returns success (AC #1 Testing). Resolved 2025-10-31T19:21:35Z by pointing script at `docs/app-server-migration` and re-running lint. Reference: package.json lint script / docs/app-server-migration/codex-completions-api-migration.md.
 
 ## Dev Notes
 

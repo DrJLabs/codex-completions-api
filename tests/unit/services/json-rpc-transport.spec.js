@@ -1,5 +1,8 @@
 import { PassThrough } from "node:stream";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+
+const ORIGINAL_HANDSHAKE_TIMEOUT = process.env.WORKER_HANDSHAKE_TIMEOUT_MS;
+const ORIGINAL_REQUEST_TIMEOUT = process.env.WORKER_REQUEST_TIMEOUT_MS;
 
 process.env.WORKER_HANDSHAKE_TIMEOUT_MS = "20";
 process.env.WORKER_REQUEST_TIMEOUT_MS = "20";
@@ -81,6 +84,19 @@ afterEach(() => {
   __setChild(null);
   resetJsonRpcTransport();
   vi.useRealTimers();
+});
+
+afterAll(() => {
+  if (ORIGINAL_HANDSHAKE_TIMEOUT === undefined) {
+    delete process.env.WORKER_HANDSHAKE_TIMEOUT_MS;
+  } else {
+    process.env.WORKER_HANDSHAKE_TIMEOUT_MS = ORIGINAL_HANDSHAKE_TIMEOUT;
+  }
+  if (ORIGINAL_REQUEST_TIMEOUT === undefined) {
+    delete process.env.WORKER_REQUEST_TIMEOUT_MS;
+  } else {
+    process.env.WORKER_REQUEST_TIMEOUT_MS = ORIGINAL_REQUEST_TIMEOUT;
+  }
 });
 
 describe("JsonRpcTransport handshake", () => {
