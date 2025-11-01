@@ -39,4 +39,25 @@ test("GET /healthz returns ok + sandbox_mode", async () => {
   const j = await r.json();
   expect(j).toHaveProperty("ok", true);
   expect(j).toHaveProperty("sandbox_mode");
+  expect(j).toHaveProperty("health");
+  expect(j.health).toHaveProperty("readiness");
+  expect(j.health).toHaveProperty("liveness");
+  expect(j.health.readiness).toMatchObject({ ready: true });
+  expect(j.health.liveness).toMatchObject({ live: true });
+});
+
+test("GET /readyz reports success when app server disabled", async () => {
+  const r = await fetch(`http://127.0.0.1:${PORT}/readyz`);
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  expect(j).toMatchObject({ ok: true, app_server_enabled: false });
+  expect(j.health.readiness).toMatchObject({ ready: true, reason: "app_server_disabled" });
+});
+
+test("GET /livez reports success when app server disabled", async () => {
+  const r = await fetch(`http://127.0.0.1:${PORT}/livez`);
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  expect(j).toMatchObject({ ok: true, app_server_enabled: false });
+  expect(j.health.liveness).toMatchObject({ live: true, reason: "app_server_disabled" });
 });

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,8 @@ import { execFileSync } from "node:child_process";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
 const TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "chat-completions");
+const PROTO_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "proto");
+const APP_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "app");
 const RESPONSES_TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "responses");
 
 const PLACEHOLDER_ID = "<dynamic-id>";
@@ -51,15 +53,43 @@ export function sanitizeStreamTranscript(chunks) {
   });
 }
 
-export async function loadTranscript(filename) {
-  const fullPath = resolve(TRANSCRIPT_ROOT, filename);
+const APP_BACKEND_KEYS = new Set(["app", "app-server"]);
+
+function normalizeBackendName(backend) {
+  if (APP_BACKEND_KEYS.has(String(backend).toLowerCase())) return "app";
+  return "proto";
+}
+
+function resolveTranscriptPath(filename, backend) {
+  const normalized = normalizeBackendName(backend);
+  const baseRoot = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
+  const desiredPath = resolve(baseRoot, filename);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  if (normalized === "proto" && !existsSync(desiredPath)) {
+    const legacyPath = resolve(TRANSCRIPT_ROOT, filename);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    if (existsSync(legacyPath)) return legacyPath;
+  }
+  return desiredPath;
+}
+
+function resolveTranscriptSavePath(filename, backend) {
+  const normalized = normalizeBackendName(backend);
+  const baseRoot = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
+  return resolve(baseRoot, filename);
+}
+
+export async function loadTranscript(filename, { backend = "proto" } = {}) {
+  const fullPath = resolveTranscriptPath(filename, backend);
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   const raw = await readFile(fullPath, "utf8");
   return JSON.parse(raw);
 }
 
-export async function saveTranscript(filename, payload) {
-  const fullPath = resolve(TRANSCRIPT_ROOT, filename);
+export async function saveTranscript(filename, payload, { backend = "proto" } = {}) {
+  const fullPath = resolveTranscriptSavePath(filename, backend);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  await mkdir(dirname(fullPath), { recursive: true });
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   await writeFile(fullPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return fullPath;
@@ -136,21 +166,42 @@ const REQUIRED_TRANSCRIPTS = [
   "streaming-multi-choice.json",
 ];
 
-export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS) {
-  const missingJson = files.filter((file) => {
-    const fullPath = resolve(TRANSCRIPT_ROOT, file);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    return !existsSync(fullPath);
-  });
+export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS, { backend = "proto" } = {}) {
+  const backends = Array.isArray(backend) ? backend : [backend];
+  const missing = [];
+  for (const name of backends) {
+    const normalized = normalizeBackendName(name);
+    const root = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
+    for (const file of files) {
+      const desired = resolve(root, file);
 
-  if (missingJson.length === 0) return;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      if (!existsSync(desired)) {
+        if (normalized === "proto") {
+          const legacy = resolve(TRANSCRIPT_ROOT, file);
+          // eslint-disable-next-line security/detect-non-literal-fs-filename
+          if (existsSync(legacy)) continue;
+        }
+        missing.push({ backend: normalized, file });
+      }
+    }
+  }
+
+  if (missing.length === 0) return;
 
   const generator = resolve(PROJECT_ROOT, "scripts", "generate-chat-transcripts.mjs");
   // Paths are repo-controlled; safe to exec for regeneration.
   execFileSync("node", [generator], { stdio: "inherit" });
 }
 
-export { TRANSCRIPT_ROOT, PLACEHOLDER_ID, PLACEHOLDER_CREATED, REQUIRED_TRANSCRIPTS };
+export {
+  TRANSCRIPT_ROOT,
+  PROTO_TRANSCRIPT_ROOT,
+  APP_TRANSCRIPT_ROOT,
+  PLACEHOLDER_ID,
+  PLACEHOLDER_CREATED,
+  REQUIRED_TRANSCRIPTS,
+};
 
 export function sanitizeResponsesNonStream(payload) {
   if (typeof payload !== "object" || payload === null) return payload;

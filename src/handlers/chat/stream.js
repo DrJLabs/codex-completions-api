@@ -48,7 +48,9 @@ import {
   metadataKeys,
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
-import { selectBackendMode } from "../../services/backend-mode.js";
+import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
+import { mapTransportError } from "../../services/transport/index.js";
+import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -264,20 +266,33 @@ export async function postChatStream(req, res) {
       prompt.length
     );
   } catch {}
-  const child = spawnCodex(args);
+  const child =
+    backendMode === BACKEND_APP_SERVER
+      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
+      : spawnCodex(args);
 
-  const onChildError = (e) => {
+  const onChildError = (error) => {
     try {
-      console.log("[proxy] child error:", e?.message || String(e));
+      console.log("[proxy] child error:", error?.message || String(error));
     } catch {}
     if (responded) return;
     responded = true;
     try {
-      res.write(`data: ${JSON.stringify(sseErrorBody(e))}\n\n`);
+      clearTimeout(timeout);
+    } catch {}
+    const mapped = mapTransportError(error);
+    try {
+      if (mapped) {
+        sendSSEUtil(res, mapped.body);
+      } else {
+        sendSSEUtil(res, sseErrorBody(error));
+      }
     } catch {}
     try {
-      res.write("data: [DONE]\n\n");
-      res.end();
+      finishSSEUtil(res);
+    } catch {}
+    try {
+      releaseGuard("error");
     } catch {}
   };
   child.on("error", onChildError);
@@ -1374,18 +1389,32 @@ export async function postCompletionsStream(req, res) {
   const releaseGuard = (outcome) => guardContext.release(outcome);
   applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
-  const child = spawnCodex(args);
-  const onChildError = (e) => {
+  const child =
+    backendMode === BACKEND_APP_SERVER
+      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
+      : spawnCodex(args);
+  const onChildError = (error) => {
     try {
-      console.log("[proxy] child error (completions):", e?.message || String(e));
+      console.log("[proxy] child error (completions):", error?.message || String(error));
     } catch {}
     if (responded) return;
     responded = true;
     try {
-      sendSSEUtil(res, sseErrorBody(e));
+      clearTimeout(timeout);
+    } catch {}
+    const mapped = mapTransportError(error);
+    try {
+      if (mapped) {
+        sendSSEUtil(res, mapped.body);
+      } else {
+        sendSSEUtil(res, sseErrorBody(error));
+      }
     } catch {}
     try {
       finishSSEUtil(res);
+    } catch {}
+    try {
+      releaseGuard("error");
     } catch {}
   };
   child.on("error", onChildError);
