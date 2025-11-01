@@ -1,0 +1,80 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>2</storyId>
+    <title>Implement request translation layer</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-01T04:21:11Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-2-implement-request-translation-layer.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an application developer</asA>
+    <iWant>I want `/v1/chat/completions` requests normalized into JSON-RPC calls. [Source](docs/stories/2-2-implement-request-translation-layer.md#story)</iWant>
+    <soThat>so that the worker can process them without knowing OpenAI-specific shapes. [Source](docs/epics.md#story-22-implement-request-translation-layer)</soThat>
+    <tasks>
+- [ ] (AC #1) Implement normalization pipeline in `src/handlers/chat/request.js` that constructs `initialize`, `sendUserTurn`, and `sendUserMessage` envelopes from OpenAI payloads.
+  - [ ] (AC #1) Reuse `src/lib/json-rpc/schema.ts` bindings and deterministic request/id bookkeeping supplied by `appServerClient`.
+  - [ ] (AC #1) Map conversation metadata, tools, streaming toggles, and runtime flags exactly as described in the migration runbook.
+- [ ] (AC #2) Align validation and error handling with existing HTTP responses, reusing shared validators and error envelopes.
+  - [ ] (AC #2) Add negative fixtures (e.g., missing tool definitions, invalid temperatures) ensuring retry hints and status codes match today’s contract.
+- [ ] (AC #3) Extend `tests/integration/chat-jsonrpc.test.js` to cover baseline, streaming, and tool-call scenarios using the deterministic transport stub.
+  - [ ] (AC #3) Capture parity transcripts and assert payload equality for streaming delta ordering and final responses.
+  - [ ] (AC #3) Run `npm run test:integration` (and include in change log) to document passing coverage before submission.
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. The `/v1/chat/completions` handler maps models, messages, temperatures, tool definitions, streaming toggles, and runtime flags into `initialize`, `sendUserTurn`, and `sendUserMessage` JSON-RPC calls using the shared schema exports and deterministic request identifiers. [Source](docs/epics.md#story-22-implement-request-translation-layer) [Source](docs/tech-spec-epic-2.md#services-and-modules) [Source](docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read)
+2. Input validation and error mapping mirror existing HTTP semantics—status codes, retry hints, and error bodies remain unchanged while parity requirements FR001–FR004 continue to hold. [Source](docs/epics.md#story-22-implement-request-translation-layer) [Source](docs/PRD.md#functional-requirements) [Source](docs/tech-spec-epic-2.md#non-functional-requirements)
+3. Integration coverage under `tests/integration/chat-jsonrpc.test.js` exercises baseline chat, streaming, and tool-call flows against the deterministic transport stub, failing if payload parity drifts. [Source](docs/epics.md#story-22-implement-request-translation-layer) [Source](docs/tech-spec-epic-2.md#workflows-and-sequencing) [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 2.2: Implement request translation layer | snippet: Handler maps model, messages, temperature, tools, and streaming flags to JSON-RPC format.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document (PRD) | section: Functional Requirements FR003–FR004 | snippet: Translate OpenAI-formatted requests into Codex App Server JSON-RPC calls while keeping HTTP status codes and error bodies identical.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Services and Modules | snippet: `src/handlers/chat/request.js` normalizes `/v1/chat/completions` payloads into JSON-RPC calls covering models, tools, and streaming options.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Workflows and Sequencing | snippet: Step 2 directs Story 2.2 to implement the normalization layer and add deterministic integration coverage.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: C. JSON-RPC client: write &amp; read | snippet: For each API call send `sendUserTurn` then `sendUserMessage`, assigning unique IDs and routing notifications by method.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: G. Concurrency &amp; timeouts | snippet: Continue capping SSE concurrency and preserving per-request timeouts when routing through the shared worker.
+- path: docs/test-design-epic-2.md | title: Test Design: Epic 2 - /v1/chat/completions JSON-RPC Parity | section: P0 (Critical) - Run on every commit | snippet: Streaming delta parity and error/tool-call parity scenarios enforce deterministic transport coverage.
+- path: docs/architecture.md | title: Decision Architecture | section: Decision Summary → Transport | snippet: Maintain one persistent JSON-RPC channel with configurable `WORKER_MAX_CONCURRENCY` and per-request timeouts.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: A. Replace CLI invocation | snippet: Pin `@openai/codex` to 0.53.0 and regenerate schema to keep request translation deterministic.
+    </docs>
+    <code>
+- path: src/handlers/chat/ | type: directory | reason: Houses streaming/non-stream adapters; request normalization will live alongside existing chat handlers.
+- path: src/lib/json-rpc/schema.ts | type: file | reason: Provides typed method payloads that the translation layer must consume for deterministic RPC envelopes.
+- path: src/services/transport | type: directory | reason: JSON-RPC transport entry points (`getJsonRpcTransport`) already manage request contexts and metrics.
+- path: tests/integration | type: directory | reason: Integration suite where JSON-RPC translation coverage must be added to guard parity.
+- path: scripts/parity | type: directory | reason: Parity harness utilities capture transcripts used to validate translation output.
+- path: package.json | type: file | reason: Defines CLI pin, Node version, and scripts (`jsonrpc:schema`, `test:integration`) that underpin translation and validation workflows.
+    </code>
+    <dependencies>
+- node | version: &gt;=22 (per package.json engines)
+- npm | packages: `@openai/codex@0.53.0`, `express`, `vitest`, `@playwright/test`
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Enforce FR003–FR004 parity by reusing existing HTTP validators and error envelopes; no new response shapes allowed. [Source](docs/PRD.md#functional-requirements)
+- Honor transport concurrency and timeout policies (`WORKER_MAX_CONCURRENCY`, shared worker lifecycle) when issuing JSON-RPC calls. [Source](docs/app-server-migration/codex-completions-api-migration.md#g-concurrency--timeouts)
+- Preserve logging and metrics schema, adding `rpc_method` metadata without introducing new formats. [Source](docs/tech-spec-epic-2.md#performance)
+- Regenerate schema only via `npm run jsonrpc:schema` so CLI/app-server version drift is detected. [Source](docs/app-server-migration/codex-completions-api-migration.md#a-replace-cli-invocation)
+  </constraints>
+  <interfaces>
+    <apis>- name: Codex App Server JSON-RPC | contract: Requires `initialize`, `sendUserTurn`, `sendUserMessage` sequencing with unique IDs; notifications (`agentMessageDelta`, `agentMessage`, `tokenCount`) drive SSE updates. | path: docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read</apis>
+    <services>- path: src/services/transport/index.js | contract: `getJsonRpcTransport()` exposes context creation, send functions, and metrics hooks the translation layer must reuse. | path: src/services/transport/index.js#L1</services>
+    <services>- path: src/handlers/chat/stream.js | contract: Streaming adapter consumes notifications emitted by translation flow for SSE chunks. | path: src/handlers/chat/stream.js</services>
+  </interfaces>
+  <tests>
+    <standards>Follow Epic 2 test design: Vitest integration harness with deterministic Codex shim plus existing SSE contract checks to assert parity before rollout. [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)</standards>
+    <locations>tests/integration/**/*chat*.int.test.js; tests/integration/json-rpc-transport.int.test.js; tests/parity/**/*.test.mjs</locations>
+    <ideas>
+- AC #1: Add integration fixture asserting JSON-RPC envelopes for baseline, streaming, and tool-call payloads match schema exports.
+- AC #2: Negative integration cases for invalid tool definitions and temperatures ensure parity error mapping is unchanged.
+- AC #3: Extend parity harness to record translated payloads and fail when deltas diverge from proto transcripts.
+    </ideas>
+  </tests>
+</story-context>
