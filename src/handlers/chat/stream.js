@@ -170,9 +170,10 @@ export async function postChatStream(req, res) {
   const choiceCount = requestedChoiceCount;
 
   const backendMode = selectBackendMode();
+  const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
 
   const optionalValidation = validateOptionalChatParams(body, {
-    allowJsonSchema: backendMode === BACKEND_APP_SERVER,
+    allowJsonSchema: isAppServerBackend,
   });
   if (!optionalValidation.ok) {
     applyCors(null, res);
@@ -277,7 +278,7 @@ export async function postChatStream(req, res) {
     );
   } catch {}
   let normalizedRequest = null;
-  if (backendMode === BACKEND_APP_SERVER) {
+  if (isAppServerBackend) {
     try {
       normalizedRequest = normalizeChatJsonRpcRequest({
         body,
@@ -306,14 +307,13 @@ export async function postChatStream(req, res) {
     }
   }
 
-  const child =
-    backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({
-          reqId,
-          timeoutMs: REQ_TIMEOUT_MS,
-          normalizedRequest,
-        })
-      : spawnCodex(args);
+  const child = isAppServerBackend
+    ? createJsonRpcChildAdapter({
+        reqId,
+        timeoutMs: REQ_TIMEOUT_MS,
+        normalizedRequest,
+      })
+    : spawnCodex(args);
 
   const onChildError = (error) => {
     try {
@@ -1389,7 +1389,8 @@ export async function postChatStream(req, res) {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
     if (finalized) return;
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
-      trackFinishReason("length", "token_count_fallback");
+      const fallbackReason = isAppServerBackend ? "stop" : "length";
+      trackFinishReason(fallbackReason, "token_count_fallback");
     }
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
