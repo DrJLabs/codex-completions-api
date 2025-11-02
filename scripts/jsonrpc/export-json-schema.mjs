@@ -21,13 +21,11 @@ const settings = {
 
 const typeNames = [
   "InitializeParams",
-  "SendUserTurnPayload",
-  "SendUserMessagePayload",
+  "NewConversationParams",
+  "AddConversationListenerParams",
+  "RemoveConversationListenerParams",
   "SendUserTurnParams",
   "SendUserMessageParams",
-  "AgentMessageDeltaNotification",
-  "AgentMessageNotification",
-  "TokenCountNotification",
   "JsonRpcErrorResponse",
   "JsonRpcSuccessResponse",
 ];

@@ -11,6 +11,10 @@ import {
 import { isAppServerMode } from "../backend-mode.js";
 import {
   buildInitializeParams,
+  buildNewConversationParams,
+  buildAddConversationListenerParams,
+  buildRemoveConversationListenerParams,
+  createUserMessageItem,
   buildSendUserMessageParams,
   buildSendUserTurnParams,
 } from "../../lib/json-rpc/schema.ts";
@@ -20,6 +24,16 @@ const LOG_PREFIX = "[proxy][json-rpc-transport]";
 const DEFAULT_CLIENT_INFO = {
   name: "codex-completions-api",
   version: "1.0.0",
+};
+const RESULT_COMPLETION_GRACE_MS = Math.min(
+  Math.max(5000, Math.floor(CFG.WORKER_REQUEST_TIMEOUT_MS / 4)),
+  CFG.WORKER_REQUEST_TIMEOUT_MS
+);
+
+const normalizeNotificationMethod = (method) => {
+  if (!method) return "";
+  const value = String(method);
+  return value.replace(/^codex\/event\//i, "");
 };
 
 class TransportError extends Error {
@@ -38,6 +52,8 @@ class RequestContext {
     this.requestId = requestId;
     this.clientConversationId = `ctx_${nanoid(12)}`;
     this.conversationId = null;
+    this.subscriptionId = null;
+    this.listenerAttached = false;
     this.emitter = new EventEmitter();
     this.usage = { prompt_tokens: 0, completion_tokens: 0 };
     this.rpc = { turnId: null, messageId: null };
@@ -46,6 +62,7 @@ class RequestContext {
     this.finishReason = null;
     this.deltas = [];
     this.completed = false;
+    this.completionTimer = null;
     this.timeout = setTimeout(() => {
       if (this.completed) return;
       onTimeout?.(this);
@@ -193,15 +210,21 @@ class JsonRpcTransport {
     try {
       await this.supervisor.waitForReady(CFG.WORKER_STARTUP_TIMEOUT_MS);
     } catch (err) {
-      if (err instanceof TransportError) throw err;
-      const message =
-        err instanceof Error && err.message ? err.message : "worker did not become ready";
-      const wrapped = new TransportError(message, {
-        code: "worker_not_ready",
-        retryable: true,
-      });
-      if (err !== wrapped) wrapped.cause = err;
-      throw wrapped;
+      const child = getWorkerChildProcess();
+      if (!child || !child.pid) {
+        if (err instanceof TransportError) throw err;
+        const message =
+          err instanceof Error && err.message ? err.message : "worker did not become ready";
+        const wrapped = new TransportError(message, {
+          code: "worker_not_ready",
+          retryable: true,
+        });
+        if (err !== wrapped) wrapped.cause = err;
+        throw wrapped;
+      }
+      console.warn(
+        `${LOG_PREFIX} readiness wait failed (pid=${child.pid}): ${err instanceof Error ? err.message : err}`
+      );
     }
     this.handshakePromise = new Promise((resolve, reject) => {
       const rpcId = this.#nextRpcId();
@@ -340,8 +363,159 @@ class JsonRpcTransport {
       context.emitter.once("error", () => signal.removeEventListener("abort", abortHandler));
     }
 
+    try {
+      await this.#ensureConversation(context, turnParams);
+    } catch (err) {
+      this.#failContext(
+        context,
+        err instanceof Error ? err : new TransportError(String(err), { retryable: true })
+      );
+      throw err;
+    }
+
     this.#sendUserTurn(context, turnParams);
     return context;
+  }
+
+  async #ensureConversation(context, payload) {
+    if (!context) {
+      throw new TransportError("invalid context", {
+        code: "invalid_context",
+        retryable: false,
+      });
+    }
+    if (context.conversationId) return context.conversationId;
+
+    const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
+
+    const explicitConversationId =
+      basePayload.conversationId || basePayload.conversation_id || null;
+    if (explicitConversationId) {
+      context.conversationId = String(explicitConversationId);
+      this.contextsByConversation.set(context.conversationId, context);
+      return context.conversationId;
+    }
+
+    const conversationParams = buildNewConversationParams({
+      model: basePayload.model ?? undefined,
+      modelProvider: basePayload.modelProvider ?? basePayload.model_provider ?? undefined,
+      profile: basePayload.profile ?? undefined,
+      cwd: basePayload.cwd ?? undefined,
+      approvalPolicy: basePayload.approvalPolicy ?? basePayload.approval_policy ?? undefined,
+      sandbox: basePayload.sandboxPolicy ?? basePayload.sandbox ?? undefined,
+      baseInstructions: basePayload.baseInstructions ?? undefined,
+      includeApplyPatchTool:
+        basePayload.includeApplyPatchTool ?? basePayload.include_apply_patch_tool ?? undefined,
+    });
+
+    const conversationResult = await this.#callWorkerRpc({
+      context,
+      method: "newConversation",
+      params: conversationParams,
+      type: "newConversation",
+    });
+
+    const conversationId =
+      conversationResult?.conversation_id ||
+      conversationResult?.conversationId ||
+      conversationResult?.conversation?.id;
+
+    if (!conversationId) {
+      throw new TransportError("newConversation did not return a conversation id", {
+        code: "worker_invalid_response",
+        retryable: true,
+      });
+    }
+
+    context.conversationId = String(conversationId);
+    this.contextsByConversation.set(context.conversationId, context);
+
+    const listenerResult = await this.#callWorkerRpc({
+      context,
+      method: "addConversationListener",
+      params: buildAddConversationListenerParams({
+        conversationId: context.conversationId,
+        experimentalRawEvents: false,
+      }),
+      type: "addConversationListener",
+    });
+
+    const subscriptionId =
+      listenerResult?.subscription_id || listenerResult?.subscriptionId || null;
+    if (subscriptionId) {
+      context.subscriptionId = String(subscriptionId);
+    }
+    context.listenerAttached = true;
+
+    return context.conversationId;
+  }
+
+  async #removeConversationListener(context) {
+    if (!context?.subscriptionId) return;
+    try {
+      await this.#callWorkerRpc({
+        context,
+        method: "removeConversationListener",
+        params: buildRemoveConversationListenerParams({
+          subscriptionId: context.subscriptionId,
+        }),
+        type: "removeConversationListener",
+        timeoutMs: Math.min(CFG.WORKER_REQUEST_TIMEOUT_MS, 2000),
+      });
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} failed to remove conversation listener`, err);
+    } finally {
+      context.subscriptionId = null;
+      context.listenerAttached = false;
+    }
+  }
+
+  #callWorkerRpc({
+    context = null,
+    method,
+    params = {},
+    type,
+    timeoutMs = CFG.WORKER_REQUEST_TIMEOUT_MS,
+  }) {
+    if (!this.child) {
+      return Promise.reject(
+        new TransportError("worker unavailable", {
+          code: "worker_unavailable",
+          retryable: true,
+        })
+      );
+    }
+    const rpcId = this.#nextRpcId();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(rpcId);
+        reject(
+          new TransportError(`${method} timeout`, {
+            code: "worker_request_timeout",
+            retryable: true,
+          })
+        );
+      }, timeoutMs);
+      this.pending.set(rpcId, {
+        type: type || method,
+        context,
+        timeout,
+        resolve,
+        reject,
+      });
+      try {
+        this.#write({
+          jsonrpc: JSONRPC_VERSION,
+          id: rpcId,
+          method,
+          params: params && typeof params === "object" ? params : {},
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        this.pending.delete(rpcId);
+        reject(err instanceof Error ? err : new TransportError(String(err)));
+      }
+    });
   }
 
   sendUserMessage(context, payload) {
@@ -375,7 +549,7 @@ class JsonRpcTransport {
         context.setResult(result);
         const finishReason = result?.finish_reason || result?.status;
         context.setFinishReason(finishReason);
-        this.#completeContext(context);
+        this.#scheduleCompletionCheck(context);
       },
       reject: (err) => {
         clearTimeout(timeout);
@@ -387,14 +561,19 @@ class JsonRpcTransport {
       },
     });
 
-    const textValue = payload?.text;
     const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
-    basePayload.text = typeof textValue === "string" ? textValue : String(textValue ?? "");
+    if (!Array.isArray(basePayload.items) || basePayload.items.length === 0) {
+      basePayload.items = [createUserMessageItem(basePayload.text ?? "")];
+    }
+    if (basePayload.text !== undefined) {
+      delete basePayload.text;
+    }
     const params = buildSendUserMessageParams({
       ...basePayload,
       conversationId: context.conversationId ?? context.clientConversationId,
       requestId: context.clientConversationId,
     });
+    console.warn("[proxy][json-rpc-transport] sendUserMessage", JSON.stringify(params));
 
     try {
       this.#write({
@@ -464,11 +643,12 @@ class JsonRpcTransport {
       resolve: (result) => {
         clearTimeout(timeout);
         this.pending.delete(turnRpcId);
-        const serverConversationId =
-          result?.conversation_id || result?.conversationId || context.clientConversationId;
-        context.conversationId = serverConversationId;
-        if (serverConversationId && serverConversationId !== context.clientConversationId) {
-          this.contextsByConversation.set(serverConversationId, context);
+        const serverConversationId = result?.conversation_id || result?.conversationId || null;
+        if (serverConversationId) {
+          context.conversationId = String(serverConversationId);
+          if (serverConversationId !== context.clientConversationId) {
+            this.contextsByConversation.set(context.conversationId, context);
+          }
         }
         context.emitter.emit("turn", result);
       },
@@ -486,9 +666,10 @@ class JsonRpcTransport {
       const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
       const params = buildSendUserTurnParams({
         ...basePayload,
-        conversationId: context.clientConversationId,
+        conversationId: context.conversationId ?? context.clientConversationId,
         requestId: context.clientConversationId,
       });
+      console.warn("[proxy][json-rpc-transport] sendUserTurn", JSON.stringify(params));
       this.#write({
         jsonrpc: JSONRPC_VERSION,
         id: turnRpcId,
@@ -619,7 +800,8 @@ class JsonRpcTransport {
   }
 
   #handleNotification(message) {
-    const params = message.params || {};
+    const params =
+      message && message.params && typeof message.params === "object" ? message.params : {};
     const context = this.#resolveContext(params);
     if (!context) return;
     try {
@@ -627,16 +809,35 @@ class JsonRpcTransport {
     } catch (err) {
       console.warn(`${LOG_PREFIX} failed to emit notification`, err);
     }
-    switch (String(message.method)) {
+    const method = normalizeNotificationMethod(message.method);
+    const payload = params.msg && typeof params.msg === "object" ? params.msg : params;
+    switch (method) {
       case "agentMessageDelta":
-        context.addDelta(params);
+      case "agent_message_delta":
+      case "agent_message_content_delta":
+        context.addDelta(payload);
         break;
       case "agentMessage":
-        context.setFinalMessage(params);
+      case "agent_message":
+        context.setFinalMessage(payload);
+        if (payload && typeof payload === "object") {
+          context.setFinishReason(payload.finish_reason ?? payload.finishReason ?? null);
+        }
+        this.#scheduleCompletionCheck(context);
         break;
       case "tokenCount":
-        context.setUsage(params);
+      case "token_count": {
+        const usagePayload =
+          payload && typeof payload === "object"
+            ? payload.usage && typeof payload.usage === "object"
+              ? payload.usage
+              : payload.token_count && typeof payload.token_count === "object"
+                ? payload.token_count
+                : payload
+            : payload;
+        context.setUsage(usagePayload);
         break;
+      }
       case "requestTimeout":
         this.#failContext(
           context,
@@ -646,8 +847,38 @@ class JsonRpcTransport {
           })
         );
         break;
+      case "taskComplete":
+      case "task_complete":
+        if (payload && typeof payload === "object") {
+          context.setFinishReason(payload.finish_reason ?? payload.finishReason ?? null);
+        }
+        context.setResult(payload);
+        this.#scheduleCompletionCheck(context);
+        break;
       default:
         break;
+    }
+  }
+
+  #scheduleCompletionCheck(context) {
+    if (!context || context.completed) return;
+    if (context.completionTimer) {
+      clearTimeout(context.completionTimer);
+      context.completionTimer = null;
+    }
+    const hasResult = context.result !== null && context.result !== undefined;
+    const hasFinalMessage = context.finalMessage !== null && context.finalMessage !== undefined;
+    if (hasResult && hasFinalMessage) {
+      this.#completeContext(context);
+      return;
+    }
+    if (hasResult) {
+      context.completionTimer = setTimeout(() => {
+        context.completionTimer = null;
+        if (!context.completed) {
+          this.#scheduleCompletionCheck(context);
+        }
+      }, RESULT_COMPLETION_GRACE_MS);
     }
   }
 
@@ -675,6 +906,15 @@ class JsonRpcTransport {
 
   #completeContext(context) {
     if (context.completed) return;
+    if (context.completionTimer) {
+      clearTimeout(context.completionTimer);
+      context.completionTimer = null;
+    }
+    if (context.listenerAttached) {
+      this.#removeConversationListener(context).catch((err) => {
+        console.warn(`${LOG_PREFIX} remove listener (complete) failed`, err);
+      });
+    }
     this.contextsByConversation.delete(context.clientConversationId);
     if (context.conversationId) {
       this.contextsByConversation.delete(context.conversationId);
@@ -695,6 +935,15 @@ class JsonRpcTransport {
 
   #failContext(context, error) {
     if (context.completed) return;
+    if (context.completionTimer) {
+      clearTimeout(context.completionTimer);
+      context.completionTimer = null;
+    }
+    if (context.listenerAttached) {
+      this.#removeConversationListener(context).catch((err) => {
+        console.warn(`${LOG_PREFIX} remove listener (fail) failed`, err);
+      });
+    }
     this.contextsByConversation.delete(context.clientConversationId);
     if (context.conversationId) {
       this.contextsByConversation.delete(context.conversationId);
@@ -711,6 +960,9 @@ class JsonRpcTransport {
         retryable: true,
       });
     }
+    try {
+      console.warn("[proxy][json-rpc-transport] ->", JSON.stringify(message));
+    } catch {}
     const serialized = JSON.stringify(message);
     try {
       this.child.stdin.write(serialized + "\n");
