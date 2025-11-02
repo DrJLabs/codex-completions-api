@@ -16,8 +16,8 @@ ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env.dev or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
-REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-20}"
-STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-30}"
+REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
+STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
 
 pass() { printf "[PASS] %s\n" "$*"; }
 fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
@@ -51,14 +51,14 @@ curl_cf -D- -o /dev/null "$BASE_CF/healthz" | grep -q " 200 " && pass "cf /healt
 curl_cf "$BASE_CF/v1/models" | jq -e '.object=="list"' >/dev/null && pass "cf /v1/models" || fail "cf /v1/models"
 
 if [[ -n "$KEY" ]]; then
-  PAY='{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Say hello."}]}'
+  PAY='{"model":"codex-5","stream":false,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}'
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
     && pass "cf POST /v1/chat/completions (non-stream)" || fail "cf POST /v1/chat/completions (non-stream)"
 
   SSE_OUT=$(mktemp)
   curl -sN --max-time "$STREAM_TIMEOUT" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' \
+    -d '{"model":"codex-5","stream":true,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}' \
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \

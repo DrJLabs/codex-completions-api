@@ -12,12 +12,12 @@ const quote = (value) => `"${String(value).replaceAll('"', '\\"')}"`;
 
 function buildSupervisorArgs() {
   const args = ["app-server"];
-  const model = (CFG.CODEX_MODEL || "gpt-5").trim();
-  args.push("--model", model);
-
   const pushConfig = (key, value) => {
-    args.push("--config", `${key}=${value}`);
+    args.push("-c", `${key}=${value}`);
   };
+
+  const model = (CFG.CODEX_MODEL || "gpt-5").trim();
+  pushConfig("model", quote(model));
 
   pushConfig("preferred_auth_method", '"chatgpt"');
   const sandboxMode = (CFG.PROXY_SANDBOX_MODE || "danger-full-access").trim();
@@ -146,6 +146,51 @@ class CodexWorkerSupervisor extends EventEmitter {
       handshake.version = payload.version;
     }
     return handshake;
+  }
+
+  recordHandshakePending(extra = null) {
+    const details = extra && typeof extra === "object" ? extra : {};
+    this.#updateReadiness({
+      ready: false,
+      reason: "handshake_pending",
+      handshake: null,
+      details,
+    });
+  }
+
+  recordHandshakeSuccess(payload) {
+    const handshake = this.#extractHandshakeDetails(payload) || {
+      advertised_models: Array.isArray(payload?.advertised_models)
+        ? payload.advertised_models
+        : undefined,
+    };
+    this.state.ready = true;
+    this.state.consecutiveFailures = 0;
+    this.state.lastReadyAt = nowIso();
+    this.#updateReadiness({
+      ready: true,
+      reason: "handshake_complete",
+      handshake,
+      details: {
+        event: "handshake_complete",
+        restarts_total: this.state.restarts,
+      },
+    });
+  }
+
+  recordHandshakeFailure(error) {
+    const message = error instanceof Error ? error.message : String(error ?? "handshake_failed");
+    this.#updateReadiness({
+      ready: false,
+      reason: "handshake_failed",
+      handshake: {
+        error: message,
+        at: nowIso(),
+      },
+      details: {
+        error: message,
+      },
+    });
   }
 
   start() {
@@ -360,14 +405,12 @@ class CodexWorkerSupervisor extends EventEmitter {
         console.log(
           `${LOG_PREFIX} worker ready pid=${child.pid} latency_ms=${this.state.startupLatencyMs}`
         );
-        this.#updateReadiness({
-          ready: true,
-          reason: "handshake_complete",
-          details: {
+        if (this.state.health.readiness?.reason !== "handshake_complete") {
+          this.recordHandshakePending({
             startup_latency_ms: this.state.startupLatencyMs,
             restarts_total: this.state.restarts,
-          },
-        });
+          });
+        }
       } catch (err) {
         console.warn(`${LOG_PREFIX} readiness wait timed out: ${err.message}`);
       }
@@ -399,14 +442,13 @@ class CodexWorkerSupervisor extends EventEmitter {
       if (ready) {
         this.state.ready = true;
         this.state.consecutiveFailures = 0;
-        this.#updateReadiness({
-          ready: true,
-          reason: "handshake_complete",
-          handshake: this.#extractHandshakeDetails(parsed),
-          details: {
+        const handshake = this.#extractHandshakeDetails(parsed);
+        if (this.state.health.readiness?.reason !== "handshake_complete") {
+          this.recordHandshakePending({
             event: parsed.event ?? parsed.status ?? parsed.type ?? "ready",
-          },
-        });
+            handshake,
+          });
+        }
         if (this.state.startupLatencyMs == null && this.state.launchStartedAt != null) {
           const now = performance.now();
           this.state.startupLatencyMs = Math.round(now - this.state.launchStartedAt);

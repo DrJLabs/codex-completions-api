@@ -1,4 +1,5 @@
 import { invalidRequestBody } from "../../lib/errors.js";
+import { createUserMessageItem } from "../../lib/json-rpc/schema.ts";
 
 class ChatJsonRpcNormalizationError extends Error {
   constructor(body, statusCode = 400) {
@@ -30,22 +31,38 @@ const normalizeUser = (value) => {
   return trimmed.slice(0, 256);
 };
 
-const summarizeMessages = (messages = []) => {
-  const summary = {
-    message_count: 0,
-    system_count: 0,
-    user_count: 0,
-    assistant_count: 0,
-  };
-  if (!Array.isArray(messages)) return summary;
-  summary.message_count = messages.length;
-  for (const msg of messages) {
-    const role = (msg?.role || "").toLowerCase();
-    if (role === "system") summary.system_count += 1;
-    else if (role === "user") summary.user_count += 1;
-    else if (role === "assistant") summary.assistant_count += 1;
+const flattenMessageContent = (content) => {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        if (typeof part.text === "string") return part.text;
+        if (typeof part.content === "string") return part.content;
+        if (part.type === "text" && typeof part.text === "string") return part.text;
+        if (part.type === "image_url") {
+          const url =
+            typeof part.image_url === "string" ? part.image_url : (part.image_url?.url ?? "");
+          return url ? `[image:${url}]` : "";
+        }
+        if (part.type === "input_text" && typeof part.input_text === "string") {
+          return part.input_text;
+        }
+        try {
+          return JSON.stringify(part);
+        } catch {
+          return String(part ?? "");
+        }
+      })
+      .join("");
   }
-  return summary;
+  if (content && typeof content === "object") {
+    if (typeof content.text === "string") return content.text;
+    if (Array.isArray(content.content)) return flattenMessageContent(content.content);
+  }
+  if (content === null || content === undefined) return "";
+  return String(content);
 };
 
 const normalizeToolChoice = (rawChoice) => {
@@ -108,47 +125,27 @@ const validateTools = (tools) => {
   return definitions.length ? definitions : undefined;
 };
 
-const buildSharedMetadata = ({
-  reqId,
-  requestedModel,
-  effectiveModel,
-  choiceCount,
-  stream,
-  user,
-  reasoningEffort,
-  temperature,
-  topP,
-  maxOutputTokens,
-  tools,
-  toolChoice,
-  parallelToolCalls,
-  messages,
-}) => {
-  const meta = {
-    route: "/v1/chat/completions",
-    req_id: reqId,
-    requested_model: requestedModel,
-    effective_model: effectiveModel,
-    stream: !!stream,
-    n: choiceCount,
-  };
+const resolveFinalOutputJsonSchema = (responseFormat) => {
+  if (!responseFormat || typeof responseFormat !== "object") return undefined;
+  const type = String(responseFormat.type || "").toLowerCase();
+  if (type !== "json_schema") return undefined;
+  const schemaObject = responseFormat.json_schema ?? responseFormat.schema;
+  if (schemaObject === null) return null;
+  if (schemaObject && typeof schemaObject === "object") {
+    if (schemaObject.schema && typeof schemaObject.schema === "object") {
+      return schemaObject.schema;
+    }
+    return schemaObject;
+  }
+  return undefined;
+};
 
-  if (user) meta.user = user;
-  if (reasoningEffort) meta.reasoning_effort = reasoningEffort;
-  if (temperature !== undefined) meta.temperature = temperature;
-  if (topP !== undefined) meta.top_p = topP;
-  if (maxOutputTokens !== undefined) meta.max_output_tokens = maxOutputTokens;
-  if (Array.isArray(tools)) meta.tool_count = tools.length;
-  if (toolChoice !== undefined) meta.tool_choice = toolChoice;
-  if (parallelToolCalls !== undefined) meta.parallel_tool_calls = parallelToolCalls;
-
-  const summary = summarizeMessages(messages);
-  meta.message_count = summary.message_count;
-  meta.system_count = summary.system_count;
-  meta.user_count = summary.user_count;
-  meta.assistant_count = summary.assistant_count;
-
-  return meta;
+const buildToolsPayload = ({ definitions, toolChoice, parallelToolCalls }) => {
+  const payload = {};
+  if (definitions) payload.definitions = definitions;
+  if (toolChoice !== undefined) payload.choice = toolChoice;
+  if (parallelToolCalls !== undefined) payload.parallelToolCalls = parallelToolCalls;
+  return Object.keys(payload).length ? payload : undefined;
 };
 
 export const normalizeChatJsonRpcRequest = ({
@@ -219,109 +216,82 @@ export const normalizeChatJsonRpcRequest = ({
     );
   }
 
-  const toolsPayload = (() => {
-    const payload = {};
-    if (definitions) payload.definitions = definitions;
-    if (toolChoice !== undefined) payload.choice = toolChoice;
-    if (parallelToolCalls !== undefined) payload.parallel_tool_calls = parallelToolCalls;
-    return Object.keys(payload).length ? payload : undefined;
-  })();
+  // Always request usage metrics from app-server. Downstream finish-reason
+  // reconciliation depends on usage events even when a client opts out.
+  const includeUsage = true;
 
-  const streamOptionsIncludeUsage = (() => {
-    const raw = body.stream_options?.include_usage;
-    if (raw === undefined || raw === null) return undefined;
-    if (typeof raw === "boolean") return raw;
-    if (typeof raw === "string") {
-      const trimmed = raw.trim().toLowerCase();
-      if (["true", "1", "yes"].includes(trimmed)) return true;
-      if (["false", "0", "no"].includes(trimmed)) return false;
-    }
-    throw new ChatJsonRpcNormalizationError(
-      invalidRequestBody(
-        "stream_options.include_usage",
-        "include_usage must be a boolean when provided"
-      )
-    );
-  })();
+  const promptText = typeof prompt === "string" ? prompt : String(prompt ?? "");
 
-  const bodyIncludeUsage = (() => {
-    const raw = body.include_usage ?? body.includeUsage;
-    if (raw === undefined || raw === null) return undefined;
-    if (typeof raw === "boolean") return raw;
-    if (typeof raw === "string") {
-      const trimmed = raw.trim().toLowerCase();
-      if (["true", "1", "yes"].includes(trimmed)) return true;
-      if (["false", "0", "no"].includes(trimmed)) return false;
-    }
-    throw new ChatJsonRpcNormalizationError(
-      invalidRequestBody("include_usage", "include_usage must be a boolean when provided")
-    );
-  })();
+  const systemInstructions = (messages || [])
+    .filter((msg) => (msg?.role || "").toLowerCase() === "system")
+    .map((msg) => flattenMessageContent(msg?.content).trim())
+    .filter(Boolean);
 
-  const includeUsage = streamOptionsIncludeUsage ?? bodyIncludeUsage ?? true;
-  const user = normalizeUser(body.user);
+  const baseInstructions = systemInstructions.length ? systemInstructions.join("\n\n") : undefined;
 
-  const sharedMetadata = buildSharedMetadata({
-    reqId,
-    requestedModel,
-    effectiveModel,
-    choiceCount,
-    stream,
-    user,
-    reasoningEffort,
-    temperature,
-    topP,
-    maxOutputTokens,
-    tools: definitions,
+  const userItems = (messages || [])
+    .filter((msg) => (msg?.role || "").toLowerCase() === "user")
+    .map((msg) => flattenMessageContent(msg?.content).trim())
+    .filter(Boolean)
+    .map((text) => createUserMessageItem(text));
+
+  const fallbackText = flattenMessageContent(promptText).trim() || promptText || "";
+  const turnItems = userItems.length ? userItems : [createUserMessageItem(fallbackText)];
+  const messageItems = turnItems.map((item) => ({ ...item }));
+  const finalOutputJsonSchema = resolveFinalOutputJsonSchema(body.response_format);
+  const toolsPayload = buildToolsPayload({
+    definitions,
     toolChoice,
     parallelToolCalls,
-    messages,
   });
 
   const turn = {
-    metadata: { ...sharedMetadata },
     model: effectiveModel,
+    items: turnItems,
+    cwd: codexWorkdir,
+    approvalPolicy: approvalMode,
+    sandboxPolicy: sandboxMode ? { mode: sandboxMode } : undefined,
+    effort: reasoningEffort || null,
+    summary: "auto",
     stream: !!stream,
-    choice_count: choiceCount,
+    choiceCount,
+    includeApplyPatchTool: true,
   };
 
-  if (sandboxMode) {
-    turn.sandbox_policy = { mode: sandboxMode };
+  if (baseInstructions) {
+    turn.baseInstructions = baseInstructions;
   }
 
-  if (approvalMode) {
-    turn.approval_policy = { mode: approvalMode };
-  }
-
-  if (codexWorkdir) {
-    turn.cwd = codexWorkdir;
-  }
-
-  if (reasoningEffort) {
-    turn.reasoning = { effort: reasoningEffort };
-  }
-
-  if (user) {
-    turn.user = user;
-  }
-
-  const message = {
-    text: typeof prompt === "string" ? prompt : String(prompt ?? ""),
-    stream: !!stream,
-    include_usage: includeUsage,
-    metadata: { ...sharedMetadata },
-  };
-
-  if (temperature !== undefined) message.temperature = temperature;
-  if (topP !== undefined) message.top_p = topP;
-  if (maxOutputTokens !== undefined) message.max_output_tokens = maxOutputTokens;
   if (toolsPayload) {
-    message.tools = { ...toolsPayload };
-    turn.tools = { ...toolsPayload };
+    turn.tools = toolsPayload;
   }
-  if (body.response_format !== undefined) message.response_format = body.response_format;
 
-  return { turn, message };
+  if (finalOutputJsonSchema !== undefined) {
+    turn.finalOutputJsonSchema = finalOutputJsonSchema;
+  }
+
+  const messagePayload = {
+    items: messageItems,
+    includeUsage,
+  };
+
+  if (temperature !== undefined) messagePayload.temperature = temperature;
+  if (topP !== undefined) messagePayload.topP = topP;
+  if (maxOutputTokens !== undefined) messagePayload.maxOutputTokens = maxOutputTokens;
+  if (toolsPayload) {
+    messagePayload.tools = toolsPayload;
+  }
+  if (body.response_format !== undefined) {
+    messagePayload.responseFormat = body.response_format;
+  }
+  if (reasoningEffort) {
+    messagePayload.reasoning = { effort: reasoningEffort };
+  }
+  if (finalOutputJsonSchema !== undefined) {
+    messagePayload.finalOutputJsonSchema = finalOutputJsonSchema;
+  }
+
+  return { turn, message: messagePayload };
 };
 
 export { ChatJsonRpcNormalizationError };

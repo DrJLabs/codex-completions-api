@@ -163,61 +163,57 @@ describe("chat JSON-RPC normalization", () => {
 
     await waitForCapture(server.captures, (entry) => entry?.payload?.method === "sendUserMessage");
 
-    const turnCapture = findCapture(server.captures, "sendUserTurn");
-    expect(turnCapture).toBeDefined();
-    const turnMetadata = turnCapture.payload?.params?.metadata;
-    expect(turnMetadata).toMatchObject({
-      route: "/v1/chat/completions",
-      req_id: expect.any(String),
-      requested_model: "codex-5",
-      effective_model: expect.any(String),
-      stream: false,
-      n: 1,
-      user: "tester",
-      reasoning_effort: "medium",
-      tool_count: 1,
-      parallel_tool_calls: true,
-    });
-    expect(turnMetadata.message_count).toBe(2);
-    expect(turnMetadata.system_count).toBe(1);
-    expect(turnMetadata.user_count).toBe(1);
-    const turnParams = turnCapture.payload?.params;
-    expect(turnParams.model).toBe(CFG.CODEX_MODEL);
-    expect(turnParams.sandbox_policy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    const newConversationCapture = findCapture(server.captures, "newConversation");
+    expect(newConversationCapture).toBeDefined();
+    const newConversationParams = newConversationCapture?.payload?.params ?? {};
+    expect(newConversationParams.model).toBe(CFG.CODEX_MODEL);
+    expect(newConversationParams.cwd).toBe(CFG.PROXY_CODEX_WORKDIR);
+    expect(newConversationParams.sandbox).toBe(CFG.PROXY_SANDBOX_MODE);
+    expect(newConversationParams.baseInstructions).toBe(
+      payload.messages.find((msg) => msg.role === "system")?.content ?? undefined
+    );
     const expectedApproval = (() => {
       const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
       const normalized = String(raw).trim().toLowerCase();
       return normalized || "never";
     })();
-    expect(turnParams.approval_policy).toMatchObject({ mode: expectedApproval });
+    expect(newConversationParams.approvalPolicy).toBe(expectedApproval);
+    expect(newConversationParams.includeApplyPatchTool).toBe(true);
+
+    const addListenerCapture = findCapture(server.captures, "addConversationListener");
+    expect(addListenerCapture).toBeDefined();
+    expect(addListenerCapture?.payload?.params?.conversationId).toBeDefined();
+
+    const turnCapture = findCapture(server.captures, "sendUserTurn");
+    expect(turnCapture).toBeDefined();
+    const turnParams = turnCapture.payload?.params ?? {};
+    expect(turnParams.model).toBe(CFG.CODEX_MODEL);
+    expect(turnParams.approvalPolicy).toBe(expectedApproval);
     expect(turnParams.cwd).toBe(CFG.PROXY_CODEX_WORKDIR);
-    expect(turnParams.reasoning).toMatchObject({ effort: "medium" });
-    expect(turnParams.stream).toBe(false);
-    expect(turnParams.choice_count).toBe(1);
-    expect(turnParams.tools).toMatchObject({
-      definitions: payload.tools,
-      choice: payload.tool_choice,
-      parallel_tool_calls: true,
+    expect(turnParams.summary).toBe("auto");
+    expect(turnParams.effort).toBe("medium");
+    expect(turnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    expect(turnParams.metadata).toBeUndefined();
+    expect(turnParams.tools).toBeUndefined();
+    expect(turnParams.items).toBeInstanceOf(Array);
+    expect(turnParams.items?.[0]).toMatchObject({
+      type: "text",
+      data: { text: payload.messages.find((msg) => msg.role === "user")?.content },
     });
+    expect(turnParams.conversationId).toMatch(/^conv-/);
 
     const messageCapture = findCapture(server.captures, "sendUserMessage");
     expect(messageCapture).toBeDefined();
     const params = messageCapture.payload.params;
-    expect(params.stream).toBe(false);
-    expect(params.include_usage).toBe(false);
-    expect(params.temperature).toBeCloseTo(0.2);
-    expect(params.top_p).toBeCloseTo(0.9);
-    expect(params.max_output_tokens).toBe(128);
-    expect(params.tools).toMatchObject({
-      definitions: payload.tools,
-      choice: payload.tool_choice,
-      parallel_tool_calls: true,
+    expect(params.conversationId).toBe(turnParams.conversationId);
+    expect(params.metadata).toBeUndefined();
+    expect(params.tools).toBeUndefined();
+    expect(params.includeUsage).toBe(true);
+    expect(params.items).toBeInstanceOf(Array);
+    expect(params.items?.[0]).toMatchObject({
+      type: "text",
+      data: { text: payload.messages.find((msg) => msg.role === "user")?.content },
     });
-    expect(params.metadata).toMatchObject({
-      tool_count: 1,
-      user: "tester",
-    });
-    expect(params.text).toBe(joinMessages(payload.messages));
   }, 20000);
 
   it("flags streaming requests and include_usage in JSON-RPC payload", async () => {
@@ -239,14 +235,16 @@ describe("chat JSON-RPC normalization", () => {
 
     await waitForCapture(server.captures, (entry) => entry?.payload?.method === "sendUserMessage");
     const turnCapture = findCapture(server.captures, "sendUserTurn");
-    expect(turnCapture?.payload?.params?.metadata?.stream).toBe(true);
-    const streamingTurnParams = turnCapture?.payload?.params;
+    expect(turnCapture).toBeDefined();
+    const streamingTurnParams = turnCapture?.payload?.params ?? {};
     expect(streamingTurnParams.model).toBe(CFG.CODEX_MODEL);
-    expect(streamingTurnParams.sandbox_policy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
-    expect(streamingTurnParams.stream).toBe(true);
+    expect(streamingTurnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    expect(streamingTurnParams.items?.[0]?.data?.text).toBe("Stream hello");
     const messageCapture = findCapture(server.captures, "sendUserMessage");
-    expect(messageCapture.payload.params.stream).toBe(true);
-    expect(messageCapture.payload.params.include_usage).toBe(true);
+    expect(messageCapture).toBeDefined();
+    expect(messageCapture.payload.params.conversationId).toBe(streamingTurnParams.conversationId);
+    expect(messageCapture.payload.params.items?.[0]?.data?.text).toBe("Stream hello");
+    expect(messageCapture.payload.params.includeUsage).toBe(true);
   }, 20000);
 
   it("returns invalid_request_error for non-numeric temperature", async () => {

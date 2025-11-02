@@ -169,7 +169,12 @@ export async function postChatStream(req, res) {
   }
   const choiceCount = requestedChoiceCount;
 
-  const optionalValidation = validateOptionalChatParams(body);
+  const backendMode = selectBackendMode();
+  const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
+
+  const optionalValidation = validateOptionalChatParams(body, {
+    allowJsonSchema: isAppServerBackend,
+  });
   if (!optionalValidation.ok) {
     applyCors(null, res);
     return res.status(400).json(optionalValidation.error);
@@ -203,7 +208,6 @@ export async function postChatStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const backendMode = selectBackendMode();
   const args = buildBackendArgs({
     backendMode,
     SANDBOX_MODE,
@@ -274,7 +278,7 @@ export async function postChatStream(req, res) {
     );
   } catch {}
   let normalizedRequest = null;
-  if (backendMode === BACKEND_APP_SERVER) {
+  if (isAppServerBackend) {
     try {
       normalizedRequest = normalizeChatJsonRpcRequest({
         body,
@@ -303,14 +307,13 @@ export async function postChatStream(req, res) {
     }
   }
 
-  const child =
-    backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({
-          reqId,
-          timeoutMs: REQ_TIMEOUT_MS,
-          normalizedRequest,
-        })
-      : spawnCodex(args);
+  const child = isAppServerBackend
+    ? createJsonRpcChildAdapter({
+        reqId,
+        timeoutMs: REQ_TIMEOUT_MS,
+        normalizedRequest,
+      })
+    : spawnCodex(args);
 
   const onChildError = (error) => {
     try {
@@ -854,7 +857,30 @@ export async function postChatStream(req, res) {
 
   const appendContentSegment = (text) => {
     if (!text) return;
-    emitted += text;
+    let appendText = text;
+    if (emitted) {
+      if (appendText.startsWith(emitted)) {
+        appendText = appendText.slice(emitted.length);
+      } else {
+        const maxOverlap = Math.min(emitted.length, appendText.length);
+        let overlap = 0;
+        for (let i = maxOverlap; i > 0; i -= 1) {
+          if (emitted.slice(emitted.length - i) === appendText.slice(0, i)) {
+            overlap = i;
+            break;
+          }
+        }
+        appendText = appendText.slice(overlap);
+        if (!appendText && emitted.includes(text)) {
+          appendText = "";
+        }
+      }
+    }
+    if (!appendText) {
+      scheduleStopAfterTools();
+      return;
+    }
+    emitted += appendText;
     try {
       const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
       if (blocks && blocks.length) {
@@ -1080,7 +1106,8 @@ export async function postChatStream(req, res) {
       if (!trimmed) continue;
       try {
         const evt = JSON.parse(trimmed);
-        const t = (evt && (evt.msg?.type || evt.type)) || "";
+        const rawType = (evt && (evt.msg?.type || evt.type)) || "";
+        const t = typeof rawType === "string" ? rawType.replace(/^codex\/event\//i, "") : "";
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
@@ -1089,15 +1116,17 @@ export async function postChatStream(req, res) {
           kind: "event",
           event: evt,
         });
-        const payload = evt.msg || evt;
-        const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(payload) : null;
-        if (payload) {
-          trackToolSignals(payload);
-          const finishCandidate = extractFinishReasonFromMessage(payload);
+        const payload = evt && typeof evt === "object" ? evt : {};
+        const params = payload.msg && typeof payload.msg === "object" ? payload.msg : payload;
+        const messagePayload = params.msg && typeof params.msg === "object" ? params.msg : params;
+        const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(params) : null;
+        if (messagePayload) {
+          trackToolSignals(messagePayload);
+          const finishCandidate = extractFinishReasonFromMessage(messagePayload);
           if (finishCandidate) trackFinishReason(finishCandidate, t || "event");
         }
-        if (t === "agent_message_delta") {
-          const deltaPayload = evt.msg?.delta ?? evt.delta;
+        if (t === "agent_message_content_delta" || t === "agent_message_delta") {
+          const deltaPayload = messagePayload?.delta ?? messagePayload;
           if (typeof deltaPayload === "string") {
             if (SANITIZE_METADATA) {
               enqueueSanitizedSegment(deltaPayload, metadataInfo, {
@@ -1145,9 +1174,9 @@ export async function postChatStream(req, res) {
             }
           }
         } else if (t === "agent_message") {
-          const messagePayload = evt.msg?.message ?? evt.message;
-          if (typeof messagePayload === "string") {
-            const rawMessage = messagePayload;
+          const finalMessage = messagePayload?.message ?? messagePayload;
+          if (typeof finalMessage === "string") {
+            const rawMessage = finalMessage;
             if (rawMessage) {
               let aggregatedInfo = null;
               if (SANITIZE_METADATA) {
@@ -1181,8 +1210,8 @@ export async function postChatStream(req, res) {
                 scheduleStopAfterTools();
               }
             }
-          } else if (messagePayload && typeof messagePayload === "object") {
-            const { deltas, updated } = toolCallAggregator.ingestMessage(messagePayload, {
+          } else if (finalMessage && typeof finalMessage === "object") {
+            const { deltas, updated } = toolCallAggregator.ingestMessage(finalMessage, {
               emitIfMissing: true,
             });
             if (updated) {
@@ -1210,9 +1239,7 @@ export async function postChatStream(req, res) {
               }
             }
             if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
-            const text = coerceAssistantContent(
-              messagePayload.content ?? messagePayload.text ?? ""
-            );
+            const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
             let aggregatedInfo = null;
             if (SANITIZE_METADATA) {
               enqueueSanitizedSegment(
@@ -1254,19 +1281,41 @@ export async function postChatStream(req, res) {
             });
           }
         } else if (t === "token_count") {
-          const promptTokens = Number(evt.msg?.prompt_tokens ?? evt.msg?.promptTokens);
-          const completionTokens = Number(evt.msg?.completion_tokens ?? evt.msg?.completionTokens);
+          const promptTokens = Number(
+            messagePayload?.prompt_tokens ??
+              messagePayload?.promptTokens ??
+              messagePayload?.token_count?.prompt_tokens ??
+              params?.prompt_tokens ??
+              params?.promptTokens ??
+              params?.token_count?.prompt_tokens
+          );
+          const completionTokens = Number(
+            messagePayload?.completion_tokens ??
+              messagePayload?.completionTokens ??
+              messagePayload?.token_count?.completion_tokens ??
+              params?.completion_tokens ??
+              params?.completionTokens ??
+              params?.token_count?.completion_tokens
+          );
           updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
-          const tokenFinishReason = extractFinishReasonFromMessage(evt.msg);
+          const tokenFinishReason = extractFinishReasonFromMessage(messagePayload);
           if (tokenFinishReason) trackFinishReason(tokenFinishReason, "token_count");
         } else if (t === "usage") {
           const promptTokens = Number(
-            evt.msg?.prompt_tokens ?? evt.msg?.usage?.prompt_tokens ?? evt.usage?.prompt_tokens
+            messagePayload?.prompt_tokens ??
+              messagePayload?.usage?.prompt_tokens ??
+              params?.usage?.prompt_tokens ??
+              params?.prompt_tokens ??
+              params?.promptTokens ??
+              params?.token_count?.prompt_tokens
           );
           const completionTokens = Number(
-            evt.msg?.completion_tokens ??
-              evt.msg?.usage?.completion_tokens ??
-              evt.usage?.completion_tokens
+            messagePayload?.completion_tokens ??
+              messagePayload?.usage?.completion_tokens ??
+              params?.usage?.completion_tokens ??
+              params?.completion_tokens ??
+              params?.completionTokens ??
+              params?.token_count?.completion_tokens
           );
           updateUsageCounts(
             "provider",
@@ -1274,15 +1323,23 @@ export async function postChatStream(req, res) {
             { provider: true }
           );
         } else if (t === "task_complete") {
-          const finishReason = extractFinishReasonFromMessage(evt.msg);
+          const finishReason = extractFinishReasonFromMessage(messagePayload);
           if (finishReason) trackFinishReason(finishReason, "task_complete");
           else if (!emitted) trackFinishReason("length", "task_complete");
           else if (lengthEvidence) trackFinishReason("length", "task_complete");
           const promptTokens = Number(
-            evt.msg?.prompt_tokens ?? evt.msg?.token_count?.prompt_tokens
+            messagePayload?.prompt_tokens ??
+              messagePayload?.token_count?.prompt_tokens ??
+              params?.token_count?.prompt_tokens ??
+              params?.prompt_tokens ??
+              params?.promptTokens
           );
           const completionTokens = Number(
-            evt.msg?.completion_tokens ?? evt.msg?.token_count?.completion_tokens
+            messagePayload?.completion_tokens ??
+              messagePayload?.token_count?.completion_tokens ??
+              params?.token_count?.completion_tokens ??
+              params?.completion_tokens ??
+              params?.completionTokens
           );
           if (Number.isFinite(promptTokens) || Number.isFinite(completionTokens)) {
             updateUsageCounts(usageState.trigger || "task_complete", {
@@ -1328,11 +1385,12 @@ export async function postChatStream(req, res) {
     };
     child.stdin.write(JSON.stringify(submission) + "\n");
   } catch {}
-  child.on("close", () => {
+  const handleChildClose = () => {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
     if (finalized) return;
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
-      trackFinishReason("length", "token_count_fallback");
+      const fallbackReason = isAppServerBackend ? "stop" : "length";
+      trackFinishReason(fallbackReason, "token_count_fallback");
     }
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
@@ -1360,7 +1418,9 @@ export async function postChatStream(req, res) {
         ? "length"
         : "stop";
     finalizeStream({ reason: inferredReason, trigger });
-  });
+  };
+  child.on("close", handleChildClose);
+  child.on?.("exit", handleChildClose);
 }
 
 // POST /v1/completions with stream=true (legacy shim that maps to proto)
@@ -1660,7 +1720,11 @@ export async function postCompletionsStream(req, res) {
       if (!t) continue;
       try {
         const evt = JSON.parse(t);
-        const tp = (evt && (evt.msg?.type || evt.type)) || "";
+        const rawTp = (evt && (evt.msg?.type || evt.type)) || "";
+        const tp = typeof rawTp === "string" ? rawTp.replace(/^codex\/event\//i, "") : "";
+        const payload = evt && typeof evt === "object" ? evt : {};
+        const params = payload.msg && typeof payload.msg === "object" ? payload.msg : payload;
+        const messagePayload = params.msg && typeof params.msg === "object" ? params.msg : params;
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
@@ -1670,7 +1734,8 @@ export async function postCompletionsStream(req, res) {
           event: evt,
         });
         if (tp === "agent_message_delta") {
-          const dlt = String((evt.msg?.delta ?? evt.delta) || "");
+          const deltaPayload = messagePayload?.delta ?? messagePayload;
+          const dlt = typeof deltaPayload === "string" ? deltaPayload : "";
           if (dlt) {
             sentAny = true;
             emitted += dlt;
@@ -1698,7 +1763,8 @@ export async function postCompletionsStream(req, res) {
             }
           }
         } else if (tp === "agent_message") {
-          const m = String((evt.msg?.message ?? evt.message) || "");
+          const messageValue = messagePayload?.message ?? messagePayload;
+          const m = typeof messageValue === "string" ? messageValue : "";
           if (m) {
             let suffix = "";
             if (m.startsWith(emitted)) suffix = m.slice(emitted.length);

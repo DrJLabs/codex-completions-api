@@ -30,6 +30,7 @@
     "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
     "smoke": "bash scripts/smoke.sh",
     "jsonrpc:schema": "node scripts/jsonrpc/render-schema.mjs",
+    "jsonrpc:bundle": "node scripts/jsonrpc/export-json-schema.mjs",
     "test": "playwright test",
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest --dir tests/unit",
@@ -67,6 +68,7 @@
     "@playwright/test": "^1.56.1",
     "@secretlint/secretlint-rule-preset-recommend": "^11.2.5",
     "@vitest/coverage-v8": "^4.0.3",
+    "ajv": "^8.17.1",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.29.1",
@@ -81,6 +83,8 @@
     "node-fetch": "^3.3.2",
     "prettier": "^3.3.3",
     "secretlint": "^11.2.5",
+    "typescript": "^5.5.4",
+    "typescript-json-schema": "^0.60.0",
     "vitest": "^4.0.3"
   },
   "lint-staged": {

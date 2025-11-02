@@ -85,11 +85,21 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     await settle();
 
     const afterReady = getWorkerStatus();
-    expect(afterReady.health.readiness.ready).toBe(true);
-    expect(afterReady.health.readiness.reason).toBe("handshake_complete");
-    expect(afterReady.health.readiness.handshake?.models).toEqual(["codex-5"]);
+    expect(afterReady.health.readiness.ready).toBe(false);
+    expect(afterReady.health.readiness.reason).toBe("handshake_pending");
+    expect(afterReady.health.readiness.handshake).toBeNull();
     expect(afterReady.health.liveness.live).toBe(true);
     expect(afterReady.health.liveness.reason).toBe("worker_running");
+
+    currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
+    await settle();
+
+    const afterHandshake = getWorkerStatus();
+    expect(afterHandshake.health.readiness.ready).toBe(true);
+    expect(afterHandshake.health.readiness.reason).toBe("handshake_complete");
+    expect(afterHandshake.health.readiness.handshake?.models).toEqual(["codex-5"]);
+    expect(afterHandshake.health.liveness.live).toBe(true);
+    expect(afterHandshake.health.liveness.reason).toBe("worker_running");
 
     child.exitCode = 0;
     child.signalCode = null;

@@ -258,6 +258,21 @@ So that stakeholders approve production rollout with confidence.
 
 **Prerequisites:** Stories 2.1-2.5
 
+**Story 2.7: Align JSON-RPC wiring with app-server schema**
+
+As a backend developer,
+I want the proxy's JSON-RPC requests and notifications to match the Codex app-server schema,
+So that the dev stack can run purely on app-server without `-32600 Invalid Request` failures.
+
+**Acceptance Criteria:**
+
+1. Request normalization emits `initialize` and `sendUserTurn` payloads using the exact camelCase field names and structures from [codex-app-server-rpc.md](./app-server-migration/codex-app-server-rpc.md), including `clientInfo`, `conversationId`, `items`, tool metadata, and optional schema fields.
+2. Transport layer sends JSON-RPC 2.0 frames with correct ids, handles newline-delimited responses, and upgrades readiness only after a successful initialize response; streaming notifications are parsed into the existing SSE adapter without losing metadata.
+3. A harness (or automated test) exercises the CLI app-server binary via stdio using the documented script, proving successful initialize → sendUserTurn → streaming flow in CI with captured payload fixtures.
+4. Documentation/runbooks updated to describe the schema source of truth and harness usage for future CLI updates.
+
+**Prerequisites:** Stories 2.1-2.4
+
 ## Epic 3: Observability & Ops Hardening
 
 ### Expanded Goal
