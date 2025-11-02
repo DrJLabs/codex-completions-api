@@ -51,8 +51,8 @@ development_status:
   2-4-align-error-handling-and-retries: done
   2-0-establish-parity-verification-infrastructure: done
   2-5-update-regression-suite-for-parity-evidence: done
-  2-6-document-parity-verification-and-rollout-checklist: backlog
-  epic-2-retrospective: optional
+  2-6-document-parity-verification-and-rollout-checklist: done
+  epic-2-retrospective: completed
   epic-3: backlog
   3-1-structured-logging-for-worker-lifecycle: backlog
   3-2-metrics-pipeline-for-app-server-path: backlog
