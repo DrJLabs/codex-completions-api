@@ -32,7 +32,7 @@ Content-Type: application/json
 {"model":"gpt-5-codex","input":"Say hi","stream":true}
 ```
 
-```
+```text
 event: response.created
 data: {"type":"response.created","response":{"id":"resp_123","status":"in_progress","model":"gpt-5-codex"}}
 
