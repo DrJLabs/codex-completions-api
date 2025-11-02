@@ -1,6 +1,6 @@
 # Story 2.7: Align JSON-RPC wiring with app-server schema
 
-Status: review
+Status: done
 
 ## Story
 
@@ -89,13 +89,20 @@ codex-5
 
 - 2025-11-02: `npm run test:unit`
 - 2025-11-02: `npm run test:integration`
+- 2025-11-02: `npm test`
+- 2025-11-02: `npm run smoke:dev`
 - 2025-11-02: `npx vitest run tests/integration/json-rpc-schema-validation.int.test.js --reporter=default`
 - 2025-11-02: `npm run jsonrpc:bundle`
+
+### Deployment / Stack Notes
+
+- Refreshed `.codev/auth.json` from `~/.codex/auth.json`, rebuilt the dev stack (`npm run dev:stack:down && npm run dev:stack:up`), and observed clean streaming completions with the updated schema wiring.
 
 ### Completion Notes List
 
 - Updated request normalization, schema helpers, and transport readiness gating to match app-server expectations.
 - Added schema bundle exporter + validation harness and refreshed migration runbooks with regeneration workflow.
+- Validated streaming responses end-to-end (E2E + dev smoke) after redeploying the dev stack with refreshed auth credentials.
 
 ### File List
 
@@ -117,3 +124,4 @@ codex-5
 - 2025-11-02: Story context assembled and status advanced to ready-for-dev.
 - 2025-11-02: Implemented schema-aligned JSON-RPC wiring, harness + docs, and generated schema bundle.
 - 2025-11-02: Executed unit/integration suites and schema validation harness.
+- 2025-11-02: Rebuilt dev stack with refreshed auth, ran full Playwright suite plus dev smoke to confirm streaming completions, and moved story to done.
