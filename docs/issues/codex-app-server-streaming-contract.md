@@ -194,7 +194,19 @@ export function* responsesToLegacy(stream: AsyncIterable<{ type: string; [k: str
         break;
 
       case "response.completed": {
-        const last = ev.response?.output?.[ev.response?.output?.length - 1];
+        const output = Array.isArray(ev.response?.output) ? ev.response.output : [];
+        const lastMeaningful = [...output].reverse().find((item) => {
+          if (!item) return false;
+          if (item.type !== "message") return true;
+          const content = Array.isArray(item.content) ? item.content : [];
+          return content.some((part) => {
+            if (!part) return false;
+            if (typeof part === "string") return part.trim().length > 0;
+            if (typeof part.text === "string") return part.text.trim().length > 0;
+            if (typeof part.delta === "string") return part.delta.trim().length > 0;
+            return true;
+          });
+        });
         const status = ev.response?.status;
         const inc = ev.response?.incomplete_details?.reason;
         const finish: LegacyDone["finish_reason"] =
@@ -202,7 +214,7 @@ export function* responsesToLegacy(stream: AsyncIterable<{ type: string; [k: str
             ? inc === "content_filter"
               ? "content_filter"
               : "length"
-            : last?.type === "function_call"
+            : lastMeaningful?.type === "function_call"
               ? "tool_calls"
               : "stop";
         const usage = ev.response?.usage;
