@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Codex App Server JSON-RPC Schema Bundle",
   "cliVersion": "0.53.0",
-  "generatedAt": "2025-11-02T07:09:34.187Z",
+  "generatedAt": "2025-11-02T19:53:00.325Z",
   "definitions": {
     "InitializeParams": {
       "type": "object",
@@ -292,9 +292,37 @@
             "$ref": "#/definitions/InputItem"
           }
         },
-        "metadata": {
-          "$ref": "#/definitions/Record<string,unknown>"
-        }
+        "includeUsage": {
+          "type": "boolean"
+        },
+        "include_usage": {
+          "type": "boolean"
+        },
+        "metadata": {},
+        "stream": {
+          "type": "boolean"
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "topP": {
+          "type": "number"
+        },
+        "top_p": {
+          "type": "number"
+        },
+        "maxOutputTokens": {
+          "type": "number"
+        },
+        "max_output_tokens": {
+          "type": "number"
+        },
+        "tools": {},
+        "responseFormat": {},
+        "response_format": {},
+        "reasoning": {},
+        "finalOutputJsonSchema": {},
+        "final_output_json_schema": {}
       },
       "required": ["conversationId", "items"],
       "$schema": "http://json-schema.org/draft-07/schema#"

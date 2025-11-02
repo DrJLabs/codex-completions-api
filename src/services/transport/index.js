@@ -159,14 +159,6 @@ class JsonRpcTransport {
       this.handshakeCompleted = false;
       this.handshakeData = null;
       this.handshakePromise = null;
-      const recorder = this.supervisor?.recordHandshakePending;
-      if (typeof recorder === "function") {
-        try {
-          recorder.call(this.supervisor);
-        } catch (err) {
-          console.warn(`${LOG_PREFIX} failed to record handshake pending`, err);
-        }
-      }
       this.ensureHandshake().catch((err) => {
         const handler = this.supervisor?.recordHandshakeFailure;
         if (typeof handler === "function") {
@@ -573,8 +565,6 @@ class JsonRpcTransport {
       conversationId: context.conversationId ?? context.clientConversationId,
       requestId: context.clientConversationId,
     });
-    console.warn("[proxy][json-rpc-transport] sendUserMessage", JSON.stringify(params));
-
     try {
       this.#write({
         jsonrpc: JSONRPC_VERSION,
@@ -669,7 +659,6 @@ class JsonRpcTransport {
         conversationId: context.conversationId ?? context.clientConversationId,
         requestId: context.clientConversationId,
       });
-      console.warn("[proxy][json-rpc-transport] sendUserTurn", JSON.stringify(params));
       this.#write({
         jsonrpc: JSONRPC_VERSION,
         id: turnRpcId,
@@ -960,9 +949,6 @@ class JsonRpcTransport {
         retryable: true,
       });
     }
-    try {
-      console.warn("[proxy][json-rpc-transport] ->", JSON.stringify(message));
-    } catch {}
     const serialized = JSON.stringify(message);
     try {
       this.child.stdin.write(serialized + "\n");
