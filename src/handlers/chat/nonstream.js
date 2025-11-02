@@ -41,11 +41,13 @@ import {
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
+import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { mapTransportError } from "../../services/transport/index.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
+const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
@@ -59,6 +61,11 @@ const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOW
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
+const APPROVAL_POLICY = (() => {
+  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized || "never";
+})();
 
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
@@ -358,9 +365,39 @@ export async function postChatNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt,
+        reqId,
+        requestedModel,
+        effectiveModel,
+        choiceCount,
+        stream: false,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        applyCors(null, res);
+        return res.status(err.statusCode).json(err.body);
+      }
+      throw err;
+    }
+  }
+
   const child =
     backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+        })
       : spawnCodex(args);
   if (SANITIZE_METADATA) {
     appendProtoEvent({

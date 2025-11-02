@@ -34,6 +34,7 @@ spawn("codex", [
 
 - Keep the same `CODEX_BIN` resolution; only subcommand changes.
 - Pin the CLI dependency (`@openai/codex`) to version **0.53.0** so the `app-server` binary ships with the image.
+- After bumping the CLI, run `npm run jsonrpc:schema` to regenerate `src/lib/json-rpc/schema.ts`. The script stamps the recorded CLI version and is deterministic, so re-running when nothing changed should produce a zero-diff output.
 
 ---
 
@@ -206,7 +207,7 @@ spawn("codex", [
 
 ## K. Parity fixture maintenance workflow
 
-1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator now writes to `test-results/chat-completions/{proto,app}/` and stamps each artifact with `backend`, `backend_storage`, `codex_bin`, and the current Git `commit`.
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator now writes to `test-results/chat-completions/{proto,app}/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
 2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs.
 3. **Smoke the baseline** – before publishing updated fixtures, run:
    ```bash
@@ -214,7 +215,7 @@ spawn("codex", [
    npm test
    ```
    This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
-4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks into the deployment notes so downstream stories know which baseline the fixtures represent.
+4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks (or `manifest.json`) into the deployment notes so downstream stories know which baseline the fixtures represent.
 5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
 
 **Streaming delta (notification):**

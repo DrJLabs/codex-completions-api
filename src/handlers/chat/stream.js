@@ -51,10 +51,12 @@ import {
 import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
 import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
+import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
+const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
 const FORCE_PROVIDER = CFG.CODEX_FORCE_PROVIDER.trim();
 const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
@@ -74,6 +76,11 @@ const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
+const APPROVAL_POLICY = (() => {
+  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized || "never";
+})();
 
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
@@ -266,9 +273,43 @@ export async function postChatStream(req, res) {
       prompt.length
     );
   } catch {}
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt,
+        reqId,
+        requestedModel,
+        effectiveModel,
+        choiceCount,
+        stream: true,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        if (!responded) {
+          responded = true;
+          releaseGuard("normalization_error");
+        }
+        applyCors(null, res);
+        return res.status(err.statusCode).json(err.body);
+      }
+      throw err;
+    }
+  }
+
   const child =
     backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+        })
       : spawnCodex(args);
 
   const onChildError = (error) => {
@@ -323,6 +364,48 @@ export async function postChatStream(req, res) {
   // Stable id across stream
   const completionId = `chatcmpl-${nanoid()}`;
   const created = Math.floor(Date.now() / 1000);
+  let firstTokenAt = null;
+  const markFirstToken = () => {
+    if (firstTokenAt !== null) return;
+    firstTokenAt = Date.now();
+  };
+  const markFirstTokenFromPayload = (payload) => {
+    if (firstTokenAt !== null) return;
+    if (!payload || typeof payload !== "object") return;
+    const choices = Array.isArray(payload.choices) ? payload.choices : [];
+    for (const choice of choices) {
+      const delta = choice?.delta || {};
+      if (typeof delta.content === "string" && delta.content.length) {
+        markFirstToken();
+        return;
+      }
+      if (
+        Array.isArray(delta.content) &&
+        delta.content.some((item) => {
+          if (!item) return false;
+          if (typeof item === "string") return item.length > 0;
+          if (typeof item.text === "string") return item.text.length > 0;
+          return false;
+        })
+      ) {
+        markFirstToken();
+        return;
+      }
+      if (delta.text && typeof delta.text === "string" && delta.text.length) {
+        markFirstToken();
+        return;
+      }
+      if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
+        markFirstToken();
+        return;
+      }
+      const functionCall = delta.function_call || delta.functionCall;
+      if (functionCall && (functionCall.name || functionCall.arguments)) {
+        markFirstToken();
+        return;
+      }
+    }
+  };
   const sendChunk = (payload) => {
     const chunkPayload = {
       id: completionId,
@@ -331,6 +414,7 @@ export async function postChatStream(req, res) {
       model: requestedModel,
       ...payload,
     };
+    markFirstTokenFromPayload(chunkPayload);
     const handled = invokeAdapter("onChunk", chunkPayload);
     if (handled === true) return;
     sendSSE(chunkPayload);
@@ -640,6 +724,8 @@ export async function postChatStream(req, res) {
     trigger: null,
     countsSource: "estimate",
     providerSupplied: false,
+    firstTokenMs: null,
+    totalDurationMs: null,
   };
   let streamIdleTimer;
   const resetStreamIdle = () => {
@@ -802,6 +888,10 @@ export async function postChatStream(req, res) {
     const { promptTokens, completionTokens } = resolvedCounts();
     const aggregatedCompletion = completionTokens * choiceCount;
     const aggregatedTotal = promptTokens + aggregatedCompletion;
+    const firstTokenMs = firstTokenAt === null ? null : Math.max(firstTokenAt - started, 0);
+    const totalDurationMs = Math.max(Date.now() - started, 0);
+    usageState.firstTokenMs = firstTokenMs;
+    usageState.totalDurationMs = totalDurationMs;
     usageState.emitted = true;
     sendChunk({
       choices: [],
@@ -809,6 +899,8 @@ export async function postChatStream(req, res) {
         prompt_tokens: promptTokens,
         completion_tokens: aggregatedCompletion,
         total_tokens: aggregatedTotal,
+        time_to_first_token_ms: firstTokenMs,
+        total_duration_ms: totalDurationMs,
         // Story 2.6 placeholders remain
         time_to_first_token: null,
         throughput_after_first_token: null,
@@ -824,6 +916,13 @@ export async function postChatStream(req, res) {
     const aggregatedTotal = promptTokens + aggregatedCompletion;
     const aggregatedEstCompletion = estimatedCompletion * choiceCount;
     const emittedAtMs = Date.now() - started;
+    const firstTokenMs =
+      usageState.firstTokenMs !== null
+        ? usageState.firstTokenMs
+        : firstTokenAt === null
+          ? null
+          : Math.max(firstTokenAt - started, 0);
+    const totalDurationMs = usageState.totalDurationMs ?? emittedAtMs;
     const resolved = finalFinishReason
       ? { reason: finalFinishReason, source: finalFinishSource }
       : resolveFinishReason();
@@ -859,6 +958,7 @@ export async function postChatStream(req, res) {
         completion_tokens_est: aggregatedEstCompletion,
         total_tokens_est: promptTokensEst + aggregatedEstCompletion,
         duration_ms: emittedAtMs,
+        total_duration_ms: totalDurationMs,
         status: 200,
         user_agent: req.headers["user-agent"] || "",
         emission_trigger: trigger,
@@ -866,6 +966,7 @@ export async function postChatStream(req, res) {
         counts_source: usageState.countsSource,
         usage_included: includeUsage,
         provider_supplied: usageState.providerSupplied,
+        time_to_first_token_ms: firstTokenMs,
         finish_reason: resolved.reason,
         finish_reason_source: resolved.source,
         has_tool_calls: hasToolCallEvidence(),
@@ -887,6 +988,7 @@ export async function postChatStream(req, res) {
   const finalizeStream = ({ reason, trigger } = {}) => {
     if (finalized) return;
     finalized = true;
+    responded = true;
     try {
       if (cutTimer) {
         clearTimeout(cutTimer);
@@ -900,8 +1002,8 @@ export async function postChatStream(req, res) {
       (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
     if (reason) trackFinishReason(reason, "finalize");
     const resolvedFinish = resolveFinishReason();
-    if (!finishSent) emitFinishChunk();
     if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
+    if (!finishSent) emitFinishChunk();
     if (!usageState.logged) logUsage(resolvedTrigger);
     if (toolCallAggregator.hasCalls()) {
       try {

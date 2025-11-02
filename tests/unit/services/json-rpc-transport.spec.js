@@ -43,9 +43,8 @@ vi.mock("../../../src/services/worker/supervisor.js", () => ({
   },
 }));
 
-const { getJsonRpcTransport, resetJsonRpcTransport, TransportError } = await import(
-  "../../../src/services/transport/index.js"
-);
+const { getJsonRpcTransport, resetJsonRpcTransport, TransportError, mapTransportError } =
+  await import("../../../src/services/transport/index.js");
 const { __setChild } = await import("../../../src/services/worker/supervisor.js");
 const { config: CFG } = await import("../../../src/config/index.js");
 
@@ -76,6 +75,44 @@ beforeEach(() => {
   supervisorMock.waitForReady.mockResolvedValue();
   vi.clearAllMocks();
   CFG.WORKER_MAX_CONCURRENCY = ORIGINAL_MAX_CONCURRENCY;
+});
+
+describe("mapTransportError", () => {
+  it("treats app_server_disabled as non-retryable server error", () => {
+    const message = "JSON-RPC transport requested while app-server mode disabled";
+    const err = new TransportError(message, { code: "app_server_disabled", retryable: false });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped).toMatchObject({
+      statusCode: 500,
+      body: {
+        error: {
+          code: "app_server_disabled",
+          type: "server_error",
+          message,
+        },
+      },
+    });
+    expect(mapped.body.error).not.toHaveProperty("retryable");
+  });
+
+  it("preserves worker error messages", () => {
+    const err = new TransportError("worker crashed with code 42", {
+      code: "worker_error",
+      retryable: false,
+    });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped.statusCode).toBe(500);
+    expect(mapped.body.error).toMatchObject({
+      code: "worker_error",
+      type: "server_error",
+      message: "worker crashed with code 42",
+    });
+    expect(mapped.body.error).not.toHaveProperty("retryable");
+  });
 });
 
 afterEach(() => {
