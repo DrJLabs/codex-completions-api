@@ -292,6 +292,10 @@ export async function postChatStream(req, res) {
       });
     } catch (err) {
       if (err instanceof ChatJsonRpcNormalizationError) {
+        if (!responded) {
+          responded = true;
+          releaseGuard("normalization_error");
+        }
         applyCors(null, res);
         return res.status(err.statusCode).json(err.body);
       }

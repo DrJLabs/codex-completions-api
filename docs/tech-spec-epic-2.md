@@ -157,4 +157,4 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 
 ## Post-Review Follow-ups
 
-- [Resolved 2025-11-01][High] Story 2.1 — Reinstate strict pin of `@openai/codex` to 0.53.0 in dependencies and lockfile to preserve deterministic schema regeneration.
+- [Resolved 2025-11-01] High priority — Story 2.1: Reinstate strict pin of `@openai/codex` to 0.53.0 in dependencies and lockfile to preserve deterministic schema regeneration.

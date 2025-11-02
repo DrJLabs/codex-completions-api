@@ -244,7 +244,21 @@ export const normalizeChatJsonRpcRequest = ({
     );
   })();
 
-  const includeUsage = streamOptionsIncludeUsage ?? true;
+  const bodyIncludeUsage = (() => {
+    const raw = body.include_usage ?? body.includeUsage;
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "string") {
+      const trimmed = raw.trim().toLowerCase();
+      if (["true", "1", "yes"].includes(trimmed)) return true;
+      if (["false", "0", "no"].includes(trimmed)) return false;
+    }
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("include_usage", "include_usage must be a boolean when provided")
+    );
+  })();
+
+  const includeUsage = streamOptionsIncludeUsage ?? bodyIncludeUsage ?? true;
   const user = normalizeUser(body.user);
 
   const sharedMetadata = buildSharedMetadata({

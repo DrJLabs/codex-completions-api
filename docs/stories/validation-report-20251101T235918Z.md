@@ -75,11 +75,11 @@ Pass Rate: 5/5 (100%)
 
 ## Failed Items
 
-_None_
+None
 
 ## Partial Items
 
-- ⚠ **Testing subtasks coverage** — Only a single testing subtask is defined for AC #2, leaving ACs #1/#3 without explicit test coverage tasks. Consider adding review/validation tasks or explaining why additional testing is not applicable. (docs/stories/2-6-document-parity-verification-and-rollout-checklist.md:27-33)
+- ⚠ **Testing subtasks coverage** — Only a single testing subtask is defined for AC #2, leaving ACs #1 and #3 without explicit test coverage tasks. Consider adding review/validation tasks or explaining why additional testing is not applicable. (docs/stories/2-6-document-parity-verification-and-rollout-checklist.md:27-33)
 
 ## Recommendations
 

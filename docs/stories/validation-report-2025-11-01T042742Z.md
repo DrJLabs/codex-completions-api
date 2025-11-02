@@ -47,11 +47,11 @@ Evidence: Document preserves `<story-context>` root with metadata, story, artifa
 
 ## Failed Items
 
-_None_
+None
 
 ## Partial Items
 
-_None_
+None
 
 ## Recommendations
 
