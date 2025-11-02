@@ -316,13 +316,13 @@ Use this procedure whenever you refresh fixtures for `/v1/chat/completions`:
    ```bash
    npm run transcripts:generate
    ```
-   This writes deterministic outputs to `test-results/chat-completions/proto/` and `test-results/chat-completions/app/`, embedding metadata such as `backend`, `backend_storage`, `codex_bin`, and the repo `commit` SHA in each file.
+   This writes deterministic outputs to `test-results/chat-completions/proto/` and `test-results/chat-completions/app/`, embedding metadata such as `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the repo `commit` SHA in each file while refreshing the manifest at `test-results/chat-completions/manifest.json` with scenario coverage details.
 2. **Validate parity harness** – run the dedicated diff suite to assert proto/app transcripts remain aligned:
    ```bash
    npm run test:parity
    ```
    The harness fails fast when a scenario is missing or a payload diverges, ensuring regressions are caught before CI.
-3. **Record baseline versions** – note the Codex CLI/App Server build used for capture (the values are stamped in the `metadata` block of every transcript). Copy these into the release notes or migration runbook when updating fixtures.
+3. **Record baseline versions** – note the Codex CLI/App Server build used for capture (the values are stamped in the `metadata` block of every transcript and summarized in `manifest.json`). Copy these into the release notes or migration runbook when updating fixtures.
 4. **Smoke the stack** – execute `npm run test:integration` and `npm test` before publishing refreshed transcripts to guarantee the Epic 1 baseline remains healthy.
 
 > Tip: If a deliberate mismatch is required for debugging, edit a single transcript, run `npm run test:parity` to observe the failure output, then regenerate fixtures with `npm run transcripts:generate` to restore the canonical corpus.

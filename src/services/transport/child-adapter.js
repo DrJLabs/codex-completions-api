@@ -6,7 +6,7 @@ const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 const toStringSafe = (data) => (typeof data === "string" ? data : (data?.toString?.("utf8") ?? ""));
 
 export class JsonRpcChildAdapter extends EventEmitter {
-  constructor({ reqId, timeoutMs }) {
+  constructor({ reqId, timeoutMs, normalizedRequest = null }) {
     super();
     this.reqId = reqId;
     this.timeoutMs = timeoutMs;
@@ -14,6 +14,7 @@ export class JsonRpcChildAdapter extends EventEmitter {
     this.context = null;
     this.closed = false;
     this.started = false;
+    this.normalizedRequest = normalizedRequest;
 
     this.stdout = new EventEmitter();
     this.stderr = new EventEmitter();
@@ -55,9 +56,13 @@ export class JsonRpcChildAdapter extends EventEmitter {
     const prompt = this.#extractPrompt(submission);
 
     try {
+      const normalized = this.normalizedRequest || null;
+      const turnPayload = normalized?.turn ? { ...normalized.turn } : undefined;
+
       this.context = await this.transport.createChatRequest({
         requestId: this.reqId,
         timeoutMs: this.timeoutMs,
+        turnParams: turnPayload,
       });
       if (this.closed) {
         this.transport.cancelContext(
@@ -71,7 +76,9 @@ export class JsonRpcChildAdapter extends EventEmitter {
         return;
       }
       this.#wireContext(this.context);
-      this.transport.sendUserMessage(this.context, { text: prompt });
+      const messagePayload = normalized?.message ? { ...normalized.message } : { text: prompt };
+      if (!messagePayload.text) messagePayload.text = prompt;
+      this.transport.sendUserMessage(this.context, messagePayload);
       await this.context.promise;
       this.#finalize(0);
     } catch (err) {
