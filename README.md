@@ -49,7 +49,7 @@ Install dependencies (`npm install`) and run `npm run dev` (or `npm run dev:shim
 
 - Proto mode (default): `PROXY_USE_APP_SERVER=false`. Each request spawns a short-lived Codex proto process. Handy for local dev without the Rust app-server dependency and mirrors the historic behavior.
 - App-server mode: `PROXY_USE_APP_SERVER=true`. A worker supervisor keeps one or more long-lived `codex app-server` processes alive and routes JSON-RPC traffic that matches the exported schema bundle under `docs/app-server-migration/`. Production currently runs in this mode.
-- Toggle either mode by setting `PROXY_USE_APP_SERVER` in `.env.dev`, `.env`, or the relevant compose file. When switching to app-server locally ensure `codex --version` ≥ 0.53.0 and refresh `auth.json` in `.codev/`.
+- Toggle either mode by setting `PROXY_USE_APP_SERVER` in `.env.dev`, `.env`, or the relevant compose file. When switching to app-server locally ensure `codex --version` ≥ 0.53.0 and refresh `auth.json` in `.codev/` (e.g., by copying from `~/.codex/auth.json`).
 - Readiness in app-server mode is gated by `initialize` JSON-RPC success; the proxy only advertises readiness once the worker handshake completes. Override `WORKER_*_TIMEOUT_MS` if using slower hardware.
 
 ## Project Structure (high‑level)
