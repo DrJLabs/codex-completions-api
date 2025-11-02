@@ -169,7 +169,11 @@ export async function postChatStream(req, res) {
   }
   const choiceCount = requestedChoiceCount;
 
-  const optionalValidation = validateOptionalChatParams(body);
+  const backendMode = selectBackendMode();
+
+  const optionalValidation = validateOptionalChatParams(body, {
+    allowJsonSchema: backendMode === BACKEND_APP_SERVER,
+  });
   if (!optionalValidation.ok) {
     applyCors(null, res);
     return res.status(400).json(optionalValidation.error);
@@ -203,7 +207,6 @@ export async function postChatStream(req, res) {
     if (implied) reasoningEffort = implied;
   }
 
-  const backendMode = selectBackendMode();
   const args = buildBackendArgs({
     backendMode,
     SANDBOX_MODE,

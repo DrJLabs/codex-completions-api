@@ -1,4 +1,5 @@
 import { invalidRequestBody } from "../../lib/errors.js";
+import { createUserMessageItem } from "../../lib/json-rpc/schema.ts";
 
 class ChatJsonRpcNormalizationError extends Error {
   constructor(body, statusCode = 400) {
@@ -36,14 +37,26 @@ const summarizeMessages = (messages = []) => {
     system_count: 0,
     user_count: 0,
     assistant_count: 0,
+    messageCount: 0,
+    systemCount: 0,
+    userCount: 0,
+    assistantCount: 0,
   };
   if (!Array.isArray(messages)) return summary;
   summary.message_count = messages.length;
+  summary.messageCount = messages.length;
   for (const msg of messages) {
     const role = (msg?.role || "").toLowerCase();
-    if (role === "system") summary.system_count += 1;
-    else if (role === "user") summary.user_count += 1;
-    else if (role === "assistant") summary.assistant_count += 1;
+    if (role === "system") {
+      summary.system_count += 1;
+      summary.systemCount += 1;
+    } else if (role === "user") {
+      summary.user_count += 1;
+      summary.userCount += 1;
+    } else if (role === "assistant") {
+      summary.assistant_count += 1;
+      summary.assistantCount += 1;
+    }
   }
   return summary;
 };
@@ -108,6 +121,29 @@ const validateTools = (tools) => {
   return definitions.length ? definitions : undefined;
 };
 
+const resolveFinalOutputJsonSchema = (responseFormat) => {
+  if (!responseFormat || typeof responseFormat !== "object") return undefined;
+  const type = String(responseFormat.type || "").toLowerCase();
+  if (type !== "json_schema") return undefined;
+  const schemaObject = responseFormat.json_schema ?? responseFormat.schema;
+  if (schemaObject === null) return null;
+  if (schemaObject && typeof schemaObject === "object") {
+    if (schemaObject.schema && typeof schemaObject.schema === "object") {
+      return schemaObject.schema;
+    }
+    return schemaObject;
+  }
+  return undefined;
+};
+
+const buildToolsPayload = ({ definitions, toolChoice, parallelToolCalls }) => {
+  const payload = {};
+  if (definitions) payload.definitions = definitions;
+  if (toolChoice !== undefined) payload.choice = toolChoice;
+  if (parallelToolCalls !== undefined) payload.parallelToolCalls = parallelToolCalls;
+  return Object.keys(payload).length ? payload : undefined;
+};
+
 const buildSharedMetadata = ({
   reqId,
   requestedModel,
@@ -127,26 +163,53 @@ const buildSharedMetadata = ({
   const meta = {
     route: "/v1/chat/completions",
     req_id: reqId,
+    requestId: reqId,
     requested_model: requestedModel,
+    requestedModel,
     effective_model: effectiveModel,
+    effectiveModel,
     stream: !!stream,
     n: choiceCount,
+    choice_count: choiceCount,
+    choiceCount,
   };
 
   if (user) meta.user = user;
-  if (reasoningEffort) meta.reasoning_effort = reasoningEffort;
+  if (reasoningEffort) {
+    meta.reasoning_effort = reasoningEffort;
+    meta.reasoningEffort = reasoningEffort;
+  }
   if (temperature !== undefined) meta.temperature = temperature;
-  if (topP !== undefined) meta.top_p = topP;
-  if (maxOutputTokens !== undefined) meta.max_output_tokens = maxOutputTokens;
-  if (Array.isArray(tools)) meta.tool_count = tools.length;
-  if (toolChoice !== undefined) meta.tool_choice = toolChoice;
-  if (parallelToolCalls !== undefined) meta.parallel_tool_calls = parallelToolCalls;
+  if (topP !== undefined) {
+    meta.top_p = topP;
+    meta.topP = topP;
+  }
+  if (maxOutputTokens !== undefined) {
+    meta.max_output_tokens = maxOutputTokens;
+    meta.maxOutputTokens = maxOutputTokens;
+  }
+  if (Array.isArray(tools)) {
+    meta.tool_count = tools.length;
+    meta.toolCount = tools.length;
+  }
+  if (toolChoice !== undefined) {
+    meta.tool_choice = toolChoice;
+    meta.toolChoice = toolChoice;
+  }
+  if (parallelToolCalls !== undefined) {
+    meta.parallel_tool_calls = parallelToolCalls;
+    meta.parallelToolCalls = parallelToolCalls;
+  }
 
   const summary = summarizeMessages(messages);
   meta.message_count = summary.message_count;
+  meta.messageCount = summary.messageCount;
   meta.system_count = summary.system_count;
+  meta.systemCount = summary.systemCount;
   meta.user_count = summary.user_count;
+  meta.userCount = summary.userCount;
   meta.assistant_count = summary.assistant_count;
+  meta.assistantCount = summary.assistantCount;
 
   return meta;
 };
@@ -219,14 +282,6 @@ export const normalizeChatJsonRpcRequest = ({
     );
   }
 
-  const toolsPayload = (() => {
-    const payload = {};
-    if (definitions) payload.definitions = definitions;
-    if (toolChoice !== undefined) payload.choice = toolChoice;
-    if (parallelToolCalls !== undefined) payload.parallel_tool_calls = parallelToolCalls;
-    return Object.keys(payload).length ? payload : undefined;
-  })();
-
   const streamOptionsIncludeUsage = (() => {
     const raw = body.stream_options?.include_usage;
     if (raw === undefined || raw === null) return undefined;
@@ -278,19 +333,43 @@ export const normalizeChatJsonRpcRequest = ({
     messages,
   });
 
+  const promptText = typeof prompt === "string" ? prompt : String(prompt ?? "");
+  const summary = summarizeMessages(messages);
+  const primaryItemMetadata = {
+    message_count: summary.message_count,
+    system_count: summary.system_count,
+    user_count: summary.user_count,
+    assistant_count: summary.assistant_count,
+    messageCount: summary.messageCount,
+    systemCount: summary.systemCount,
+    userCount: summary.userCount,
+    assistantCount: summary.assistantCount,
+  };
+
+  const turnItems = [createUserMessageItem(promptText, primaryItemMetadata)];
+  const finalOutputJsonSchema = resolveFinalOutputJsonSchema(body.response_format);
+  const toolsPayload = buildToolsPayload({
+    definitions,
+    toolChoice,
+    parallelToolCalls,
+  });
+
+  const metadata = { ...sharedMetadata };
+
   const turn = {
-    metadata: { ...sharedMetadata },
+    metadata: { ...metadata },
     model: effectiveModel,
     stream: !!stream,
-    choice_count: choiceCount,
+    choiceCount,
+    items: turnItems,
   };
 
   if (sandboxMode) {
-    turn.sandbox_policy = { mode: sandboxMode };
+    turn.sandboxPolicy = { mode: sandboxMode };
   }
 
   if (approvalMode) {
-    turn.approval_policy = { mode: approvalMode };
+    turn.approvalPolicy = { mode: approvalMode };
   }
 
   if (codexWorkdir) {
@@ -305,23 +384,38 @@ export const normalizeChatJsonRpcRequest = ({
     turn.user = user;
   }
 
-  const message = {
-    text: typeof prompt === "string" ? prompt : String(prompt ?? ""),
+  if (toolsPayload) {
+    turn.tools = toolsPayload;
+  }
+
+  if (finalOutputJsonSchema !== undefined) {
+    turn.finalOutputJsonSchema = finalOutputJsonSchema;
+  }
+
+  const messagePayload = {
+    text: promptText,
     stream: !!stream,
-    include_usage: includeUsage,
-    metadata: { ...sharedMetadata },
+    includeUsage,
+    metadata: { ...metadata },
   };
 
-  if (temperature !== undefined) message.temperature = temperature;
-  if (topP !== undefined) message.top_p = topP;
-  if (maxOutputTokens !== undefined) message.max_output_tokens = maxOutputTokens;
+  if (temperature !== undefined) messagePayload.temperature = temperature;
+  if (topP !== undefined) messagePayload.topP = topP;
+  if (maxOutputTokens !== undefined) messagePayload.maxOutputTokens = maxOutputTokens;
   if (toolsPayload) {
-    message.tools = { ...toolsPayload };
-    turn.tools = { ...toolsPayload };
+    messagePayload.tools = toolsPayload;
   }
-  if (body.response_format !== undefined) message.response_format = body.response_format;
+  if (body.response_format !== undefined) {
+    messagePayload.responseFormat = body.response_format;
+  }
+  if (reasoningEffort) {
+    messagePayload.reasoning = { effort: reasoningEffort };
+  }
+  if (finalOutputJsonSchema !== undefined) {
+    messagePayload.finalOutputJsonSchema = finalOutputJsonSchema;
+  }
 
-  return { turn, message };
+  return { turn, message: messagePayload };
 };
 
 export { ChatJsonRpcNormalizationError };

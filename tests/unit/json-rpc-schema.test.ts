@@ -8,6 +8,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CODEX_CLI_VERSION,
   JSONRPC_VERSION,
+  buildInitializeParams,
+  buildSendUserMessageParams,
+  buildSendUserTurnParams,
+  createUserMessageItem,
   extractConversationId,
   extractRequestId,
   isAgentMessageDeltaNotification,
@@ -414,5 +418,56 @@ describe("json-rpc schema bindings", () => {
     for (const notification of notifications) {
       expect(isJsonRpcNotification(notification)).toBe(true);
     }
+  });
+
+  describe("serializer helpers", () => {
+    it("builds initialize params with camelCase mirrors", () => {
+      const params = buildInitializeParams({ clientInfo: { name: "tester", version: "1.2.3" } });
+      expect(params.clientInfo).toMatchObject({ name: "tester", version: "1.2.3" });
+      expect(params.client_info).toMatchObject({ name: "tester", version: "1.2.3" });
+      expect(params.protocolVersion).toBeUndefined();
+      expect(params.protocol_version).toBeUndefined();
+    });
+
+    it("builds sendUserTurn params with duplicated keys", () => {
+      const item = createUserMessageItem("hello", { message_count: 1, messageCount: 1 });
+      const params = buildSendUserTurnParams({
+        items: [item],
+        conversationId: "conv-1",
+        requestId: "req-1",
+        choiceCount: 2,
+        tools: { parallelToolCalls: true },
+        finalOutputJsonSchema: { type: "object" },
+      });
+      expect(params.conversationId).toBe("conv-1");
+      expect(params.conversation_id).toBe("conv-1");
+      expect(params.requestId).toBe("req-1");
+      expect(params.request_id).toBe("req-1");
+      expect(params.choiceCount).toBe(2);
+      expect(params.choice_count).toBe(2);
+      expect(params.items).toHaveLength(1);
+      expect(params.items[0]).not.toBe(item);
+      expect(params.tools?.parallelToolCalls).toBe(true);
+      expect(params.tools?.parallel_tool_calls).toBe(true);
+      expect(params.finalOutputJsonSchema).toMatchObject({ type: "object" });
+      expect(params.final_output_json_schema).toMatchObject({ type: "object" });
+    });
+
+    it("builds sendUserMessage params with snake/camel includeUsage", () => {
+      const params = buildSendUserMessageParams({
+        text: "payload",
+        conversationId: "conv-9",
+        requestId: "req-9",
+        includeUsage: true,
+        tools: { parallelToolCalls: false },
+      });
+      expect(params.text).toBe("payload");
+      expect(params.conversationId).toBe("conv-9");
+      expect(params.conversation_id).toBe("conv-9");
+      expect(params.includeUsage).toBe(true);
+      expect(params.include_usage).toBe(true);
+      expect(params.tools?.parallelToolCalls).toBe(false);
+      expect(params.tools?.parallel_tool_calls).toBe(false);
+    });
   });
 });

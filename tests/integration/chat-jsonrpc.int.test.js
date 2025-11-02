@@ -169,35 +169,54 @@ describe("chat JSON-RPC normalization", () => {
     expect(turnMetadata).toMatchObject({
       route: "/v1/chat/completions",
       req_id: expect.any(String),
+      requestId: expect.any(String),
       requested_model: "codex-5",
+      requestedModel: "codex-5",
       effective_model: expect.any(String),
+      effectiveModel: expect.any(String),
       stream: false,
       n: 1,
+      choice_count: 1,
+      choiceCount: 1,
       user: "tester",
       reasoning_effort: "medium",
+      reasoningEffort: "medium",
       tool_count: 1,
+      toolCount: 1,
       parallel_tool_calls: true,
+      parallelToolCalls: true,
     });
     expect(turnMetadata.message_count).toBe(2);
+    expect(turnMetadata.messageCount).toBe(2);
     expect(turnMetadata.system_count).toBe(1);
     expect(turnMetadata.user_count).toBe(1);
+    expect(turnMetadata.assistant_count).toBe(0);
     const turnParams = turnCapture.payload?.params;
     expect(turnParams.model).toBe(CFG.CODEX_MODEL);
+    expect(turnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
     expect(turnParams.sandbox_policy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
     const expectedApproval = (() => {
       const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
       const normalized = String(raw).trim().toLowerCase();
       return normalized || "never";
     })();
+    expect(turnParams.approvalPolicy).toMatchObject({ mode: expectedApproval });
     expect(turnParams.approval_policy).toMatchObject({ mode: expectedApproval });
     expect(turnParams.cwd).toBe(CFG.PROXY_CODEX_WORKDIR);
     expect(turnParams.reasoning).toMatchObject({ effort: "medium" });
     expect(turnParams.stream).toBe(false);
     expect(turnParams.choice_count).toBe(1);
+    expect(turnParams.choiceCount).toBe(1);
+    expect(turnParams.items).toBeInstanceOf(Array);
+    expect(turnParams.items?.[0]).toMatchObject({
+      type: "userMessage",
+      text: joinMessages(payload.messages),
+    });
     expect(turnParams.tools).toMatchObject({
       definitions: payload.tools,
       choice: payload.tool_choice,
       parallel_tool_calls: true,
+      parallelToolCalls: true,
     });
 
     const messageCapture = findCapture(server.captures, "sendUserMessage");
@@ -205,16 +224,21 @@ describe("chat JSON-RPC normalization", () => {
     const params = messageCapture.payload.params;
     expect(params.stream).toBe(false);
     expect(params.include_usage).toBe(false);
+    expect(params.includeUsage).toBe(false);
     expect(params.temperature).toBeCloseTo(0.2);
     expect(params.top_p).toBeCloseTo(0.9);
+    expect(params.topP).toBeCloseTo(0.9);
     expect(params.max_output_tokens).toBe(128);
+    expect(params.maxOutputTokens).toBe(128);
     expect(params.tools).toMatchObject({
       definitions: payload.tools,
       choice: payload.tool_choice,
       parallel_tool_calls: true,
+      parallelToolCalls: true,
     });
     expect(params.metadata).toMatchObject({
       tool_count: 1,
+      toolCount: 1,
       user: "tester",
     });
     expect(params.text).toBe(joinMessages(payload.messages));
@@ -243,10 +267,12 @@ describe("chat JSON-RPC normalization", () => {
     const streamingTurnParams = turnCapture?.payload?.params;
     expect(streamingTurnParams.model).toBe(CFG.CODEX_MODEL);
     expect(streamingTurnParams.sandbox_policy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    expect(streamingTurnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
     expect(streamingTurnParams.stream).toBe(true);
     const messageCapture = findCapture(server.captures, "sendUserMessage");
     expect(messageCapture.payload.params.stream).toBe(true);
     expect(messageCapture.payload.params.include_usage).toBe(true);
+    expect(messageCapture.payload.params.includeUsage).toBe(true);
   }, 20000);
 
   it("returns invalid_request_error for non-numeric temperature", async () => {

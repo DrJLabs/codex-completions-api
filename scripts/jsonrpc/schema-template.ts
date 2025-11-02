@@ -119,6 +119,251 @@ export interface SendUserMessageResult {
   [key: string]: unknown;
 }
 
+export type JsonObject = Record<string, unknown>;
+
+export interface ToolDefinition extends JsonObject {
+  type: string;
+  function?: JsonObject;
+}
+
+export interface ToolsPayload extends JsonObject {
+  definitions?: ToolDefinition[];
+  choice?: unknown;
+  parallelToolCalls?: boolean;
+  parallel_tool_calls?: boolean;
+}
+
+export interface UserMessageItem extends JsonObject {
+  type: "userMessage";
+  text: string;
+  metadata?: JsonObject | null;
+}
+
+export type TurnItem = UserMessageItem | JsonObject;
+
+export interface SendUserTurnPayload extends JsonObject {
+  metadata?: JsonObject | null;
+  model?: string;
+  stream?: boolean;
+  choiceCount?: number;
+  sandboxPolicy?: JsonObject;
+  approvalPolicy?: JsonObject;
+  cwd?: string;
+  user?: string;
+  reasoning?: JsonObject;
+  tools?: ToolsPayload | null;
+  items?: TurnItem[] | null;
+  finalOutputJsonSchema?: unknown;
+  summary?: string;
+}
+
+export interface SendUserMessagePayload extends JsonObject {
+  text: string;
+  metadata?: JsonObject | null;
+  stream?: boolean;
+  includeUsage?: boolean;
+  temperature?: number;
+  topP?: number;
+  maxOutputTokens?: number;
+  tools?: ToolsPayload | null;
+  responseFormat?: unknown;
+  reasoning?: JsonObject;
+  finalOutputJsonSchema?: unknown;
+}
+
+export interface BuildInitializeOptions {
+  clientInfo: ClientInfo;
+  capabilities?: JsonObject | null;
+  protocolVersion?: string;
+}
+
+export interface BuildSendUserTurnOptions extends SendUserTurnPayload {
+  conversationId?: string | null;
+  requestId?: string;
+}
+
+export interface BuildSendUserMessageOptions extends SendUserMessagePayload {
+  conversationId?: string;
+  requestId?: string;
+}
+
+function cloneToolsPayload(input?: ToolsPayload | null): ToolsPayload | undefined {
+  if (!input) return undefined;
+  const copy: ToolsPayload = {};
+  if (Array.isArray(input.definitions)) {
+    copy.definitions = input.definitions.map((definition) => {
+      const base =
+        definition && typeof definition === "object" ? { ...(definition as JsonObject) } : {};
+      const typeValue = typeof base.type === "string" && base.type ? String(base.type) : "function";
+      const sanitized: ToolDefinition = {
+        ...base,
+        type: typeValue,
+      };
+      return sanitized;
+    });
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "choice")) {
+    copy.choice = input.choice;
+  }
+  if (typeof input.parallelToolCalls === "boolean") {
+    copy.parallelToolCalls = input.parallelToolCalls;
+    copy.parallel_tool_calls = input.parallelToolCalls;
+  } else if (typeof input.parallel_tool_calls === "boolean") {
+    const value = input.parallel_tool_calls;
+    copy.parallelToolCalls = value;
+    copy.parallel_tool_calls = value;
+  }
+  for (const key of Object.keys(input)) {
+    if (
+      key === "definitions" ||
+      key === "choice" ||
+      key === "parallelToolCalls" ||
+      key === "parallel_tool_calls"
+    ) {
+      continue;
+    }
+    copy[key] = input[key];
+  }
+  return copy;
+}
+
+export function createUserMessageItem(text: string, metadata?: JsonObject | null): UserMessageItem {
+  return {
+    type: "userMessage",
+    text,
+    ...(metadata !== undefined ? { metadata } : {}),
+  };
+}
+
+export function buildInitializeParams(options: BuildInitializeOptions): JsonObject {
+  const clientInfo = { ...(options.clientInfo || {}) };
+  const params: JsonObject = {
+    clientInfo,
+    client_info: clientInfo,
+  };
+  if (options.capabilities !== undefined) {
+    params.capabilities = options.capabilities;
+  }
+  if (options.protocolVersion) {
+    params.protocolVersion = options.protocolVersion;
+    params.protocol_version = options.protocolVersion;
+  }
+  return params;
+}
+
+export function buildSendUserTurnParams(options: BuildSendUserTurnOptions): JsonObject {
+  const params: JsonObject = {};
+  const items = Array.isArray(options.items)
+    ? options.items.map((item) => ({ ...(item || {}) }))
+    : [];
+  params.items = items;
+
+  if (options.conversationId !== undefined) {
+    params.conversationId = options.conversationId;
+    params.conversation_id = options.conversationId ?? null;
+  }
+  if (options.requestId !== undefined) {
+    params.requestId = options.requestId;
+    params.request_id = options.requestId;
+  }
+  if (options.metadata !== undefined) {
+    params.metadata = options.metadata;
+  }
+  if (options.model !== undefined) {
+    params.model = options.model;
+  }
+  if (options.stream !== undefined) {
+    params.stream = options.stream;
+  }
+  if (options.choiceCount !== undefined) {
+    params.choiceCount = options.choiceCount;
+    params.choice_count = options.choiceCount;
+  }
+  if (options.sandboxPolicy !== undefined) {
+    const policy = { ...(options.sandboxPolicy || {}) };
+    params.sandboxPolicy = policy;
+    params.sandbox_policy = policy;
+  }
+  if (options.approvalPolicy !== undefined) {
+    const policy = { ...(options.approvalPolicy || {}) };
+    params.approvalPolicy = policy;
+    params.approval_policy = policy;
+  }
+  if (options.cwd !== undefined) {
+    params.cwd = options.cwd;
+  }
+  if (options.user !== undefined) {
+    params.user = options.user;
+  }
+  if (options.reasoning !== undefined) {
+    params.reasoning = { ...(options.reasoning || {}) };
+  }
+  if (options.tools !== undefined) {
+    params.tools = cloneToolsPayload(options.tools);
+  }
+  if (options.finalOutputJsonSchema !== undefined) {
+    params.finalOutputJsonSchema = options.finalOutputJsonSchema;
+    params.final_output_json_schema = options.finalOutputJsonSchema;
+  }
+  if (options.summary !== undefined) {
+    params.summary = options.summary;
+  }
+
+  return params;
+}
+
+export function buildSendUserMessageParams(options: BuildSendUserMessageOptions): JsonObject {
+  const params: JsonObject = {
+    text: options.text,
+  };
+
+  if (options.conversationId !== undefined) {
+    params.conversationId = options.conversationId;
+    params.conversation_id = options.conversationId;
+  }
+  if (options.requestId !== undefined) {
+    params.requestId = options.requestId;
+    params.request_id = options.requestId;
+  }
+  if (options.metadata !== undefined) {
+    params.metadata = options.metadata;
+  }
+  if (options.stream !== undefined) {
+    params.stream = options.stream;
+  }
+  if (options.includeUsage !== undefined) {
+    params.includeUsage = options.includeUsage;
+    params.include_usage = options.includeUsage;
+  }
+  if (options.temperature !== undefined) {
+    params.temperature = options.temperature;
+  }
+  if (options.topP !== undefined) {
+    params.topP = options.topP;
+    params.top_p = options.topP;
+  }
+  if (options.maxOutputTokens !== undefined) {
+    params.maxOutputTokens = options.maxOutputTokens;
+    params.max_output_tokens = options.maxOutputTokens;
+  }
+  if (options.tools !== undefined) {
+    params.tools = cloneToolsPayload(options.tools);
+  }
+  if (options.responseFormat !== undefined) {
+    params.responseFormat = options.responseFormat;
+    params.response_format = options.responseFormat;
+  }
+  if (options.reasoning !== undefined) {
+    params.reasoning = { ...(options.reasoning || {}) };
+  }
+  if (options.finalOutputJsonSchema !== undefined) {
+    params.finalOutputJsonSchema = options.finalOutputJsonSchema;
+    params.final_output_json_schema = options.finalOutputJsonSchema;
+  }
+
+  return params;
+}
+
 export interface NotificationContextPayload {
   conversation_id?: string;
   conversationId?: string;

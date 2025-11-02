@@ -340,7 +340,7 @@ export function logFinishReasonTelemetry({
   } catch {}
 }
 
-export function validateOptionalChatParams(body = {}) {
+export function validateOptionalChatParams(body = {}, { allowJsonSchema = false } = {}) {
   const { logprobs, top_logprobs, response_format, seed } = body;
 
   if (logprobs) {
@@ -362,12 +362,31 @@ export function validateOptionalChatParams(body = {}) {
       invalidRequestBody("response_format", 'response_format.type must be "text" when provided');
 
     if (typeof response_format === "string") {
-      if (response_format.toLowerCase() !== "text") {
+      const normalized = response_format.toLowerCase();
+      if (normalized === "json_schema") {
+        if (!allowJsonSchema) {
+          return { ok: false, error: makeError() };
+        }
+      } else if (normalized !== "text") {
         return { ok: false, error: makeError() };
       }
     } else if (typeof response_format === "object") {
       const type = String(response_format.type || "text").toLowerCase();
-      if (type !== "text") {
+      if (type === "json_schema") {
+        if (!allowJsonSchema) {
+          return { ok: false, error: makeError() };
+        }
+        const schemaValue = response_format.json_schema ?? response_format.schema;
+        if (schemaValue !== null && typeof schemaValue !== "object") {
+          return {
+            ok: false,
+            error: invalidRequestBody(
+              "response_format.json_schema",
+              "json_schema must be an object or null when provided"
+            ),
+          };
+        }
+      } else if (type !== "text") {
         return { ok: false, error: makeError() };
       }
     } else {

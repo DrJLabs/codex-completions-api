@@ -52,6 +52,7 @@ development_status:
   2-0-establish-parity-verification-infrastructure: done
   2-5-update-regression-suite-for-parity-evidence: done
   2-6-document-parity-verification-and-rollout-checklist: done
+  2-7-align-json-rpc-wiring-with-app-server-schema: review
   epic-2-retrospective: completed
   epic-3: backlog
   3-1-structured-logging-for-worker-lifecycle: backlog
