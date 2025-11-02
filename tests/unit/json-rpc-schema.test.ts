@@ -478,18 +478,42 @@ describe("json-rpc schema bindings", () => {
       expect(params.items[0]).not.toBe(item);
     });
 
-    it("builds sendUserMessage params with normalized items", () => {
+    it("builds sendUserMessage params with normalized items and options", () => {
       const item = createUserMessageItem("payload");
       const params = buildSendUserMessageParams({
         items: [item],
         conversationId: "conv-9",
         includeUsage: true,
+        metadata: { trace: true },
+        stream: true,
+        temperature: 0.75,
+        topP: 0.5,
+        maxOutputTokens: 256,
+        tools: { definitions: [{ type: "function", function: { name: "noop" } }] },
+        responseFormat: { type: "json_schema" },
+        reasoning: { effort: "low" },
+        finalOutputJsonSchema: { type: "object" },
       });
       expect(params.conversationId).toBe("conv-9");
       expect(params.items).toHaveLength(1);
       expect(params.items[0]).not.toBe(item);
       expect(params.includeUsage).toBe(true);
       expect(params.include_usage).toBe(true);
+      expect(params.metadata).toEqual({ trace: true });
+      expect(params.stream).toBe(true);
+      expect(params.temperature).toBe(0.75);
+      expect(params.topP).toBe(0.5);
+      expect(params.top_p).toBe(0.5);
+      expect(params.maxOutputTokens).toBe(256);
+      expect(params.max_output_tokens).toBe(256);
+      expect(params.tools).toEqual({
+        definitions: [{ type: "function", function: { name: "noop" } }],
+      });
+      expect(params.responseFormat).toEqual({ type: "json_schema" });
+      expect(params.response_format).toEqual({ type: "json_schema" });
+      expect(params.reasoning).toEqual({ effort: "low" });
+      expect(params.finalOutputJsonSchema).toEqual({ type: "object" });
+      expect(params.final_output_json_schema).toEqual({ type: "object" });
     });
 
     it("builds add/remove conversation listener params", () => {

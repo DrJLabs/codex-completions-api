@@ -83,6 +83,21 @@ export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 
+export type FinishReason =
+  | "stop"
+  | "length"
+  | "content_filter"
+  | "tool_calls"
+  | "function_call"
+  | string;
+
+export interface TokenUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  [key: string]: unknown;
+}
+
 export type SandboxPolicy =
   | { mode: "danger-full-access" }
   | { mode: "read-only" }
@@ -156,11 +171,27 @@ export interface SendUserMessageParams {
   items: InputItem[];
   includeUsage?: boolean;
   include_usage?: boolean;
-  metadata?: Record<string, unknown> | null;
+  metadata?: JsonValue;
+  stream?: boolean;
+  temperature?: number;
+  topP?: number;
+  top_p?: number;
+  maxOutputTokens?: number;
+  max_output_tokens?: number;
+  tools?: JsonValue;
+  responseFormat?: JsonValue;
+  response_format?: JsonValue;
+  reasoning?: JsonValue;
+  finalOutputJsonSchema?: JsonValue;
+  final_output_json_schema?: JsonValue;
   [key: string]: unknown;
 }
 
 export interface SendUserMessageResult {
+  finish_reason?: FinishReason;
+  status?: FinishReason;
+  usage?: TokenUsage;
+  response?: JsonValue;
   [key: string]: unknown;
 }
 
@@ -174,6 +205,7 @@ export interface RemoveConversationListenerResult {
 }
 
 export type JsonObject = Record<string, unknown>;
+export type JsonValue = unknown;
 
 const APPROVAL_FALLBACK: AskForApproval = "on-request";
 const SUMMARY_FALLBACK: ReasoningSummary = "auto";
@@ -215,6 +247,15 @@ export interface BuildSendUserMessageOptions {
   conversationId?: string | null;
   items?: InputItem[] | null;
   includeUsage?: boolean;
+  metadata?: JsonValue;
+  stream?: boolean;
+  temperature?: number;
+  topP?: number;
+  maxOutputTokens?: number;
+  tools?: JsonValue;
+  responseFormat?: JsonValue;
+  reasoning?: JsonValue;
+  finalOutputJsonSchema?: JsonValue;
 }
 
 const VALID_APPROVAL_POLICIES: Set<string> = new Set([
@@ -277,12 +318,15 @@ export function buildNewConversationParams(
 
   const modelProvider = toNullableString(options.modelProvider);
   if (typeof modelProvider === "string") params.modelProvider = modelProvider;
+  else if (modelProvider === null) params.modelProvider = null;
 
   const profile = toNullableString(options.profile);
   if (typeof profile === "string") params.profile = profile;
+  else if (profile === null) params.profile = null;
 
   const cwd = toNullableString(options.cwd);
   if (typeof cwd === "string") params.cwd = cwd;
+  else if (cwd === null) params.cwd = null;
 
   const approval = normalizeOptionalApprovalPolicy(options.approvalPolicy);
   if (typeof approval === "string") params.approvalPolicy = approval;
@@ -296,14 +340,18 @@ export function buildNewConversationParams(
 
   const baseInstructions = toNullableString(options.baseInstructions);
   if (typeof baseInstructions === "string") params.baseInstructions = baseInstructions;
+  else if (baseInstructions === null) params.baseInstructions = null;
 
   const developerInstructions = toNullableString(options.developerInstructions);
   if (typeof developerInstructions === "string") {
     params.developerInstructions = developerInstructions;
+  } else if (developerInstructions === null) {
+    params.developerInstructions = null;
   }
 
   const compactPrompt = toNullableString(options.compactPrompt);
   if (typeof compactPrompt === "string") params.compactPrompt = compactPrompt;
+  else if (compactPrompt === null) params.compactPrompt = null;
 
   if (typeof options.includeApplyPatchTool === "boolean") {
     params.includeApplyPatchTool = options.includeApplyPatchTool;
@@ -359,7 +407,330 @@ export function buildSendUserMessageParams(
     params.include_usage = value;
   }
 
+  if (options.metadata !== undefined) {
+    params.metadata = options.metadata ?? null;
+  }
+
+  if (options.stream !== undefined) {
+    params.stream = options.stream;
+  }
+
+  if (options.temperature !== undefined) {
+    params.temperature = options.temperature;
+  }
+
+  if (options.topP !== undefined) {
+    params.topP = options.topP;
+    params.top_p = options.topP;
+  }
+
+  if (options.maxOutputTokens !== undefined) {
+    params.maxOutputTokens = options.maxOutputTokens;
+    params.max_output_tokens = options.maxOutputTokens;
+  }
+
+  if (options.tools !== undefined) {
+    params.tools = options.tools ?? null;
+  }
+
+  if (options.responseFormat !== undefined) {
+    const format = options.responseFormat ?? null;
+    params.responseFormat = format;
+    params.response_format = format;
+  }
+
+  if (options.reasoning !== undefined) {
+    params.reasoning = options.reasoning ?? null;
+  }
+
+  if (options.finalOutputJsonSchema !== undefined) {
+    const schema = options.finalOutputJsonSchema ?? null;
+    params.finalOutputJsonSchema = schema;
+    params.final_output_json_schema = schema;
+  }
+
   return params;
+}
+
+export interface NotificationContextPayload {
+  conversation_id?: string;
+  conversationId?: string;
+  request_id?: string;
+  requestId?: string;
+  conversation?: { id?: string | null } | null;
+  context?: { conversation_id?: string | null; request_id?: string | null } | null;
+  [key: string]: unknown;
+}
+
+export interface ToolCallFunctionDelta {
+  name?: string;
+  arguments?: string;
+  arguments_chunk?: string;
+  argumentsChunk?: string;
+  [key: string]: unknown;
+}
+
+export interface ToolCallDelta {
+  index?: number;
+  id?: string;
+  tool_call_id?: string;
+  toolCallId?: string;
+  type?: string;
+  function?: ToolCallFunctionDelta;
+  parallel_tool_calls?: boolean;
+  parallelToolCalls?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ToolCallFunction {
+  name?: string;
+  arguments?: string;
+  [key: string]: unknown;
+}
+
+export interface ToolCall {
+  index?: number;
+  id?: string;
+  type?: string;
+  function?: ToolCallFunction;
+  [key: string]: unknown;
+}
+
+export interface FunctionCall {
+  name?: string;
+  arguments?: string;
+  [key: string]: unknown;
+}
+
+export interface AgentContentPayload {
+  text?: string;
+  content?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export type AgentContent = string | AgentContentPayload | Array<AgentContentPayload> | null;
+
+export type AgentMessageDelta =
+  | string
+  | ({
+      role?: string;
+      content?: AgentContent;
+      text?: string | null;
+      metadata?: Record<string, unknown> | null;
+      tool_calls?: ToolCallDelta[] | null;
+      toolCalls?: ToolCallDelta[] | null;
+      parallel_tool_calls?: boolean;
+      parallelToolCalls?: boolean;
+      [key: string]: unknown;
+    } & Record<string, unknown>);
+
+export interface AgentMessageDeltaParams extends NotificationContextPayload {
+  delta: AgentMessageDelta;
+  [key: string]: unknown;
+}
+
+export interface AssistantMessage {
+  role: string;
+  content?: AgentContent;
+  tool_calls?: ToolCall[] | null;
+  toolCalls?: ToolCall[] | null;
+  function_call?: FunctionCall | null;
+  functionCall?: FunctionCall | null;
+  metadata?: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
+export interface AgentMessageParams extends NotificationContextPayload {
+  message: AssistantMessage;
+  parallel_tool_calls?: boolean;
+  parallelToolCalls?: boolean;
+  [key: string]: unknown;
+}
+
+export interface TokenCountParams extends NotificationContextPayload {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  finish_reason?: FinishReason;
+  reason?: string;
+  token_limit_reached?: boolean;
+  [key: string]: unknown;
+}
+
+export interface RequestTimeoutParams extends NotificationContextPayload {
+  reason?: string;
+  [key: string]: unknown;
+}
+
+export interface JsonRpcNotification<Method extends JsonRpcNotificationMethod, Params>
+  extends JsonRpcBaseEnvelope {
+  method: Method;
+  params: Params;
+}
+
+export type AgentMessageDeltaNotification = JsonRpcNotification<
+  "agentMessageDelta",
+  AgentMessageDeltaParams
+>;
+
+export type AgentMessageNotification = JsonRpcNotification<"agentMessage", AgentMessageParams>;
+
+export type TokenCountNotification = JsonRpcNotification<"tokenCount", TokenCountParams>;
+
+export type RequestTimeoutNotification = JsonRpcNotification<
+  "requestTimeout",
+  RequestTimeoutParams
+>;
+
+export type ChatNotification =
+  | AgentMessageDeltaNotification
+  | AgentMessageNotification
+  | TokenCountNotification
+  | RequestTimeoutNotification;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function pickString(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  return null;
+}
+
+function pickNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+}
+
+function hasConversationIdentifiers(params: NotificationContextPayload): boolean {
+  if (!isObject(params)) return false;
+  if (pickString(params.conversation_id)) return true;
+  if (pickString(params.conversationId)) return true;
+  if (isObject(params.conversation) && pickString(params.conversation.id)) return true;
+  if (isObject(params.context) && pickString(params.context.conversation_id)) return true;
+  if (pickString(params.request_id)) return true;
+  if (pickString(params.requestId)) return true;
+  return false;
+}
+
+export function extractConversationId(params: NotificationContextPayload): string | null {
+  if (!isObject(params)) return null;
+  return (
+    pickString(params.conversation_id) ||
+    pickString(params.conversationId) ||
+    (isObject(params.conversation) ? pickString(params.conversation.id) : null) ||
+    (isObject(params.context) ? pickString(params.context.conversation_id) : null) ||
+    null
+  );
+}
+
+export function extractRequestId(params: NotificationContextPayload): string | null {
+  if (!isObject(params)) return null;
+  return (
+    pickString(params.request_id) ||
+    pickString(params.requestId) ||
+    (isObject(params.context) ? pickString(params.context.request_id) : null) ||
+    null
+  );
+}
+
+export function isInitializeResult(value: unknown): value is InitializeResult {
+  if (!isObject(value)) return false;
+  if (value.advertised_models && !Array.isArray(value.advertised_models)) return false;
+  return true;
+}
+
+export function isSendUserTurnResult(value: unknown): value is SendUserTurnResult {
+  if (!isObject(value)) return false;
+  const conv =
+    pickString(value.conversation_id) ||
+    pickString(value.conversationId) ||
+    (isObject(value.context)
+      ? pickString((value.context as Record<string, unknown>).conversation_id)
+      : null);
+  return conv !== null;
+}
+
+export function isSendUserMessageResult(value: unknown): value is SendUserMessageResult {
+  if (!isObject(value)) return false;
+  const fr = value.finish_reason ?? value.status;
+  if (fr !== undefined && typeof fr !== "string") return false;
+  if (value.usage && !isObject(value.usage)) return false;
+  return true;
+}
+
+export function isAgentMessageDeltaNotification(
+  value: unknown
+): value is AgentMessageDeltaNotification {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (value.method !== "agentMessageDelta") return false;
+  if (!isObject(value.params)) return false;
+  if (!hasConversationIdentifiers(value.params as NotificationContextPayload)) return false;
+  if (!Object.prototype.hasOwnProperty.call(value.params, "delta")) return false;
+  return true;
+}
+
+export function isAgentMessageNotification(value: unknown): value is AgentMessageNotification {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (value.method !== "agentMessage") return false;
+  if (!isObject(value.params)) return false;
+  if (!hasConversationIdentifiers(value.params as NotificationContextPayload)) return false;
+  const { message } = value.params as Record<string, unknown>;
+  if (!isObject(message)) return false;
+  if (!pickString(message.role)) return false;
+  return true;
+}
+
+export function isTokenCountNotification(value: unknown): value is TokenCountNotification {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (value.method !== "tokenCount") return false;
+  if (!isObject(value.params)) return false;
+  if (!hasConversationIdentifiers(value.params as NotificationContextPayload)) return false;
+  const ctx = value.params as Record<string, unknown>;
+  const hasPrompt = pickNumber(ctx.prompt_tokens) !== null;
+  const hasCompletion = pickNumber(ctx.completion_tokens) !== null;
+  const hasTotal = pickNumber(ctx.total_tokens) !== null;
+  if (!(hasPrompt || hasCompletion || hasTotal)) return false;
+  return true;
+}
+
+export function isRequestTimeoutNotification(value: unknown): value is RequestTimeoutNotification {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (value.method !== "requestTimeout") return false;
+  if (!isObject(value.params)) return false;
+  return hasConversationIdentifiers(value.params as NotificationContextPayload);
+}
+
+export function isJsonRpcNotification(value: unknown): value is ChatNotification {
+  return (
+    isAgentMessageDeltaNotification(value) ||
+    isAgentMessageNotification(value) ||
+    isTokenCountNotification(value) ||
+    isRequestTimeoutNotification(value)
+  );
+}
+
+export function isJsonRpcErrorResponse(value: unknown): value is JsonRpcErrorResponse {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (!Object.prototype.hasOwnProperty.call(value, "error")) return false;
+  if (!isObject(value.error)) return false;
+  if (!("message" in value.error) || typeof value.error.message !== "string") return false;
+  return true;
+}
+
+export function isJsonRpcSuccessResponse<Result>(
+  value: unknown
+): value is JsonRpcSuccessResponse<Result> {
+  if (!isObject(value)) return false;
+  if (value.jsonrpc !== JSONRPC_VERSION) return false;
+  if (!Object.prototype.hasOwnProperty.call(value, "result")) return false;
+  return true;
 }
 
 export function buildAddConversationListenerParams(
