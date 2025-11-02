@@ -8,12 +8,13 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
+- App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
 - Dev vs Prod model IDs: advertises `codev-5*` in dev, `codex-5*` in prod; accepts both prefixes everywhere.
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
-- Process model: one Codex proto process per request (stateless).
+- Worker supervisor: production runs long-lived `codex app-server` workers gated by handshake/readiness timers; proto mode stays available for local development.
 
 ## Quick Start
 
@@ -44,6 +45,13 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 Install dependencies (`npm install`) and run `npm run dev` (or `npm run dev:shim` to use the fake proto shim). The server listens on port `18000` by default and expects Codex CLI binaries/config under `.codev/`.
 
+### Backend modes (proto vs. app-server)
+
+- Proto mode (default): `PROXY_USE_APP_SERVER=false`. Each request spawns a short-lived Codex proto process. Handy for local dev without the Rust app-server dependency and mirrors the historic behavior.
+- App-server mode: `PROXY_USE_APP_SERVER=true`. A worker supervisor keeps one or more long-lived `codex app-server` processes alive and routes JSON-RPC traffic that matches the exported schema bundle under `docs/app-server-migration/`. Production currently runs in this mode.
+- Toggle either mode by setting `PROXY_USE_APP_SERVER` in `.env.dev`, `.env`, or the relevant compose file. When switching to app-server locally ensure `codex --version` ≥ 0.53.0 and refresh `auth.json` in `.codev/` (e.g., by copying from `~/.codex/auth.json`).
+- Readiness in app-server mode is gated by `initialize` JSON-RPC success; the proxy only advertises readiness once the worker handshake completes. Override `WORKER_*_TIMEOUT_MS` if using slower hardware.
+
 ## Project Structure (high‑level)
 
 ```
@@ -59,6 +67,7 @@ scripts/                        # Dev + CI helpers (dev.sh, prod-smoke.sh)
 scripts/setup-testing-ci.sh     # Idempotent test/CI scaffolder (useful for forks)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
  .codex-api/                     # Production Codex HOME (secrets; writable mount in compose)
+docs/app-server-migration/      # Schema exports, runbooks, parity harness instructions
 .github/workflows/ci.yml        # CI: lint, format, unit, integration, e2e
 AGENTS.md                       # Agent directives (project‑specific rules included)
 ```
@@ -75,6 +84,7 @@ See docs/README.md for documentation pointers. Internal runbooks (Dev → Prod, 
   - `traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify`
 - App attaches to Docker network `traefik` and is discovered via labels.
 - Edge is Cloudflare for `codex-api.onemainarmy.com`.
+- Backend mode: production sets `PROXY_USE_APP_SERVER=true` and keeps a long-lived app-server worker alive. Refresh `.codex-api/auth.json` from `~/.codex/auth.json` before each deployment so the worker can authenticate.
 
 Codex HOME (production):
 
@@ -286,6 +296,9 @@ Use the curl snippets above to validate endpoints while `npm run start` is runni
 ## Testing
 
 This repo uses a three-layer testing setup optimized for fast inner-loop feedback while coding:
+
+- Run `npm run verify:all` before opening a PR to execute formatting, linting, unit, integration, and Playwright suites in one step.
+- Env smokes: `npm run smoke:dev` (requires `DEV_DOMAIN`/`KEY`) and `npm run smoke:prod` (requires `DOMAIN`/`KEY`) hit `/v1/models` and both streaming and non-stream chat endpoints against the respective stacks.
 
 1. Unit (Vitest, fast, watchable)
 
