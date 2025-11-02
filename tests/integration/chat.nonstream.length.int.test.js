@@ -14,7 +14,7 @@ afterAll(async () => {
   await stopServer(child);
 });
 
-test("non-stream finish_reason is 'length' when backend exits without task_complete", async () => {
+test("non-stream finish_reason is 'stop' when backend exits without task_complete", async () => {
   async function postOnce() {
     return fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
       method: "POST",
@@ -43,7 +43,7 @@ test("non-stream finish_reason is 'length' when backend exits without task_compl
     const payload = await response.json();
     expect(payload?.object).toBe("chat.completion");
     const choice = payload?.choices?.[0];
-    expect(choice?.finish_reason).toBe("length");
+    expect(choice?.finish_reason).toBe("stop");
     expect(typeof payload?.usage?.prompt_tokens).toBe("number");
     expect(typeof payload?.usage?.completion_tokens).toBe("number");
     expect(typeof payload?.usage?.total_tokens).toBe("number");

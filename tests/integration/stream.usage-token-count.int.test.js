@@ -82,7 +82,7 @@ afterAll(() => {
   }
 });
 
-test("token_count-only proto yields finish_reason length and usage emission", async () => {
+test("token_count-only proto yields finish_reason stop and usage emission", async () => {
   const frames = await collectSSE(
     `http://127.0.0.1:${PORT}/v1/chat/completions`,
     {
@@ -123,7 +123,7 @@ test("token_count-only proto yields finish_reason length and usage emission", as
     Array.isArray(finishChunk?.choices) && finishChunk.choices.length > 0
       ? finishChunk.choices.find(() => true)
       : null;
-  expect(finishChoice?.finish_reason).toBe("length");
+  expect(finishChoice?.finish_reason).toBe("stop");
 
   let usageMatches = 0;
   let usageChunk = null;

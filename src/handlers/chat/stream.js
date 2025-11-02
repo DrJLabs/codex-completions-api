@@ -1389,34 +1389,31 @@ export async function postChatStream(req, res) {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
     if (finalized) return;
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
-      const fallbackReason = isAppServerBackend ? "stop" : "length";
-      trackFinishReason(fallbackReason, "token_count_fallback");
+      trackFinishReason("stop", "token_count_fallback");
     }
     if (!sentAny) {
-      const content = stripAnsi(out).trim() || "No output from backend.";
-      sendChunk({
-        choices: buildChoiceFrames((index) => ({
-          index,
-          delta: { content },
-          finish_reason: null,
-        })),
-        usage: null,
-      });
-      sentAny = true;
-      if (IS_DEV_ENV) {
-        try {
-          console.log("[dev][response][chat][stream] content=\n" + content);
-        } catch (e) {
-          console.error("[dev][response][chat][stream] error:", e);
+      const content = stripAnsi(out).trim();
+      if (content) {
+        sendChunk({
+          choices: buildChoiceFrames((index) => ({
+            index,
+            delta: { content },
+            finish_reason: null,
+          })),
+          usage: null,
+        });
+        sentAny = true;
+        if (IS_DEV_ENV) {
+          try {
+            console.log("[dev][response][chat][stream] content=\n" + content);
+          } catch (e) {
+            console.error("[dev][response][chat][stream] error:", e);
+          }
         }
       }
     }
     const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
-    const inferredReason = finishSent
-      ? finalFinishReason
-      : lengthEvidence || (!emitted && !hasToolCallEvidence() && !hasFunctionCall)
-        ? "length"
-        : "stop";
+    const inferredReason = finishSent ? finalFinishReason : lengthEvidence ? "length" : "stop";
     finalizeStream({ reason: inferredReason, trigger });
   };
   child.on("close", handleChildClose);
