@@ -9,6 +9,11 @@ import {
   onWorkerSupervisorEvent,
 } from "../worker/supervisor.js";
 import { isAppServerMode } from "../backend-mode.js";
+import {
+  buildInitializeParams,
+  buildSendUserMessageParams,
+  buildSendUserTurnParams,
+} from "../../lib/json-rpc/schema.ts";
 
 const JSONRPC_VERSION = "2.0";
 const LOG_PREFIX = "[proxy][json-rpc-transport]";
@@ -132,6 +137,30 @@ class JsonRpcTransport {
     this.unsubscribeExit = onWorkerSupervisorEvent("exit", (info) => {
       this.#onExit(info);
     });
+    this.unsubscribeReady = onWorkerSupervisorEvent("ready", () => {
+      if (this.destroyed) return;
+      this.handshakeCompleted = false;
+      this.handshakeData = null;
+      this.handshakePromise = null;
+      const recorder = this.supervisor?.recordHandshakePending;
+      if (typeof recorder === "function") {
+        try {
+          recorder.call(this.supervisor);
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} failed to record handshake pending`, err);
+        }
+      }
+      this.ensureHandshake().catch((err) => {
+        const handler = this.supervisor?.recordHandshakeFailure;
+        if (typeof handler === "function") {
+          try {
+            handler.call(this.supervisor, err);
+          } catch (failureErr) {
+            console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
+          }
+        }
+      });
+    });
 
     const currentChild = getWorkerChildProcess();
     if (currentChild) {
@@ -143,6 +172,7 @@ class JsonRpcTransport {
     this.destroyed = true;
     this.unsubscribeSpawn?.();
     this.unsubscribeExit?.();
+    this.unsubscribeReady?.();
     this.#detachChild();
     for (const pending of this.pending.values()) {
       try {
@@ -197,27 +227,60 @@ class JsonRpcTransport {
           };
           this.pending.delete(rpcId);
           this.handshakePromise = null;
+          const recorder = this.supervisor?.recordHandshakeSuccess;
+          if (typeof recorder === "function") {
+            try {
+              recorder.call(this.supervisor, this.handshakeData.raw ?? result);
+            } catch (err) {
+              console.warn(`${LOG_PREFIX} failed to record handshake success`, err);
+            }
+          }
           resolve(this.handshakeData);
         },
         reject: (err) => {
           clearTimeout(timeout);
           this.pending.delete(rpcId);
           this.handshakePromise = null;
+          const recorder = this.supervisor?.recordHandshakeFailure;
+          if (typeof recorder === "function") {
+            try {
+              recorder.call(this.supervisor, err);
+            } catch (recordErr) {
+              console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
+            }
+          }
           reject(err instanceof Error ? err : new TransportError(String(err)));
         },
       });
 
       try {
+        const initParams = buildInitializeParams({ clientInfo: DEFAULT_CLIENT_INFO });
+        const recorder = this.supervisor?.recordHandshakePending;
+        if (typeof recorder === "function") {
+          try {
+            recorder.call(this.supervisor);
+          } catch (err) {
+            console.warn(`${LOG_PREFIX} failed to record handshake pending`, err);
+          }
+        }
         this.#write({
           jsonrpc: JSONRPC_VERSION,
           id: rpcId,
           method: "initialize",
-          params: { client_info: DEFAULT_CLIENT_INFO },
+          params: initParams,
         });
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(rpcId);
         this.handshakePromise = null;
+        const recorder = this.supervisor?.recordHandshakeFailure;
+        if (typeof recorder === "function") {
+          try {
+            recorder.call(this.supervisor, err);
+          } catch (recordErr) {
+            console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
+          }
+        }
         reject(err);
       }
     });
@@ -325,21 +388,13 @@ class JsonRpcTransport {
     });
 
     const textValue = payload?.text;
-    const params = {
-      conversation_id: context.conversationId ?? context.clientConversationId,
-      request_id: context.clientConversationId,
-      text: typeof textValue === "string" ? textValue : String(textValue ?? ""),
-    };
-
-    if (payload?.metadata !== undefined) params.metadata = payload.metadata;
-    if (payload?.stream !== undefined) params.stream = payload.stream;
-    if (payload?.include_usage !== undefined) params.include_usage = payload.include_usage;
-    if (payload?.temperature !== undefined) params.temperature = payload.temperature;
-    if (payload?.top_p !== undefined) params.top_p = payload.top_p;
-    if (payload?.max_output_tokens !== undefined)
-      params.max_output_tokens = payload.max_output_tokens;
-    if (payload?.tools !== undefined) params.tools = payload.tools;
-    if (payload?.response_format !== undefined) params.response_format = payload.response_format;
+    const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
+    basePayload.text = typeof textValue === "string" ? textValue : String(textValue ?? "");
+    const params = buildSendUserMessageParams({
+      ...basePayload,
+      conversationId: context.conversationId ?? context.clientConversationId,
+      requestId: context.clientConversationId,
+    });
 
     try {
       this.#write({
@@ -428,11 +483,12 @@ class JsonRpcTransport {
     });
 
     try {
-      const params = {
-        ...(payload && typeof payload === "object" ? payload : {}),
-        conversation_id: context.clientConversationId,
-        request_id: context.clientConversationId,
-      };
+      const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
+      const params = buildSendUserTurnParams({
+        ...basePayload,
+        conversationId: context.clientConversationId,
+        requestId: context.clientConversationId,
+      });
       this.#write({
         jsonrpc: JSONRPC_VERSION,
         id: turnRpcId,
@@ -566,6 +622,11 @@ class JsonRpcTransport {
     const params = message.params || {};
     const context = this.#resolveContext(params);
     if (!context) return;
+    try {
+      context.emitter.emit("notification", message);
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} failed to emit notification`, err);
+    }
     switch (String(message.method)) {
       case "agentMessageDelta":
         context.addDelta(params);
@@ -586,7 +647,6 @@ class JsonRpcTransport {
         );
         break;
       default:
-        context.emitter.emit("notification", message);
         break;
     }
   }
