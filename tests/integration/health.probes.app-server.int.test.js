@@ -24,6 +24,7 @@ async function waitForCondition(check, { timeoutMs = 5000, intervalMs = 50 } = {
 beforeAll(async () => {
   server = await startServer({
     PROXY_USE_APP_SERVER: "true",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
     WORKER_BACKOFF_INITIAL_MS: "100",
     WORKER_BACKOFF_MAX_MS: "100",
     WORKER_RESTART_MAX: "5",

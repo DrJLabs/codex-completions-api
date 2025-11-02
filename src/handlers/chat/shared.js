@@ -40,9 +40,9 @@ export function buildAppServerArgs({
   allowEffort,
   enableParallelTools = false,
 }) {
-  const args = ["app-server", "--model", effectiveModel];
+  const args = ["app-server", "-c", `model="${effectiveModel}"`];
   const pushConfig = (key, value) => {
-    args.push("--config", `${key}=${value}`);
+    args.push("-c", `${key}=${value}`);
   };
 
   pushConfig("preferred_auth_method", '"chatgpt"');

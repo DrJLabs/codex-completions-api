@@ -2,20 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Codex App Server JSON-RPC Schema Bundle",
   "cliVersion": "0.53.0",
-  "generatedAt": "2025-11-02T04:25:10.684Z",
+  "generatedAt": "2025-11-02T07:09:34.187Z",
   "definitions": {
     "InitializeParams": {
       "type": "object",
-      "additionalProperties": {},
       "properties": {
-        "client_info": {
+        "clientInfo": {
           "$ref": "#/definitions/ClientInfo"
         },
         "capabilities": {
           "$ref": "#/definitions/Record<string,unknown>"
+        },
+        "protocolVersion": {
+          "type": "string"
         }
       },
-      "required": ["client_info"],
+      "required": ["clientInfo"],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "ClientInfo": {
@@ -28,616 +30,274 @@
         "version": {
           "type": "string"
         },
-        "capabilities": {
-          "$ref": "#/definitions/Record<string,unknown>"
+        "title": {
+          "type": "string"
         }
       },
-      "required": ["name"]
+      "required": ["name", "version"]
     },
     "Record<string,unknown>": {
       "type": "object"
     },
-    "SendUserTurnPayload": {
+    "NewConversationParams": {
       "type": "object",
+      "additionalProperties": {},
       "properties": {
-        "metadata": {
-          "$ref": "#/definitions/JsonObject"
-        },
         "model": {
           "type": "string"
         },
-        "stream": {
-          "type": "boolean"
+        "modelProvider": {
+          "type": "string"
         },
-        "choiceCount": {
-          "type": "number"
-        },
-        "sandboxPolicy": {
-          "$ref": "#/definitions/JsonObject"
-        },
-        "approvalPolicy": {
-          "$ref": "#/definitions/JsonObject"
+        "profile": {
+          "type": "string"
         },
         "cwd": {
           "type": "string"
         },
-        "user": {
+        "approvalPolicy": {
+          "$ref": "#/definitions/AskForApproval"
+        },
+        "sandbox": {
+          "$ref": "#/definitions/SandboxMode"
+        },
+        "config": {
+          "$ref": "#/definitions/Record<string,unknown>"
+        },
+        "baseInstructions": {
           "type": "string"
         },
-        "reasoning": {
-          "$ref": "#/definitions/JsonObject"
-        },
-        "tools": {
-          "$ref": "#/definitions/ToolsPayload"
-        },
-        "items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TurnItem"
-          }
-        },
-        "finalOutputJsonSchema": {},
-        "summary": {
+        "developerInstructions": {
           "type": "string"
+        },
+        "compactPrompt": {
+          "type": "string"
+        },
+        "includeApplyPatchTool": {
+          "type": "boolean"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
-    "JsonObject": {
-      "type": "object"
+    "AskForApproval": {
+      "enum": ["never", "on-failure", "on-request", "untrusted"],
+      "type": "string"
     },
-    "ToolsPayload": {
-      "type": "object",
-      "properties": {
-        "definitions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ToolDefinition"
-          }
-        },
-        "choice": {},
-        "parallelToolCalls": {
-          "type": "boolean"
-        },
-        "parallel_tool_calls": {
-          "type": "boolean"
-        }
-      }
+    "SandboxMode": {
+      "enum": ["danger-full-access", "read-only", "workspace-write"],
+      "type": "string"
     },
-    "ToolDefinition": {
+    "AddConversationListenerParams": {
       "type": "object",
+      "additionalProperties": {},
       "properties": {
-        "type": {
+        "conversationId": {
           "type": "string"
         },
-        "function": {
-          "$ref": "#/definitions/JsonObject"
-        }
-      },
-      "required": ["type"]
-    },
-    "TurnItem": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/JsonObject"
-        },
-        {
-          "$ref": "#/definitions/UserMessageItem"
-        }
-      ]
-    },
-    "UserMessageItem": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "userMessage"
-        },
-        "text": {
-          "type": "string"
-        },
-        "metadata": {
-          "$ref": "#/definitions/JsonObject"
-        }
-      },
-      "required": ["text", "type"]
-    },
-    "SendUserMessagePayload": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string"
-        },
-        "metadata": {
-          "$ref": "#/definitions/JsonObject"
-        },
-        "stream": {
+        "experimentalRawEvents": {
           "type": "boolean"
-        },
-        "includeUsage": {
-          "type": "boolean"
-        },
-        "temperature": {
-          "type": "number"
-        },
-        "topP": {
-          "type": "number"
-        },
-        "maxOutputTokens": {
-          "type": "number"
-        },
-        "tools": {
-          "$ref": "#/definitions/ToolsPayload"
-        },
-        "responseFormat": {},
-        "reasoning": {
-          "$ref": "#/definitions/JsonObject"
-        },
-        "finalOutputJsonSchema": {}
+        }
       },
-      "required": ["text"],
+      "required": ["conversationId"],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "RemoveConversationListenerParams": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "subscriptionId": {
+          "type": "string"
+        }
+      },
+      "required": ["subscriptionId"],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "SendUserTurnParams": {
       "type": "object",
       "additionalProperties": {},
       "properties": {
-        "conversation_id": {
-          "type": "string"
-        },
         "conversationId": {
           "type": "string"
         },
-        "request_id": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/InputItem"
+          }
+        },
+        "cwd": {
           "type": "string"
         },
-        "requestId": {
+        "approvalPolicy": {
+          "$ref": "#/definitions/AskForApproval"
+        },
+        "sandboxPolicy": {
+          "$ref": "#/definitions/SandboxPolicy"
+        },
+        "model": {
           "type": "string"
+        },
+        "effort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        },
+        "summary": {
+          "$ref": "#/definitions/ReasoningSummary"
         },
         "metadata": {
           "$ref": "#/definitions/Record<string,unknown>"
+        },
+        "tools": {
+          "$ref": "#/definitions/Record<string,unknown>"
         }
       },
+      "required": [
+        "approvalPolicy",
+        "conversationId",
+        "cwd",
+        "items",
+        "model",
+        "sandboxPolicy",
+        "summary"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "InputItem": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": ["text"]
+            }
+          },
+          "required": ["data", "type"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "image"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "image_url": {
+                  "type": "string"
+                }
+              },
+              "required": ["image_url"]
+            }
+          },
+          "required": ["data", "type"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "localImage"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["path"]
+            }
+          },
+          "required": ["data", "type"]
+        }
+      ]
+    },
+    "SandboxPolicy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "danger-full-access"
+            }
+          },
+          "required": ["mode"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "read-only"
+            }
+          },
+          "required": ["mode"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "workspace-write"
+            },
+            "writable_roots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "network_access": {
+              "type": "boolean"
+            },
+            "exclude_tmpdir_env_var": {
+              "type": "boolean"
+            },
+            "exclude_slash_tmp": {
+              "type": "boolean"
+            }
+          },
+          "required": ["mode"]
+        }
+      ]
+    },
+    "ReasoningEffort": {
+      "enum": ["high", "low", "medium", "minimal"],
+      "type": "string"
+    },
+    "ReasoningSummary": {
+      "enum": ["auto", "concise", "detailed", "none"],
+      "type": "string"
     },
     "SendUserMessageParams": {
       "type": "object",
       "additionalProperties": {},
       "properties": {
-        "conversation_id": {
-          "type": "string"
-        },
-        "request_id": {
-          "type": "string"
-        },
-        "text": {
-          "type": "string"
-        },
-        "metadata": {
-          "$ref": "#/definitions/Record<string,unknown>"
-        },
-        "stream": {
-          "type": "boolean"
-        },
-        "include_usage": {
-          "type": "boolean"
-        },
-        "temperature": {
-          "type": "number"
-        },
-        "top_p": {
-          "type": "number"
-        },
-        "max_output_tokens": {
-          "type": "number"
-        },
-        "tools": {},
-        "response_format": {}
-      },
-      "required": ["conversation_id", "request_id", "text"],
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    },
-    "AgentMessageDeltaNotification": {
-      "type": "object",
-      "properties": {
-        "method": {
-          "type": "string",
-          "const": "agentMessageDelta"
-        },
-        "params": {
-          "$ref": "#/definitions/AgentMessageDeltaParams"
-        },
-        "jsonrpc": {
-          "type": "string",
-          "const": "2.0"
-        }
-      },
-      "required": ["jsonrpc", "method", "params"],
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    },
-    "AgentMessageDeltaParams": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "delta": {
-          "$ref": "#/definitions/AgentMessageDelta"
-        },
-        "conversation_id": {
-          "type": "string"
-        },
         "conversationId": {
           "type": "string"
         },
-        "request_id": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
-        },
-        "conversation": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string"
-            }
-          }
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "conversation_id": {
-              "type": "string"
-            },
-            "request_id": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "required": ["delta"]
-    },
-    "AgentMessageDelta": {
-      "anyOf": [
-        {
-          "allOf": [
-            {
-              "type": "object",
-              "additionalProperties": {},
-              "properties": {
-                "role": {
-                  "type": "string"
-                },
-                "content": {
-                  "$ref": "#/definitions/AgentContent"
-                },
-                "text": {
-                  "type": "string"
-                },
-                "metadata": {
-                  "$ref": "#/definitions/Record<string,unknown>"
-                },
-                "tool_calls": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/ToolCallDelta"
-                  }
-                },
-                "toolCalls": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/ToolCallDelta"
-                  }
-                },
-                "parallel_tool_calls": {
-                  "type": "boolean"
-                },
-                "parallelToolCalls": {
-                  "type": "boolean"
-                }
-              }
-            },
-            {
-              "$ref": "#/definitions/Record<string,unknown>"
-            }
-          ]
-        },
-        {
-          "type": "string"
-        }
-      ]
-    },
-    "AgentContent": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/AgentContentPayload"
-        },
-        {
+        "items": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/AgentContentPayload"
+            "$ref": "#/definitions/InputItem"
           }
-        },
-        {
-          "type": "string"
-        }
-      ]
-    },
-    "AgentContentPayload": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "text": {
-          "type": "string"
-        },
-        "content": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        }
-      }
-    },
-    "ToolCallDelta": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "index": {
-          "type": "number"
-        },
-        "id": {
-          "type": "string"
-        },
-        "tool_call_id": {
-          "type": "string"
-        },
-        "toolCallId": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        },
-        "function": {
-          "$ref": "#/definitions/ToolCallFunctionDelta"
-        },
-        "parallel_tool_calls": {
-          "type": "boolean"
-        },
-        "parallelToolCalls": {
-          "type": "boolean"
-        }
-      }
-    },
-    "ToolCallFunctionDelta": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "arguments": {
-          "type": "string"
-        },
-        "arguments_chunk": {
-          "type": "string"
-        },
-        "argumentsChunk": {
-          "type": "string"
-        }
-      }
-    },
-    "AgentMessageNotification": {
-      "type": "object",
-      "properties": {
-        "method": {
-          "type": "string",
-          "const": "agentMessage"
-        },
-        "params": {
-          "$ref": "#/definitions/AgentMessageParams"
-        },
-        "jsonrpc": {
-          "type": "string",
-          "const": "2.0"
-        }
-      },
-      "required": ["jsonrpc", "method", "params"],
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    },
-    "AgentMessageParams": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "message": {
-          "$ref": "#/definitions/AssistantMessage"
-        },
-        "parallel_tool_calls": {
-          "type": "boolean"
-        },
-        "parallelToolCalls": {
-          "type": "boolean"
-        },
-        "conversation_id": {
-          "type": "string"
-        },
-        "conversationId": {
-          "type": "string"
-        },
-        "request_id": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
-        },
-        "conversation": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string"
-            }
-          }
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "conversation_id": {
-              "type": "string"
-            },
-            "request_id": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "required": ["message"]
-    },
-    "AssistantMessage": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "role": {
-          "type": "string"
-        },
-        "content": {
-          "$ref": "#/definitions/AgentContent"
-        },
-        "tool_calls": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ToolCall"
-          }
-        },
-        "toolCalls": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ToolCall"
-          }
-        },
-        "function_call": {
-          "$ref": "#/definitions/FunctionCall"
-        },
-        "functionCall": {
-          "$ref": "#/definitions/FunctionCall"
         },
         "metadata": {
           "$ref": "#/definitions/Record<string,unknown>"
         }
       },
-      "required": ["role"]
-    },
-    "ToolCall": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "index": {
-          "type": "number"
-        },
-        "id": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        },
-        "function": {
-          "$ref": "#/definitions/ToolCallFunction"
-        }
-      }
-    },
-    "ToolCallFunction": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "arguments": {
-          "type": "string"
-        }
-      }
-    },
-    "FunctionCall": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "arguments": {
-          "type": "string"
-        }
-      }
-    },
-    "TokenCountNotification": {
-      "type": "object",
-      "properties": {
-        "method": {
-          "type": "string",
-          "const": "tokenCount"
-        },
-        "params": {
-          "$ref": "#/definitions/TokenCountParams"
-        },
-        "jsonrpc": {
-          "type": "string",
-          "const": "2.0"
-        }
-      },
-      "required": ["jsonrpc", "method", "params"],
+      "required": ["conversationId", "items"],
       "$schema": "http://json-schema.org/draft-07/schema#"
-    },
-    "TokenCountParams": {
-      "type": "object",
-      "additionalProperties": {},
-      "properties": {
-        "prompt_tokens": {
-          "type": "number"
-        },
-        "completion_tokens": {
-          "type": "number"
-        },
-        "total_tokens": {
-          "type": "number"
-        },
-        "finish_reason": {
-          "type": "string"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "token_limit_reached": {
-          "type": "boolean"
-        },
-        "conversation_id": {
-          "type": "string"
-        },
-        "conversationId": {
-          "type": "string"
-        },
-        "request_id": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
-        },
-        "conversation": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string"
-            }
-          }
-        },
-        "context": {
-          "type": "object",
-          "properties": {
-            "conversation_id": {
-              "type": "string"
-            },
-            "request_id": {
-              "type": "string"
-            }
-          }
-        }
-      }
     },
     "JsonRpcErrorResponse": {
       "type": "object",

@@ -11,6 +11,15 @@ export async function waitForUrlOk(url, { timeoutMs = 5000, intervalMs = 100 } =
     try {
       const res = await fetch(url);
       if (res.ok) return;
+      if (res.status === 503 && url.endsWith("/readyz")) {
+        try {
+          const payload = await res.json();
+          const reason = payload?.health?.readiness?.reason;
+          if (reason === "handshake_failed") {
+            return;
+          }
+        } catch {}
+      }
     } catch {
       // Ignore connection errors while server is starting; continue polling.
     }

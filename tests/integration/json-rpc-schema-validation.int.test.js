@@ -5,6 +5,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildInitializeParams,
+  buildNewConversationParams,
+  buildAddConversationListenerParams,
+  buildRemoveConversationListenerParams,
   buildSendUserMessageParams,
   buildSendUserTurnParams,
 } from "../../src/lib/json-rpc/schema.ts";
@@ -84,6 +87,15 @@ describe("json-rpc payload schema", () => {
       clientInfo: { name: "schema-validator", version: "1.0.0" },
       capabilities: {},
     });
+    const newConversationParams = buildNewConversationParams({
+      model: normalized.turn.model,
+      modelProvider: null,
+      profile: null,
+      cwd: normalized.turn.cwd,
+      approvalPolicy: normalized.turn.approvalPolicy,
+      sandbox: normalized.turn.sandboxPolicy,
+      baseInstructions: normalized.turn.baseInstructions ?? undefined,
+    });
     const turnParams = buildSendUserTurnParams({
       ...normalized.turn,
       conversationId: "conv-validator",
@@ -94,9 +106,19 @@ describe("json-rpc payload schema", () => {
       conversationId: "conv-validator",
       requestId: "req-validator",
     });
+    const addListenerParams = buildAddConversationListenerParams({
+      conversationId: "conv-validator",
+      experimentalRawEvents: false,
+    });
+    const removeListenerParams = buildRemoveConversationListenerParams({
+      subscriptionId: "sub-validator",
+    });
 
     expect(validator.validate("InitializeParams", initializeParams)).toBe(true);
-    expect(validator.validate("SendUserTurnPayload", turnParams)).toBe(true);
-    expect(validator.validate("SendUserMessagePayload", messageParams)).toBe(true);
+    expect(validator.validate("NewConversationParams", newConversationParams)).toBe(true);
+    expect(validator.validate("AddConversationListenerParams", addListenerParams)).toBe(true);
+    expect(validator.validate("RemoveConversationListenerParams", removeListenerParams)).toBe(true);
+    expect(validator.validate("SendUserTurnParams", turnParams)).toBe(true);
+    expect(validator.validate("SendUserMessageParams", messageParams)).toBe(true);
   });
 });
