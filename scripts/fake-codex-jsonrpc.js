@@ -7,6 +7,26 @@ const supervised =
     .trim()
     .toLowerCase() === "true";
 
+const readyDelayMs = Number(process.env.FAKE_CODEX_WORKER_READY_DELAY_MS ?? 20);
+const heartbeatMs = Number(process.env.FAKE_CODEX_WORKER_HEARTBEAT_MS ?? 0);
+const autoExitMs = Number(process.env.FAKE_CODEX_WORKER_AUTOEXIT_MS ?? 0);
+const shutdownDelayMs = Number(process.env.FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS ?? 20);
+const exitCode = Number(process.env.FAKE_CODEX_WORKER_EXIT_CODE ?? 0);
+
+let heartbeatTimer = null;
+let autoExitTimer = null;
+
+const clearTimers = () => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  if (autoExitTimer) {
+    clearTimeout(autoExitTimer);
+    autoExitTimer = null;
+  }
+};
+
 const write = (payload) => {
   try {
     process.stdout.write(JSON.stringify(payload) + "\n");
@@ -27,14 +47,39 @@ const emitCapture = (direction, payload) => {
 async function runJsonRpcWorker() {
   process.stdin.setEncoding("utf8");
   write({ event: "starting" });
-  await delay(20);
+  await delay(Math.max(0, readyDelayMs));
   if (!skipReadyEvent) {
     write({ event: "ready", ready: true });
   }
 
+  if (heartbeatMs > 0) {
+    heartbeatTimer = setInterval(() => {
+      write({ event: "heartbeat" });
+    }, heartbeatMs);
+  }
+
+  if (autoExitMs > 0) {
+    autoExitTimer = setTimeout(() => {
+      clearTimers();
+      write({ event: "exit", reason: "auto" });
+      process.exit(exitCode);
+    }, autoExitMs);
+  }
+
   let conversationSeq = 0;
-  const resolveConversationId = (params = {}) =>
-    params.conversation_id || params.conversationId || `conv-${++conversationSeq}`;
+  let subscriptionSeq = 0;
+  const conversations = new Map();
+  const subscriptions = new Map();
+  const resolveConversationId = (params = {}) => {
+    const provided = params.conversation_id || params.conversationId;
+    if (provided) {
+      if (!conversations.has(provided)) conversations.set(provided, {});
+      return provided;
+    }
+    const generated = `conv-${++conversationSeq}`;
+    conversations.set(generated, {});
+    return generated;
+  };
 
   const handleLine = (line) => {
     let message;
@@ -71,7 +116,10 @@ async function runJsonRpcWorker() {
           break;
         }
         if (handshakeMode === "exit") {
-          process.nextTick(() => process.exit(1));
+          process.nextTick(() => {
+            clearTimers();
+            process.exit(1);
+          });
           return;
         }
         write({
@@ -81,9 +129,52 @@ async function runJsonRpcWorker() {
         });
         break;
       }
+      case "newConversation": {
+        emitCapture("request", message);
+        const convId = `conv-${++conversationSeq}`;
+        conversations.set(convId, { lastTurn: null });
+        write({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            conversation_id: convId,
+            conversationId: convId,
+            model: params?.model || process.env.CODEX_MODEL || "codex-5",
+            reasoning_effort: null,
+            reasoningEffort: null,
+            rollout_path: `/tmp/${convId}.jsonl`,
+            rolloutPath: `/tmp/${convId}.jsonl`,
+          },
+        });
+        break;
+      }
+      case "addConversationListener": {
+        emitCapture("request", message);
+        const convId = resolveConversationId(params);
+        const subscriptionId = `sub-${++subscriptionSeq}`;
+        subscriptions.set(subscriptionId, convId);
+        write({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            subscription_id: subscriptionId,
+            subscriptionId,
+          },
+        });
+        break;
+      }
+      case "removeConversationListener": {
+        emitCapture("request", message);
+        const subscriptionId = params?.subscription_id || params?.subscriptionId;
+        if (subscriptionId) subscriptions.delete(subscriptionId);
+        write({ jsonrpc: "2.0", id, result: {} });
+        break;
+      }
       case "sendUserTurn": {
         emitCapture("request", message);
         const convId = resolveConversationId(params);
+        const existing = conversations.get(convId) || {};
+        conversations.set(convId, { ...existing, lastTurn: params });
         write({ jsonrpc: "2.0", id, result: { conversation_id: convId } });
         break;
       }
@@ -96,7 +187,10 @@ async function runJsonRpcWorker() {
         }
         const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
         if (scenario === "crash") {
-          process.nextTick(() => process.exit(1));
+          process.nextTick(() => {
+            clearTimers();
+            process.exit(1);
+          });
           return;
         }
         if (scenario === "error") {
@@ -325,7 +419,8 @@ async function runJsonRpcWorker() {
 function setupSignalHandlers() {
   const shutdown = (signal) => {
     write({ event: "shutdown", signal });
-    setTimeout(() => process.exit(0), 20);
+    clearTimers();
+    setTimeout(() => process.exit(0), Math.max(0, shutdownDelayMs));
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
@@ -340,6 +435,7 @@ async function main() {
 if (supervised) {
   main().catch((err) => {
     write({ event: "fatal", message: err?.message || String(err) });
+    clearTimers();
     process.exit(1);
   });
 } else {

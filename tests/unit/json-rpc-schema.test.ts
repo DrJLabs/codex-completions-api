@@ -8,6 +8,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CODEX_CLI_VERSION,
   JSONRPC_VERSION,
+  buildInitializeParams,
+  buildNewConversationParams,
+  buildAddConversationListenerParams,
+  buildRemoveConversationListenerParams,
+  buildSendUserMessageParams,
+  buildSendUserTurnParams,
+  createUserMessageItem,
   extractConversationId,
   extractRequestId,
   isAgentMessageDeltaNotification,
@@ -414,5 +421,113 @@ describe("json-rpc schema bindings", () => {
     for (const notification of notifications) {
       expect(isJsonRpcNotification(notification)).toBe(true);
     }
+  });
+
+  describe("serializer helpers", () => {
+    it("builds initialize params with camelCase mirrors", () => {
+      const params = buildInitializeParams({ clientInfo: { name: "tester", version: "1.2.3" } });
+      expect(params.clientInfo).toMatchObject({ name: "tester", version: "1.2.3" });
+      expect(params.client_info).toMatchObject({ name: "tester", version: "1.2.3" });
+      expect(params.protocolVersion).toBeUndefined();
+      expect(params.protocol_version).toBeUndefined();
+    });
+
+    it("builds newConversation params with normalized optional fields", () => {
+      const params = buildNewConversationParams({
+        model: " gpt-5 ",
+        profile: "",
+        cwd: "/tmp/codex-work",
+        approvalPolicy: "On-Request",
+        sandbox: { mode: "workspace-write", writable_roots: ["/tmp"] },
+        baseInstructions: "  base ",
+        developerInstructions: null,
+        includeApplyPatchTool: true,
+      });
+      expect(params.model).toBe("gpt-5");
+      expect(params.profile).toBeNull();
+      expect(params.cwd).toBe("/tmp/codex-work");
+      expect(params.approvalPolicy).toBe("on-request");
+      expect(params.sandbox).toBe("workspace-write");
+      expect(params.baseInstructions).toBe("base");
+      expect(params.developerInstructions).toBeNull();
+      expect(params.includeApplyPatchTool).toBe(true);
+    });
+
+    it("builds sendUserTurn params with normalized values", () => {
+      const item = createUserMessageItem("hello", { message_count: 1, messageCount: 1 });
+      const params = buildSendUserTurnParams({
+        items: [item],
+        conversationId: "conv-1",
+        cwd: "/tmp/work",
+        approvalPolicy: "NEVER",
+        sandboxPolicy: { mode: "workspace-write", writable_roots: ["/tmp"] },
+        model: "gpt-5",
+        summary: "concise",
+        effort: "high",
+      });
+      expect(params.conversationId).toBe("conv-1");
+      expect(params.cwd).toBe("/tmp/work");
+      expect(params.approvalPolicy).toBe("never");
+      expect(params.sandboxPolicy).toMatchObject({
+        mode: "workspace-write",
+        writable_roots: ["/tmp"],
+      });
+      expect(params.summary).toBe("concise");
+      expect(params.effort).toBe("high");
+      expect(params.items).toHaveLength(1);
+      expect(params.items[0]).not.toBe(item);
+    });
+
+    it("builds sendUserMessage params with normalized items and options", () => {
+      const item = createUserMessageItem("payload");
+      const params = buildSendUserMessageParams({
+        items: [item],
+        conversationId: "conv-9",
+        includeUsage: true,
+        metadata: { trace: true },
+        stream: true,
+        temperature: 0.75,
+        topP: 0.5,
+        maxOutputTokens: 256,
+        tools: { definitions: [{ type: "function", function: { name: "noop" } }] },
+        responseFormat: { type: "json_schema" },
+        reasoning: { effort: "low" },
+        finalOutputJsonSchema: { type: "object" },
+      });
+      expect(params.conversationId).toBe("conv-9");
+      expect(params.items).toHaveLength(1);
+      expect(params.items[0]).not.toBe(item);
+      expect(params.includeUsage).toBe(true);
+      expect(params.include_usage).toBe(true);
+      expect(params.metadata).toEqual({ trace: true });
+      expect(params.stream).toBe(true);
+      expect(params.temperature).toBe(0.75);
+      expect(params.topP).toBe(0.5);
+      expect(params.top_p).toBe(0.5);
+      expect(params.maxOutputTokens).toBe(256);
+      expect(params.max_output_tokens).toBe(256);
+      expect(params.tools).toEqual({
+        definitions: [{ type: "function", function: { name: "noop" } }],
+      });
+      expect(params.responseFormat).toEqual({ type: "json_schema" });
+      expect(params.response_format).toEqual({ type: "json_schema" });
+      expect(params.reasoning).toEqual({ effort: "low" });
+      expect(params.finalOutputJsonSchema).toEqual({ type: "object" });
+      expect(params.final_output_json_schema).toEqual({ type: "object" });
+    });
+
+    it("builds add/remove conversation listener params", () => {
+      const addParams = buildAddConversationListenerParams({
+        conversationId: "conv-abc",
+        experimentalRawEvents: undefined,
+      });
+      expect(addParams.conversationId).toBe("conv-abc");
+      expect(addParams.experimentalRawEvents).toBeUndefined();
+
+      const removeParams = buildRemoveConversationListenerParams({
+        subscriptionId: "sub-123",
+      });
+      expect(removeParams.subscriptionId).toBe("sub-123");
+    });
   });
 });

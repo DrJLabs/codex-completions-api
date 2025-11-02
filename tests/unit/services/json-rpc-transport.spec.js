@@ -217,6 +217,24 @@ describe("JsonRpcTransport request lifecycle", () => {
         if (message.method === "initialize") {
           child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
         }
+        if (message.method === "newConversation") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+        if (message.method === "addConversationListener") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { subscription_id: "sub-1" },
+            }) + "\n"
+          );
+        }
         if (message.method === "sendUserTurn") {
           child.stdout.write(
             JSON.stringify({
@@ -266,6 +284,24 @@ describe("JsonRpcTransport request lifecycle", () => {
         const message = JSON.parse(line);
         if (message.method === "initialize") {
           child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
+        }
+        if (message.method === "newConversation") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+        if (message.method === "addConversationListener") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { subscription_id: "sub-1" },
+            }) + "\n"
+          );
         }
         if (message.method === "sendUserTurn") {
           child.stdout.write(
@@ -365,6 +401,24 @@ describe("JsonRpcTransport request lifecycle", () => {
         const message = JSON.parse(line);
         if (message.method === "initialize") {
           child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\n");
+        }
+        if (message.method === "newConversation") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { conversation_id: "server-conv" },
+            }) + "\n"
+          );
+        }
+        if (message.method === "addConversationListener") {
+          child.stdout.write(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { subscription_id: "sub-1" },
+            }) + "\n"
+          );
         }
         if (message.method === "sendUserTurn") {
           child.stdout.write(
