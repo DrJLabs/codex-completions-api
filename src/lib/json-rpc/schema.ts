@@ -318,15 +318,12 @@ export function buildNewConversationParams(
 
   const modelProvider = toNullableString(options.modelProvider);
   if (typeof modelProvider === "string") params.modelProvider = modelProvider;
-  else if (modelProvider === null) params.modelProvider = null;
 
   const profile = toNullableString(options.profile);
   if (typeof profile === "string") params.profile = profile;
-  else if (profile === null) params.profile = null;
 
   const cwd = toNullableString(options.cwd);
   if (typeof cwd === "string") params.cwd = cwd;
-  else if (cwd === null) params.cwd = null;
 
   const approval = normalizeOptionalApprovalPolicy(options.approvalPolicy);
   if (typeof approval === "string") params.approvalPolicy = approval;
@@ -340,18 +337,14 @@ export function buildNewConversationParams(
 
   const baseInstructions = toNullableString(options.baseInstructions);
   if (typeof baseInstructions === "string") params.baseInstructions = baseInstructions;
-  else if (baseInstructions === null) params.baseInstructions = null;
 
   const developerInstructions = toNullableString(options.developerInstructions);
   if (typeof developerInstructions === "string") {
     params.developerInstructions = developerInstructions;
-  } else if (developerInstructions === null) {
-    params.developerInstructions = null;
   }
 
   const compactPrompt = toNullableString(options.compactPrompt);
   if (typeof compactPrompt === "string") params.compactPrompt = compactPrompt;
-  else if (compactPrompt === null) params.compactPrompt = null;
 
   if (typeof options.includeApplyPatchTool === "boolean") {
     params.includeApplyPatchTool = options.includeApplyPatchTool;

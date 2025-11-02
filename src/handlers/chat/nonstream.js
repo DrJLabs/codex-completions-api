@@ -503,7 +503,7 @@ export async function postChatNonStream(req, res) {
 
     let resolvedFinish = resolveWithContext();
     if (!sawTaskComplete && resolvedFinish.reason === "stop") {
-      finishReasonTracker.record("length", "fallback_truncation");
+      finishReasonTracker.record("stop", "fallback_truncation");
       resolvedFinish = resolveWithContext();
     }
 

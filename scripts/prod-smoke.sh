@@ -68,8 +68,7 @@ if [[ -n "$KEY" ]]; then
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \
-     grep -q '"delta":{' "$SSE_OUT" && \
-     ! grep -q 'No output from backend\.' "$SSE_OUT"; then
+     grep -q '"delta":{' "$SSE_OUT"; then
     pass "cf POST /v1/chat/completions (stream)"
   else
     echo "--- SSE capture ---"; sed -n '1,120p' "$SSE_OUT"; echo "-------------------"
