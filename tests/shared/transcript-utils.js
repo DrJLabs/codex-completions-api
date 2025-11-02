@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
- 
+
 const codexPkg = require("@openai/codex/package.json");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -108,14 +108,12 @@ export async function saveTranscript(filename, payload, { backend = "proto" } = 
 }
 
 export async function saveTranscriptManifest(manifest) {
-   
   await mkdir(dirname(TRANSCRIPT_MANIFEST_PATH), { recursive: true });
   await writeFile(TRANSCRIPT_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return TRANSCRIPT_MANIFEST_PATH;
 }
 
 export async function loadTranscriptManifest() {
-   
   const raw = await readFile(TRANSCRIPT_MANIFEST_PATH, "utf8");
   return JSON.parse(raw);
 }
