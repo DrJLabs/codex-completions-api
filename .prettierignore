@@ -3,6 +3,8 @@ web-bundles
 playwright-report
 test-results
 blob-report
+bmad/
+docs/
 .codex-api/**
 .codev/sessions/**
 .codev/rollouts/**
