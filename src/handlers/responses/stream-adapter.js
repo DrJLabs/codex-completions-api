@@ -87,6 +87,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         textParts: [],
         finishReason: null,
         toolCalls: new Map(),
+        toolCallOrdinals: new Map(),
       });
     }
     return choiceStates.get(index);
@@ -108,20 +109,52 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     const responseId = state.responseId;
     deltas.forEach((toolDelta) => {
       if (!toolDelta) return;
-      const ordinal = Number.isInteger(toolDelta.index)
-        ? toolDelta.index
-        : choiceState.toolCalls.size;
-      const callId = toolDelta.id || `tool_${index}_${ordinal}`;
-      const existing = choiceState.toolCalls.get(callId) || {
-        id: callId,
-        ordinal,
-        type: normalizeToolType(toolDelta.type),
-        name: toolDelta.function?.name || callId,
-        lastArgs: "",
-        added: false,
-        doneArguments: false,
-        outputDone: false,
-      };
+      const ordinal = Number.isInteger(toolDelta.index) ? toolDelta.index : null;
+      const fallbackOrdinal = ordinal ?? choiceState.toolCalls.size;
+      const fallbackId = toolDelta.id || `tool_${index}_${fallbackOrdinal}`;
+      const ordMap = choiceState.toolCallOrdinals || (choiceState.toolCallOrdinals = new Map());
+
+      let existing = null;
+      if (toolDelta.id && choiceState.toolCalls.has(toolDelta.id)) {
+        existing = choiceState.toolCalls.get(toolDelta.id);
+      }
+      if (!existing && Number.isInteger(ordinal)) {
+        const priorId = ordMap.get(ordinal);
+        if (priorId && choiceState.toolCalls.has(priorId)) {
+          existing = choiceState.toolCalls.get(priorId);
+        }
+      }
+      if (!existing && choiceState.toolCalls.has(fallbackId)) {
+        existing = choiceState.toolCalls.get(fallbackId);
+      }
+
+      if (!existing) {
+        existing = {
+          id: fallbackId,
+          ordinal: fallbackOrdinal,
+          type: normalizeToolType(toolDelta.type),
+          name: toolDelta.function?.name || fallbackId,
+          lastArgs: "",
+          added: false,
+          doneArguments: false,
+          outputDone: false,
+        };
+      }
+
+      if (Number.isInteger(ordinal) && existing.ordinal !== ordinal) {
+        existing.ordinal = ordinal;
+      }
+
+      if (toolDelta.id && toolDelta.id !== existing.id) {
+        choiceState.toolCalls.delete(existing.id);
+        existing.id = toolDelta.id;
+      }
+
+      const activeId = existing.id;
+      choiceState.toolCalls.set(activeId, existing);
+      if (Number.isInteger(existing.ordinal)) {
+        ordMap.set(existing.ordinal, activeId);
+      }
 
       if (toolDelta.type) existing.type = normalizeToolType(toolDelta.type);
       if (toolDelta.function?.name) existing.name = toolDelta.function.name;
@@ -166,17 +199,44 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     const responseId = state.responseId;
     snapshot.forEach((call, ordinal) => {
       if (!call) return;
-      const callId = call.id || `tool_${index}_${ordinal}`;
-      const existing = choiceState.toolCalls.get(callId) || {
-        id: callId,
-        ordinal,
-        type: normalizeToolType(call.type),
-        name: call.function?.name || callId,
-        lastArgs: "",
-        added: false,
-        doneArguments: false,
-        outputDone: false,
-      };
+      const ordMap = choiceState.toolCallOrdinals || (choiceState.toolCallOrdinals = new Map());
+      const fallbackId = call.id || `tool_${index}_${ordinal}`;
+
+      let existing = null;
+      if (call.id && choiceState.toolCalls.has(call.id)) {
+        existing = choiceState.toolCalls.get(call.id);
+      }
+      if (!existing) {
+        const priorId = ordMap.get(ordinal);
+        if (priorId && choiceState.toolCalls.has(priorId)) {
+          existing = choiceState.toolCalls.get(priorId);
+        }
+      }
+      if (!existing && choiceState.toolCalls.has(fallbackId)) {
+        existing = choiceState.toolCalls.get(fallbackId);
+      }
+
+      if (!existing) {
+        existing = {
+          id: fallbackId,
+          ordinal,
+          type: normalizeToolType(call.type),
+          name: call.function?.name || fallbackId,
+          lastArgs: "",
+          added: false,
+          doneArguments: false,
+          outputDone: false,
+        };
+      }
+
+      if (call.id && call.id !== existing.id) {
+        choiceState.toolCalls.delete(existing.id);
+        existing.id = call.id;
+      }
+
+      existing.ordinal = ordinal;
+      choiceState.toolCalls.set(existing.id, existing);
+      ordMap.set(ordinal, existing.id);
 
       existing.type = normalizeToolType(call.type);
       if (call.function?.name) existing.name = call.function.name;
@@ -384,6 +444,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           textParts: [],
           finishReason: "stop",
           toolCalls: new Map(),
+          toolCallOrdinals: new Map(),
         });
       }
 
