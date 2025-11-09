@@ -6,7 +6,7 @@
  * the logic safe while avoiding hundreds of false positives.
  */
 /* eslint-disable security/detect-object-injection */
-import { buildCanonicalJsonFromFields } from "./tools/obsidianToolsSpec.ts";
+import { buildCanonicalJsonFromFields } from "./tools/obsidianToolsSpec.js";
 
 const DEFAULT_TYPE = "function";
 const ARGUMENT_KEYS = ["arguments", "arguments_chunk", "argumentsChunk"];
@@ -679,4 +679,4 @@ export function createToolCallAggregator({ idFactory } = {}) {
   };
 }
 
-export { toObsidianXml } from "./tools/obsidianToolsSpec.ts";
+export { toObsidianXml } from "./tools/obsidianToolsSpec.js";
