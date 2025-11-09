@@ -11,6 +11,7 @@ external/
 .codev/sessions/**
 .codev/rollouts/**
 .git
+tmp/
 
 # Temporary: ignore files tripping CI format check on PR #78
 docs/bmad/qa/assessments/2.5-test-design-20250913.md
