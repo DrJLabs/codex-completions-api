@@ -104,60 +104,90 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     });
   };
 
+  const ensureToolCallTracking = (choiceState) => {
+    if (!choiceState.toolCalls) {
+      choiceState.toolCalls = new Map();
+    }
+    if (!choiceState.toolCallOrdinals) {
+      choiceState.toolCallOrdinals = new Map();
+    }
+    return {
+      toolCalls: choiceState.toolCalls,
+      ordinals: choiceState.toolCallOrdinals,
+    };
+  };
+
+  const resolveToolCallState = (choiceState, index, { id, ordinal, fallbackId, type, name }) => {
+    const { toolCalls, ordinals } = ensureToolCallTracking(choiceState);
+
+    let existing = null;
+    if (id && toolCalls.has(id)) {
+      existing = toolCalls.get(id);
+    }
+
+    if (!existing && Number.isInteger(ordinal)) {
+      const priorId = ordinals.get(ordinal);
+      if (priorId && toolCalls.has(priorId)) {
+        existing = toolCalls.get(priorId);
+      }
+    }
+
+    if (!existing && fallbackId && toolCalls.has(fallbackId)) {
+      existing = toolCalls.get(fallbackId);
+    }
+
+    const created = !existing;
+    if (!existing) {
+      const resolvedOrdinal = Number.isInteger(ordinal) ? ordinal : toolCalls.size;
+      existing = {
+        id: fallbackId || id || `tool_${index}_${resolvedOrdinal}`,
+        ordinal: resolvedOrdinal,
+        type: normalizeToolType(type),
+        name: name || fallbackId || id || `tool_${index}_${resolvedOrdinal}`,
+        lastArgs: "",
+        added: false,
+        doneArguments: false,
+        outputDone: false,
+      };
+    }
+
+    if (Number.isInteger(ordinal) && existing.ordinal !== ordinal) {
+      existing.ordinal = ordinal;
+    }
+
+    const resolvedId = id || existing.id;
+    if (resolvedId !== existing.id) {
+      toolCalls.delete(existing.id);
+      existing.id = resolvedId;
+    }
+
+    if (type) existing.type = normalizeToolType(type);
+    if (name) existing.name = name;
+
+    toolCalls.set(existing.id, existing);
+    if (Number.isInteger(existing.ordinal)) {
+      ordinals.set(existing.ordinal, existing.id);
+    }
+
+    return existing;
+  };
+
   const emitToolCallDeltas = (choiceState, index, deltas = []) => {
     if (!choiceState || !Array.isArray(deltas) || deltas.length === 0) return;
     const responseId = state.responseId;
+    const { toolCalls } = ensureToolCallTracking(choiceState);
     deltas.forEach((toolDelta) => {
       if (!toolDelta) return;
       const ordinal = Number.isInteger(toolDelta.index) ? toolDelta.index : null;
-      const fallbackOrdinal = ordinal ?? choiceState.toolCalls.size;
+      const fallbackOrdinal = ordinal ?? toolCalls.size;
       const fallbackId = toolDelta.id || `tool_${index}_${fallbackOrdinal}`;
-      const ordMap = choiceState.toolCallOrdinals || (choiceState.toolCallOrdinals = new Map());
-
-      let existing = null;
-      if (toolDelta.id && choiceState.toolCalls.has(toolDelta.id)) {
-        existing = choiceState.toolCalls.get(toolDelta.id);
-      }
-      if (!existing && Number.isInteger(ordinal)) {
-        const priorId = ordMap.get(ordinal);
-        if (priorId && choiceState.toolCalls.has(priorId)) {
-          existing = choiceState.toolCalls.get(priorId);
-        }
-      }
-      if (!existing && choiceState.toolCalls.has(fallbackId)) {
-        existing = choiceState.toolCalls.get(fallbackId);
-      }
-
-      if (!existing) {
-        existing = {
-          id: fallbackId,
-          ordinal: fallbackOrdinal,
-          type: normalizeToolType(toolDelta.type),
-          name: toolDelta.function?.name || fallbackId,
-          lastArgs: "",
-          added: false,
-          doneArguments: false,
-          outputDone: false,
-        };
-      }
-
-      if (Number.isInteger(ordinal) && existing.ordinal !== ordinal) {
-        existing.ordinal = ordinal;
-      }
-
-      if (toolDelta.id && toolDelta.id !== existing.id) {
-        choiceState.toolCalls.delete(existing.id);
-        existing.id = toolDelta.id;
-      }
-
-      const activeId = existing.id;
-      choiceState.toolCalls.set(activeId, existing);
-      if (Number.isInteger(existing.ordinal)) {
-        ordMap.set(existing.ordinal, activeId);
-      }
-
-      if (toolDelta.type) existing.type = normalizeToolType(toolDelta.type);
-      if (toolDelta.function?.name) existing.name = toolDelta.function.name;
+      const existing = resolveToolCallState(choiceState, index, {
+        id: toolDelta.id,
+        ordinal,
+        fallbackId,
+        type: toolDelta.type,
+        name: toolDelta.function?.name,
+      });
 
       if (!existing.added) {
         writeEvent("response.output_item.added", {
@@ -177,7 +207,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       if (typeof toolDelta.function?.arguments === "string") {
         const incoming = toolDelta.function.arguments;
         const previous = existing.lastArgs || "";
-        const chunk = incoming.slice(previous.length);
+        const chunk =
+          incoming.length >= previous.length ? incoming.slice(previous.length) : incoming;
         if (chunk) {
           writeEvent("response.function_call_arguments.delta", {
             type: "response.function_call_arguments.delta",
@@ -189,8 +220,6 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           existing.lastArgs = incoming;
         }
       }
-
-      choiceState.toolCalls.set(existing.id, existing);
     });
   };
 
@@ -199,47 +228,14 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     const responseId = state.responseId;
     snapshot.forEach((call, ordinal) => {
       if (!call) return;
-      const ordMap = choiceState.toolCallOrdinals || (choiceState.toolCallOrdinals = new Map());
       const fallbackId = call.id || `tool_${index}_${ordinal}`;
-
-      let existing = null;
-      if (call.id && choiceState.toolCalls.has(call.id)) {
-        existing = choiceState.toolCalls.get(call.id);
-      }
-      if (!existing) {
-        const priorId = ordMap.get(ordinal);
-        if (priorId && choiceState.toolCalls.has(priorId)) {
-          existing = choiceState.toolCalls.get(priorId);
-        }
-      }
-      if (!existing && choiceState.toolCalls.has(fallbackId)) {
-        existing = choiceState.toolCalls.get(fallbackId);
-      }
-
-      if (!existing) {
-        existing = {
-          id: fallbackId,
-          ordinal,
-          type: normalizeToolType(call.type),
-          name: call.function?.name || fallbackId,
-          lastArgs: "",
-          added: false,
-          doneArguments: false,
-          outputDone: false,
-        };
-      }
-
-      if (call.id && call.id !== existing.id) {
-        choiceState.toolCalls.delete(existing.id);
-        existing.id = call.id;
-      }
-
-      existing.ordinal = ordinal;
-      choiceState.toolCalls.set(existing.id, existing);
-      ordMap.set(ordinal, existing.id);
-
-      existing.type = normalizeToolType(call.type);
-      if (call.function?.name) existing.name = call.function.name;
+      const existing = resolveToolCallState(choiceState, index, {
+        id: call.id,
+        ordinal,
+        fallbackId,
+        type: call.type,
+        name: call.function?.name,
+      });
 
       if (!existing.added) {
         writeEvent("response.output_item.added", {
@@ -298,8 +294,6 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         });
         existing.outputDone = true;
       }
-
-      choiceState.toolCalls.set(existing.id, existing);
     });
   };
 
