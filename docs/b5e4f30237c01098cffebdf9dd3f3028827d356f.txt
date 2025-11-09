@@ -1,0 +1,78 @@
+Reasoning:
+Assumptions. We’re treating Story 2.9 as step 2/3: wiring handlers to the aggregator from 2.8, with OpenAI-style tool_calls/function_call parity in both streaming and non-streaming modes. Logic. Compare Story 2.9 AC/Tasks to the clean main-branch plan; tighten semantics where ambiguity could cause flaky behavior; add minimal crisp ACs/tests to guarantee handler/aggregator contracts and Obsidian Copilot compatibility.  ￼
+
+⸻
+
+Verdict (at a glance)
+	•	Status: Solid draft; aligns with the plan for handler parity, textual fallback, finish-reason normalization, config honoring, and E2E coverage.
+	•	Tweaks needed: A few precision upgrades to make behavior deterministic and handler-safe (idempotent SSE emission, single-finish chunk, cumulative args, post-finish drop rules, and input-shape tolerance).
+
+⸻
+
+Redlines: precise additions & fixes
+
+Add to Acceptance Criteria
+	7.	Role-first SSE & idempotent deltas (streaming)
+The streaming handler MUST emit the assistant role chunk before any other deltas and MUST only emit delta.tool_calls when the aggregator reports a state change (no duplicate frames for identical input).
+	8.	Cumulative arguments in every delta (streaming)
+When emitting delta.tool_calls[*].arguments, each delta MUST carry the current cumulative JSON text for that call (not just the last fragment) so clients can replace-render without diffing.
+	9.	Single, canonical finish event (streaming)
+After the first tool-call delta is emitted, the stream MUST terminate with exactly one final chunk per choice with finish_reason: "tool_calls", followed by [DONE]. No additional assistant text or finish frames may follow.
+	10.	Post-finish drop rules (streaming)
+After emitting the finish chunk, the SSE writer MUST drop any subsequent backend events for that request (to avoid racey dupes if the backend continues producing output).
+	11.	Function vs tool_calls parity (non-stream)
+Non-stream responses MUST set message.content = null and populate either tool_calls[] (preferred) or function_call (singular) based on aggregator output; finish_reason MUST be "tool_calls" whenever hasCalls() is true, regardless of token limit/content filter.
+	12.	Textual fallback stripping (both modes)
+When textual tool markers are detected, any assistant content after indexEnd MUST NOT be emitted (stream) nor included (non-stream).
+	13.	Input-shape tolerance (both modes)
+Handlers MUST accept Codex v2 event shapes (output_item + arguments.delta/done) and OpenAI-style shapes (delta.function_call, message.tool_calls) without caller-side normalization—delegated to the aggregator.
+
+Refine Tasks / Subtasks
+
+Streaming handler wiring
+	•	Instantiate one aggregator per request; feed every JSON-RPC event (delta + final) into it.
+	•	Emit role-first chunk, then stream delta.tool_calls only when updated=true.
+	•	On first tool-call delta: set tool_in_flight=true, apply PROXY_STOP_AFTER_TOOLS(*), send the single finish chunk (finish_reason:"tool_calls"), then close SSE; ignore late backend events.
+
+Non-stream response builder
+	•	Before building choices, call ingestMessage()/snapshot(); construct message.tool_calls[] or message.function_call, set content:null, set finish_reason:"tool_calls".
+	•	Strip textual residues from any collected assistant text (do not serialize <use_tool> or tail content).
+
+Finish-reason utilities/tests
+	•	Update helper so hasToolCalls overrides length, stop, content_filter.
+	•	Add a guard to prevent emitting more than one finish chunk per choice in streaming.
+
+Config + docs touchpoints
+	•	Honor PROXY_STOP_AFTER_TOOLS, PROXY_STOP_AFTER_TOOLS_MODE, PROXY_STOP_AFTER_TOOLS_GRACE_MS, PROXY_SUPPRESS_TAIL_AFTER_TOOLS. Defaults remain unchanged; document that stop policy affects SSE writer only (no worker kill).
+
+Testing (integration/E2E)
+	•	Streaming/structured: function call appears via v2 events → see role-first, cumulative arguments, single finish chunk, [DONE].
+	•	Streaming/textual: <use_tool> detected → content up to indexEnd, then tool_calls delta, single finish chunk, [DONE].
+	•	Non-stream/structured & textual: message contains tool_calls or function_call, content:null, finish_reason:"tool_calls".
+	•	Post-finish drops: backend continues emitting after finish → client receives no extra chunks.
+	•	Parity: same prompt yields equivalent tool-call semantics in stream vs non-stream.
+
+⸻
+
+Implementation checklist (concrete)
+	•	src/handlers/chat/stream.js
+	•	Create const agg = createToolCallAggregator() per request.
+	•	On first outbound frame: sendChunk({choices:[{index:0,delta:{role:"assistant"},finish_reason:null}]}).
+	•	For each parsed event:
+	•	const {updated, deltas} = agg.ingestDelta(evt); if updated, emit delta.tool_calls with cumulative arguments.
+	•	When first tool_calls delta is sent: set tool_in_flight=true; if PROXY_STOP_AFTER_TOOLS, schedule finish (grace-ms); emit one finish chunk (finish_reason:"tool_calls"), then [DONE]; ignore later events.
+	•	Respect PROXY_SUPPRESS_TAIL_AFTER_TOOLS for textual markers (indexEnd).
+	•	src/handlers/chat/nonstream.js
+	•	Feed all final assistant payloads to agg.ingestMessage(...).
+	•	const calls = agg.snapshot(). If non-empty: build message.tool_calls=calls; message.content=null; finish_reason="tool_calls".
+	•	Else if singular: set message.function_call=...; content=null; finish_reason="tool_calls".
+	•	Remove any <use_tool> residues from text buffers.
+	•	src/lib/finish-reason.js (or equivalent)
+	•	if (ctx.hasToolCalls) return "tool_calls"; precedes other mappings.
+	•	Add test to ensure single finish per choice.
+
+⸻
+
+Why these tweaks
+
+They eliminate edge-case flakiness (duplicate deltas/finishes, out-of-order frames, backend “tail” races) and guarantee clients (including Obsidian Copilot) see identical, deterministic tool-call semantics in both modes with minimal handler complexity.  ￼
