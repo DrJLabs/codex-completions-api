@@ -1,0 +1,200 @@
+Story 2.8 — Implement ToolCallAggregator (main branch)
+
+Summary
+
+Build a pure, reusable aggregator that detects and assembles model-initiated tool/function calls from Codex app-server v2 output (structured deltas or textual blocks) into OpenAI-compatible call records. The aggregator exposes incremental streaming deltas and final snapshots; it does not manage finish-reasons, process termination, telemetry, or SSE emission (handlers own those).
+
+Scope
+	•	Implement src/lib/tool-call-aggregator.js (and types/tests).
+	•	Support streaming (partial, chunked arguments) and non-streaming assembly.
+	•	Support both tool_calls[] (multi) and function_call (single) shapes.
+	•	Provide an extensible textual fallback parser (default: <use_tool>…</use_tool>).
+	•	Provide stable, unique call IDs within a turn/choice.
+	•	Exclude handler wiring (covered in follow-up stories).
+
+Non-Goals
+	•	No changes to Obsidian Copilot or Codex CLI.
+	•	No SSE emission, finish-reason selection, process kill/stop, or telemetry emission (handlers do this).
+	•	No parallel scheduling policy; only surface multiple calls in order.
+
+⸻
+
+Public API (module contract)
+
+File: src/lib/tool-call-aggregator.js
+
+// Shapes the handlers expect to stream to clients.
+export type ToolCallFunction = {
+  name: string;                 // function/tool name
+};
+export type ToolCallDelta = {
+  id: string;                   // stable per call per turn
+  type: "function";             // OpenAI-style
+  function: ToolCallFunction;
+  arguments?: string;           // JSON text (partial or complete)
+};
+export type ToolCallRecord = {
+  id: string;
+  type: "function";
+  function: ToolCallFunction;
+  arguments: string;            // complete JSON text (best-effort)
+};
+
+export type IngestDeltaResult = {
+  updated: boolean;             // true if new/changed outgoing deltas available
+  deltas: ToolCallDelta[];      // zero or more per ingest; stream immediately
+};
+
+export type IngestMessageOptions = {
+  emitIfMissing?: boolean;      // synthesize record when only textual block exists
+};
+
+export type ParsedTextBlock = {
+  indexStart: number;           // buffer start (for tail suppression by handlers)
+  indexEnd: number;             // buffer end   (for tail suppression by handlers)
+  name: string;                 // tool name
+  argsText: string;             // raw JSON text (unparsed)
+};
+
+// Factory
+export function createToolCallAggregator(): {
+  // STREAMING: feed one structured delta/event; choiceIndex defaults to 0
+  ingestDelta(delta: unknown, choiceIndex?: number): IngestDeltaResult;
+
+  // NON-STREAMING: feed a final/aggregate assistant message
+  ingestMessage(msg: unknown, choiceIndex?: number, opts?: IngestMessageOptions): void;
+
+  // Final state for a choice (multi-call support)
+  snapshot(choiceIndex?: number): ToolCallRecord[];
+
+  // Turn-level helpers
+  hasCalls(choiceIndex?: number): boolean;
+  resetTurn(): void; // clear all internal state for a new turn
+
+  // Textual fallback
+  registerTextPattern(
+    name: string,
+    matcher: (buffer: string) => ParsedTextBlock[]
+  ): void;
+
+  // Utility: extract parsed textual blocks from a buffer for a given pattern
+  extractUseToolBlocks(buffer: string): ParsedTextBlock[];
+};
+
+Behavioral notes
+	•	Pure library: no I/O, no timers, no logging, no process termination.
+	•	Incremental streaming: ingestDelta() must return partial deltas as soon as the function name is known and as arguments chunks arrive; handlers stream these immediately.
+	•	Finalization: snapshot() returns the completed call records (arguments JSON best-effort assembled). Handlers choose when to call it (e.g., on turn end or before building non-stream responses).
+	•	Multi-call & order: support multiple calls per choice; maintain insertion order; do not interleave argument buffers across calls.
+	•	ID policy: tool_<choiceIndex>_<ordinal>[_<shortRand>]. Stable within turn; unique per choice & call. Do not require determinism across runs.
+	•	Arguments assembly: concatenate chunks to a JSON text buffer. Do not throw on malformed JSON—return best-effort text; parsing/validation is handler/client concern.
+	•	Textual fallback (extensible): built-in <use_tool>…</use_tool> plugin:
+
+<use_tool>
+  <name>webSearch</name>
+  <args>{"q":"obsidian copilot","k":8}</args>
+</use_tool>
+
+Returns {indexStart,indexEnd,name,argsText} items; handlers may suppress tail beyond indexEnd.
+
+⸻
+
+Acceptance Criteria
+	1.	Streaming partials
+	•	ingestDelta() emits deltas as soon as function.name is known.
+	•	Subsequent arguments chunks append to the same call ID; each updated true returns a delta with the latest arguments text (partial allowed).
+	2.	Final snapshot
+	•	snapshot() returns completed ToolCallRecord[] with full arguments text for each call (best-effort).
+	3.	Single & multi forms
+	•	Aggregator can surface data to support either tool_calls[] (preferred) or function_call (singular) in handlers without additional transformation logic.
+	4.	Multi-call ordering
+	•	Supports >1 call per choice; preserves creation order; IDs are distinct per call.
+	5.	Choice support
+	•	All APIs accept choiceIndex (default 0); state is isolated per choice.
+	6.	Textual fallback
+	•	Built-in parser detects complete <use_tool> blocks and returns {name,argsText,indexStart,indexEnd}.
+	•	Pluggable interface registerTextPattern() exists; does not affect built-in behavior.
+	7.	Robustness
+	•	Handles interleaved argument deltas; ignores unrelated deltas safely.
+	•	Tolerates malformed JSON argument fragments (no throws).
+	•	No memory growth > O(total arg bytes); resetting a turn frees buffers.
+	8.	Purity
+	•	No side effects (no logging/telemetry/termination).
+	•	Exposes only state & deltas; handlers decide finish-reason and stop timing.
+	9.	ID stability
+	•	IDs are stable for the life of the turn and unique per choice+ordinal (parallel safe).
+	10.	Tests (minimum)
+	•	Streaming: name-first; args chunking; multi-call; interleaved deltas.
+	•	Non-stream: assembly from a final message; missing args; malformed args.
+	•	Textual: single and multiple <use_tool> blocks; tail indices correct.
+	•	Choice isolation; resetTurn() clears state.
+
+⸻
+
+Tasks
+	1.	Module implementation
+	•	Create src/lib/tool-call-aggregator.js with the API above.
+	•	Internal structures:
+	•	Map<choiceIndex, { calls: CallState[]; current?: CallState }>
+	•	CallState = { id, fnName?, argsText, complete?: boolean }
+	•	Delta ingestion:
+	•	Detect function-call creation/selection (by backend call id if present; else create).
+	•	Append arguments fragments; mark updated=true.
+	•	Return deltas: ToolCallDelta[] for any calls that changed.
+	•	Message ingestion:
+	•	Extract any final tool_calls / function_call from msg.
+	•	If emitIfMissing and only textual block exists, synthesize a call.
+	2.	Textual fallback plugin
+	•	Implement extractUseToolBlocks(buffer):
+	•	Non-greedy matches for <use_tool> sections.
+	•	Extract <name> and <args> inner text; trim/normalize whitespace.
+	•	Return ordered list with positions.
+	•	Expose registerTextPattern(name, matcher) to add more formats later.
+	3.	Unit tests (tests/unit/tool-call-aggregator.test.ts)
+	•	Streaming: name then args; args in 3+ chunks; interleaved with non-call deltas.
+	•	Two calls in one turn; ensure order and distinct IDs.
+	•	ChoiceIndex isolation (0 vs 1).
+	•	Textual parser: single & multiple blocks; nested noise; indices validated.
+	•	Snapshot completeness and resetTurn behavior.
+	•	Malformed args (emit text as-is; no throw).
+	4.	Docs
+	•	docs/dev/tool-call-aggregator.md describing API, examples, and handler integration pattern (who does what).
+
+⸻
+
+Handler Integration Contracts (for later stories)
+	•	Streaming handler will:
+	•	Call ingestDelta() per structured delta.
+	•	Stream returned deltas as delta.tool_calls.
+	•	After first emitted tool-call delta, apply stop policy (finish-reason, cutoff, SSE end).
+	•	Use indexEnd from textual fallback to suppress tail if applicable.
+	•	Non-stream handler will:
+	•	Call ingestMessage() on the final assistant payload.
+	•	Use snapshot() to build message.tool_calls (or function_call) and set content: null.
+	•	Select finish_reason: "tool_calls" when calls exist (over length/content_filter).
+
+(Handlers own finish-reason, termination timing, telemetry, config flags.)
+
+⸻
+
+Config (declared, used by handlers later)
+	•	PROXY_STOP_AFTER_TOOLS (default: true)
+	•	PROXY_STOP_AFTER_TOOLS_MODE = first|all (default: first)
+	•	PROXY_STOP_AFTER_TOOLS_GRACE_MS (default: 300)
+	•	PROXY_SUPPRESS_TAIL_AFTER_TOOLS (default: true)
+	•	PROXY_ENABLE_PARALLEL_TOOL_CALLS (default: false)
+
+⸻
+
+Risks & Mitigations
+	•	Malformed argument JSON: return best-effort text; do not parse; clients/handlers validate.
+	•	Model emits tool text only: textual fallback ensures detection; handlers still control stop.
+	•	Parallel calls interleave: per-call buffers and distinct IDs avoid cross-pollution.
+
+⸻
+
+Definition of Done
+	•	Module implemented and exported with API above.
+	•	Unit tests pass and cover ACs.
+	•	Docs published.
+	•	No side effects; zero lint violations.
