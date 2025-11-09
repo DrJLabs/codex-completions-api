@@ -482,16 +482,15 @@ function synthesizeTextualCalls(choiceState, text, assignId) {
     if (choiceState.textualFingerprints.has(fingerprint)) return;
     choiceState.textualFingerprints.add(fingerprint);
     const argsText = block.argsText ? block.argsText.trim() : "";
-    const callState = createCallState(choiceState, {
-      name: block.name || "use_tool",
-      arguments: argsText,
-      textual: true,
-    });
-    callState.id = assignId({
-      choiceIndex: choiceState.index,
-      ordinal: callState.ordinal,
-      fragment: { name: block.name || "use_tool" },
-    });
+    const callState = createCallState(
+      choiceState,
+      {
+        name: block.name || "use_tool",
+        arguments: argsText,
+        textual: true,
+      },
+      assignId
+    );
     if (argsText) {
       callState.argBuffers = [Buffer.from(argsText, "utf8")];
       callState.argsText = argsText;
@@ -506,10 +505,16 @@ function synthesizeTextualCalls(choiceState, text, assignId) {
   return deltas;
 }
 
-function createCallState(choiceState, fragment) {
+function createCallState(choiceState, fragment, assignId = defaultIdFactory) {
   const key = fragment.key || `auto:${choiceState.index}:${choiceState.nextAutoKey++}`;
   const ordinal = choiceState.order.length;
-  const id = fragment.id || defaultIdFactory({ choiceIndex: choiceState.index, ordinal });
+  const id =
+    fragment.id ||
+    assignId({
+      choiceIndex: choiceState.index,
+      ordinal,
+      fragment,
+    });
   const callState = {
     key,
     id,
@@ -552,20 +557,25 @@ export function createToolCallAggregator({ idFactory } = {}) {
     const key = resolveKey(choiceState, fragment);
     let callState = choiceState.callsByKey.get(key);
     if (!callState) {
-      callState = createCallState(choiceState, {
-        key,
-        id: fragment.id,
-        name: fragment.name,
-        type: fragment.type,
-        backendId: fragment.backendId,
-        callId: fragment.callId,
-      });
+      callState = createCallState(
+        choiceState,
+        {
+          key,
+          id: fragment.id,
+          name: fragment.name,
+          type: fragment.type,
+          backendId: fragment.backendId,
+          callId: fragment.callId,
+        },
+        assignId
+      );
     }
 
     if (fragment.id && fragment.id !== callState.id) {
       callState.id = fragment.id;
       callState.sentId = false;
-    } else if (!callState.id || (!fragment.id && assignId !== defaultIdFactory)) {
+    }
+    if (!callState.id) {
       callState.id = assignId({
         choiceIndex: choiceState.index,
         ordinal: callState.ordinal,
@@ -604,7 +614,7 @@ export function createToolCallAggregator({ idFactory } = {}) {
       callState.emitted = true;
       return delta;
     }
-    return mutated ? null : null;
+    return null;
   };
 
   const ingestInternal = (

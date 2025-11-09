@@ -31,6 +31,15 @@ const mapFinishStatus = (reasons) => {
 
 const isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 
+const normalizeToolType = (value) => {
+  if (typeof value === "string" && value) {
+    const lower = value.toLowerCase();
+    if (lower === "function") return "function_call";
+    return value;
+  }
+  return "function_call";
+};
+
 export function createResponsesStreamAdapter(res, requestBody = {}) {
   const toolCallAggregator = createToolCallAggregator();
   const choiceStates = new Map();
@@ -77,6 +86,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         role: DEFAULT_ROLE,
         textParts: [],
         finishReason: null,
+        toolCalls: new Map(),
       });
     }
     return choiceStates.get(index);
@@ -90,6 +100,146 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       type: OUTPUT_DELTA_EVENT,
       delta: text,
       output_index: index,
+    });
+  };
+
+  const emitToolCallDeltas = (choiceState, index, deltas = []) => {
+    if (!choiceState || !Array.isArray(deltas) || deltas.length === 0) return;
+    const responseId = state.responseId;
+    deltas.forEach((toolDelta) => {
+      if (!toolDelta) return;
+      const ordinal = Number.isInteger(toolDelta.index)
+        ? toolDelta.index
+        : choiceState.toolCalls.size;
+      const callId = toolDelta.id || `tool_${index}_${ordinal}`;
+      const existing = choiceState.toolCalls.get(callId) || {
+        id: callId,
+        ordinal,
+        type: normalizeToolType(toolDelta.type),
+        name: toolDelta.function?.name || callId,
+        lastArgs: "",
+        added: false,
+        doneArguments: false,
+        outputDone: false,
+      };
+
+      if (toolDelta.type) existing.type = normalizeToolType(toolDelta.type);
+      if (toolDelta.function?.name) existing.name = toolDelta.function.name;
+
+      if (!existing.added) {
+        writeEvent("response.output_item.added", {
+          type: "response.output_item.added",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            status: "in_progress",
+          },
+        });
+        existing.added = true;
+      }
+
+      if (typeof toolDelta.function?.arguments === "string") {
+        const incoming = toolDelta.function.arguments;
+        const previous = existing.lastArgs || "";
+        const chunk = incoming.slice(previous.length);
+        if (chunk) {
+          writeEvent("response.function_call_arguments.delta", {
+            type: "response.function_call_arguments.delta",
+            response_id: responseId,
+            output_index: index,
+            item_id: existing.id,
+            delta: chunk,
+          });
+          existing.lastArgs = incoming;
+        }
+      }
+
+      choiceState.toolCalls.set(existing.id, existing);
+    });
+  };
+
+  const finalizeToolCalls = (choiceState, index, snapshot = []) => {
+    if (!choiceState || !Array.isArray(snapshot) || snapshot.length === 0) return;
+    const responseId = state.responseId;
+    snapshot.forEach((call, ordinal) => {
+      if (!call) return;
+      const callId = call.id || `tool_${index}_${ordinal}`;
+      const existing = choiceState.toolCalls.get(callId) || {
+        id: callId,
+        ordinal,
+        type: normalizeToolType(call.type),
+        name: call.function?.name || callId,
+        lastArgs: "",
+        added: false,
+        doneArguments: false,
+        outputDone: false,
+      };
+
+      existing.type = normalizeToolType(call.type);
+      if (call.function?.name) existing.name = call.function.name;
+
+      if (!existing.added) {
+        writeEvent("response.output_item.added", {
+          type: "response.output_item.added",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            status: "in_progress",
+          },
+        });
+        existing.added = true;
+      }
+
+      const argumentsText = call.function?.arguments ?? "";
+      if (argumentsText && argumentsText !== existing.lastArgs) {
+        const previous = existing.lastArgs || "";
+        const chunk = argumentsText.slice(previous.length);
+        if (chunk) {
+          writeEvent("response.function_call_arguments.delta", {
+            type: "response.function_call_arguments.delta",
+            response_id: responseId,
+            output_index: index,
+            item_id: existing.id,
+            delta: chunk,
+          });
+        }
+        existing.lastArgs = argumentsText;
+      }
+
+      if (!existing.doneArguments) {
+        writeEvent("response.function_call_arguments.done", {
+          type: "response.function_call_arguments.done",
+          response_id: responseId,
+          output_index: index,
+          item_id: existing.id,
+          arguments: argumentsText,
+        });
+        existing.doneArguments = true;
+      }
+
+      if (!existing.outputDone) {
+        writeEvent("response.output_item.done", {
+          type: "response.output_item.done",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            arguments: argumentsText,
+            status: "completed",
+          },
+        });
+        existing.outputDone = true;
+      }
+
+      choiceState.toolCalls.set(existing.id, existing);
     });
   };
 
@@ -155,7 +305,10 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       if (delta && typeof delta === "object") {
         const result = toolCallAggregator.ingestDelta(delta, { choiceIndex: index });
         deltaUpdated = Boolean(result?.updated);
-        if (deltaUpdated) ensureCreated();
+        if (deltaUpdated) {
+          ensureCreated();
+          emitToolCallDeltas(choiceState, index, result?.deltas);
+        }
       }
 
       if (!deltaUpdated && choice.message && typeof choice.message === "object") {
@@ -167,7 +320,10 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           choiceIndex: index,
           emitIfMissing: true,
         });
-        if (messageResult?.updated) ensureCreated();
+        if (messageResult?.updated) {
+          ensureCreated();
+          emitToolCallDeltas(choiceState, index, messageResult.deltas);
+        }
       }
 
       if (choice.finish_reason) {
@@ -227,6 +383,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           role: DEFAULT_ROLE,
           textParts: [],
           finishReason: "stop",
+          toolCalls: new Map(),
         });
       }
 
@@ -234,6 +391,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         const choiceState = choiceStates.get(index);
         const text = choiceState?.textParts.join("") || "";
         const snapshot = toolCallAggregator.snapshot({ choiceIndex: index });
+        finalizeToolCalls(choiceState, index, snapshot);
         return {
           index,
           message: {
