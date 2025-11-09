@@ -25,7 +25,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION_FILE: ".nvmrc"
+  NODE_VERSION_FILE: '.nvmrc'
   CACHE_KEY: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: ${{ env.NODE_VERSION_FILE }}
-          cache: "npm"
+          cache: 'npm'
 
       - name: Cache node modules
         uses: actions/cache@v4
@@ -79,7 +79,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: ${{ env.NODE_VERSION_FILE }}
-          cache: "npm"
+          cache: 'npm'
 
       - name: Restore dependencies
         uses: actions/cache@v4
@@ -139,7 +139,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: ${{ env.NODE_VERSION_FILE }}
-          cache: "npm"
+          cache: 'npm'
 
       - name: Restore dependencies
         uses: actions/cache@v4
@@ -337,22 +337,22 @@ exit 0
 
 ```javascript
 // scripts/run-sharded-tests.js
-const { spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Run tests across multiple shards and aggregate results
  * Usage: node scripts/run-sharded-tests.js --shards=4 --env=staging
  */
 
-const SHARD_COUNT = parseInt(process.env.SHARD_COUNT || "4");
-const TEST_ENV = process.env.TEST_ENV || "local";
-const RESULTS_DIR = path.join(__dirname, "../test-results");
+const SHARD_COUNT = parseInt(process.env.SHARD_COUNT || '4');
+const TEST_ENV = process.env.TEST_ENV || 'local';
+const RESULTS_DIR = path.join(__dirname, '../test-results');
 
 console.log(`🚀 Running tests across ${SHARD_COUNT} shards`);
 console.log(`Environment: ${TEST_ENV}`);
-console.log("━".repeat(50));
+console.log('━'.repeat(50));
 
 // Ensure results directory exists
 if (!fs.existsSync(RESULTS_DIR)) {
@@ -367,25 +367,25 @@ function runShard(shardIndex) {
     const shardId = `${shardIndex}/${SHARD_COUNT}`;
     console.log(`\n📦 Starting shard ${shardId}...`);
 
-    const child = spawn("npx", ["playwright", "test", `--shard=${shardId}`, "--reporter=json"], {
+    const child = spawn('npx', ['playwright', 'test', `--shard=${shardId}`, '--reporter=json'], {
       env: { ...process.env, TEST_ENV, SHARD_INDEX: shardIndex },
-      stdio: "pipe",
+      stdio: 'pipe',
     });
 
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
 
-    child.stdout.on("data", (data) => {
+    child.stdout.on('data', (data) => {
       stdout += data.toString();
       process.stdout.write(data);
     });
 
-    child.stderr.on("data", (data) => {
+    child.stderr.on('data', (data) => {
       stderr += data.toString();
       process.stderr.write(data);
     });
 
-    child.on("close", (code) => {
+    child.on('close', (code) => {
       // Save shard results
       const resultFile = path.join(RESULTS_DIR, `shard-${shardIndex}.json`);
       try {
@@ -399,7 +399,7 @@ function runShard(shardIndex) {
       }
     });
 
-    child.on("error", (error) => {
+    child.on('error', (error) => {
       console.error(`❌ Shard ${shardId} process error:`, error.message);
       reject({ shardIndex, error });
     });
@@ -410,7 +410,7 @@ function runShard(shardIndex) {
  * Aggregate results from all shards
  */
 function aggregateResults() {
-  console.log("\n📊 Aggregating results from all shards...");
+  console.log('\n📊 Aggregating results from all shards...');
 
   const shardResults = [];
   let totalTests = 0;
@@ -422,7 +422,7 @@ function aggregateResults() {
   for (let i = 1; i <= SHARD_COUNT; i++) {
     const resultFile = path.join(RESULTS_DIR, `shard-${i}.json`);
     if (fs.existsSync(resultFile)) {
-      const result = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+      const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
       shardResults.push(result);
 
       // Aggregate stats
@@ -447,18 +447,18 @@ function aggregateResults() {
   };
 
   // Save aggregated summary
-  fs.writeFileSync(path.join(RESULTS_DIR, "summary.json"), JSON.stringify(summary, null, 2));
+  fs.writeFileSync(path.join(RESULTS_DIR, 'summary.json'), JSON.stringify(summary, null, 2));
 
-  console.log("\n━".repeat(50));
-  console.log("📈 Test Results Summary");
-  console.log("━".repeat(50));
+  console.log('\n━'.repeat(50));
+  console.log('📈 Test Results Summary');
+  console.log('━'.repeat(50));
   console.log(`Total tests:    ${totalTests}`);
   console.log(`✅ Passed:      ${totalPassed}`);
   console.log(`❌ Failed:      ${totalFailed}`);
   console.log(`⏭️  Skipped:     ${totalSkipped}`);
   console.log(`⚠️  Flaky:       ${totalFlaky}`);
   console.log(`⏱️  Duration:    ${(summary.duration / 1000).toFixed(2)}s`);
-  console.log("━".repeat(50));
+  console.log('━'.repeat(50));
 
   return summary;
 }
@@ -478,7 +478,7 @@ async function main() {
   try {
     await Promise.allSettled(shardPromises);
   } catch (error) {
-    console.error("❌ One or more shards failed:", error);
+    console.error('❌ One or more shards failed:', error);
   }
 
   // Aggregate results
@@ -489,16 +489,16 @@ async function main() {
 
   // Exit with failure if any tests failed
   if (summary.failed > 0) {
-    console.error("\n❌ Test suite failed");
+    console.error('\n❌ Test suite failed');
     process.exit(1);
   }
 
-  console.log("\n✅ All tests passed");
+  console.log('\n✅ All tests passed');
   process.exit(0);
 }
 
 main().catch((error) => {
-  console.error("Fatal error:", error);
+  console.error('Fatal error:', error);
   process.exit(1);
 });
 ```

@@ -17,6 +17,136 @@ const write = (obj) => {
   } catch {}
 };
 
+const CUSTOM_TOOL_ARGUMENT = String(process.env.FAKE_CODEX_TOOL_ARGUMENT || "");
+const TOOL_ARGUMENT_CHUNK_SIZE = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
+const hasCustomToolArgument = CUSTOM_TOOL_ARGUMENT.length > 0;
+const hasChunkOverride = Number.isFinite(TOOL_ARGUMENT_CHUNK_SIZE) && TOOL_ARGUMENT_CHUNK_SIZE > 0;
+
+const buildToolArgumentPayload = (choiceIndex = 0) => {
+  if (hasCustomToolArgument) return CUSTOM_TOOL_ARGUMENT;
+  return `{"id":"${42 + choiceIndex}"}`;
+};
+
+const splitToolArgumentPayload = (payload, choiceIndex = 0) => {
+  if (hasChunkOverride) {
+    const chunks = [];
+    for (let index = 0; index < payload.length; index += TOOL_ARGUMENT_CHUNK_SIZE) {
+      chunks.push(payload.slice(index, index + TOOL_ARGUMENT_CHUNK_SIZE));
+    }
+    return chunks.length ? chunks : [payload];
+  }
+  if (hasCustomToolArgument) return [payload];
+  return ['{"id":"', String(42 + choiceIndex), '"}'];
+};
+
+async function emitMultiChoiceToolCall(choiceCount = 2, toolCallIndexes = [0]) {
+  const normalizedToolCallIndexes =
+    Array.isArray(toolCallIndexes) && toolCallIndexes.length
+      ? [...new Set(toolCallIndexes.filter((idx) => Number.isInteger(idx) && idx >= 0))]
+      : [0];
+  for (let idx = 0; idx < choiceCount; idx += 1) {
+    if (normalizedToolCallIndexes.includes(idx)) {
+      const toolId = `multi_tool_${idx}`;
+      const argumentPayload = buildToolArgumentPayload(idx);
+      write({
+        type: "agent_message_delta",
+        msg: {
+          choice_index: idx,
+          parallel_tool_calls: true,
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: toolId,
+                type: "function",
+                function: { name: "lookup_user" },
+              },
+            ],
+          },
+        },
+      });
+      await delay(5);
+      const argChunks = splitToolArgumentPayload(argumentPayload, idx);
+      for (const chunk of argChunks) {
+        write({
+          type: "agent_message_delta",
+          msg: {
+            choice_index: idx,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  function: { arguments: chunk },
+                },
+              ],
+            },
+          },
+        });
+        await delay(5);
+      }
+      const xmlBlock = `<use_tool>\n  <name>lookup_user</name>\n  <id>${42 + idx}</id>\n</use_tool>`;
+      write({
+        type: "agent_message_delta",
+        msg: {
+          choice_index: idx,
+          delta: {
+            content: xmlBlock,
+          },
+        },
+      });
+      await delay(5);
+    } else {
+      write({
+        type: "agent_message_delta",
+        msg: {
+          choice_index: idx,
+          delta: {
+            content: `Choice ${idx} says hello.`,
+          },
+        },
+      });
+      await delay(5);
+    }
+  }
+
+  for (let idx = 0; idx < choiceCount; idx += 1) {
+    if (normalizedToolCallIndexes.includes(idx)) {
+      const argumentPayload = buildToolArgumentPayload(idx);
+      const toolCall = {
+        id: `multi_tool_${idx}`,
+        type: "function",
+        function: {
+          name: "lookup_user",
+          arguments: argumentPayload,
+        },
+      };
+      write({
+        type: "agent_message",
+        msg: {
+          choice_index: idx,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [toolCall],
+          },
+        },
+      });
+    } else {
+      write({
+        type: "agent_message",
+        msg: {
+          choice_index: idx,
+          message: {
+            role: "assistant",
+            content: `Choice ${idx} says hello.`,
+          },
+        },
+      });
+    }
+    await delay(5);
+  }
+}
+
 const runProto = async () => {
   let submission = "";
   try {
@@ -31,6 +161,17 @@ const runProto = async () => {
       }
     }
   } catch {}
+
+  let requestBody = {};
+  try {
+    requestBody = JSON.parse(submission || "{}");
+  } catch {}
+  const choiceCountEnv = Number(process.env.FAKE_CODEX_CHOICE_COUNT);
+  const choiceCount =
+    (Number.isFinite(choiceCountEnv) && choiceCountEnv > 0 ? choiceCountEnv : null) ||
+    Number(requestBody?.n) ||
+    Number(requestBody?.op?.args?.n) ||
+    1;
 
   // Emit a deterministic short response
   write({ type: "session_configured" });
@@ -63,6 +204,7 @@ const runProto = async () => {
           ...(metadataMode === "extra" ? { build_id: "fake-build" } : {}),
         }
       : null;
+  const singleToolArgument = buildToolArgumentPayload();
   const toolCalls =
     scenario === "tool_call"
       ? [
@@ -71,7 +213,7 @@ const runProto = async () => {
             type: "function",
             function: {
               name: "lookup_user",
-              arguments: '{"id":"42"}',
+              arguments: singleToolArgument,
             },
           },
         ]
@@ -95,6 +237,34 @@ const runProto = async () => {
     messageText = `${baseMessage}\n${lines}`;
   }
 
+  if (scenario === "multi_choice_tool_call") {
+    const toolCallChoicesRaw = String(process.env.FAKE_CODEX_TOOL_CALL_CHOICES || "").trim();
+    const toolCallIndexes = toolCallChoicesRaw
+      ? toolCallChoicesRaw
+          .split(",")
+          .map((value) => Number(value.trim()))
+          .filter((value) => Number.isInteger(value) && value >= 0)
+      : [0];
+    await emitMultiChoiceToolCall(choiceCount, toolCallIndexes.length ? toolCallIndexes : [0]);
+    const tokenCountMsg = {
+      prompt_tokens: 8,
+      completion_tokens: 0,
+    };
+    write({
+      type: "token_count",
+      msg: tokenCountMsg,
+    });
+    await delay(5);
+    write({
+      type: "task_complete",
+      msg: { finish_reason: finishReason },
+    });
+    try {
+      process.stdout.end?.();
+    } catch {}
+    return;
+  }
+
   if (toolCalls && parallelToolCalls) {
     write({
       type: "agent_message_delta",
@@ -113,7 +283,7 @@ const runProto = async () => {
       },
     });
     await delay(5);
-    const argChunks = ['{"id":"', "42", '"}'];
+    const argChunks = splitToolArgumentPayload(singleToolArgument);
     for (const chunk of argChunks) {
       write({
         type: "agent_message_delta",

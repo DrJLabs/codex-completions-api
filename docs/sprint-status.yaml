@@ -54,7 +54,7 @@ development_status:
   2-6-document-parity-verification-and-rollout-checklist: done
   2-7-align-json-rpc-wiring-with-app-server-schema: done
   2-8-implement-tool-call-aggregator: done
-  2-9-stream-and-nonstream-tool-calls: drafted
+  2-9-stream-and-nonstream-tool-calls: done
   2-10-tool-call-regression-and-smoke: drafted
   epic-2-retrospective: completed
   epic-3: backlog

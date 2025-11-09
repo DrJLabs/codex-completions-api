@@ -48,7 +48,7 @@ afterAll(async () => {
   } catch {}
 });
 
-test.skip("disconnect aborts stream and kills child process", async () => {
+test("disconnect aborts stream and kills child process", async () => {
   const controller = new AbortController();
   const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "POST",
@@ -65,7 +65,7 @@ test.skip("disconnect aborts stream and kills child process", async () => {
   // Wait until the shim writes its PID file
   {
     const start = Date.now();
-    while (!existsSync(PID_FILE) && Date.now() - start < 1000) {
+    while (!existsSync(PID_FILE) && Date.now() - start < 3000) {
       await new Promise((r) => setTimeout(r, 20));
     }
   }
@@ -73,7 +73,7 @@ test.skip("disconnect aborts stream and kills child process", async () => {
   await reader.read();
   controller.abort();
   // Give proxy a moment to propagate SIGTERM
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 1000));
   const pid = Number(readFileSync(PID_FILE, "utf8"));
   let alive = true;
   try {

@@ -510,9 +510,9 @@ await expect(page.locator('[data-testid="user-menu"]')).toBeVisible({ timeout: 1
 
 ```typescript
 // ✅ Good (recommended)
-import { createTestUser } from "./factories/user-factory";
+import { createTestUser } from './factories/user-factory';
 
-const testUser = createTestUser({ role: "admin" });
+const testUser = createTestUser({ role: 'admin' });
 await loginPage.login(testUser.email, testUser.password);
 ```
 
@@ -533,7 +533,7 @@ const test = base.extend({
   },
 });
 
-test("user can access dashboard", async ({ authenticatedPage }) => {
+test('user can access dashboard', async ({ authenticatedPage }) => {
   // Test starts already logged in
 });
 ```
