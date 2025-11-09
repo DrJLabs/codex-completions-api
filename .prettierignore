@@ -5,6 +5,8 @@ test-results
 blob-report
 bmad/
 docs/
+.serena/
+external/
 .codex-api/**
 .codev/sessions/**
 .codev/rollouts/**
