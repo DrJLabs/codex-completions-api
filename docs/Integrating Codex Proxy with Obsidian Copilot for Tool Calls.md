@@ -1,7 +1,7 @@
 # Integrating Codex Proxy with Obsidian Copilot for Tool Calls
 
 **Source:** Attached PDF  
-**Original file:** codex-completions-api/Integrating Codex Proxy with Obsidotn Copilot for Tool Calls.pdf
+**Original file:** codex-completions-api/Integrating Codex Proxy with Obsidian Copilot for Tool Calls.pdf
 
 ---
 
