@@ -1,3 +1,10 @@
+/*
+ * security/detect-object-injection is disabled because the helpers must inspect
+ * dynamic tool argument maps provided by upstream worker payloads. Each access
+ * is guarded by explicit checks before use, keeping the helpers safe while
+ * avoiding noisy false positives from the lint rule.
+ */
+/* eslint-disable security/detect-object-injection */
 import { buildXmlTag, escapeXml } from "./xml.js";
 
 const TOOL_PARAMETER_CANON = new Map([
@@ -60,10 +67,6 @@ const TOOL_PARAMETER_CANON = new Map([
   ["youtubeTranscription", []],
 ]);
 
-const NUMBER_REGEX = /^[-+]?\d+(?:\.\d+)?$/;
-const BOOLEAN_REGEX = /^(true|false)$/i;
-const NULL_REGEX = /^null$/i;
-
 function normalizeKey(key) {
   return typeof key === "string" ? key.trim() : "";
 }
@@ -72,14 +75,14 @@ function formatJsonValueFromText(raw) {
   if (raw === null || raw === undefined) return '""';
   const trimmed = String(raw).trim();
   if (!trimmed) return '""';
-  if (NUMBER_REGEX.test(trimmed)) return trimmed;
-  if (BOOLEAN_REGEX.test(trimmed)) return trimmed.toLowerCase();
-  if (NULL_REGEX.test(trimmed)) return "null";
   if (
     (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
     (trimmed.startsWith("[") && trimmed.endsWith("]"))
   ) {
-    return trimmed;
+    try {
+      JSON.parse(trimmed);
+      return trimmed;
+    } catch {}
   }
   return JSON.stringify(trimmed);
 }
