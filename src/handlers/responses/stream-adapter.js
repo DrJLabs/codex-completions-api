@@ -1,9 +1,20 @@
 import { nanoid } from "nanoid";
 import { normalizeResponseId, convertChatResponseToResponses } from "./shared.js";
-import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 
 const DEFAULT_ROLE = "assistant";
 const OUTPUT_DELTA_EVENT = "response.output_text.delta";
+const DEFAULT_TOOL_TYPE = "function";
+
+const normalizeToolCallArguments = (value) => (typeof value === "string" ? value : "");
+
+const toNumericIndex = (value) => {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed)) return parsed;
+  }
+  return null;
+};
 
 const mapFinishStatus = (reasons) => {
   const normalized = new Set(
@@ -72,13 +83,73 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   const ensureChoiceState = (index) => {
     if (!choiceStates.has(index)) {
       choiceStates.set(index, {
+        index,
         role: DEFAULT_ROLE,
         textParts: [],
-        toolAggregator: createToolCallAggregator(),
+        toolCalls: new Map(),
+        toolCallOrder: [],
+        toolCallAliases: new Map(),
+        nextToolOrdinal: 0,
         finishReason: null,
       });
     }
     return choiceStates.get(index);
+  };
+
+  const registerToolAlias = (choiceState, type, value, key) => {
+    if (value === undefined || value === null || value === "") return;
+    choiceState.toolCallAliases.set(`${type}:${value}`, key);
+  };
+
+  const upsertToolCall = (choiceState, call = {}) => {
+    if (!choiceState || !call || typeof call !== "object") return;
+    const trimmedId = typeof call.id === "string" && call.id.trim() ? call.id.trim() : null;
+    const numericIndex = toNumericIndex(call.index);
+    let key = null;
+    if (trimmedId) {
+      key = choiceState.toolCallAliases.get(`id:${trimmedId}`) || null;
+    }
+    if (!key && numericIndex !== null) {
+      key = choiceState.toolCallAliases.get(`idx:${numericIndex}`) || null;
+    }
+    if (!key) {
+      key = trimmedId
+        ? `id:${trimmedId}`
+        : numericIndex !== null
+          ? `idx:${numericIndex}`
+          : `auto:${choiceState.nextToolOrdinal}`;
+    }
+
+    if (!choiceState.toolCallOrder.includes(key)) {
+      choiceState.toolCallOrder.push(key);
+      if (!trimmedId && numericIndex === null) {
+        choiceState.nextToolOrdinal += 1;
+      }
+    }
+
+    const existing = choiceState.toolCalls.get(key) || {
+      id:
+        trimmedId ||
+        `tool_${choiceState.index}_${choiceState.toolCallOrder.length - 1}`,
+      type: DEFAULT_TOOL_TYPE,
+      function: { name: undefined, arguments: "" },
+    };
+
+    if (trimmedId) existing.id = trimmedId;
+    if (typeof call.type === "string" && call.type.trim()) {
+      existing.type = call.type;
+    }
+    const fn = call.function && typeof call.function === "object" ? call.function : null;
+    if (fn?.name && typeof fn.name === "string" && fn.name.trim()) {
+      existing.function.name = fn.name;
+    }
+    if (typeof fn?.arguments === "string") {
+      existing.function.arguments = fn.arguments;
+    }
+
+    choiceState.toolCalls.set(key, existing);
+    if (trimmedId) registerToolAlias(choiceState, "id", trimmedId, key);
+    if (numericIndex !== null) registerToolAlias(choiceState, "idx", numericIndex, key);
   };
 
   const appendTextSegment = (choiceState, index, text) => {
@@ -130,6 +201,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       const choiceState = ensureChoiceState(index);
       const delta = choice.delta || {};
 
+
       if (delta.role) choiceState.role = delta.role;
 
       if (Array.isArray(delta.content)) {
@@ -151,7 +223,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       }
 
       if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
-        choiceState.toolAggregator.ingestDelta({ tool_calls: delta.tool_calls });
+        delta.tool_calls.forEach((call) => upsertToolCall(choiceState, call));
       }
 
       if (choice.finish_reason) {
@@ -207,9 +279,12 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       if (indices.length === 0) {
         indices.push(0);
         choiceStates.set(0, {
+          index: 0,
           role: DEFAULT_ROLE,
           textParts: [],
-          toolAggregator: createToolCallAggregator(),
+          toolCalls: new Map(),
+          toolCallOrder: [],
+          nextToolOrdinal: 0,
           finishReason: "stop",
         });
       }
@@ -217,7 +292,17 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       const chatChoices = indices.map((index) => {
         const choiceState = choiceStates.get(index);
         const text = choiceState?.textParts.join("") || "";
-        const snapshot = choiceState?.toolAggregator.snapshot() || [];
+        const snapshot = (choiceState?.toolCallOrder || [])
+          .map((key) => choiceState.toolCalls.get(key))
+          .filter(Boolean)
+          .map((entry) => ({
+            id: entry.id,
+            type: entry.type || DEFAULT_TOOL_TYPE,
+            function: {
+              name: entry.function?.name,
+              arguments: normalizeToolCallArguments(entry.function?.arguments),
+            },
+          }));
         return {
           index,
           message: {

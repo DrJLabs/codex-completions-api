@@ -1,0 +1,1 @@
+Node.js ≥ 18 with Express (ESM). Streaming via Server-Sent Events. Vitest for unit/integration tests, Playwright for e2e API/SSE tests. Deployment via docker-compose (Traefik reverse proxy + ForwardAuth) and optional systemd services. Uses Codex CLI as backend process, with config under .codex-api/.codev. Prettier + ESLint enforce formatting.

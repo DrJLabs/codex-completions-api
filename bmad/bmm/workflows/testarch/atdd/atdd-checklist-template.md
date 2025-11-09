@@ -76,7 +76,7 @@
 **Example Usage:**
 
 ```typescript
-const user = createUser({ email: "specific@example.com" });
+const user = createUser({ email: 'specific@example.com' });
 const users = createUsers(5); // Generate 5 random users
 ```
 
@@ -355,8 +355,8 @@ See `tea-index.csv` for complete knowledge fragment mapping.
 
 - Ask in team standup
 - Tag @{tea_agent_username} in Slack/Discord
-- Refer to `testarch/README.md` for workflow documentation
-- Consult `testarch/knowledge/` for testing best practices
+- Refer to `./bmm/docs/tea-README.md` for workflow documentation
+- Consult `./bmm/testarch/knowledge` for testing best practices
 
 ---
 

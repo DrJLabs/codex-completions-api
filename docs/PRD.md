@@ -34,6 +34,12 @@ FR002: Match today’s streaming and non-streaming response shapes exactly (role
 FR003: Translate OpenAI-formatted requests into the official Codex App Server JSON-RPC calls, including model selection, tool metadata, and conversation context.
 FR004: Keep HTTP status codes, error bodies, and retry hints identical to current behavior; no client-visible regressions.
 
+#### Tool-call Parity Enhancements (Stories 2.8–2.10)
+
+- **FR002a – ToolCallAggregator module:** Implement a pure `src/lib/tool-call-aggregator` utility that ingests Codex JSON-RPC tool events and textual `<use_tool>` blocks, maintains per-choice state, exposes `ingestDelta()` / `ingestMessage()` / `snapshot()` / `resetTurn()`, and provides Obsidian XML helpers plus ordered parameter canon so downstream handlers emit canonical `<use_tool>` payloads without duplicating parsing logic.
+- **FR002b – Handler integration:** Streaming and non-streaming chat handlers must rely on the aggregator for tool-call construction, enforce role-first SSE ordering, stop-after-first-tool semantics, configurable output modes (`obsidian-xml`, `openai-json`), and single `finish_reason:"tool_calls"` frames while suppressing tail text and dropping post-finish deltas.
+- **FR002c – Regression & smoke coverage:** Provide deterministic structured/textual fixtures, extend unit/integration/Playwright suites, wire authenticated smoke tests (dev/prod) plus CI artifacts (transcripts/logs) so tool-call behavior is continuously validated, including parallel-call policy, disconnect handling, and UTF-8 safety for large arguments.
+
 Worker Lifecycle & Controls
 FR005: Provide a documented runtime flag (e.g., `PROXY_USE_APP_SERVER`) that can switch between proto and app-server without redeploying.
 FR006: Manage a persistent JSON-RPC worker with supervised restarts, bounded backoff, and health-based gating before accepting traffic.
