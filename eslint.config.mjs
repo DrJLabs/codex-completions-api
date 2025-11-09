@@ -34,6 +34,7 @@ export default [
       ".codev/**",
       ".codex-api/**",
       "bmad/**",
+      "external/**",
     ],
   },
   js.configs.recommended,

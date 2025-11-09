@@ -58,7 +58,6 @@ test("aggregates streaming tool-call fragments into final response", async () =>
   expect(message.role).toBe("assistant");
   expect(Array.isArray(message.content)).toBe(true);
   const content = message.content.filter(Boolean);
-
   // Streaming tool call should aggregate into a tool_use node with full arguments.
   expect(content.some((node) => node.type === "tool_use")).toBe(true);
   const toolNode = content.find((node) => node.type === "tool_use");

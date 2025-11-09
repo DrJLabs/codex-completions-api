@@ -31,7 +31,17 @@ const mapFinishStatus = (reasons) => {
 
 const isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 
+const normalizeToolType = (value) => {
+  if (typeof value === "string" && value) {
+    const lower = value.toLowerCase();
+    if (lower === "function") return "function_call";
+    return value;
+  }
+  return "function_call";
+};
+
 export function createResponsesStreamAdapter(res, requestBody = {}) {
+  const toolCallAggregator = createToolCallAggregator();
   const choiceStates = new Map();
   const state = {
     responseId: null,
@@ -72,10 +82,12 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   const ensureChoiceState = (index) => {
     if (!choiceStates.has(index)) {
       choiceStates.set(index, {
+        index,
         role: DEFAULT_ROLE,
         textParts: [],
-        toolAggregator: createToolCallAggregator(),
         finishReason: null,
+        toolCalls: new Map(),
+        toolCallOrdinals: new Map(),
       });
     }
     return choiceStates.get(index);
@@ -89,6 +101,199 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       type: OUTPUT_DELTA_EVENT,
       delta: text,
       output_index: index,
+    });
+  };
+
+  const ensureToolCallTracking = (choiceState) => {
+    if (!choiceState.toolCalls) {
+      choiceState.toolCalls = new Map();
+    }
+    if (!choiceState.toolCallOrdinals) {
+      choiceState.toolCallOrdinals = new Map();
+    }
+    return {
+      toolCalls: choiceState.toolCalls,
+      ordinals: choiceState.toolCallOrdinals,
+    };
+  };
+
+  const resolveToolCallState = (choiceState, index, { id, ordinal, fallbackId, type, name }) => {
+    const { toolCalls, ordinals } = ensureToolCallTracking(choiceState);
+
+    let existing = null;
+    if (id && toolCalls.has(id)) {
+      existing = toolCalls.get(id);
+    }
+
+    if (!existing && Number.isInteger(ordinal)) {
+      const priorId = ordinals.get(ordinal);
+      if (priorId && toolCalls.has(priorId)) {
+        existing = toolCalls.get(priorId);
+      }
+    }
+
+    if (!existing && fallbackId && toolCalls.has(fallbackId)) {
+      existing = toolCalls.get(fallbackId);
+    }
+
+    const created = !existing;
+    if (!existing) {
+      const resolvedOrdinal = Number.isInteger(ordinal) ? ordinal : toolCalls.size;
+      existing = {
+        id: fallbackId || id || `tool_${index}_${resolvedOrdinal}`,
+        ordinal: resolvedOrdinal,
+        type: normalizeToolType(type),
+        name: name || fallbackId || id || `tool_${index}_${resolvedOrdinal}`,
+        lastArgs: "",
+        added: false,
+        doneArguments: false,
+        outputDone: false,
+      };
+    }
+
+    if (Number.isInteger(ordinal) && existing.ordinal !== ordinal) {
+      existing.ordinal = ordinal;
+    }
+
+    const resolvedId = id || existing.id;
+    if (resolvedId !== existing.id) {
+      toolCalls.delete(existing.id);
+      existing.id = resolvedId;
+    }
+
+    if (type) existing.type = normalizeToolType(type);
+    if (name) existing.name = name;
+
+    toolCalls.set(existing.id, existing);
+    if (Number.isInteger(existing.ordinal)) {
+      ordinals.set(existing.ordinal, existing.id);
+    }
+
+    return existing;
+  };
+
+  const emitToolCallDeltas = (choiceState, index, deltas = []) => {
+    if (!choiceState || !Array.isArray(deltas) || deltas.length === 0) return;
+    const responseId = state.responseId;
+    const { toolCalls } = ensureToolCallTracking(choiceState);
+    deltas.forEach((toolDelta) => {
+      if (!toolDelta) return;
+      const ordinal = Number.isInteger(toolDelta.index) ? toolDelta.index : null;
+      const fallbackOrdinal = ordinal ?? toolCalls.size;
+      const fallbackId = toolDelta.id || `tool_${index}_${fallbackOrdinal}`;
+      const existing = resolveToolCallState(choiceState, index, {
+        id: toolDelta.id,
+        ordinal,
+        fallbackId,
+        type: toolDelta.type,
+        name: toolDelta.function?.name,
+      });
+
+      if (!existing.added) {
+        writeEvent("response.output_item.added", {
+          type: "response.output_item.added",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            status: "in_progress",
+          },
+        });
+        existing.added = true;
+      }
+
+      if (typeof toolDelta.function?.arguments === "string") {
+        const incoming = toolDelta.function.arguments;
+        const previous = existing.lastArgs || "";
+        const chunk =
+          incoming.length >= previous.length ? incoming.slice(previous.length) : incoming;
+        if (chunk) {
+          writeEvent("response.function_call_arguments.delta", {
+            type: "response.function_call_arguments.delta",
+            response_id: responseId,
+            output_index: index,
+            item_id: existing.id,
+            delta: chunk,
+          });
+          existing.lastArgs = incoming;
+        }
+      }
+    });
+  };
+
+  const finalizeToolCalls = (choiceState, index, snapshot = []) => {
+    if (!choiceState || !Array.isArray(snapshot) || snapshot.length === 0) return;
+    const responseId = state.responseId;
+    snapshot.forEach((call, ordinal) => {
+      if (!call) return;
+      const fallbackId = call.id || `tool_${index}_${ordinal}`;
+      const existing = resolveToolCallState(choiceState, index, {
+        id: call.id,
+        ordinal,
+        fallbackId,
+        type: call.type,
+        name: call.function?.name,
+      });
+
+      if (!existing.added) {
+        writeEvent("response.output_item.added", {
+          type: "response.output_item.added",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            status: "in_progress",
+          },
+        });
+        existing.added = true;
+      }
+
+      const argumentsText = call.function?.arguments ?? "";
+      if (argumentsText && argumentsText !== existing.lastArgs) {
+        const previous = existing.lastArgs || "";
+        const chunk = argumentsText.slice(previous.length);
+        if (chunk) {
+          writeEvent("response.function_call_arguments.delta", {
+            type: "response.function_call_arguments.delta",
+            response_id: responseId,
+            output_index: index,
+            item_id: existing.id,
+            delta: chunk,
+          });
+        }
+        existing.lastArgs = argumentsText;
+      }
+
+      if (!existing.doneArguments) {
+        writeEvent("response.function_call_arguments.done", {
+          type: "response.function_call_arguments.done",
+          response_id: responseId,
+          output_index: index,
+          item_id: existing.id,
+          arguments: argumentsText,
+        });
+        existing.doneArguments = true;
+      }
+
+      if (!existing.outputDone) {
+        writeEvent("response.output_item.done", {
+          type: "response.output_item.done",
+          response_id: responseId,
+          output_index: index,
+          item: {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            arguments: argumentsText,
+            status: "completed",
+          },
+        });
+        existing.outputDone = true;
+      }
     });
   };
 
@@ -150,8 +355,29 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         appendTextSegment(choiceState, index, delta.content.text);
       }
 
-      if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
-        choiceState.toolAggregator.ingestDelta({ tool_calls: delta.tool_calls });
+      let deltaUpdated = false;
+      if (delta && typeof delta === "object") {
+        const result = toolCallAggregator.ingestDelta(delta, { choiceIndex: index });
+        deltaUpdated = Boolean(result?.updated);
+        if (deltaUpdated) {
+          ensureCreated();
+          emitToolCallDeltas(choiceState, index, result?.deltas);
+        }
+      }
+
+      if (!deltaUpdated && choice.message && typeof choice.message === "object") {
+        // Some upstream workers send a final aggregated message payload within the streaming
+        // channel instead of emitting deltas for each tool call. When the delta ingestion above
+        // didn't update the aggregator, fall back to the message payload so we still surface
+        // tool_calls in the completion snapshot.
+        const messageResult = toolCallAggregator.ingestMessage(choice.message, {
+          choiceIndex: index,
+          emitIfMissing: true,
+        });
+        if (messageResult?.updated) {
+          ensureCreated();
+          emitToolCallDeltas(choiceState, index, messageResult.deltas);
+        }
       }
 
       if (choice.finish_reason) {
@@ -207,17 +433,20 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       if (indices.length === 0) {
         indices.push(0);
         choiceStates.set(0, {
+          index: 0,
           role: DEFAULT_ROLE,
           textParts: [],
-          toolAggregator: createToolCallAggregator(),
           finishReason: "stop",
+          toolCalls: new Map(),
+          toolCallOrdinals: new Map(),
         });
       }
 
       const chatChoices = indices.map((index) => {
         const choiceState = choiceStates.get(index);
         const text = choiceState?.textParts.join("") || "";
-        const snapshot = choiceState?.toolAggregator.snapshot() || [];
+        const snapshot = toolCallAggregator.snapshot({ choiceIndex: index });
+        finalizeToolCalls(choiceState, index, snapshot);
         return {
           index,
           message: {

@@ -12,6 +12,8 @@ logs/
 logging/
 # Dependencies
 node_modules/
+bmad/
+external/
 # Playwright artifacts
 test-results/*
 playwright-report/
