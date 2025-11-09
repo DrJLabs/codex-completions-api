@@ -16,6 +16,7 @@ const FUNCTION_CALL_KEYS = ["function_call", "functionCall"];
 const INDEX_KEYS = ["index", "tool_call_index", "toolCallIndex"];
 
 const TEXT_PATTERN_REGISTRY = new Map();
+const WARNED_KEYS = new Set();
 
 const defaultIdFactory = ({ choiceIndex, ordinal }) => `tool_${choiceIndex}_${ordinal}`;
 
@@ -59,16 +60,39 @@ export function extractUseToolBlocks(text = "", startAt = 0) {
   return executeTextPatterns(text, startAt);
 }
 
+function warnOnce(key, message, error) {
+  if (typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production") {
+    return;
+  }
+  const composite = `${key}:${message}`;
+  if (WARNED_KEYS.has(composite)) return;
+  WARNED_KEYS.add(composite);
+  const detail =
+    error && typeof error === "object" && error !== null
+      ? error.stack || error.message || String(error)
+      : error !== undefined
+        ? String(error)
+        : "";
+  const output = detail ? `${message}: ${detail}` : message;
+  if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
+    process.emitWarning(`[tool-call-aggregator] ${output}`, {
+      code: "TOOL_CALL_AGGREGATOR",
+    });
+  } else if (typeof console !== "undefined" && typeof console.warn === "function") {
+    console.warn(`[tool-call-aggregator] ${output}`);
+  }
+}
+
 function executeTextPatterns(text = "", startAt = 0) {
   const normalizedText = typeof text === "string" ? text : "";
   const normalizedStart = Math.max(0, Number(startAt) || 0);
   const blocks = [];
   let furthest = normalizedStart;
-  const matchers = TEXT_PATTERN_REGISTRY.size
-    ? [...TEXT_PATTERN_REGISTRY.values()]
-    : [defaultUseToolMatcher];
+  const entries = TEXT_PATTERN_REGISTRY.size
+    ? [...TEXT_PATTERN_REGISTRY.entries()]
+    : [[DEFAULT_PATTERN_NAME, defaultUseToolMatcher]];
 
-  matchers.forEach((matcher) => {
+  entries.forEach(([name, matcher]) => {
     try {
       const result = matcher(normalizedText, normalizedStart) || {};
       if (Array.isArray(result.blocks)) {
@@ -81,7 +105,9 @@ function executeTextPatterns(text = "", startAt = 0) {
       if (typeof result.nextPos === "number" && Number.isFinite(result.nextPos)) {
         furthest = Math.max(furthest, result.nextPos);
       }
-    } catch {}
+    } catch (error) {
+      warnOnce(`text-pattern:${name}`, `text pattern matcher "${name}" threw`, error);
+    }
   });
 
   blocks.sort((a, b) => (a?.indexStart ?? 0) - (b?.indexStart ?? 0));
@@ -147,7 +173,13 @@ const parseUseToolBlock = (raw = "") => {
         block.path = block.fields.path || "";
         block.query = block.fields.query || "";
         return block;
-      } catch {}
+      } catch (error) {
+        warnOnce(
+          "textual-json-parse",
+          "failed to parse <use_tool> JSON payload; falling back to string arguments",
+          error
+        );
+      }
     }
   }
 
@@ -528,11 +560,18 @@ export function createToolCallAggregator({ idFactory } = {}) {
         backendId: fragment.backendId,
         callId: fragment.callId,
       });
+    }
+
+    if (fragment.id && fragment.id !== callState.id) {
+      callState.id = fragment.id;
+      callState.sentId = false;
+    } else if (!callState.id || (!fragment.id && assignId !== defaultIdFactory)) {
       callState.id = assignId({
         choiceIndex: choiceState.index,
         ordinal: callState.ordinal,
         fragment,
       });
+      callState.sentId = false;
     }
 
     registerAlias(choiceState, fragment.backendId, callState.key);

@@ -151,16 +151,23 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         appendTextSegment(choiceState, index, delta.content.text);
       }
 
+      let deltaUpdated = false;
       if (delta && typeof delta === "object") {
-        const { updated } = toolCallAggregator.ingestDelta(delta, { choiceIndex: index });
-        if (updated) ensureCreated();
+        const result = toolCallAggregator.ingestDelta(delta, { choiceIndex: index });
+        deltaUpdated = Boolean(result?.updated);
+        if (deltaUpdated) ensureCreated();
       }
 
-      if (choice.message && typeof choice.message === "object") {
-        toolCallAggregator.ingestMessage(choice.message, {
+      if (!deltaUpdated && choice.message && typeof choice.message === "object") {
+        // Some upstream workers send a final aggregated message payload within the streaming
+        // channel instead of emitting deltas for each tool call. When the delta ingestion above
+        // didn't update the aggregator, fall back to the message payload so we still surface
+        // tool_calls in the completion snapshot.
+        const messageResult = toolCallAggregator.ingestMessage(choice.message, {
           choiceIndex: index,
           emitIfMissing: true,
         });
+        if (messageResult?.updated) ensureCreated();
       }
 
       if (choice.finish_reason) {
