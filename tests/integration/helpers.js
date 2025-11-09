@@ -40,7 +40,7 @@ export async function startServer(envOverrides = {}) {
       PROXY_PROTECT_MODELS: envOverrides.PROXY_PROTECT_MODELS || "false",
       ...(envOverrides || {}),
     },
-    stdio: "ignore",
+    stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
   return { PORT, child };

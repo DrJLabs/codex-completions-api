@@ -141,16 +141,7 @@ decision_categories:
 common_stacks:
   modern_fullstack:
     name: "Modern Full-Stack"
-    components:
-      [
-        "Next.js",
-        "PostgreSQL or Supabase",
-        "Prisma ORM",
-        "NextAuth.js",
-        "Tailwind CSS",
-        "TypeScript",
-        "Vercel",
-      ]
+    components: ["Next.js", "PostgreSQL or Supabase", "Prisma ORM", "NextAuth.js", "Tailwind CSS", "TypeScript", "Vercel"]
     good_for: "Most web applications"
 
   enterprise_stack:
@@ -178,14 +169,7 @@ starter_templates:
   create_next_app:
     name: "Create Next App"
     command_search: "npx create-next-app@latest"
-    decisions_provided:
-      [
-        "Next.js framework",
-        "TypeScript option",
-        "App Router vs Pages",
-        "Tailwind CSS option",
-        "ESLint",
-      ]
+    decisions_provided: ["Next.js framework", "TypeScript option", "App Router vs Pages", "Tailwind CSS option", "ESLint"]
     good_for: ["React web applications", "Full-stack apps", "SSR/SSG"]
 
   create_t3_app:
@@ -203,15 +187,13 @@ starter_templates:
   create_remix:
     name: "Create Remix"
     command_search: "npx create-remix@latest"
-    decisions_provided:
-      ["Remix framework", "TypeScript option", "Deployment target", "CSS solution"]
+    decisions_provided: ["Remix framework", "TypeScript option", "Deployment target", "CSS solution"]
     good_for: ["Web standards", "Nested routing", "Progressive enhancement"]
 
   nest_new:
     name: "NestJS CLI"
     command_search: "nest new project"
-    decisions_provided:
-      ["TypeScript (always)", "Package manager", "Testing framework (Jest)", "Project structure"]
+    decisions_provided: ["TypeScript (always)", "Package manager", "Testing framework (Jest)", "Project structure"]
     good_for: ["Enterprise APIs", "Microservices", "GraphQL APIs"]
 
   create_expo_app:

@@ -39,8 +39,9 @@ import {
   logFinishReasonTelemetry,
   coerceAssistantContent,
   validateOptionalChatParams,
+  resolveOutputMode,
 } from "./shared.js";
-import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import { createToolCallAggregator, toObsidianXml } from "../../lib/tool-call-aggregator.js";
 import { applyGuardHeaders, setupStreamGuard } from "../../services/concurrency-guard.js";
 import {
   extractMetadataFromPayload,
@@ -168,6 +169,96 @@ export async function postChatStream(req, res) {
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
+  const choiceStates = new Map();
+  const sanitizedContentStates = new Map();
+  let textualToolCount = 0;
+
+  const toChoiceIndex = (value) => {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  };
+
+  const extractChoiceIndex = (candidate, visited = new WeakSet()) => {
+    if (!candidate || typeof candidate !== "object") return null;
+    if (visited.has(candidate)) return null;
+    visited.add(candidate);
+    if (Object.prototype.hasOwnProperty.call(candidate, "choice_index")) {
+      const idx = toChoiceIndex(candidate.choice_index);
+      if (idx !== null) return idx;
+    }
+    if (Object.prototype.hasOwnProperty.call(candidate, "choiceIndex")) {
+      const idx = toChoiceIndex(candidate.choiceIndex);
+      if (idx !== null) return idx;
+    }
+    const nestedSources = [candidate.msg, candidate.message, candidate.delta, candidate.payload];
+    for (const source of nestedSources) {
+      const resolved = extractChoiceIndex(source, visited);
+      if (resolved !== null) return resolved;
+    }
+    if (Array.isArray(candidate.choices)) {
+      for (const choice of candidate.choices) {
+        const resolved = extractChoiceIndex(choice, visited);
+        if (resolved !== null) return resolved;
+      }
+    }
+    return null;
+  };
+
+  const resolveChoiceIndexFromPayload = (...candidates) => {
+    for (const candidate of candidates) {
+      const idx = extractChoiceIndex(candidate);
+      if (idx !== null) return idx;
+    }
+    return 0;
+  };
+
+  const ensureChoiceState = (choiceIndex = 0) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    if (!choiceStates.has(normalized)) {
+      choiceStates.set(normalized, {
+        index: normalized,
+        emitted: "",
+        forwardedUpTo: 0,
+        scanPos: 0,
+        lastToolEnd: -1,
+        toolContentEmitted: false,
+        textualToolContentSeen: false,
+        dropAssistantContentAfterTools: false,
+        sentAny: false,
+        hasToolEvidence: false,
+        structuredCount: 0,
+      });
+    }
+    return choiceStates.get(normalized);
+  };
+
+  const getSanitizedContentState = (choiceIndex = 0) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    if (!sanitizedContentStates.has(normalized)) {
+      sanitizedContentStates.set(normalized, {
+        pending: "",
+        lastContext: { stage: "agent_message_delta", eventType: "agent_message_delta" },
+      });
+    }
+    return sanitizedContentStates.get(normalized);
+  };
+
+  const forEachTrackedChoice = (callback) => {
+    const indices = new Set();
+    for (let idx = 0; idx < choiceCount; idx += 1) indices.add(idx);
+    choiceStates.forEach((_state, idx) => indices.add(idx));
+    sanitizedContentStates.forEach((_state, idx) => indices.add(idx));
+    if (!indices.size) indices.add(0);
+    Array.from(indices)
+      .sort((a, b) => a - b)
+      .forEach((idx) => callback(idx));
+  };
+  const outputMode = resolveOutputMode({
+    headerValue: req.headers["x-proxy-output-mode"],
+    defaultValue: CFG.PROXY_OUTPUT_MODE,
+  });
+  res.setHeader("x-proxy-output-mode", outputMode);
+  const isObsidianOutput = outputMode === "obsidian-xml";
 
   const backendMode = selectBackendMode();
   const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
@@ -426,6 +517,30 @@ export async function postChatStream(req, res) {
     if (choiceCount === 1) return [builder(0)];
     return Array.from({ length: choiceCount }, (_value, idx) => builder(idx));
   };
+  const hasChoiceToolCalls = (choiceIndex = 0) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    const state = choiceStates.get(normalized);
+    if (state?.hasToolEvidence) return true;
+    return toolCallAggregator.hasCalls({ choiceIndex: normalized });
+  };
+  const determineChoiceFinishReason = (choiceIndex, fallbackReason) => {
+    if (hasChoiceToolCalls(choiceIndex)) return "tool_calls";
+    if (fallbackReason === "tool_calls") return "stop";
+    return fallbackReason;
+  };
+  const sendChoiceDelta = (choiceIndex, delta, finishReason = null) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    sendChunk({
+      choices: [
+        {
+          index: normalized,
+          delta,
+          finish_reason: finishReason,
+        },
+      ],
+      usage: null,
+    });
+  };
   const sendRoleOnce = (() => {
     let sent = false;
     return () => {
@@ -480,12 +595,6 @@ export async function postChatStream(req, res) {
 
   sendRoleOnce();
   let buf = "";
-  let sentAny = false;
-  let emitted = "";
-  let forwardedUpTo = 0;
-  let scanPos = 0;
-  let toolCount = 0;
-  let lastToolEnd = -1;
   let cutTimer = null;
   let stoppedAfterTools = false;
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
@@ -502,8 +611,13 @@ export async function postChatStream(req, res) {
   let finalized = false;
   let hasToolCallsFlag = false;
   let hasFunctionCall = false;
-  const hasToolCallEvidence = () =>
-    hasToolCallsFlag || toolCount > 0 || toolCallAggregator.hasCalls();
+  const hasToolCallEvidence = () => {
+    if (hasToolCallsFlag || textualToolCount > 0 || toolCallAggregator.hasCalls()) return true;
+    for (const state of choiceStates.values()) {
+      if (state.hasToolEvidence) return true;
+    }
+    return false;
+  };
   const unknownFinishReasons = new Set();
   let finalFinishReason = null;
   let finalFinishSource = null;
@@ -569,11 +683,6 @@ export async function postChatStream(req, res) {
     sources: Array.from(sanitizedMetadataSummary.sources),
   });
 
-  const sanitizedContentState = {
-    pending: "",
-    lastContext: { stage: "agent_message_delta", eventType: "agent_message_delta" },
-  };
-
   const shouldHoldPartialLine = (candidate, keys) => {
     if (!candidate) return false;
     const trimmed = candidate.trimStart();
@@ -591,65 +700,78 @@ export async function postChatStream(req, res) {
     return false;
   };
 
-  const drainPendingSanitized = ({ flush = false, metadataInfo = null } = {}) => {
-    if (!SANITIZE_METADATA || !sanitizedContentState.pending) return;
+  const drainPendingSanitized = (choiceIndex = 0, { flush = false, metadataInfo = null } = {}) => {
+    if (!SANITIZE_METADATA) return;
+    const state = getSanitizedContentState(choiceIndex);
+    if (!state.pending) return;
     const info = metadataInfo || mergeMetadataInfo(null);
     const emitPortion = (portion) => {
       if (!portion) return;
-      const sanitizedPortion = applyMetadataSanitizer(
-        portion,
-        info,
-        sanitizedContentState.lastContext
-      );
+      const sanitizedPortion = applyMetadataSanitizer(portion, info, state.lastContext);
       if (sanitizedPortion) {
-        appendContentSegment(sanitizedPortion);
+        appendContentSegment(sanitizedPortion, { choiceIndex });
       } else if (portion.trim()) {
         scheduleStopAfterTools();
       }
     };
-    while (sanitizedContentState.pending) {
+    while (state.pending) {
       if (!flush) {
-        const newlineIdx = sanitizedContentState.pending.indexOf("\n");
+        const newlineIdx = state.pending.indexOf("\n");
         if (newlineIdx >= 0) {
-          const portion = sanitizedContentState.pending.slice(0, newlineIdx + 1);
-          sanitizedContentState.pending = sanitizedContentState.pending.slice(newlineIdx + 1);
+          const portion = state.pending.slice(0, newlineIdx + 1);
+          state.pending = state.pending.slice(newlineIdx + 1);
           emitPortion(portion);
           continue;
         }
-        if (shouldHoldPartialLine(sanitizedContentState.pending, metadataKeyRegister)) break;
+        if (shouldHoldPartialLine(state.pending, metadataKeyRegister)) break;
       }
-      const portion = sanitizedContentState.pending;
-      sanitizedContentState.pending = "";
+      const portion = state.pending;
+      state.pending = "";
       emitPortion(portion);
       if (!flush) break;
     }
   };
 
-  const enqueueSanitizedSegment = (segment, metadataInfo, context = {}, { flush = false } = {}) => {
+  const enqueueSanitizedSegment = (
+    segment,
+    metadataInfo,
+    context = {},
+    { flush = false, choiceIndex = 0 } = {}
+  ) => {
     if (!SANITIZE_METADATA) {
-      if (segment) appendContentSegment(segment);
+      if (segment) appendContentSegment(segment, { choiceIndex });
       return;
     }
+    const state = getSanitizedContentState(choiceIndex);
     if (context.stage || context.eventType) {
-      sanitizedContentState.lastContext = {
-        stage: context.stage || sanitizedContentState.lastContext.stage,
-        eventType: context.eventType || sanitizedContentState.lastContext.eventType,
+      state.lastContext = {
+        stage: context.stage || state.lastContext.stage,
+        eventType: context.eventType || state.lastContext.eventType,
       };
     }
     const mergedInfo = mergeMetadataInfo(metadataInfo);
-    if (segment) sanitizedContentState.pending += segment;
-    drainPendingSanitized({ flush, metadataInfo: mergedInfo });
+    if (segment) state.pending += segment;
+    drainPendingSanitized(choiceIndex, { flush, metadataInfo: mergedInfo });
   };
 
   const flushSanitizedSegments = (context = {}) => {
     if (!SANITIZE_METADATA) return;
-    if (context.stage || context.eventType) {
-      sanitizedContentState.lastContext = {
-        stage: context.stage || sanitizedContentState.lastContext.stage,
-        eventType: context.eventType || sanitizedContentState.lastContext.eventType,
-      };
-    }
-    drainPendingSanitized({ flush: true });
+    const targets =
+      typeof context.choiceIndex === "number"
+        ? [context.choiceIndex]
+        : sanitizedContentStates.size
+          ? Array.from(sanitizedContentStates.keys())
+          : [0];
+    targets.forEach((idx) => {
+      const state = getSanitizedContentState(idx);
+      if (context.stage || context.eventType) {
+        state.lastContext = {
+          stage: context.stage || state.lastContext.stage,
+          eventType: context.eventType || state.lastContext.eventType,
+        };
+      }
+      drainPendingSanitized(idx, { flush: true });
+    });
   };
 
   const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
@@ -762,7 +884,11 @@ export async function postChatStream(req, res) {
   };
 
   const resolvedCounts = () => {
-    const estimatedCompletion = Math.ceil(emitted.length / 4);
+    const emittedLength = Array.from(choiceStates.values()).reduce(
+      (sum, state) => sum + state.emitted.length,
+      0
+    );
+    const estimatedCompletion = Math.ceil(emittedLength / 4);
     const usingEvent = usageState.countsSource === "event";
     const promptTokens = usingEvent ? usageState.prompt : promptTokensEst;
     const completionTokens = usingEvent ? usageState.completion : estimatedCompletion;
@@ -811,7 +937,7 @@ export async function postChatStream(req, res) {
       choices: buildChoiceFrames((index) => ({
         index,
         delta: {},
-        finish_reason: reason,
+        finish_reason: determineChoiceFinishReason(index, reason),
       })),
       usage: null,
     });
@@ -825,9 +951,16 @@ export async function postChatStream(req, res) {
     return canonical;
   };
 
+  const structuredToolCount = () => {
+    let total = 0;
+    choiceStates.forEach((state) => {
+      total += state.structuredCount || 0;
+    });
+    return total;
+  };
+
   const scheduleStopAfterTools = () => {
-    const newToolCount = toolCallAggregator.hasCalls() ? toolCallAggregator.snapshot().length : 0;
-    const totalToolCount = toolCount + newToolCount;
+    const totalToolCount = textualToolCount + structuredToolCount();
     if (!STOP_AFTER_TOOLS || totalToolCount === 0 || stoppedAfterTools) return;
     const cutNow = () => {
       if (stoppedAfterTools) return;
@@ -855,23 +988,28 @@ export async function postChatStream(req, res) {
     }
   };
 
-  const appendContentSegment = (text) => {
+  const appendContentSegment = (text, { choiceIndex = 0 } = {}) => {
+    const state = ensureChoiceState(choiceIndex);
+    if (state.dropAssistantContentAfterTools) {
+      scheduleStopAfterTools();
+      return;
+    }
     if (!text) return;
     let appendText = text;
-    if (emitted) {
-      if (appendText.startsWith(emitted)) {
-        appendText = appendText.slice(emitted.length);
+    if (state.emitted) {
+      if (appendText.startsWith(state.emitted)) {
+        appendText = appendText.slice(state.emitted.length);
       } else {
-        const maxOverlap = Math.min(emitted.length, appendText.length);
+        const maxOverlap = Math.min(state.emitted.length, appendText.length);
         let overlap = 0;
         for (let i = maxOverlap; i > 0; i -= 1) {
-          if (emitted.slice(emitted.length - i) === appendText.slice(0, i)) {
+          if (state.emitted.slice(state.emitted.length - i) === appendText.slice(0, i)) {
             overlap = i;
             break;
           }
         }
         appendText = appendText.slice(overlap);
-        if (!appendText && emitted.includes(text)) {
+        if (!appendText && state.emitted.includes(text)) {
           appendText = "";
         }
       }
@@ -880,33 +1018,90 @@ export async function postChatStream(req, res) {
       scheduleStopAfterTools();
       return;
     }
-    emitted += appendText;
+    state.emitted += appendText;
     try {
-      const { blocks, nextPos } = extractUseToolBlocks(emitted, scanPos);
+      const { blocks, nextPos } = extractUseToolBlocks(state.emitted, state.scanPos);
       if (blocks && blocks.length) {
-        toolCount += blocks.length;
-        lastToolEnd = blocks[blocks.length - 1].end;
-        scanPos = nextPos;
+        textualToolCount += blocks.length;
+        state.hasToolEvidence = true;
+        state.lastToolEnd = blocks[blocks.length - 1].end;
+        state.scanPos = nextPos;
+        for (const block of blocks) {
+          if (block.end <= state.forwardedUpTo) continue;
+          const literal = state.emitted.slice(block.start, block.end);
+          if (!literal) continue;
+          if (isObsidianOutput) {
+            if (
+              !state.toolContentEmitted &&
+              emitToolContentChunk(literal, { source: "textual", choiceIndex })
+            ) {
+              state.forwardedUpTo = block.end;
+              break;
+            }
+          } else {
+            state.forwardedUpTo = block.end;
+            state.dropAssistantContentAfterTools = true;
+            break;
+          }
+        }
       }
     } catch {}
-    let allowUntil = emitted.length;
-    if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && lastToolEnd >= 0) {
-      allowUntil = lastToolEnd;
+    let allowUntil = state.emitted.length;
+    if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && state.lastToolEnd >= 0) {
+      allowUntil = state.lastToolEnd;
     }
-    const segment = emitted.slice(forwardedUpTo, allowUntil);
+    const segment = state.emitted.slice(state.forwardedUpTo, allowUntil);
     if (segment) {
-      sendChunk({
-        choices: buildChoiceFrames((index) => ({
-          index,
-          delta: { content: segment },
-          finish_reason: null,
-        })),
-        usage: null,
-      });
-      sentAny = true;
-      forwardedUpTo = allowUntil;
+      sendChoiceDelta(choiceIndex, { content: segment });
+      state.sentAny = true;
+      state.forwardedUpTo = allowUntil;
     }
     scheduleStopAfterTools();
+  };
+
+  const emitToolContentChunk = (content, { source = "aggregator", choiceIndex = 0 } = {}) => {
+    if (!isObsidianOutput) return false;
+    const state = ensureChoiceState(choiceIndex);
+    if (state.toolContentEmitted || state.textualToolContentSeen) return false;
+    const text = typeof content === "string" ? content : "";
+    if (!text) return false;
+    state.toolContentEmitted = true;
+    state.dropAssistantContentAfterTools = true;
+    state.hasToolEvidence = true;
+    sendChoiceDelta(choiceIndex, { content: text });
+    state.sentAny = true;
+    if (source === "textual") state.textualToolContentSeen = true;
+    scheduleStopAfterTools();
+    return true;
+  };
+
+  const buildObsidianXmlSnapshot = (choiceIndex = 0) => {
+    const snapshot = toolCallAggregator.snapshot({ choiceIndex });
+    if (!snapshot.length) return null;
+    const record = snapshot[0];
+    const args = record?.function?.arguments || "";
+    if (!args) return null;
+    try {
+      JSON.parse(args);
+    } catch {
+      return null;
+    }
+    return toObsidianXml(record);
+  };
+
+  const emitAggregatorToolContent = (choiceIndex = 0) => {
+    const state = ensureChoiceState(choiceIndex);
+    if (!isObsidianOutput || state.toolContentEmitted || state.textualToolContentSeen) return false;
+    try {
+      const xml = buildObsidianXmlSnapshot(choiceIndex);
+      if (!xml) return false;
+      return emitToolContentChunk(xml, { source: "aggregator", choiceIndex });
+    } catch (err) {
+      try {
+        console.error("[proxy][chat.stream] failed to build obsidian XML", err);
+      } catch {}
+      return false;
+    }
   };
 
   const emitUsageChunk = (trigger) => {
@@ -1004,6 +1199,7 @@ export async function postChatStream(req, res) {
         sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
         sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
         sanitized_metadata_sources: SANITIZE_METADATA ? sanitizedMetadataSources : [],
+        output_mode: outputMode,
       });
     } catch (e) {
       if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
@@ -1033,13 +1229,24 @@ export async function postChatStream(req, res) {
     if (!usageState.logged) logUsage(resolvedTrigger);
     if (toolCallAggregator.hasCalls()) {
       try {
+        const summaries = [];
+        forEachTrackedChoice((idx) => {
+          const snapshot = toolCallAggregator.snapshot({ choiceIndex: idx });
+          if (snapshot.length) {
+            summaries.push({ choice_index: idx, tool_calls: snapshot });
+          }
+        });
+        const flattened = summaries.flatMap((entry) =>
+          entry.tool_calls.map((record) => ({ ...record, choice_index: entry.choice_index }))
+        );
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
           route: "/v1/chat/completions",
           mode: "chat_stream",
           kind: "tool_call_summary",
-          tool_calls: toolCallAggregator.snapshot(),
+          tool_calls: flattened,
+          tool_calls_by_choice: summaries,
           parallel_supported: toolCallAggregator.supportsParallelCalls(),
         });
       } catch {}
@@ -1084,6 +1291,7 @@ export async function postChatStream(req, res) {
   };
 
   child.stdout.on("data", (chunk) => {
+    if (finalized) return;
     resetStreamIdle();
     const s = chunk.toString("utf8");
     out += s;
@@ -1120,6 +1328,7 @@ export async function postChatStream(req, res) {
         const params = payload.msg && typeof payload.msg === "object" ? payload.msg : payload;
         const messagePayload = params.msg && typeof params.msg === "object" ? params.msg : params;
         const metadataInfo = SANITIZE_METADATA ? extractMetadataFromPayload(params) : null;
+        const baseChoiceIndex = resolveChoiceIndexFromPayload(params, messagePayload);
         if (messagePayload) {
           trackToolSignals(messagePayload);
           const finishCandidate = extractFinishReasonFromMessage(messagePayload);
@@ -1127,19 +1336,34 @@ export async function postChatStream(req, res) {
         }
         if (t === "agent_message_content_delta" || t === "agent_message_delta") {
           const deltaPayload = messagePayload?.delta ?? messagePayload;
+          const choiceIndex =
+            resolveChoiceIndexFromPayload(deltaPayload, messagePayload, params) ??
+            baseChoiceIndex ??
+            0;
           if (typeof deltaPayload === "string") {
             if (SANITIZE_METADATA) {
-              enqueueSanitizedSegment(deltaPayload, metadataInfo, {
-                stage: "agent_message_delta",
-                eventType: t,
-              });
+              enqueueSanitizedSegment(
+                deltaPayload,
+                metadataInfo,
+                {
+                  stage: "agent_message_delta",
+                  eventType: t,
+                },
+                { choiceIndex }
+              );
             } else if (deltaPayload) {
-              appendContentSegment(deltaPayload);
+              appendContentSegment(deltaPayload, { choiceIndex });
             }
           } else if (deltaPayload && typeof deltaPayload === "object") {
-            const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload);
+            const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload, {
+              choiceIndex,
+            });
             if (updated) {
               hasToolCallsFlag = true;
+              const state = ensureChoiceState(choiceIndex);
+              state.hasToolEvidence = true;
+              if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
+              state.structuredCount = toolCallAggregator.snapshot({ choiceIndex }).length;
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
@@ -1151,30 +1375,36 @@ export async function postChatStream(req, res) {
                     event: toolDelta,
                   });
                 }
-                sendChunk({
-                  choices: buildChoiceFrames((index) => ({
-                    index,
-                    delta: { tool_calls: [cloneToolCallDelta(toolDelta)] },
-                    finish_reason: null,
-                  })),
-                  usage: null,
+                state.hasToolEvidence = true;
+                sendChoiceDelta(choiceIndex, {
+                  tool_calls: [cloneToolCallDelta(toolDelta)],
                 });
               }
+              emitAggregatorToolContent(choiceIndex);
             }
             const textDelta = coerceAssistantContent(
               deltaPayload.content ?? deltaPayload.text ?? ""
             );
             if (SANITIZE_METADATA) {
-              enqueueSanitizedSegment(textDelta, metadataInfo, {
-                stage: "agent_message_delta",
-                eventType: t,
-              });
+              enqueueSanitizedSegment(
+                textDelta,
+                metadataInfo,
+                {
+                  stage: "agent_message_delta",
+                  eventType: t,
+                },
+                { choiceIndex }
+              );
             } else if (textDelta) {
-              appendContentSegment(textDelta);
+              appendContentSegment(textDelta, { choiceIndex });
             }
           }
         } else if (t === "agent_message") {
           const finalMessage = messagePayload?.message ?? messagePayload;
+          const choiceIndex =
+            resolveChoiceIndexFromPayload(finalMessage, messagePayload, params) ??
+            baseChoiceIndex ??
+            0;
           if (typeof finalMessage === "string") {
             const rawMessage = finalMessage;
             if (rawMessage) {
@@ -1187,7 +1417,7 @@ export async function postChatStream(req, res) {
                     stage: "agent_message",
                     eventType: t,
                   },
-                  { flush: true }
+                  { flush: true, choiceIndex }
                 );
                 aggregatedInfo = mergeMetadataInfo(null);
               }
@@ -1199,12 +1429,13 @@ export async function postChatStream(req, res) {
                 : rawMessage;
               if (sanitizedMessage) {
                 let suffix = "";
-                if (sanitizedMessage.startsWith(emitted)) {
-                  suffix = sanitizedMessage.slice(emitted.length);
-                } else if (!sentAny) {
+                const state = ensureChoiceState(choiceIndex);
+                if (sanitizedMessage.startsWith(state.emitted)) {
+                  suffix = sanitizedMessage.slice(state.emitted.length);
+                } else if (!state.sentAny) {
                   suffix = sanitizedMessage;
                 }
-                if (suffix) appendContentSegment(suffix);
+                if (suffix) appendContentSegment(suffix, { choiceIndex });
                 else if (SANITIZE_METADATA) scheduleStopAfterTools();
               } else if (SANITIZE_METADATA) {
                 scheduleStopAfterTools();
@@ -1213,9 +1444,14 @@ export async function postChatStream(req, res) {
           } else if (finalMessage && typeof finalMessage === "object") {
             const { deltas, updated } = toolCallAggregator.ingestMessage(finalMessage, {
               emitIfMissing: true,
+              choiceIndex,
             });
             if (updated) {
               hasToolCallsFlag = true;
+              const state = ensureChoiceState(choiceIndex);
+              state.hasToolEvidence = true;
+              if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
+              state.structuredCount = toolCallAggregator.snapshot({ choiceIndex }).length;
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
@@ -1228,17 +1464,13 @@ export async function postChatStream(req, res) {
                     source: "agent_message",
                   });
                 }
-                sendChunk({
-                  choices: buildChoiceFrames((index) => ({
-                    index,
-                    delta: { tool_calls: [cloneToolCallDelta(toolDelta)] },
-                    finish_reason: null,
-                  })),
-                  usage: null,
+                sendChoiceDelta(choiceIndex, {
+                  tool_calls: [cloneToolCallDelta(toolDelta)],
                 });
               }
             }
             if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
+            emitAggregatorToolContent(choiceIndex);
             const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
             let aggregatedInfo = null;
             if (SANITIZE_METADATA) {
@@ -1249,7 +1481,7 @@ export async function postChatStream(req, res) {
                   stage: "agent_message",
                   eventType: t,
                 },
-                { flush: true }
+                { flush: true, choiceIndex }
               );
               aggregatedInfo = mergeMetadataInfo(null);
             }
@@ -1261,9 +1493,13 @@ export async function postChatStream(req, res) {
               : text;
             if (sanitizedText) {
               let suffix = "";
-              if (sanitizedText.startsWith(emitted)) suffix = sanitizedText.slice(emitted.length);
-              else if (!sentAny) suffix = sanitizedText;
-              if (suffix) appendContentSegment(suffix);
+              const state = ensureChoiceState(choiceIndex);
+              if (sanitizedText.startsWith(state.emitted)) {
+                suffix = sanitizedText.slice(state.emitted.length);
+              } else if (!state.sentAny) {
+                suffix = sanitizedText;
+              }
+              if (suffix) appendContentSegment(suffix, { choiceIndex });
               else if (SANITIZE_METADATA) scheduleStopAfterTools();
             } else {
               scheduleStopAfterTools();
@@ -1325,7 +1561,8 @@ export async function postChatStream(req, res) {
         } else if (t === "task_complete") {
           const finishReason = extractFinishReasonFromMessage(messagePayload);
           if (finishReason) trackFinishReason(finishReason, "task_complete");
-          else if (!emitted) trackFinishReason("length", "task_complete");
+          else if (!Array.from(choiceStates.values()).some((state) => state.sentAny))
+            trackFinishReason("length", "task_complete");
           else if (lengthEvidence) trackFinishReason("length", "task_complete");
           const promptTokens = Number(
             messagePayload?.prompt_tokens ??
@@ -1391,7 +1628,8 @@ export async function postChatStream(req, res) {
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
       trackFinishReason("stop", "token_count_fallback");
     }
-    if (!sentAny) {
+    const anyChoiceSent = Array.from(choiceStates.values()).some((state) => state.sentAny);
+    if (!anyChoiceSent) {
       const content = stripAnsi(out).trim();
       if (content) {
         sendChunk({
@@ -1402,7 +1640,12 @@ export async function postChatStream(req, res) {
           })),
           usage: null,
         });
-        sentAny = true;
+        forEachTrackedChoice((idx) => {
+          const state = ensureChoiceState(idx);
+          state.sentAny = true;
+          state.emitted += content;
+          state.forwardedUpTo = state.emitted.length;
+        });
         if (IS_DEV_ENV) {
           try {
             console.log("[dev][response][chat][stream] content=\n" + content);

@@ -32,8 +32,9 @@ import {
   logFinishReasonTelemetry,
   coerceAssistantContent,
   validateOptionalChatParams,
+  resolveOutputMode,
 } from "./shared.js";
-import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import { createToolCallAggregator, toObsidianXml } from "../../lib/tool-call-aggregator.js";
 import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
 import {
   sanitizeMetadataTextSegment,
@@ -43,6 +44,71 @@ import {
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { mapTransportError } from "../../services/transport/index.js";
+
+export const buildCanonicalXml = (snapshot = []) => {
+  if (!Array.isArray(snapshot) || !snapshot.length) return null;
+  const record = snapshot[0];
+  const args = record?.function?.arguments || "";
+  if (!args) return null;
+  try {
+    JSON.parse(args);
+  } catch (err) {
+    console.error("[proxy][chat.nonstream] failed to build obsidian XML", err);
+    return null;
+  }
+  return toObsidianXml(record);
+};
+
+export const extractTextualUseToolBlock = (text) => {
+  if (!text || !text.length) return null;
+  try {
+    const { blocks } = extractUseToolBlocks(text, 0);
+    if (blocks && blocks.length) {
+      const first = blocks[0];
+      return text.slice(first.start ?? 0, first.end ?? text.length);
+    }
+  } catch {}
+  return null;
+};
+
+export const buildAssistantMessage = ({
+  snapshot = [],
+  choiceContent = "",
+  normalizedContent = "",
+  canonicalReason = "stop",
+  isObsidianOutput = true,
+  functionCallPayload = null,
+} = {}) => {
+  let assistantContent = choiceContent && choiceContent.length ? choiceContent : normalizedContent;
+  if (canonicalReason === "content_filter") {
+    assistantContent = null;
+  } else if (snapshot.length) {
+    assistantContent = isObsidianOutput
+      ? extractTextualUseToolBlock(choiceContent) || buildCanonicalXml(snapshot) || choiceContent
+      : null;
+  } else if (functionCallPayload) {
+    assistantContent = null;
+  }
+
+  const message = { role: "assistant" };
+  if (snapshot.length) {
+    message.tool_calls = snapshot.map((entry) => ({
+      ...entry,
+      function:
+        entry.function && typeof entry.function === "object"
+          ? { ...entry.function }
+          : entry.function,
+    }));
+    message.content = assistantContent;
+  } else if (functionCallPayload) {
+    message.function_call = { ...functionCallPayload };
+    message.content = assistantContent;
+  } else {
+    message.content = assistantContent;
+  }
+
+  return { message, hasToolCalls: snapshot.length > 0 };
+};
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -152,6 +218,73 @@ export async function postChatNonStream(req, res) {
   let assistantFunctionCall = null;
   let hasToolCalls = false;
   let hasFunctionCall = false;
+  const choiceStates = new Map();
+
+  const toChoiceIndex = (value) => {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  };
+
+  const extractChoiceIndex = (candidate, visited = new WeakSet()) => {
+    if (!candidate || typeof candidate !== "object") return null;
+    if (visited.has(candidate)) return null;
+    visited.add(candidate);
+    if (Object.prototype.hasOwnProperty.call(candidate, "choice_index")) {
+      const idx = toChoiceIndex(candidate.choice_index);
+      if (idx !== null) return idx;
+    }
+    if (Object.prototype.hasOwnProperty.call(candidate, "choiceIndex")) {
+      const idx = toChoiceIndex(candidate.choiceIndex);
+      if (idx !== null) return idx;
+    }
+    const nested = [candidate.msg, candidate.message, candidate.delta];
+    for (const entry of nested) {
+      const resolved = extractChoiceIndex(entry, visited);
+      if (resolved !== null) return resolved;
+    }
+    return null;
+  };
+
+  const resolveChoiceIndexFromPayload = (...candidates) => {
+    for (const candidate of candidates) {
+      const idx = extractChoiceIndex(candidate);
+      if (idx !== null) return idx;
+    }
+    return 0;
+  };
+
+  const getChoiceState = (choiceIndex = 0) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    if (!choiceStates.has(normalized)) {
+      choiceStates.set(normalized, {
+        index: normalized,
+        content: "",
+      });
+    }
+    return choiceStates.get(normalized);
+  };
+
+  const choiceHasToolCalls = (choiceIndex = 0) => {
+    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    return toolCallAggregator.hasCalls({ choiceIndex: normalized });
+  };
+
+  const determineChoiceFinishReason = (choiceIndex, fallbackReason, hasChoiceTools = false) => {
+    if (hasChoiceTools || choiceHasToolCalls(choiceIndex)) return "tool_calls";
+    if (fallbackReason === "tool_calls") return "stop";
+    return fallbackReason;
+  };
+
+  const getPrimaryContent = () => {
+    if (choiceStates.size) {
+      const sorted = Array.from(choiceStates.keys()).sort((a, b) => a - b);
+      for (const idx of sorted) {
+        const state = choiceStates.get(idx);
+        if (state?.content) return state.content;
+      }
+    }
+    return "";
+  };
 
   const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
   const seenSanitizedRemovalSignatures = new Set();
@@ -232,11 +365,17 @@ export async function postChatNonStream(req, res) {
     return sanitizedText;
   };
 
-  const trackToolSignals = (payload) => {
+  const trackToolSignals = (payload, fallbackChoiceIndex = null) => {
     if (!payload || typeof payload !== "object") return;
+    const resolvedChoiceIndex = (() => {
+      const idx = resolveChoiceIndexFromPayload(payload);
+      if (Number.isInteger(idx) && idx >= 0) return idx;
+      if (Number.isInteger(fallbackChoiceIndex) && fallbackChoiceIndex >= 0)
+        return fallbackChoiceIndex;
+      return 0;
+    })();
     const toolCalls = payload.tool_calls || payload.toolCalls;
     if (Array.isArray(toolCalls) && toolCalls.length) {
-      toolCallAggregator.ingestMessage({ tool_calls: toolCalls });
       hasToolCalls = true;
     }
     const functionCall = payload.function_call || payload.functionCall;
@@ -245,14 +384,15 @@ export async function postChatNonStream(req, res) {
       hasFunctionCall = true;
     }
     if (payload.message && typeof payload.message === "object") {
-      trackToolSignals(payload.message);
+      trackToolSignals(payload.message, resolvedChoiceIndex);
     }
-    if (payload.delta && typeof payload.delta === "object") trackToolSignals(payload.delta);
+    if (payload.delta && typeof payload.delta === "object")
+      trackToolSignals(payload.delta, resolvedChoiceIndex);
     if (Array.isArray(payload.deltas)) {
-      for (const item of payload.deltas) trackToolSignals(item);
+      for (const item of payload.deltas) trackToolSignals(item, resolvedChoiceIndex);
     }
     if (payload.arguments && typeof payload.arguments === "object") {
-      trackToolSignals(payload.arguments);
+      trackToolSignals(payload.arguments, resolvedChoiceIndex);
     }
   };
 
@@ -291,6 +431,12 @@ export async function postChatNonStream(req, res) {
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
+  const outputMode = resolveOutputMode({
+    headerValue: req.headers["x-proxy-output-mode"],
+    defaultValue: CFG.PROXY_OUTPUT_MODE,
+  });
+  res.setHeader("x-proxy-output-mode", outputMode);
+  const isObsidianOutput = outputMode === "obsidian-xml";
 
   const backendMode = selectBackendMode();
 
@@ -448,14 +594,16 @@ export async function postChatNonStream(req, res) {
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   let buf2 = "";
-  let content = "";
   let prompt_tokens = 0;
   let completion_tokens = 0;
   let protoIdleReset = () => {};
   let protoIdleCancel = () => {};
   let sawTaskComplete = false;
   const computeFinal = () =>
-    content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
+    getPrimaryContent() ||
+    stripAnsi(out).trim() ||
+    stripAnsi(err).trim() ||
+    "No output from backend.";
 
   const logToolBlocks = () => {
     try {
@@ -492,6 +640,7 @@ export async function postChatNonStream(req, res) {
     const toolCallsPayload = toolCallsSnapshot.length ? toolCallsSnapshot : null;
     if (toolCallsPayload) hasToolCalls = true;
     const functionCallPayload = hasFunctionCall ? assistantFunctionCall : null;
+    if (toolCallAggregator.hasCalls()) hasToolCalls = true;
 
     if (finishReason) finishReasonTracker.record(finishReason, "finalize");
 
@@ -512,10 +661,23 @@ export async function postChatNonStream(req, res) {
     const unknownReasons = resolvedFinish.unknown || [];
     const reasonTrail = resolvedFinish.trail || [];
 
-    const suppressContent =
-      !!toolCallsPayload || !!functionCallPayload || canonicalReason === "content_filter";
-    const messageContent = suppressContent ? "" : content && content.length ? content : final;
-    const normalizedContent = messageContent && messageContent.length ? messageContent : null;
+    const defaultContent = getPrimaryContent();
+    const normalizedContent = defaultContent && defaultContent.length ? defaultContent : null;
+
+    const buildAssistantMessageForChoice = (idx) => {
+      const snapshot = toolCallAggregator.snapshot({ choiceIndex: idx });
+      const state = getChoiceState(idx);
+      const choiceContent = state.content && state.content.length ? state.content : final;
+      return buildAssistantMessage({
+        snapshot,
+        choiceContent,
+        normalizedContent,
+        canonicalReason,
+        isObsidianOutput,
+        functionCallPayload,
+      });
+    };
+
     const pt =
       Number.isFinite(prompt_tokens) && prompt_tokens > 0 ? prompt_tokens : promptTokensEst;
     const contentForTokenEst = normalizedContent || "";
@@ -526,49 +688,25 @@ export async function postChatNonStream(req, res) {
           ? estTokens(contentForTokenEst)
           : 0;
 
-    const clonedToolCalls = (toolCallsPayload || []).map((entry) => {
-      const fn =
-        entry.function && typeof entry.function === "object" ? { ...entry.function } : undefined;
-      const clone = { ...entry };
-      if (fn) clone.function = fn;
-      return clone;
-    });
-
-    const clonedFunctionCall = functionCallPayload ? { ...functionCallPayload } : null;
-
-    const buildAssistantMessage = () => {
-      const msg = { role: "assistant" };
-      if (clonedToolCalls.length) {
-        msg.tool_calls = clonedToolCalls.map((entry) => ({
-          ...entry,
-          function:
-            entry.function && typeof entry.function === "object"
-              ? { ...entry.function }
-              : entry.function,
-        }));
-        msg.content = null;
-      } else if (clonedFunctionCall) {
-        msg.function_call = { ...clonedFunctionCall };
-        msg.content = null;
-      } else if (canonicalReason === "content_filter") {
-        msg.content = null;
-      } else {
-        msg.content = normalizedContent;
-      }
-      return msg;
-    };
-
     if (statusCode === 200) {
       logToolBlocks();
       try {
-        if (toolCallsPayload) {
+        if (toolCallAggregator.hasCalls()) {
+          const snapshots = [];
+          for (let idx = 0; idx < choiceCount; idx += 1) {
+            const snapshot = toolCallAggregator.snapshot({ choiceIndex: idx });
+            if (snapshot.length) snapshots.push({ choice_index: idx, tool_calls: snapshot });
+          }
           appendProtoEvent({
             ts: Date.now(),
             req_id: reqId,
             route: "/v1/chat/completions",
             mode: "chat_nonstream",
             kind: "tool_call_summary",
-            tool_calls: toolCallsPayload,
+            tool_calls: snapshots.flatMap((entry) =>
+              entry.tool_calls.map((record) => ({ ...record, choice_index: entry.choice_index }))
+            ),
+            tool_calls_by_choice: snapshots,
             parallel_supported: toolCallAggregator.supportsParallelCalls(),
           });
         }
@@ -614,6 +752,7 @@ export async function postChatNonStream(req, res) {
         sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
         sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
         sanitized_metadata_sources: SANITIZE_METADATA ? sanitizedMetadataSources : [],
+        output_mode: outputMode,
       });
       logFinishReasonTelemetry({
         route: "/v1/chat/completions",
@@ -663,12 +802,14 @@ export async function postChatNonStream(req, res) {
       total_tokens: aggregatedPromptTokens + aggregatedCompletionTokens,
     };
 
-    const assistantMessageTemplate = buildAssistantMessage();
-    const choices = Array.from({ length: choiceCount }, (_, idx) => ({
-      index: idx,
-      message: structuredClone(assistantMessageTemplate),
-      finish_reason: canonicalReason,
-    }));
+    const choices = Array.from({ length: choiceCount }, (_, idx) => {
+      const { message, hasToolCalls: choiceHasTools } = buildAssistantMessageForChoice(idx);
+      return {
+        index: idx,
+        message,
+        finish_reason: determineChoiceFinishReason(idx, canonicalReason, choiceHasTools),
+      };
+    });
 
     const payload = {
       id: `chatcmpl-${nanoid()}`,
@@ -758,6 +899,8 @@ export async function postChatNonStream(req, res) {
           const payloadData = isDelta
             ? (evt.msg?.delta ?? evt.delta)
             : (evt.msg?.message ?? evt.message);
+          const choiceIndex = resolveChoiceIndexFromPayload(payloadData, evt.msg, evt) ?? 0;
+          const choiceState = getChoiceState(choiceIndex);
 
           let textSegment = "";
           let hasTextSegment = false;
@@ -767,11 +910,13 @@ export async function postChatNonStream(req, res) {
             hasTextSegment = Boolean(textSegment);
           } else if (payloadData && typeof payloadData === "object") {
             if (isDelta) {
-              const { updated } = toolCallAggregator.ingestDelta(payloadData);
+              const { updated } = toolCallAggregator.ingestDelta(payloadData, {
+                choiceIndex,
+              });
               if (updated) hasToolCalls = true;
             } else {
-              toolCallAggregator.ingestMessage(payloadData);
-              if (toolCallAggregator.hasCalls()) hasToolCalls = true;
+              toolCallAggregator.ingestMessage(payloadData, { choiceIndex });
+              if (toolCallAggregator.hasCalls({ choiceIndex })) hasToolCalls = true;
             }
             textSegment = coerceAssistantContent(payloadData.content ?? payloadData.text ?? "");
             hasTextSegment = Boolean(textSegment);
@@ -785,9 +930,9 @@ export async function postChatNonStream(req, res) {
             : textSegment;
 
           if (isDelta) {
-            content += sanitizedSegment || "";
+            choiceState.content += sanitizedSegment || "";
           } else if (hasTextSegment) {
-            content = sanitizedSegment;
+            choiceState.content = sanitizedSegment;
           }
         } else if (tp === "metadata") {
           if (SANITIZE_METADATA && metadataInfo) {
