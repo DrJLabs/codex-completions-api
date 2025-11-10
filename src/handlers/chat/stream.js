@@ -607,6 +607,31 @@ export async function postChatStream(req, res) {
     }
     return cloned;
   };
+
+  const emitTextualToolMetadata = (choiceIndex, text) => {
+    if (!text) return false;
+    try {
+      const ingestion = toolCallAggregator.ingestMessage(
+        { message: { content: text } },
+        { choiceIndex, emitIfMissing: true }
+      );
+      if (ingestion?.deltas?.length) {
+        hasToolCallsFlag = true;
+        const state = ensureChoiceState(choiceIndex);
+        state.hasToolEvidence = true;
+        state.structuredCount = toolCallAggregator.snapshot({ choiceIndex }).length;
+        for (const toolDelta of ingestion.deltas) {
+          sendChoiceDelta(choiceIndex, {
+            tool_calls: [cloneToolCallDelta(toolDelta)],
+          });
+        }
+        return true;
+      }
+    } catch (err) {
+      if (IS_DEV_ENV) console.error("[dev][stream] textual tool metadata error", err);
+    }
+    return false;
+  };
   let finishSent = false;
   let finalized = false;
   let hasToolCallsFlag = false;
@@ -1065,6 +1090,7 @@ export async function postChatStream(req, res) {
     if (state.toolContentEmitted || state.textualToolContentSeen) return false;
     const text = typeof content === "string" ? content : "";
     if (!text) return false;
+    emitTextualToolMetadata(choiceIndex, text);
     state.toolContentEmitted = true;
     state.dropAssistantContentAfterTools = true;
     state.hasToolEvidence = true;
@@ -1408,6 +1434,11 @@ export async function postChatStream(req, res) {
           if (typeof finalMessage === "string") {
             const rawMessage = finalMessage;
             if (rawMessage) {
+              if (emitTextualToolMetadata(choiceIndex, rawMessage)) {
+                const state = ensureChoiceState(choiceIndex);
+                state.hasToolEvidence = true;
+                emitAggregatorToolContent(choiceIndex);
+              }
               let aggregatedInfo = null;
               if (SANITIZE_METADATA) {
                 enqueueSanitizedSegment(
