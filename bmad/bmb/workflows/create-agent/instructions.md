@@ -201,7 +201,7 @@ menu:
   workflow-install: "{project-root}/bmad/THIS_MODULE/workflows/vendored/path/workflow.yaml"
   description: [description]
 
-`````
+```
 </example>
 
 <note>**Workflow Vendoring (Advanced):**
@@ -280,12 +280,12 @@ menu: {{The capabilities built}}
     <action>Create customization file at: {config_output_file}</action>
 
     <example>
-    ```yaml
-    # Personal tweaks for {{agent_name}}
-    # Experiment freely - changes merge at build time
-    agent:
-      metadata:
-        name: '' # Try nicknames!
+      ```yaml
+      # Personal tweaks for {{agent_name}}
+      # Experiment freely - changes merge at build time
+      agent:
+        metadata:
+          name: '' # Try nicknames!
       persona:
         role: ''
         identity: ''
@@ -294,7 +294,7 @@ menu: {{The capabilities built}}
       critical_actions: []
       prompts: []
       menu: [] # Add personal commands
-    ````
+      ```
 
     </example>
 
@@ -312,16 +312,14 @@ menu: {{The capabilities built}}
 
 **Folder Structure:**
 
-`````
-
+```text
 {{agent_filename}}-sidecar/
 ├── memories.md # Persistent memory
 ├── instructions.md # Private directives
 ├── knowledge/ # Knowledge base
 │ └── README.md
 └── sessions/ # Session notes
-
-````
+```
 
 **File: memories.md**
 
@@ -339,7 +337,7 @@ menu: {{The capabilities built}}
 ## Personal Notes
 
 <!-- My observations and insights -->
-````
+```
 
 **File: instructions.md**
 

@@ -1061,16 +1061,13 @@ input_file_patterns:
 
   epics:
     whole: '{output_folder}/*epic*.md'
-    sharded_index: '{output_folder}/*epic*/index.md'
-    sharded_single: '{output_folder}/*epic*/epic-{{epic_num}}.md' # For selective load
-
-  architecture:
-    whole: '{output_folder}/*architecture*.md'
-    sharded: '{output_folder}/*architecture*/index.md'
+    sharded: '{output_folder}/*epic*/index.md'
 
   document_project:
     sharded: '{output_folder}/docs/index.md' # Brownfield always uses index
 ```
+
+> Architecture workflows typically load the PRD, epics, and UX design documents using the patterns above rather than defining a dedicated `architecture` pattern.
 
 #### 2. Add Discovery Instructions to instructions.md
 
@@ -1120,7 +1117,7 @@ This workflow requires: [list required documents]
 
 ### Pattern Examples
 
-**Example 1: Simple Full Load**
+#### Example 1: Simple Full Load
 
 ```yaml
 # workflow.yaml
@@ -1142,14 +1139,14 @@ Load requirements document (whole or sharded).
 3. If sharded: Read index + ALL section files
 ```
 
-**Example 2: Selective Load with Epic Number**
+#### Example 2: Selective Load with Epic Number
 
 ```yaml
 # workflow.yaml
 input_file_patterns:
   epics:
     whole: '{output_folder}/*epic*.md'
-    sharded_single: '{output_folder}/*epic*/epic-{{epic_num}}.md'
+    sharded: '{output_folder}/*epic*/index.md'
 ```
 
 ```xml
@@ -1157,7 +1154,7 @@ input_file_patterns:
 <step n="2" goal="Load Epic Content">
   <action>Extract epic number from story key (e.g., "3-2-feature" → epic_num = 3)</action>
   <action>Check for sharded epics: {output_folder}/*epic*/index.md</action>
-  <action if="sharded found">Load ONLY epics/epic-{{epic_num}}.md (selective optimization)</action>
+  <action if="sharded found">Read epics/index.md and then epics/epic-{{epic_num}}.md only (selective optimization)</action>
   <action if="whole document found">Load full epics.md and extract Epic {{epic_num}}</action>
 </step>
 ```

@@ -65,7 +65,7 @@ You must fully embody this agent's persona and follow all activation instruction
     <item cmd="*workflow-init" workflow="{project-root}/bmad/bmm/workflows/workflow-status/init/workflow.yaml">Start a new sequenced workflow path</item>
     <item cmd="*workflow-status" workflow="{project-root}/bmad/bmm/workflows/workflow-status/workflow.yaml">Check workflow status and get recommendations (START HERE!)</item>
     <item cmd="*create-prd" workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/prd/workflow.yaml">Create Product Requirements Document (PRD) for Level 2-4 projects</item>
-    <item cmd="*create-epics-and-stories" workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/prd/create-epics-and-stories/workflow.yaml">Break PRD requirements into implementable epics and stories</item>
+    <item cmd="*create-epics-and-stories" workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/prd/workflow.yaml">Break PRD requirements into implementable epics and stories (launches PRD workflow epic planning phase)</item>
     <item cmd="*validate-prd" validate-workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/prd/workflow.yaml">Validate PRD + Epics + Stories completeness and quality</item>
     <item cmd="*tech-spec" workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/tech-spec/workflow.yaml">Create Tech Spec for Level 0-1 (sometimes Level 2) projects</item>
     <item cmd="*validate-tech-spec" validate-workflow="{project-root}/bmad/bmm/workflows/2-plan-workflows/tech-spec/workflow.yaml">Validate Technical Specification Document</item>

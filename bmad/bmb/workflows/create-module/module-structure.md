@@ -138,7 +138,9 @@ Tasks should be used for:
 
 ### Workflow Vendoring (Advanced)
 
-For modules that need workflows from other modules but want to remain standalone, use **workflow vendoring**:
+> **Status:** Planned feature. The installer and agent compiler do not yet implement `workflow-install` or automatic workflow copying.
+
+For modules that need workflows from other modules but want to remain standalone, use **workflow vendoring** (coming soon):
 
 **In Agent YAML:**
 
@@ -150,11 +152,11 @@ menu:
     description: 'Command description'
 ```
 
-**What Happens:**
+**What Will Happen:**
 
-- During installation, workflows are copied from `workflow` to `workflow-install` location
-- Vendored workflows get `config_source` updated to reference this module's config
-- Compiled agent only references the `workflow-install` path
+- During installation, workflows will be copied from `workflow` to `workflow-install` location
+- Vendored workflows will get `config_source` updated to reference this module's config
+- Compiled agent will only reference the `workflow-install` path
 - Module becomes fully standalone - no source module dependency required
 
 **Use Cases:**

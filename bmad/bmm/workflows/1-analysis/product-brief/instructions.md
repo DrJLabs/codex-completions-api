@@ -10,7 +10,7 @@
 
 ## Input Document Discovery
 
-This workflow may reference: market research, brainstorming documents, user specified other inputs, or brownfield project documentation.
+This workflow may reference: market research, brainstorming documents, user-specified inputs, or brownfield project documentation.
 
 **Discovery Process** (execute for each referenced document):
 

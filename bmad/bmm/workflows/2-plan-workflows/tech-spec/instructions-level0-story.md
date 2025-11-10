@@ -93,11 +93,11 @@
 - Cite tech-spec sections for implementation details
 - Note dependencies (internal and external)
 
-**NEW: Comprehensive Context**
+### NEW: Comprehensive Context
 
 Since tech-spec is now context-rich, populate all new template fields:
 
-- dependencies: Extract from "Development Context" and "Implementation Details → Integration Points"
+- dependencies: Extract from "Development Context → Framework/Libraries" and the dependency notes within "Implementation Guide → Implementation Steps"
 - existing_code_references: Extract from "Development Context → Relevant Existing Code" and "Developer Resources → Key Code Locations"
   </guidelines>
 
