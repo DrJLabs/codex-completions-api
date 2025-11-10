@@ -502,7 +502,7 @@ Select option (1-5):</ask>
 <action>Determine next agent from path file based on next workflow</action>
 </check>
 
-<output>**✅ Technical Research Complete**
+<output>## ✅ Technical Research Complete
 
 **Research Report:**
 

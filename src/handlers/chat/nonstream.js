@@ -237,10 +237,16 @@ export async function postChatNonStream(req, res) {
       const idx = toChoiceIndex(candidate.choiceIndex);
       if (idx !== null) return idx;
     }
-    const nested = [candidate.msg, candidate.message, candidate.delta];
+    const nested = [candidate.msg, candidate.message, candidate.delta, candidate.payload];
     for (const entry of nested) {
       const resolved = extractChoiceIndex(entry, visited);
       if (resolved !== null) return resolved;
+    }
+    if (Array.isArray(candidate.choices)) {
+      for (const choice of candidate.choices) {
+        const resolved = extractChoiceIndex(choice, visited);
+        if (resolved !== null) return resolved;
+      }
     }
     return null;
   };

@@ -1,6 +1,6 @@
 # Create Agent Workflow
 
-Interactive agent builder creating BMad Core compliant agents as YAML source files that compile to .md during installation.
+Interactive agent builder creating BMad Core compliant agents as YAML-based source files that compile to .md during installation.
 
 ## Table of Contents
 
@@ -144,7 +144,7 @@ node tools/cli/bmad-cli.js compile-agents
 
 ### Creating a Code Review Agent
 
-```
+```text
 User: I need a code review agent
 Builder: Let's brainstorm first...
 
@@ -163,7 +163,7 @@ Builder: Now let's build your agent:
 
 ### Creating a Domain Expert
 
-```
+```text
 Type: Expert
 Name: Legal Advisor
 Sidecar: legal-knowledge/
@@ -175,7 +175,7 @@ Commands:
 
 ## Workflow Files
 
-```
+```text
 create-agent/
 ├── workflow.yaml              # Configuration
 ├── instructions.md            # Step guide
