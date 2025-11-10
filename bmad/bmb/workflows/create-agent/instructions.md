@@ -204,6 +204,8 @@ menu:
 ```
 </example>
 
+> **Status:** Planned feature. The agent compiler does not yet implement `workflow-install` or automatic workflow copying.
+
 <note>**Workflow Vendoring (Advanced):**
 When an agent needs workflows from another module, use both `workflow` (source) and `workflow-install` (destination).
 During installation, the workflow will be copied and configured for this module, making it standalone.
