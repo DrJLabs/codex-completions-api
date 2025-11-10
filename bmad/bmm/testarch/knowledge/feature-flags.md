@@ -26,21 +26,21 @@ Poorly managed feature flags become technical debt: untested variations ship bro
  */
 export const FLAGS = Object.freeze({
   // User-facing features
-  NEW_CHECKOUT_FLOW: "new-checkout-flow",
-  DARK_MODE: "dark-mode",
-  ENHANCED_SEARCH: "enhanced-search",
+  NEW_CHECKOUT_FLOW: 'new-checkout-flow',
+  DARK_MODE: 'dark-mode',
+  ENHANCED_SEARCH: 'enhanced-search',
 
   // Experiments
-  PRICING_EXPERIMENT_A: "pricing-experiment-a",
-  HOMEPAGE_VARIANT_B: "homepage-variant-b",
+  PRICING_EXPERIMENT_A: 'pricing-experiment-a',
+  HOMEPAGE_VARIANT_B: 'homepage-variant-b',
 
   // Infrastructure
-  USE_NEW_API_ENDPOINT: "use-new-api-endpoint",
-  ENABLE_ANALYTICS_V2: "enable-analytics-v2",
+  USE_NEW_API_ENDPOINT: 'use-new-api-endpoint',
+  ENABLE_ANALYTICS_V2: 'enable-analytics-v2',
 
   // Killswitches (emergency disables)
-  DISABLE_PAYMENT_PROCESSING: "disable-payment-processing",
-  DISABLE_EMAIL_NOTIFICATIONS: "disable-email-notifications",
+  DISABLE_PAYMENT_PROCESSING: 'disable-payment-processing',
+  DISABLE_EMAIL_NOTIFICATIONS: 'disable-email-notifications',
 } as const);
 
 /**
@@ -71,20 +71,20 @@ type FlagMetadata = {
 export const FLAG_REGISTRY: Record<FlagKey, FlagMetadata> = {
   [FLAGS.NEW_CHECKOUT_FLOW]: {
     key: FLAGS.NEW_CHECKOUT_FLOW,
-    name: "New Checkout Flow",
-    owner: "payments-team",
-    createdDate: "2025-01-15",
-    expiryDate: "2025-03-15",
+    name: 'New Checkout Flow',
+    owner: 'payments-team',
+    createdDate: '2025-01-15',
+    expiryDate: '2025-03-15',
     defaultState: false,
     requiresCleanup: true,
     dependencies: [FLAGS.USE_NEW_API_ENDPOINT],
-    telemetryEvents: ["checkout_started", "checkout_completed"],
+    telemetryEvents: ['checkout_started', 'checkout_completed'],
   },
   [FLAGS.DARK_MODE]: {
     key: FLAGS.DARK_MODE,
-    name: "Dark Mode UI",
-    owner: "frontend-team",
-    createdDate: "2025-01-10",
+    name: 'Dark Mode UI',
+    owner: 'frontend-team',
+    createdDate: '2025-01-10',
     defaultState: false,
     requiresCleanup: false, // Permanent feature toggle
   },
@@ -152,8 +152,8 @@ export function Checkout() {
 
 ```typescript
 // tests/e2e/checkout-feature-flag.spec.ts
-import { test, expect } from "@playwright/test";
-import { FLAGS } from "@/utils/feature-flags";
+import { test, expect } from '@playwright/test';
+import { FLAGS } from '@/utils/feature-flags';
 
 /**
  * Feature Flag Testing Strategy:
@@ -163,7 +163,7 @@ import { FLAGS } from "@/utils/feature-flags";
  * 4. Verify telemetry events fire correctly
  */
 
-test.describe("Checkout Flow - Feature Flag Variations", () => {
+test.describe('Checkout Flow - Feature Flag Variations', () => {
   let testUserId: string;
 
   test.beforeEach(async () => {
@@ -173,7 +173,7 @@ test.describe("Checkout Flow - Feature Flag Variations", () => {
 
   test.afterEach(async ({ request }) => {
     // CRITICAL: Clean up flag targeting to prevent shared env pollution
-    await request.post("/api/feature-flags/cleanup", {
+    await request.post('/api/feature-flags/cleanup', {
       data: {
         flagKey: FLAGS.NEW_CHECKOUT_FLOW,
         userId: testUserId,
@@ -181,9 +181,9 @@ test.describe("Checkout Flow - Feature Flag Variations", () => {
     });
   });
 
-  test("should use NEW checkout flow when flag is ENABLED", async ({ page, request }) => {
+  test('should use NEW checkout flow when flag is ENABLED', async ({ page, request }) => {
     // Arrange: Enable flag for test user
-    await request.post("/api/feature-flags/target", {
+    await request.post('/api/feature-flags/target', {
       data: {
         flagKey: FLAGS.NEW_CHECKOUT_FLOW,
         userId: testUserId,
@@ -192,35 +192,35 @@ test.describe("Checkout Flow - Feature Flag Variations", () => {
     });
 
     // Act: Navigate as targeted user
-    await page.goto("/checkout", {
+    await page.goto('/checkout', {
       extraHTTPHeaders: {
-        "X-Test-User-ID": testUserId,
+        'X-Test-User-ID': testUserId,
       },
     });
 
     // Assert: New flow UI elements visible
-    await expect(page.getByTestId("checkout-v2-container")).toBeVisible();
-    await expect(page.getByTestId("express-payment-options")).toBeVisible();
-    await expect(page.getByTestId("saved-addresses-dropdown")).toBeVisible();
+    await expect(page.getByTestId('checkout-v2-container')).toBeVisible();
+    await expect(page.getByTestId('express-payment-options')).toBeVisible();
+    await expect(page.getByTestId('saved-addresses-dropdown')).toBeVisible();
 
     // Assert: Legacy flow NOT visible
-    await expect(page.getByTestId("checkout-v1-container")).not.toBeVisible();
+    await expect(page.getByTestId('checkout-v1-container')).not.toBeVisible();
 
     // Assert: Telemetry event fired
     const analyticsEvents = await page.evaluate(() => (window as any).__ANALYTICS_EVENTS__ || []);
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
-        event: "checkout_started",
+        event: 'checkout_started',
         properties: expect.objectContaining({
-          variant: "new_flow",
+          variant: 'new_flow',
         }),
-      })
+      }),
     );
   });
 
-  test("should use LEGACY checkout flow when flag is DISABLED", async ({ page, request }) => {
+  test('should use LEGACY checkout flow when flag is DISABLED', async ({ page, request }) => {
     // Arrange: Disable flag for test user (or don't target at all)
-    await request.post("/api/feature-flags/target", {
+    await request.post('/api/feature-flags/target', {
       data: {
         flagKey: FLAGS.NEW_CHECKOUT_FLOW,
         userId: testUserId,
@@ -229,54 +229,52 @@ test.describe("Checkout Flow - Feature Flag Variations", () => {
     });
 
     // Act: Navigate as targeted user
-    await page.goto("/checkout", {
+    await page.goto('/checkout', {
       extraHTTPHeaders: {
-        "X-Test-User-ID": testUserId,
+        'X-Test-User-ID': testUserId,
       },
     });
 
     // Assert: Legacy flow UI elements visible
-    await expect(page.getByTestId("checkout-v1-container")).toBeVisible();
-    await expect(page.getByTestId("legacy-payment-form")).toBeVisible();
+    await expect(page.getByTestId('checkout-v1-container')).toBeVisible();
+    await expect(page.getByTestId('legacy-payment-form')).toBeVisible();
 
     // Assert: New flow NOT visible
-    await expect(page.getByTestId("checkout-v2-container")).not.toBeVisible();
-    await expect(page.getByTestId("express-payment-options")).not.toBeVisible();
+    await expect(page.getByTestId('checkout-v2-container')).not.toBeVisible();
+    await expect(page.getByTestId('express-payment-options')).not.toBeVisible();
 
     // Assert: Telemetry event fired with correct variant
     const analyticsEvents = await page.evaluate(() => (window as any).__ANALYTICS_EVENTS__ || []);
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
-        event: "checkout_started",
+        event: 'checkout_started',
         properties: expect.objectContaining({
-          variant: "legacy_flow",
+          variant: 'legacy_flow',
         }),
-      })
+      }),
     );
   });
 
-  test("should handle flag evaluation errors gracefully", async ({ page, request }) => {
+  test('should handle flag evaluation errors gracefully', async ({ page, request }) => {
     // Arrange: Simulate flag service unavailable
-    await page.route("**/api/feature-flags/evaluate", (route) =>
-      route.fulfill({ status: 500, body: "Service Unavailable" })
-    );
+    await page.route('**/api/feature-flags/evaluate', (route) => route.fulfill({ status: 500, body: 'Service Unavailable' }));
 
     // Act: Navigate (should fallback to default state)
-    await page.goto("/checkout", {
+    await page.goto('/checkout', {
       extraHTTPHeaders: {
-        "X-Test-User-ID": testUserId,
+        'X-Test-User-ID': testUserId,
       },
     });
 
     // Assert: Fallback to safe default (legacy flow)
-    await expect(page.getByTestId("checkout-v1-container")).toBeVisible();
+    await expect(page.getByTestId('checkout-v1-container')).toBeVisible();
 
     // Assert: Error logged but no user-facing error
     const consoleErrors = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
-    expect(consoleErrors).toContain(expect.stringContaining("Feature flag evaluation failed"));
+    expect(consoleErrors).toContain(expect.stringContaining('Feature flag evaluation failed'));
   });
 });
 ```
@@ -285,9 +283,9 @@ test.describe("Checkout Flow - Feature Flag Variations", () => {
 
 ```javascript
 // cypress/e2e/checkout-feature-flag.cy.ts
-import { FLAGS } from "@/utils/feature-flags";
+import { FLAGS } from '@/utils/feature-flags';
 
-describe("Checkout Flow - Feature Flag Variations", () => {
+describe('Checkout Flow - Feature Flag Variations', () => {
   let testUserId;
 
   beforeEach(() => {
@@ -296,46 +294,46 @@ describe("Checkout Flow - Feature Flag Variations", () => {
 
   afterEach(() => {
     // Clean up targeting
-    cy.task("removeFeatureFlagTarget", {
+    cy.task('removeFeatureFlagTarget', {
       flagKey: FLAGS.NEW_CHECKOUT_FLOW,
       userId: testUserId,
     });
   });
 
-  it("should use NEW checkout flow when flag is ENABLED", () => {
+  it('should use NEW checkout flow when flag is ENABLED', () => {
     // Arrange: Enable flag via Cypress task
-    cy.task("setFeatureFlagVariation", {
+    cy.task('setFeatureFlagVariation', {
       flagKey: FLAGS.NEW_CHECKOUT_FLOW,
       userId: testUserId,
       variation: true,
     });
 
     // Act
-    cy.visit("/checkout", {
-      headers: { "X-Test-User-ID": testUserId },
+    cy.visit('/checkout', {
+      headers: { 'X-Test-User-ID': testUserId },
     });
 
     // Assert
-    cy.get('[data-testid="checkout-v2-container"]').should("be.visible");
-    cy.get('[data-testid="checkout-v1-container"]').should("not.exist");
+    cy.get('[data-testid="checkout-v2-container"]').should('be.visible');
+    cy.get('[data-testid="checkout-v1-container"]').should('not.exist');
   });
 
-  it("should use LEGACY checkout flow when flag is DISABLED", () => {
+  it('should use LEGACY checkout flow when flag is DISABLED', () => {
     // Arrange: Disable flag
-    cy.task("setFeatureFlagVariation", {
+    cy.task('setFeatureFlagVariation', {
       flagKey: FLAGS.NEW_CHECKOUT_FLOW,
       userId: testUserId,
       variation: false,
     });
 
     // Act
-    cy.visit("/checkout", {
-      headers: { "X-Test-User-ID": testUserId },
+    cy.visit('/checkout', {
+      headers: { 'X-Test-User-ID': testUserId },
     });
 
     // Assert
-    cy.get('[data-testid="checkout-v1-container"]').should("be.visible");
-    cy.get('[data-testid="checkout-v2-container"]').should("not.exist");
+    cy.get('[data-testid="checkout-v1-container"]').should('be.visible');
+    cy.get('[data-testid="checkout-v2-container"]').should('not.exist');
   });
 });
 ```
@@ -358,15 +356,15 @@ describe("Checkout Flow - Feature Flag Variations", () => {
 
 ```typescript
 // tests/support/feature-flag-helpers.ts
-import { request as playwrightRequest } from "@playwright/test";
-import { FLAGS, FlagKey } from "@/utils/feature-flags";
+import { request as playwrightRequest } from '@playwright/test';
+import { FLAGS, FlagKey } from '@/utils/feature-flags';
 
 /**
  * LaunchDarkly API client configuration
  * Use test project SDK key (NOT production)
  */
 const LD_SDK_KEY = process.env.LD_SDK_KEY_TEST;
-const LD_API_BASE = "https://app.launchdarkly.com/api/v2";
+const LD_API_BASE = 'https://app.launchdarkly.com/api/v2';
 
 type FlagVariation = boolean | string | number | object;
 
@@ -374,16 +372,12 @@ type FlagVariation = boolean | string | number | object;
  * Set flag variation for specific user
  * Uses LaunchDarkly API to create user target
  */
-export async function setFlagForUser(
-  flagKey: FlagKey,
-  userId: string,
-  variation: FlagVariation
-): Promise<void> {
+export async function setFlagForUser(flagKey: FlagKey, userId: string, variation: FlagVariation): Promise<void> {
   const response = await playwrightRequest.newContext().then((ctx) =>
     ctx.post(`${LD_API_BASE}/flags/${flagKey}/targeting`, {
       headers: {
         Authorization: LD_SDK_KEY!,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       data: {
         targets: [
@@ -393,7 +387,7 @@ export async function setFlagForUser(
           },
         ],
       },
-    })
+    }),
   );
 
   if (!response.ok()) {
@@ -411,14 +405,12 @@ export async function removeFlagTarget(flagKey: FlagKey, userId: string): Promis
       headers: {
         Authorization: LD_SDK_KEY!,
       },
-    })
+    }),
   );
 
   if (!response.ok() && response.status() !== 404) {
     // 404 is acceptable (user wasn't targeted)
-    throw new Error(
-      `Failed to remove flag ${flagKey} target for user ${userId}: ${response.status()}`
-    );
+    throw new Error(`Failed to remove flag ${flagKey} target for user ${userId}: ${response.status()}`);
   }
 }
 
@@ -426,19 +418,16 @@ export async function removeFlagTarget(flagKey: FlagKey, userId: string): Promis
  * Percentage rollout helper
  * Enable flag for N% of users
  */
-export async function setFlagRolloutPercentage(
-  flagKey: FlagKey,
-  percentage: number
-): Promise<void> {
+export async function setFlagRolloutPercentage(flagKey: FlagKey, percentage: number): Promise<void> {
   if (percentage < 0 || percentage > 100) {
-    throw new Error("Percentage must be between 0 and 100");
+    throw new Error('Percentage must be between 0 and 100');
   }
 
   const response = await playwrightRequest.newContext().then((ctx) =>
     ctx.patch(`${LD_API_BASE}/flags/${flagKey}`, {
       headers: {
         Authorization: LD_SDK_KEY!,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       data: {
         rollout: {
@@ -448,7 +437,7 @@ export async function setFlagRolloutPercentage(
           ],
         },
       },
-    })
+    }),
   );
 
   if (!response.ok()) {
@@ -476,7 +465,7 @@ export async function disableFlagGlobally(flagKey: FlagKey): Promise<void> {
  */
 export function stubFeatureFlags(flags: Record<FlagKey, FlagVariation>): void {
   // Set flags in localStorage or inject into window
-  if (typeof window !== "undefined") {
+  if (typeof window !== 'undefined') {
     (window as any).__STUBBED_FLAGS__ = flags;
   }
 }
@@ -486,9 +475,9 @@ export function stubFeatureFlags(flags: Record<FlagKey, FlagVariation>): void {
 
 ```typescript
 // playwright/fixtures/feature-flag-fixture.ts
-import { test as base } from "@playwright/test";
-import { setFlagForUser, removeFlagTarget } from "../support/feature-flag-helpers";
-import { FlagKey } from "@/utils/feature-flags";
+import { test as base } from '@playwright/test';
+import { setFlagForUser, removeFlagTarget } from '../support/feature-flag-helpers';
+import { FlagKey } from '@/utils/feature-flags';
 
 type FeatureFlagFixture = {
   featureFlags: {
@@ -547,9 +536,9 @@ export const test = base.extend<FeatureFlagFixture>({
  * Run weekly to detect stale flags requiring cleanup
  */
 
-import { FLAG_REGISTRY, FLAGS, getExpiredFlags, FlagKey } from "../src/utils/feature-flags";
-import * as fs from "fs";
-import * as path from "path";
+import { FLAG_REGISTRY, FLAGS, getExpiredFlags, FlagKey } from '../src/utils/feature-flags';
+import * as fs from 'fs';
+import * as path from 'path';
 
 type AuditResult = {
   totalFlags: number;
@@ -638,10 +627,10 @@ function generateReport(audit: AuditResult): string {
   if (audit.missingOwners.length > 0 || audit.missingDates.length > 0) {
     report += `## ❌ GOVERNANCE ISSUES\n\n`;
     if (audit.missingOwners.length > 0) {
-      report += `**Missing Owners**: ${audit.missingOwners.join(", ")}\n`;
+      report += `**Missing Owners**: ${audit.missingOwners.join(', ')}\n`;
     }
     if (audit.missingDates.length > 0) {
-      report += `**Missing Created Dates**: ${audit.missingDates.join(", ")}\n`;
+      report += `**Missing Created Dates**: ${audit.missingDates.join(', ')}\n`;
     }
     report += `\n`;
   }
@@ -702,9 +691,9 @@ const audit = auditFeatureFlags();
 const report = generateReport(audit);
 
 // Save report
-const outputPath = path.join(__dirname, "../feature-flag-audit-report.md");
+const outputPath = path.join(__dirname, '../feature-flag-audit-report.md');
 fs.writeFileSync(outputPath, report);
-fs.writeFileSync(path.join(__dirname, "../FEATURE-FLAG-CHECKLIST.md"), FLAG_LIFECYCLE_CHECKLIST);
+fs.writeFileSync(path.join(__dirname, '../FEATURE-FLAG-CHECKLIST.md'), FLAG_LIFECYCLE_CHECKLIST);
 
 console.log(`✅ Audit complete. Report saved to: ${outputPath}`);
 console.log(`Total flags: ${audit.totalFlags}`);

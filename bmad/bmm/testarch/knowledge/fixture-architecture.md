@@ -92,16 +92,16 @@ export const test = base.extend<{ apiRequest: typeof apiRequest }>({
 
 ```typescript
 // playwright/support/fixtures/merged-fixtures.ts
-import { test as base, mergeTests } from "@playwright/test";
-import { test as apiRequestFixture } from "./api-request-fixture";
-import { test as networkFixture } from "./network-fixture";
-import { test as authFixture } from "./auth-fixture";
-import { test as logFixture } from "./log-fixture";
+import { test as base, mergeTests } from '@playwright/test';
+import { test as apiRequestFixture } from './api-request-fixture';
+import { test as networkFixture } from './network-fixture';
+import { test as authFixture } from './auth-fixture';
+import { test as logFixture } from './log-fixture';
 
 // Compose all fixtures for comprehensive capabilities
 export const test = mergeTests(base, apiRequestFixture, networkFixture, authFixture, logFixture);
 
-export { expect } from "@playwright/test";
+export { expect } from '@playwright/test';
 
 // Example usage in tests:
 // import { test, expect } from './support/fixtures/merged-fixtures';
@@ -147,10 +147,10 @@ export const test = base.extend({
       const token = await getAuthToken(email);
       await context.addCookies([
         {
-          name: "auth_token",
+          name: 'auth_token',
           value: token,
-          domain: "localhost",
-          path: "/",
+          domain: 'localhost',
+          path: '/',
         },
       ]);
     };
@@ -179,23 +179,16 @@ export const test = base.extend({
 type HttpHelperParams = {
   baseUrl: string;
   endpoint: string;
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
   token?: string;
 };
 
-export async function makeHttpRequest({
-  baseUrl,
-  endpoint,
-  method,
-  body,
-  headers = {},
-  token,
-}: HttpHelperParams): Promise<unknown> {
+export async function makeHttpRequest({ baseUrl, endpoint, method, body, headers = {}, token }: HttpHelperParams): Promise<unknown> {
   const url = `${baseUrl}${endpoint}`;
   const requestHeaders = {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
     ...headers,
   };
@@ -216,12 +209,12 @@ export async function makeHttpRequest({
 
 // Playwright fixture wrapper
 // playwright/support/fixtures/http-fixture.ts
-import { test as base } from "@playwright/test";
-import { makeHttpRequest } from "../../shared/helpers/http-helper";
+import { test as base } from '@playwright/test';
+import { makeHttpRequest } from '../../shared/helpers/http-helper';
 
 export const test = base.extend({
   httpHelper: async ({}, use) => {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:3000";
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
 
     await use((params) => makeHttpRequest({ baseUrl, ...params }));
   },
@@ -229,10 +222,10 @@ export const test = base.extend({
 
 // Cypress command wrapper
 // cypress/support/commands.ts
-import { makeHttpRequest } from "../../shared/helpers/http-helper";
+import { makeHttpRequest } from '../../shared/helpers/http-helper';
 
-Cypress.Commands.add("apiRequest", (params) => {
-  const baseUrl = Cypress.env("API_BASE_URL") || "http://localhost:3000";
+Cypress.Commands.add('apiRequest', (params) => {
+  const baseUrl = Cypress.env('API_BASE_URL') || 'http://localhost:3000';
   return cy.wrap(makeHttpRequest({ baseUrl, ...params }));
 });
 ```
@@ -252,8 +245,8 @@ Cypress.Commands.add("apiRequest", (params) => {
 
 ```typescript
 // playwright/support/fixtures/database-fixture.ts
-import { test as base } from "@playwright/test";
-import { seedDatabase, deleteRecord } from "../helpers/db-helpers";
+import { test as base } from '@playwright/test';
+import { seedDatabase, deleteRecord } from '../helpers/db-helpers';
 
 type DatabaseFixture = {
   seedUser: (userData: Partial<User>) => Promise<User>;
@@ -265,7 +258,7 @@ export const test = base.extend<DatabaseFixture>({
     const createdUsers: string[] = [];
 
     const seedUser = async (userData: Partial<User>) => {
-      const user = await seedDatabase("users", userData);
+      const user = await seedDatabase('users', userData);
       createdUsers.push(user.id);
       return user;
     };
@@ -274,7 +267,7 @@ export const test = base.extend<DatabaseFixture>({
 
     // Auto-cleanup: Delete all users created during test
     for (const userId of createdUsers) {
-      await deleteRecord("users", userId);
+      await deleteRecord('users', userId);
     }
     createdUsers.length = 0;
   },
@@ -283,7 +276,7 @@ export const test = base.extend<DatabaseFixture>({
     const createdOrders: string[] = [];
 
     const seedOrder = async (orderData: Partial<Order>) => {
-      const order = await seedDatabase("orders", orderData);
+      const order = await seedDatabase('orders', orderData);
       createdOrders.push(order.id);
       return order;
     };
@@ -292,7 +285,7 @@ export const test = base.extend<DatabaseFixture>({
 
     // Auto-cleanup: Delete all orders
     for (const orderId of createdOrders) {
-      await deleteRecord("orders", orderId);
+      await deleteRecord('orders', orderId);
     }
     createdOrders.length = 0;
   },
@@ -337,17 +330,17 @@ class BasePage {
 
 class LoginPage extends BasePage {
   async login(email: string, password: string) {
-    await this.navigate("/login");
-    await this.page.fill("#email", email);
-    await this.page.fill("#password", password);
-    await this.clickButton("#submit");
+    await this.navigate('/login');
+    await this.page.fill('#email', email);
+    await this.page.fill('#password', password);
+    await this.clickButton('#submit');
   }
 }
 
 class AdminPage extends LoginPage {
   async accessAdminPanel() {
-    await this.login("admin@example.com", "admin123");
-    await this.navigate("/admin");
+    await this.login('admin@example.com', 'admin123');
+    await this.navigate('/admin');
   }
 }
 ```
@@ -379,8 +372,8 @@ export async function login(page: Page, email: string, password: string) {
 // fixtures/admin-fixture.ts
 export const test = base.extend({
   adminPage: async ({ page }, use) => {
-    await login(page, "admin@example.com", "admin123");
-    await navigate(page, "/admin");
+    await login(page, 'admin@example.com', 'admin123');
+    await navigate(page, '/admin');
     await use(page);
   },
 });

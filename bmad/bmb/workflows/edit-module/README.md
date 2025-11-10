@@ -91,11 +91,11 @@ module-code/
 Every module config.yaml should have:
 
 ```yaml
-module_name: "Full Module Name"
-module_code: "xyz"
-user_name: "User Name"
-communication_language: "english"
-output_folder: "path/to/output"
+module_name: 'Full Module Name'
+module_code: 'xyz'
+user_name: 'User Name'
+communication_language: 'english'
+output_folder: 'path/to/output'
 ```
 
 Optional fields may be added for module-specific needs.
@@ -106,7 +106,7 @@ Modules can share workflows:
 
 ```yaml
 # In agent menu item:
-workflow: "{project-root}/bmad/other-module/workflows/shared-workflow/workflow.yaml"
+workflow: '{project-root}/bmad/other-module/workflows/shared-workflow/workflow.yaml'
 ```
 
 Common patterns:

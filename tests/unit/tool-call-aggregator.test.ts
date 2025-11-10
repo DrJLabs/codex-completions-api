@@ -297,6 +297,47 @@ describe("ToolCallAggregator", () => {
     expect(aggregator.supportsParallelCalls()).toBe(false);
   });
 
+  it("preserves UTF-8 multi-byte arguments across incremental chunks", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    const payload = '{"emoji":"👩‍💻","cjk":"漢字"}';
+    const chunkSize = 4;
+    const chunks: string[] = [];
+    for (let cursor = 0; cursor < payload.length; cursor += chunkSize) {
+      chunks.push(payload.slice(cursor, cursor + chunkSize));
+    }
+
+    chunks.forEach((segment, index) => {
+      const deltaPayload =
+        index === 0
+          ? {
+              tool_calls: [
+                {
+                  index: 0,
+                  function: { name: "utf8Tool", arguments: segment },
+                },
+              ],
+            }
+          : {
+              tool_calls: [
+                {
+                  index: 0,
+                  function: { arguments: segment },
+                },
+              ],
+            };
+      const delta = aggregator.ingestDelta(deltaPayload);
+      expect(delta.updated).toBe(true);
+    });
+
+    const snapshot = aggregator.snapshot();
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].function.name).toBe("utf8Tool");
+    expect(snapshot[0].function.arguments).toBe(payload);
+    expect(() =>
+      Buffer.from(snapshot[0].function.arguments, "utf8").toString("utf8")
+    ).not.toThrow();
+  });
+
   it("returns immutable snapshots", () => {
     const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
     aggregator.ingestDelta({

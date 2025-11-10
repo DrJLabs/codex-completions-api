@@ -404,7 +404,14 @@ function appendArgument(callState, fragment) {
   if (fragment.mode === "delta" && chunk === callState.lastFragmentArgs) {
     return false;
   }
-  if (fragment.mode === "message" || fragment.replaceArgs) {
+  const hasExisting =
+    typeof callState.argsText === "string" && callState.argsText.length > 0 && callState.argBuffers;
+  const shouldReplaceWithChunk =
+    fragment.mode === "delta" &&
+    chunk &&
+    hasExisting &&
+    (chunk.startsWith(callState.argsText) || callState.argsText.startsWith(chunk));
+  if (fragment.mode === "message" || fragment.replaceArgs || shouldReplaceWithChunk) {
     callState.argBuffers = chunk ? [Buffer.from(chunk, "utf8")] : [];
   } else if (chunk) {
     callState.argBuffers.push(Buffer.from(chunk, "utf8"));
@@ -591,20 +598,16 @@ export function createToolCallAggregator({ idFactory } = {}) {
       registerAlias(choiceState, `idx:${fragment.index}`, callState.key);
     }
 
-    let mutated = false;
     if (fragment.type && fragment.type !== callState.type) {
       callState.type = fragment.type;
       callState.sentType = false;
-      mutated = true;
     }
     if (fragment.name && fragment.name !== callState.name) {
       callState.name = fragment.name;
       callState.sentName = false;
-      mutated = true;
     }
     if (typeof fragment.arguments === "string") {
-      const changed = appendArgument(callState, fragment);
-      mutated = mutated || changed;
+      appendArgument(callState, fragment);
     }
 
     const shouldEmit = controls.emit || (controls.fallbackEmit && !callState.emitted);

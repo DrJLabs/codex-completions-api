@@ -77,3 +77,50 @@ describe.each(STREAM_SCENARIOS)(
     });
   }
 );
+
+describe("chat completion streaming output mode overrides", () => {
+  let serverCtx;
+  let transcript;
+
+  beforeAll(async () => {
+    ensureTranscripts(["streaming-tool-calls.json"]);
+    transcript = await loadTranscript("streaming-tool-calls.json");
+    serverCtx = await startServer({
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      FAKE_CODEX_MODE: "tool_call",
+    });
+  }, 10_000);
+
+  afterAll(async () => {
+    if (serverCtx) await stopServer(serverCtx.child);
+  });
+
+  test("openai-json override suppresses obsidian content chunks", async () => {
+    const res = await fetch(`http://127.0.0.1:${serverCtx.PORT}/v1/chat/completions?stream=true`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-sk-ci",
+        "x-proxy-output-mode": "openai-json",
+      },
+      body: JSON.stringify(transcript.request),
+    });
+
+    expect(res.ok).toBe(true);
+    const raw = await res.text();
+    const entries = parseSSE(raw);
+    const hasContentChunk = entries.some((entry) => {
+      if (entry?.type !== "data" || !entry?.data?.choices) return false;
+      return entry.data.choices.some(
+        (choice) => typeof choice?.delta?.content === "string" && choice.delta.content.length
+      );
+    });
+    expect(hasContentChunk).toBe(false);
+    const finishFrame = entries.find(
+      (entry) =>
+        entry?.type === "data" &&
+        entry?.data?.choices?.some((choice) => choice.finish_reason === "tool_calls")
+    );
+    expect(finishFrame).toBeTruthy();
+  });
+});

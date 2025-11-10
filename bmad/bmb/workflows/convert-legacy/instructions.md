@@ -212,10 +212,10 @@ For Modules:
 
 ```yaml
 # Critical variables from config
-config_source: "{project-root}/bmad/{{target_module}}/config.yaml"
-output_folder: "{config_source}:output_folder"
-user_name: "{config_source}:user_name"
-communication_language: "{config_source}:communication_language"
+config_source: '{project-root}/bmad/{{target_module}}/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
 date: system-generated
 ```
 
@@ -286,10 +286,10 @@ date: system-generated
 
 ```yaml
 # Critical variables from config
-config_source: "{project-root}/bmad/{{target_module}}/config.yaml"
-output_folder: "{config_source}:output_folder"
-user_name: "{config_source}:user_name"
-communication_language: "{config_source}:communication_language"
+config_source: '{project-root}/bmad/{{target_module}}/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
 date: system-generated
 ```
 

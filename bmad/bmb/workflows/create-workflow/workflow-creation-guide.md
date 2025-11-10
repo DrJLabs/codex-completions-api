@@ -23,12 +23,12 @@ Create a folder with these files:
 
 ```yaml
 # workflow.yaml (REQUIRED)
-name: "my-workflow"
-description: "What this workflow does"
-installed_path: "{project-root}/bmad/module/workflows/my-workflow"
-template: "{installed_path}/template.md"
-instructions: "{installed_path}/instructions.md"
-default_output_file: "{output_folder}/output.md"
+name: 'my-workflow'
+description: 'What this workflow does'
+installed_path: '{project-root}/bmad/module/workflows/my-workflow'
+template: '{installed_path}/template.md'
+instructions: '{installed_path}/instructions.md'
+default_output_file: '{output_folder}/output.md'
 
 standalone: true
 ```
@@ -100,21 +100,21 @@ my-workflow/
 
 ```yaml
 # Basic metadata
-name: "workflow-name"
-description: "Clear purpose statement"
+name: 'workflow-name'
+description: 'Clear purpose statement'
 
 # Paths
-installed_path: "{project-root}/bmad/module/workflows/name"
-template: "{installed_path}/template.md" # or false
-instructions: "{installed_path}/instructions.md" # or false
-validation: "{installed_path}/checklist.md" # optional
+installed_path: '{project-root}/bmad/module/workflows/name'
+template: '{installed_path}/template.md' # or false
+instructions: '{installed_path}/instructions.md' # or false
+validation: '{installed_path}/checklist.md' # optional
 
 # Output
-default_output_file: "{output_folder}/document.md"
+default_output_file: '{output_folder}/document.md'
 
 # Advanced options
 recommended_inputs: # Expected input docs
-  - input_doc: "path/to/doc.md"
+  - input_doc: 'path/to/doc.md'
 
 # Invocation control
 standalone: true # Can be invoked directly (default: true)
@@ -151,14 +151,14 @@ standalone: false # Must be called from an agent menu or another workflow
 
 ```yaml
 # Standalone: User invokes directly
-name: "plan-project"
-description: "Create PRD/GDD for any project"
+name: 'plan-project'
+description: 'Create PRD/GDD for any project'
 standalone: true # Users run this directly
 
 ---
 # Non-standalone: Only called by parent workflow
-name: "validate-requirements"
-description: "Internal validation helper for PRD workflow"
+name: 'validate-requirements'
+description: 'Internal validation helper for PRD workflow'
 standalone: false # Only invoked by plan-project workflow
 ```
 
@@ -1020,6 +1020,161 @@ _Generated on {{date}}_
 - **Unclosed check tags** - Always close `<check if="">...</check>` blocks
 - **Wrong conditional pattern** - Use `<action if="">` for single items, `<check if="">` for blocks
 
+## Document Sharding Support
+
+If your workflow loads large planning documents (PRDs, epics, architecture, etc.), implement sharding support for efficiency.
+
+### What is Document Sharding?
+
+Document sharding splits large markdown files into smaller section-based files:
+
+- `PRD.md` (50k tokens) → `prd/epic-1.md`, `prd/epic-2.md`, etc.
+- Enables selective loading (90%+ token savings)
+- All BMM workflows support both whole and sharded documents
+
+### When to Add Sharding Support
+
+**Add sharding support if your workflow:**
+
+- Loads planning documents (PRD, epics, architecture, UX specs)
+- May be used in large multi-epic projects
+- Processes documents that could exceed 20k tokens
+- Would benefit from selective section loading
+
+**Skip sharding support if your workflow:**
+
+- Only generates small documents
+- Doesn't load external documents
+- Works with code files (not planning docs)
+
+### Implementation Pattern
+
+#### 1. Add input_file_patterns to workflow.yaml
+
+```yaml
+# Smart input file references - handles both whole docs and sharded docs
+# Priority: Whole document first, then sharded version
+input_file_patterns:
+  prd:
+    whole: '{output_folder}/*prd*.md'
+    sharded: '{output_folder}/*prd*/index.md'
+
+  epics:
+    whole: '{output_folder}/*epic*.md'
+    sharded: '{output_folder}/*epic*/index.md'
+
+  document_project:
+    sharded: '{output_folder}/docs/index.md' # Brownfield always uses index
+```
+
+> Architecture workflows typically load the PRD, epics, and UX design documents using the patterns above rather than defining a dedicated `architecture` pattern.
+
+#### 2. Add Discovery Instructions to instructions.md
+
+Place early in instructions (after critical declarations, before workflow steps):
+
+```markdown
+## 📚 Document Discovery
+
+This workflow requires: [list required documents]
+
+**Discovery Process** (execute for each document):
+
+1. **Search for whole document first** - Use fuzzy file matching
+2. **Check for sharded version** - If whole document not found, look for `{doc-name}/index.md`
+3. **If sharded version found**:
+   - Read `index.md` to understand the document structure
+   - Read ALL section files listed in the index (or specific sections for selective load)
+   - Treat the combined content as if it were a single document
+4. **Brownfield projects**: The `document-project` workflow creates `{output_folder}/docs/index.md`
+
+**Priority**: If both whole and sharded versions exist, use the whole document.
+
+**Fuzzy matching**: Be flexible with document names - users may use variations.
+```
+
+#### 3. Choose Loading Strategy
+
+**Full Load Strategy** (most workflows):
+
+```xml
+<action>Search for document using fuzzy pattern: {output_folder}/*prd*.md</action>
+<action>If not found, check for sharded version: {output_folder}/*prd*/index.md</action>
+<action if="sharded found">Read index.md to understand structure</action>
+<action if="sharded found">Read ALL section files listed in index</action>
+<action if="sharded found">Combine content as single document</action>
+```
+
+**Selective Load Strategy** (advanced - for phase 4 type workflows):
+
+```xml
+<action>Determine section needed (e.g., epic_num from story key)</action>
+<action>Check for sharded version: {output_folder}/*epics*/index.md</action>
+<action if="sharded found">Read ONLY the specific section file: epics/epic-{{epic_num}}.md</action>
+<action if="sharded found">Skip all other section files (efficiency optimization)</action>
+<action if="whole document found">Load complete document and extract relevant section</action>
+```
+
+### Pattern Examples
+
+#### Example 1: Simple Full Load
+
+```yaml
+# workflow.yaml
+input_file_patterns:
+  requirements:
+    whole: '{output_folder}/*requirements*.md'
+    sharded: '{output_folder}/*requirements*/index.md'
+```
+
+```markdown
+<!-- instructions.md -->
+
+## Document Discovery
+
+Load requirements document (whole or sharded).
+
+1. Try whole: _requirements_.md
+2. If not found, try sharded: _requirements_/index.md
+3. If sharded: Read index + ALL section files
+```
+
+#### Example 2: Selective Load with Epic Number
+
+```yaml
+# workflow.yaml
+input_file_patterns:
+  epics:
+    whole: '{output_folder}/*epic*.md'
+    sharded: '{output_folder}/*epic*/index.md'
+```
+
+```xml
+<!-- instructions.md step -->
+<step n="2" goal="Load Epic Content">
+  <action>Extract epic number from story key (e.g., "3-2-feature" → epic_num = 3)</action>
+  <action>Check for sharded epics: {output_folder}/*epic*/index.md</action>
+  <action if="sharded found">Read epics/index.md and then epics/epic-{{epic_num}}.md only (selective optimization)</action>
+  <action if="whole document found">Load full epics.md and extract Epic {{epic_num}}</action>
+</step>
+```
+
+### Testing Your Sharding Support
+
+1. **Test with whole document**: Verify workflow works with single `document.md`
+2. **Test with sharded document**: Create sharded version and verify discovery
+3. **Test with both present**: Ensure whole document takes priority
+4. **Test selective loading**: Verify only needed sections are loaded (if applicable)
+
+### Complete Reference
+
+**[→ Document Sharding Guide](../../../../docs/document-sharding-guide.md)** - Comprehensive guide with examples
+
+**BMM Examples**:
+
+- Full Load: `src/modules/bmm/workflows/2-plan-workflows/prd/`
+- Selective Load: `src/modules/bmm/workflows/4-implementation/epic-tech-context/`
+
 ## Web Bundles
 
 Web bundles allow workflows to be deployed as self-contained packages for web environments.
@@ -1044,24 +1199,24 @@ Add this section to your workflow.yaml ensuring critically all dependant files o
 
 ```yaml
 web_bundle:
-  name: "workflow-name"
-  description: "Workflow description"
-  author: "Your Name"
+  name: 'workflow-name'
+  description: 'Workflow description'
+  author: 'Your Name'
 
   # Core files (bmad/-relative paths)
-  instructions: "bmad/module/workflows/workflow/instructions.md"
-  validation: "bmad/module/workflows/workflow/checklist.md"
-  template: "bmad/module/workflows/workflow/template.md"
+  instructions: 'bmad/module/workflows/workflow/instructions.md'
+  validation: 'bmad/module/workflows/workflow/checklist.md'
+  template: 'bmad/module/workflows/workflow/template.md'
 
   # Data files (no config_source allowed)
-  data_file: "bmad/module/workflows/workflow/data.csv"
+  data_file: 'bmad/module/workflows/workflow/data.csv'
 
   # Complete file list - CRITICAL!
   web_bundle_files:
-    - "bmad/module/workflows/workflow/instructions.md"
-    - "bmad/module/workflows/workflow/checklist.md"
-    - "bmad/module/workflows/workflow/template.md"
-    - "bmad/module/workflows/workflow/data.csv"
+    - 'bmad/module/workflows/workflow/instructions.md'
+    - 'bmad/module/workflows/workflow/checklist.md'
+    - 'bmad/module/workflows/workflow/template.md'
+    - 'bmad/module/workflows/workflow/data.csv'
     # Include ALL referenced files
 ```
 
@@ -1084,41 +1239,41 @@ web_bundle:
 
 ```yaml
 web_bundle:
-  name: "analyze-requirements"
-  description: "Requirements analysis workflow"
-  author: "BMad Team"
+  name: 'analyze-requirements'
+  description: 'Requirements analysis workflow'
+  author: 'BMad Team'
 
-  instructions: "bmad/bmm/workflows/analyze-requirements/instructions.md"
-  validation: "bmad/bmm/workflows/analyze-requirements/checklist.md"
-  template: "bmad/bmm/workflows/analyze-requirements/template.md"
+  instructions: 'bmad/bmm/workflows/analyze-requirements/instructions.md'
+  validation: 'bmad/bmm/workflows/analyze-requirements/checklist.md'
+  template: 'bmad/bmm/workflows/analyze-requirements/template.md'
 
   # Data files
-  techniques_data: "bmad/bmm/workflows/analyze-requirements/techniques.csv"
-  patterns_data: "bmad/bmm/workflows/analyze-requirements/patterns.json"
+  techniques_data: 'bmad/bmm/workflows/analyze-requirements/techniques.csv'
+  patterns_data: 'bmad/bmm/workflows/analyze-requirements/patterns.json'
 
   # Sub-workflow reference
-  validation_workflow: "bmad/bmm/workflows/validate-requirements/workflow.yaml"
+  validation_workflow: 'bmad/bmm/workflows/validate-requirements/workflow.yaml'
 
   standalone: true
 
   web_bundle_files:
     # Core workflow files
-    - "bmad/bmm/workflows/analyze-requirements/instructions.md"
-    - "bmad/bmm/workflows/analyze-requirements/checklist.md"
-    - "bmad/bmm/workflows/analyze-requirements/template.md"
+    - 'bmad/bmm/workflows/analyze-requirements/instructions.md'
+    - 'bmad/bmm/workflows/analyze-requirements/checklist.md'
+    - 'bmad/bmm/workflows/analyze-requirements/template.md'
 
     # Data files
-    - "bmad/bmm/workflows/analyze-requirements/techniques.csv"
-    - "bmad/bmm/workflows/analyze-requirements/patterns.json"
+    - 'bmad/bmm/workflows/analyze-requirements/techniques.csv'
+    - 'bmad/bmm/workflows/analyze-requirements/patterns.json'
 
     # Sub-workflow and its files
-    - "bmad/bmm/workflows/validate-requirements/workflow.yaml"
-    - "bmad/bmm/workflows/validate-requirements/instructions.md"
-    - "bmad/bmm/workflows/validate-requirements/checklist.md"
+    - 'bmad/bmm/workflows/validate-requirements/workflow.yaml'
+    - 'bmad/bmm/workflows/validate-requirements/instructions.md'
+    - 'bmad/bmm/workflows/validate-requirements/checklist.md'
 
     # Shared templates referenced in instructions
-    - "bmad/bmm/templates/requirement-item.md"
-    - "bmad/bmm/templates/validation-criteria.md"
+    - 'bmad/bmm/templates/requirement-item.md'
+    - 'bmad/bmm/templates/validation-criteria.md'
 ```
 
 ## Troubleshooting

@@ -64,8 +64,9 @@ test("aggregates streaming tool-call fragments into final response", async () =>
   expect(toolNode.name).toBe("lookup_user");
   expect(toolNode.input).toEqual({ id: "42" });
 
-  // No output_text nodes since Codex only produced tool deltas.
-  expect(content.every((node) => node.type !== "output_text" || node.text === "")).toBe(true);
+  // Obsidian XML block should surface as output_text.
+  const textNode = content.find((node) => node.type === "output_text");
+  expect(textNode?.text || "").toContain("<use_tool>");
 
   // Usage should be included when stream_options.include_usage=true.
   expect(completed.usage).toMatchObject({
