@@ -108,7 +108,8 @@ Most workflows should be `standalone: true` to give users direct access.
 1. **Yes (Recommended)** - Users can run it directly (standalone: true)
 2. **No** - Only called by other workflows/agents (standalone: false)
 
-Most workflows choose option 1:</ask>
+Most workflows choose option 1:
+</ask>
 
 <action>Store {{standalone_setting}} as true or false based on response</action>
 
@@ -150,7 +151,8 @@ The architecture workflow is an excellent example of intent-based with prescript
 2. **Prescriptive** - Structured, consistent, controlled interactions
 3. **Mixed/Balanced** - I'll help you decide step-by-step
 
-What feels right for your workflow's purpose?</ask>
+What feels right for your workflow's purpose?
+</ask>
 
 <action>Store {{instruction_style}} preference</action>
 
@@ -185,11 +187,12 @@ Beyond style, consider **how interactive** this workflow should be:
 
 <ask>What interactivity level suits this workflow?
 
-1. **High** - Highly collaborative, user actively involved throughout
-2. **Medium** - Guided with key decision points (most common)
-3. **Low** - Autonomous with final review
+1. **High** - Highly collaborative, user actively involved throughout (Recommended)
+2. **Medium** - Guided with key decision points
+3. **Low** - Mostly autonomous with final review
 
-Select the level that matches your workflow's purpose:</ask>
+Select the level that matches your workflow's purpose:
+</ask>
 
 <action>Store {{interactivity_level}} preference</action>
 
@@ -252,10 +255,10 @@ Include:
 
 ```yaml
 # Critical variables from config
-config_source: "{project-root}/bmad/{{target_module}}/config.yaml"
-output_folder: "{config_source}:output_folder"
-user_name: "{config_source}:user_name"
-communication_language: "{config_source}:communication_language"
+config_source: '{project-root}/bmad/{{target_module}}/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
 date: system-generated
 ```
 
@@ -270,24 +273,24 @@ standalone: { { standalone_setting } } # true or false from step 2
 **Example complete workflow.yaml structure**:
 
 ```yaml
-name: "workflow-name"
-description: "Clear purpose statement"
+name: 'workflow-name'
+description: 'Clear purpose statement'
 
 # Paths
-installed_path: "{project-root}/bmad/module/workflows/name"
-template: "{installed_path}/template.md"
-instructions: "{installed_path}/instructions.md"
-validation: "{installed_path}/checklist.md"
+installed_path: '{project-root}/bmad/module/workflows/name'
+template: '{installed_path}/template.md'
+instructions: '{installed_path}/instructions.md'
+validation: '{installed_path}/checklist.md'
 
 # Critical variables from config
-config_source: "{project-root}/bmad/module/config.yaml"
-output_folder: "{config_source}:output_folder"
-user_name: "{config_source}:user_name"
-communication_language: "{config_source}:communication_language"
+config_source: '{project-root}/bmad/module/config.yaml'
+output_folder: '{config_source}:output_folder'
+user_name: '{config_source}:user_name'
+communication_language: '{config_source}:communication_language'
 date: system-generated
 
 # Output
-default_output_file: "{output_folder}/document.md"
+default_output_file: '{output_folder}/document.md'
 
 # Invocation control
 standalone: true # or false based on step 2 decision
@@ -487,6 +490,7 @@ Generate the template.md file following guide conventions:
    # Document Title
 
    **Date:** {{date}}
+
    **Author:** {{user_name}}
    ```
 
@@ -575,7 +579,9 @@ Review the created workflow:
 4. Validate YAML syntax
 5. Confirm all placeholders are replaced
 
-**Standard Config Validation:** 6. Verify workflow.yaml contains standard config block:
+**Standard Config Validation:**
+
+6. Verify workflow.yaml contains standard config block:
 
 - config_source defined
 - output_folder, user_name, communication_language pulled from config
@@ -584,7 +590,9 @@ Review the created workflow:
 7. Check instructions use config variables where appropriate
 8. Verify template includes config variables in metadata (if document workflow)
 
-**YAML/Instruction/Template Alignment:** 9. Cross-check all workflow.yaml variables against instruction usage:
+**YAML/Instruction/Template Alignment:**
+
+9. Cross-check all workflow.yaml variables against instruction usage:
 
 - Are all yaml variables referenced in instructions.md OR template.md?
 - Are there hardcoded values that should be variables?
@@ -643,44 +651,44 @@ Example:
 
 ```yaml
 web_bundle:
-  name: "{workflow_name}"
-  description: "{workflow_description}"
-  author: "{author}"
-  instructions: "bmad/{module}/workflows/{workflow}/instructions.md"
-  validation: "bmad/{module}/workflows/{workflow}/checklist.md"
-  template: "bmad/{module}/workflows/{workflow}/template.md"
+  name: '{workflow_name}'
+  description: '{workflow_description}'
+  author: '{author}'
+  instructions: 'bmad/{module}/workflows/{workflow}/instructions.md'
+  validation: 'bmad/{module}/workflows/{workflow}/checklist.md'
+  template: 'bmad/{module}/workflows/{workflow}/template.md'
 
   # Any data files (no config_source)
-  data_file: "bmad/{module}/workflows/{workflow}/data.csv"
+  data_file: 'bmad/{module}/workflows/{workflow}/data.csv'
 
   web_bundle_files:
-    - "bmad/{module}/workflows/{workflow}/instructions.md"
-    - "bmad/{module}/workflows/{workflow}/checklist.md"
-    - "bmad/{module}/workflows/{workflow}/template.md"
-    - "bmad/{module}/workflows/{workflow}/data.csv"
+    - 'bmad/{module}/workflows/{workflow}/instructions.md'
+    - 'bmad/{module}/workflows/{workflow}/checklist.md'
+    - 'bmad/{module}/workflows/{workflow}/template.md'
+    - 'bmad/{module}/workflows/{workflow}/data.csv'
     # Add every single file referenced anywhere
 
   # CRITICAL: If this workflow invokes other workflows, use existing_workflows
   # This signals the bundler to recursively include those workflows' web_bundles
   existing_workflows:
-    - workflow_variable_name: "bmad/path/to/workflow.yaml"
+    - workflow_variable_name: 'bmad/path/to/workflow.yaml'
 ```
 
 **Example with existing_workflows:**
 
 ```yaml
 web_bundle:
-  name: "brainstorm-game"
-  description: "Game brainstorming with CIS workflow"
-  author: "BMad"
-  instructions: "bmad/bmm/workflows/brainstorm-game/instructions.md"
+  name: 'brainstorm-game'
+  description: 'Game brainstorming with CIS workflow'
+  author: 'BMad'
+  instructions: 'bmad/bmm/workflows/brainstorm-game/instructions.md'
   template: false
   web_bundle_files:
-    - "bmad/bmm/workflows/brainstorm-game/instructions.md"
-    - "bmad/mmm/workflows/brainstorm-game/game-context.md"
-    - "bmad/core/workflows/brainstorming/workflow.yaml"
+    - 'bmad/bmm/workflows/brainstorm-game/instructions.md'
+    - 'bmad/mmm/workflows/brainstorm-game/game-context.md'
+    - 'bmad/core/workflows/brainstorming/workflow.yaml'
   existing_workflows:
-    - core_brainstorming: "bmad/core/workflows/brainstorming/workflow.yaml"
+    - core_brainstorming: 'bmad/core/workflows/brainstorming/workflow.yaml'
 ```
 
 **What existing_workflows does:**

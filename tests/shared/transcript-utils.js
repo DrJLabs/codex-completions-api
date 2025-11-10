@@ -276,6 +276,17 @@ export function sanitizeResponsesStreamTranscript(entries) {
           id: RESP_PLACEHOLDER_ID,
         };
       }
+      if (clone.data && typeof clone.data === "object") {
+        if (typeof clone.data.response_id === "string") {
+          clone.data.response_id = RESP_PLACEHOLDER_ID;
+        }
+        if (typeof clone.data.item_id === "string") {
+          clone.data.item_id = RESP_PLACEHOLDER_TOOL_ID;
+        }
+        if (clone.data.item && typeof clone.data.item === "object" && clone.data.item.id) {
+          clone.data.item.id = RESP_PLACEHOLDER_TOOL_ID;
+        }
+      }
       if (clone.event === "response.completed" && clone.data?.response) {
         clone.data.response = sanitizeResponsesNonStream(clone.data.response);
       }

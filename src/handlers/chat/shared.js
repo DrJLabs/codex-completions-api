@@ -73,6 +73,15 @@ const CANONICAL_FINISH_REASONS = new Set([
   "function_call",
 ]);
 
+const OUTPUT_MODE_CANON = new Map([
+  ["obsidian", "obsidian-xml"],
+  ["obsidian-xml", "obsidian-xml"],
+  ["obsidian_xml", "obsidian-xml"],
+  ["openai", "openai-json"],
+  ["openai-json", "openai-json"],
+  ["openai_json", "openai-json"],
+]);
+
 const FINISH_REASON_ALIASES = new Map(
   [
     ["stop", "stop"],
@@ -338,6 +347,21 @@ export function logFinishReasonTelemetry({
     if (trail.length) payload.trail = trail;
     console.info("[proxy][finish_reason]", JSON.stringify(payload));
   } catch {}
+}
+
+const normalizeOutputMode = (raw) => {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim().toLowerCase();
+  if (!text) return null;
+  if (OUTPUT_MODE_CANON.has(text)) return OUTPUT_MODE_CANON.get(text);
+  return null;
+};
+
+export function resolveOutputMode({ headerValue, defaultValue } = {}) {
+  const fromHeader = normalizeOutputMode(headerValue);
+  if (fromHeader) return fromHeader;
+  const fromDefault = normalizeOutputMode(defaultValue);
+  return fromDefault || "obsidian-xml";
 }
 
 export function validateOptionalChatParams(body = {}, { allowJsonSchema = false } = {}) {

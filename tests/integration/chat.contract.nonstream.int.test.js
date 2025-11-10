@@ -59,4 +59,30 @@ describe("chat completion non-stream contract", () => {
       await stopServer(ctx.child);
     }
   });
+
+  test("openai-json override keeps tool-call content null", async () => {
+    ensureTranscripts(["nonstream-tool-calls.json"]);
+    const toolCall = await loadTranscript("nonstream-tool-calls.json");
+    const ctx = await startServer({
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      FAKE_CODEX_MODE: "tool_call",
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-sk-ci",
+          "x-proxy-output-mode": "openai-json",
+        },
+        body: JSON.stringify(toolCall.request),
+      });
+      expect(res.ok).toBe(true);
+      const payload = await res.json();
+      expect(payload?.choices?.[0]?.message?.content).toBeNull();
+      expect(payload?.choices?.[0]?.message?.tool_calls).toBeTruthy();
+    } finally {
+      await stopServer(ctx.child);
+    }
+  });
 });

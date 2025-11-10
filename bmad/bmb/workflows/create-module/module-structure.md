@@ -136,6 +136,42 @@ Tasks should be used for:
 - Declare dependencies in config.yaml
 - Version compatibility notes
 
+### Workflow Vendoring (Advanced)
+
+> **Status:** Planned feature. The installer and agent compiler do not yet implement `workflow-install` or automatic workflow copying.
+
+For modules that need workflows from other modules but want to remain standalone, use **workflow vendoring** (coming soon):
+
+**In Agent YAML:**
+
+```yaml
+menu:
+  - trigger: command-name
+    workflow: '{project-root}/bmad/SOURCE_MODULE/workflows/path/workflow.yaml'
+    workflow-install: '{project-root}/bmad/THIS_MODULE/workflows/vendored/workflow.yaml'
+    description: 'Command description'
+```
+
+**What Will Happen:**
+
+- During installation, workflows will be copied from `workflow` to `workflow-install` location
+- Vendored workflows will get `config_source` updated to reference this module's config
+- Compiled agent will only reference the `workflow-install` path
+- Module becomes fully standalone - no source module dependency required
+
+**Use Cases:**
+
+- Specialized modules that reuse common workflows with different configs
+- Domain-specific adaptations (e.g., game dev using standard dev workflows)
+- Testing workflows in isolation
+
+**Benefits:**
+
+- Module independence (no forced dependencies)
+- Clean namespace (workflows in your module)
+- Config isolation (use your module's settings)
+- Customization ready (modify vendored workflows freely)
+
 ## Installation Infrastructure
 
 ### Required: \_module-installer/install-config.yaml
@@ -145,13 +181,13 @@ This file defines both installation questions AND static configuration values:
 ```yaml
 # Module metadata
 code: module-code
-name: "Module Name"
+name: 'Module Name'
 default_selected: false
 
 # Welcome message during installation
 prompt:
-  - "Welcome to Module Name!"
-  - "Brief description here"
+  - 'Welcome to Module Name!'
+  - 'Brief description here'
 
 # Core values automatically inherited from installer:
 ## user_name
@@ -161,28 +197,28 @@ prompt:
 
 # INTERACTIVE fields (ask user during install)
 output_location:
-  prompt: "Where should module outputs be saved?"
-  default: "output/module-code"
-  result: "{project-root}/{value}"
+  prompt: 'Where should module outputs be saved?'
+  default: 'output/module-code'
+  result: '{project-root}/{value}'
 
 feature_level:
-  prompt: "Which feature set?"
-  default: "standard"
-  result: "{value}"
+  prompt: 'Which feature set?'
+  default: 'standard'
+  result: '{value}'
   single-select:
-    - value: "basic"
-      label: "Basic - Core features only"
-    - value: "standard"
-      label: "Standard - Recommended features"
-    - value: "advanced"
-      label: "Advanced - All features"
+    - value: 'basic'
+      label: 'Basic - Core features only'
+    - value: 'standard'
+      label: 'Standard - Recommended features'
+    - value: 'advanced'
+      label: 'Advanced - All features'
 
 # STATIC fields (no prompt, just hardcoded values)
 module_version:
-  result: "1.0.0"
+  result: '1.0.0'
 
 data_path:
-  result: "{project-root}/bmad/module-code/data"
+  result: '{project-root}/bmad/module-code/data'
 ```
 
 **Key Points:**

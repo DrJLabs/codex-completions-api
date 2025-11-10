@@ -7,14 +7,14 @@
  */
 
 // const fs = require('fs'); // Uncomment when implementing file operations
-const path = require("path");
+const path = require('path');
 
 /**
  * Main installation function
  * Called by BMAD installer when processing the module
  */
 async function installModule(config) {
-  console.log("🚀 Installing {{MODULE_NAME}} module...");
+  console.log('🚀 Installing {{MODULE_NAME}} module...');
   console.log(`   Version: ${config.version}`);
   console.log(`   Module Code: ${config.module_code}`);
 
@@ -31,13 +31,13 @@ async function installModule(config) {
     // Step 4: Run post-install tasks
     await runPostInstallTasks(config);
 
-    console.log("✅ {{MODULE_NAME}} module installed successfully!");
+    console.log('✅ {{MODULE_NAME}} module installed successfully!');
     return {
       success: true,
-      message: "Module installed and configured",
+      message: 'Module installed and configured',
     };
   } catch (error) {
-    console.error("❌ Installation failed:", error.message);
+    console.error('❌ Installation failed:', error.message);
     return {
       success: false,
       error: error.message,
@@ -49,7 +49,7 @@ async function installModule(config) {
  * Validate that the environment meets module requirements
  */
 async function validateEnvironment(config) {
-  console.log("   Validating environment...");
+  console.log('   Validating environment...');
 
   // TODO: Add environment checks
   // Examples:
@@ -60,17 +60,17 @@ async function validateEnvironment(config) {
 
   // Placeholder validation
   if (!config.project_root) {
-    throw new Error("Project root not defined");
+    throw new Error('Project root not defined');
   }
 
-  console.log("   ✓ Environment validated");
+  console.log('   ✓ Environment validated');
 }
 
 /**
  * Setup module-specific configurations
  */
 async function setupConfigurations(config) {
-  console.log("   Setting up configurations...");
+  console.log('   Setting up configurations...');
 
   // TODO: Add configuration setup
   // Examples:
@@ -80,7 +80,7 @@ async function setupConfigurations(config) {
   // - Initialize settings
 
   // Placeholder configuration
-  const configPath = path.join(config.project_root, "bmad", config.module_code, "config.json");
+  const configPath = path.join(config.project_root, 'bmad', config.module_code, 'config.json');
 
   // Example of module config that would be created
   // const moduleConfig = {
@@ -92,14 +92,14 @@ async function setupConfigurations(config) {
 
   // Note: This is a placeholder - actual implementation would write the file
   console.log(`   ✓ Would create config at: ${configPath}`);
-  console.log("   ✓ Configurations complete");
+  console.log('   ✓ Configurations complete');
 }
 
 /**
  * Initialize module-specific features
  */
 async function initializeFeatures(config) {
-  console.log("   Initializing features...");
+  console.log('   Initializing features...');
 
   // TODO: Add feature initialization
   // Examples:
@@ -111,31 +111,31 @@ async function initializeFeatures(config) {
 
   // Module-specific initialization based on type
   switch (config.module_category) {
-    case "data": {
+    case 'data': {
       await initializeDataFeatures(config);
       break;
     }
-    case "automation": {
+    case 'automation': {
       await initializeAutomationFeatures(config);
       break;
     }
-    case "integration": {
+    case 'integration': {
       await initializeIntegrationFeatures(config);
       break;
     }
     default: {
-      console.log("   - Using standard initialization");
+      console.log('   - Using standard initialization');
     }
   }
 
-  console.log("   ✓ Features initialized");
+  console.log('   ✓ Features initialized');
 }
 
 /**
  * Initialize data-related features
  */
 async function initializeDataFeatures(/* config */) {
-  console.log("   - Setting up data storage...");
+  console.log('   - Setting up data storage...');
   // TODO: Setup databases, data folders, etc.
 }
 
@@ -143,7 +143,7 @@ async function initializeDataFeatures(/* config */) {
  * Initialize automation features
  */
 async function initializeAutomationFeatures(/* config */) {
-  console.log("   - Setting up automation hooks...");
+  console.log('   - Setting up automation hooks...');
   // TODO: Setup triggers, watchers, schedulers
 }
 
@@ -151,7 +151,7 @@ async function initializeAutomationFeatures(/* config */) {
  * Initialize integration features
  */
 async function initializeIntegrationFeatures(/* config */) {
-  console.log("   - Setting up integrations...");
+  console.log('   - Setting up integrations...');
   // TODO: Configure APIs, webhooks, external services
 }
 
@@ -159,7 +159,7 @@ async function initializeIntegrationFeatures(/* config */) {
  * Run post-installation tasks
  */
 async function runPostInstallTasks(/* config */) {
-  console.log("   Running post-install tasks...");
+  console.log('   Running post-install tasks...');
 
   // TODO: Add post-install tasks
   // Examples:
@@ -168,41 +168,41 @@ async function runPostInstallTasks(/* config */) {
   // - Send notifications
   // - Update registries
 
-  console.log("   ✓ Post-install tasks complete");
+  console.log('   ✓ Post-install tasks complete');
 }
 
 /**
  * Initialize database for the module (optional)
  */
 async function initDatabase(/* config */) {
-  console.log("   Initializing database...");
+  console.log('   Initializing database...');
 
   // TODO: Add database initialization
   // This function can be called from install-config.yaml
 
-  console.log("   ✓ Database initialized");
+  console.log('   ✓ Database initialized');
 }
 
 /**
  * Generate sample data for the module (optional)
  */
 async function generateSamples(config) {
-  console.log("   Generating sample data...");
+  console.log('   Generating sample data...');
 
   // TODO: Create sample files, data, configurations
   // This helps users understand how to use the module
 
-  const samplesPath = path.join(config.project_root, "examples", config.module_code);
+  const samplesPath = path.join(config.project_root, 'examples', config.module_code);
 
   console.log(`   - Would create samples at: ${samplesPath}`);
-  console.log("   ✓ Samples generated");
+  console.log('   ✓ Samples generated');
 }
 
 /**
  * Uninstall the module (cleanup)
  */
 async function uninstallModule(/* config */) {
-  console.log("🗑️  Uninstalling {{MODULE_NAME}} module...");
+  console.log('🗑️  Uninstalling {{MODULE_NAME}} module...');
 
   try {
     // TODO: Add cleanup logic
@@ -211,10 +211,10 @@ async function uninstallModule(/* config */) {
     // - Unregister services
     // - Backup user data
 
-    console.log("✅ Module uninstalled successfully");
+    console.log('✅ Module uninstalled successfully');
     return { success: true };
   } catch (error) {
-    console.error("❌ Uninstall failed:", error.message);
+    console.error('❌ Uninstall failed:', error.message);
     return {
       success: false,
       error: error.message,

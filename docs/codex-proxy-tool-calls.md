@@ -280,7 +280,7 @@ data: [DONE]
           "arguments": "{\"id\":\"42\"}"
         }
       ],
-      "content": null
+      "content": "<use_tool>\n  <name>get_user</name>\n  <id>42</id>\n</use_tool>"
     },
     "finish_reason": "tool_calls"
   }],
@@ -292,6 +292,8 @@ data: [DONE]
 
 <a id="behavioral-notes"></a>
 ## Best Practices & Notes
+
+- **Output modes**: `PROXY_OUTPUT_MODE=obsidian-xml` (default) tells the proxy to emit literal `<use_tool>` content alongside `tool_calls[]`, matching Obsidian Copilot’s expectations. Override per request via the `x-proxy-output-mode` header (set to `obsidian-xml` or `openai-json`). When `openai-json` is selected, the proxy restores the legacy `content:null` shape so vanilla OpenAI clients keep working unchanged.
 
 - **Prefer structured events** from `app-server v2`. They are unambiguous and stream-friendly.
 - **Fallback to textual detection** only if structured signals are absent.

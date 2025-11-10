@@ -28,12 +28,12 @@ Risk governance transforms subjective "should we ship?" debates into objective, 
 ```typescript
 // risk-scoring.ts - Risk classification and scoring system
 export const RISK_CATEGORIES = {
-  TECH: "TECH", // Technical debt, architecture fragility
-  SEC: "SEC", // Security vulnerabilities
-  PERF: "PERF", // Performance degradation
-  DATA: "DATA", // Data integrity, corruption
-  BUS: "BUS", // Business logic errors
-  OPS: "OPS", // Operational issues (deployment, monitoring)
+  TECH: 'TECH', // Technical debt, architecture fragility
+  SEC: 'SEC', // Security vulnerabilities
+  PERF: 'PERF', // Performance degradation
+  DATA: 'DATA', // Data integrity, corruption
+  BUS: 'BUS', // Business logic errors
+  OPS: 'OPS', // Operational issues (deployment, monitoring)
 } as const;
 
 export type RiskCategory = keyof typeof RISK_CATEGORIES;
@@ -49,7 +49,7 @@ export type RiskScore = {
   owner: string;
   mitigationPlan?: string;
   deadline?: Date;
-  status: "OPEN" | "MITIGATED" | "WAIVED" | "ACCEPTED";
+  status: 'OPEN' | 'MITIGATED' | 'WAIVED' | 'ACCEPTED';
   waiverReason?: string;
   waiverApprover?: string;
   waiverExpiry?: Date;
@@ -68,11 +68,11 @@ export function isCriticalBlocker(score: number): boolean {
   return score === 9; // Probability=3 AND Impact=3 → FAIL gate
 }
 
-export function classifyRiskLevel(score: number): "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" {
-  if (score === 9) return "CRITICAL";
-  if (score >= 6) return "HIGH";
-  if (score >= 4) return "MEDIUM";
-  return "LOW";
+export function classifyRiskLevel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  if (score === 9) return 'CRITICAL';
+  if (score >= 6) return 'HIGH';
+  if (score >= 4) return 'MEDIUM';
+  return 'LOW';
 }
 
 // Example: Risk assessment from test failures
@@ -103,8 +103,8 @@ export function assessTestFailureRisk(failure: {
     probability,
     impact,
     score,
-    owner: "unassigned",
-    status: score === 9 ? "OPEN" : "OPEN",
+    owner: 'unassigned',
+    status: score === 9 ? 'OPEN' : 'OPEN',
   };
 }
 ```
@@ -126,7 +126,7 @@ export function assessTestFailureRisk(failure: {
 
 ```typescript
 // gate-decision-engine.ts
-export type GateDecision = "PASS" | "CONCERNS" | "FAIL" | "WAIVED";
+export type GateDecision = 'PASS' | 'CONCERNS' | 'FAIL' | 'WAIVED';
 
 export type CoverageGap = {
   acceptanceCriteria: string;
@@ -144,16 +144,12 @@ export type GateResult = {
   recommendations: string[];
 };
 
-export function evaluateGate(params: {
-  risks: RiskScore[];
-  coverageGaps: CoverageGap[];
-  waiverApprover?: string;
-}): GateResult {
+export function evaluateGate(params: { risks: RiskScore[]; coverageGaps: CoverageGap[]; waiverApprover?: string }): GateResult {
   const { risks, coverageGaps, waiverApprover } = params;
 
   // Categorize risks
-  const criticalRisks = risks.filter((r) => r.score === 9 && r.status === "OPEN");
-  const highRisks = risks.filter((r) => r.score >= 6 && r.score < 9 && r.status === "OPEN");
+  const criticalRisks = risks.filter((r) => r.score === 9 && r.status === 'OPEN');
+  const highRisks = risks.filter((r) => r.score >= 6 && r.score < 9 && r.status === 'OPEN');
   const unresolvedGaps = coverageGaps.filter((g) => !g.reason);
 
   // Decision logic
@@ -161,30 +157,25 @@ export function evaluateGate(params: {
 
   // FAIL: Critical blockers (score=9) or missing coverage
   if (criticalRisks.length > 0 || unresolvedGaps.length > 0) {
-    decision = "FAIL";
+    decision = 'FAIL';
   }
   // WAIVED: All risks waived by authorized approver
-  else if (risks.every((r) => r.status === "WAIVED") && waiverApprover) {
-    decision = "WAIVED";
+  else if (risks.every((r) => r.status === 'WAIVED') && waiverApprover) {
+    decision = 'WAIVED';
   }
   // CONCERNS: High risks (score 6-8) with mitigation plans
-  else if (
-    highRisks.length > 0 &&
-    highRisks.every((r) => r.mitigationPlan && r.owner !== "unassigned")
-  ) {
-    decision = "CONCERNS";
+  else if (highRisks.length > 0 && highRisks.every((r) => r.mitigationPlan && r.owner !== 'unassigned')) {
+    decision = 'CONCERNS';
   }
   // PASS: No critical issues, all risks mitigated or low
   else {
-    decision = "PASS";
+    decision = 'PASS';
   }
 
   // Generate recommendations
   const recommendations: string[] = [];
   if (criticalRisks.length > 0) {
-    recommendations.push(
-      `🚨 ${criticalRisks.length} CRITICAL risk(s) must be mitigated before release`
-    );
+    recommendations.push(`🚨 ${criticalRisks.length} CRITICAL risk(s) must be mitigated before release`);
   }
   if (unresolvedGaps.length > 0) {
     recommendations.push(`📋 ${unresolvedGaps.length} acceptance criteria lack test coverage`);
@@ -192,7 +183,7 @@ export function evaluateGate(params: {
   if (highRisks.some((r) => !r.mitigationPlan)) {
     recommendations.push(`⚠️  High risks without mitigation plans: assign owners and deadlines`);
   }
-  if (decision === "PASS") {
+  if (decision === 'PASS') {
     recommendations.push(`✅ All risks mitigated or acceptable. Ready for release.`);
   }
 
@@ -220,20 +211,20 @@ function generateSummary(decision: GateDecision, risks: RiskScore[], gaps: Cover
 
 ```typescript
 // Example: Running gate check before deployment
-import { assessTestFailureRisk, evaluateGate } from "./gate-decision-engine";
+import { assessTestFailureRisk, evaluateGate } from './gate-decision-engine';
 
 // Collect risks from test results
 const risks: RiskScore[] = [
   assessTestFailureRisk({
-    test: "Payment processing with expired card",
-    category: "BUS",
+    test: 'Payment processing with expired card',
+    category: 'BUS',
     affectedUsers: 5000,
     revenueImpact: 50000,
     securityVulnerability: false,
   }),
   assessTestFailureRisk({
-    test: "SQL injection in search endpoint",
-    category: "SEC",
+    test: 'SQL injection in search endpoint',
+    category: 'SEC',
     affectedUsers: 10000,
     revenueImpact: 0,
     securityVulnerability: true,
@@ -243,9 +234,9 @@ const risks: RiskScore[] = [
 // Identify coverage gaps
 const coverageGaps: CoverageGap[] = [
   {
-    acceptanceCriteria: "User can reset password via email",
-    testMissing: "e2e/auth/password-reset.spec.ts",
-    reason: "", // Empty = unresolved
+    acceptanceCriteria: 'User can reset password via email',
+    testMissing: 'e2e/auth/password-reset.spec.ts',
+    reason: '', // Empty = unresolved
   },
 ];
 
@@ -285,7 +276,7 @@ export type MitigationAction = {
   action: string;
   owner: string;
   deadline: Date;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED';
   completedAt?: Date;
   blockedReason?: string;
 };
@@ -302,10 +293,7 @@ export class RiskMitigationTracker {
 
     // Auto-assign mitigation requirements for score ≥6
     if (requiresMitigation(risk.score) && !risk.mitigationPlan) {
-      this.logHistory(
-        risk.id,
-        `⚠️  Mitigation required (score ${risk.score}). Assign owner and plan.`
-      );
+      this.logHistory(risk.id, `⚠️  Mitigation required (score ${risk.score}). Assign owner and plan.`);
     }
   }
 
@@ -318,26 +306,23 @@ export class RiskMitigationTracker {
     existingActions.push(action);
     this.actions.set(action.riskId, existingActions);
 
-    this.logHistory(
-      action.riskId,
-      `Mitigation action added: ${action.action} (Owner: ${action.owner})`
-    );
+    this.logHistory(action.riskId, `Mitigation action added: ${action.action} (Owner: ${action.owner})`);
   }
 
   // Complete mitigation action
   completeMitigation(riskId: string, actionIndex: number): void {
     const actions = this.actions.get(riskId);
-    if (!actions || !actions[actionIndex]) throw new Error("Action not found");
+    if (!actions || !actions[actionIndex]) throw new Error('Action not found');
 
-    actions[actionIndex].status = "COMPLETED";
+    actions[actionIndex].status = 'COMPLETED';
     actions[actionIndex].completedAt = new Date();
 
     this.logHistory(riskId, `Mitigation completed: ${actions[actionIndex].action}`);
 
     // If all actions completed, mark risk as MITIGATED
-    if (actions.every((a) => a.status === "COMPLETED")) {
+    if (actions.every((a) => a.status === 'COMPLETED')) {
       const risk = this.risks.get(riskId)!;
-      risk.status = "MITIGATED";
+      risk.status = 'MITIGATED';
       this.logHistory(riskId, `✅ Risk mitigated. All actions complete.`);
     }
   }
@@ -347,7 +332,7 @@ export class RiskMitigationTracker {
     const risk = this.risks.get(riskId);
     if (!risk) throw new Error(`Risk ${riskId} not found`);
 
-    risk.status = "WAIVED";
+    risk.status = 'WAIVED';
     risk.waiverReason = reason;
     risk.waiverApprover = approver;
     risk.waiverExpiry = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
@@ -358,10 +343,10 @@ export class RiskMitigationTracker {
   // Generate risk report
   generateReport(): string {
     const allRisks = Array.from(this.risks.values());
-    const critical = allRisks.filter((r) => r.score === 9 && r.status === "OPEN");
-    const high = allRisks.filter((r) => r.score >= 6 && r.score < 9 && r.status === "OPEN");
-    const mitigated = allRisks.filter((r) => r.status === "MITIGATED");
-    const waived = allRisks.filter((r) => r.status === "WAIVED");
+    const critical = allRisks.filter((r) => r.score === 9 && r.status === 'OPEN');
+    const high = allRisks.filter((r) => r.score >= 6 && r.score < 9 && r.status === 'OPEN');
+    const mitigated = allRisks.filter((r) => r.status === 'MITIGATED');
+    const waived = allRisks.filter((r) => r.status === 'WAIVED');
 
     let report = `# Risk Mitigation Report\n\n`;
     report += `**Generated**: ${new Date().toISOString()}\n\n`;
@@ -378,7 +363,7 @@ export class RiskMitigationTracker {
         report += `- **${r.title}** (${r.category})\n`;
         report += `  - Score: ${r.score} (Probability: ${r.probability}, Impact: ${r.impact})\n`;
         report += `  - Owner: ${r.owner}\n`;
-        report += `  - Mitigation: ${r.mitigationPlan || "NOT ASSIGNED"}\n\n`;
+        report += `  - Mitigation: ${r.mitigationPlan || 'NOT ASSIGNED'}\n\n`;
       });
     }
 
@@ -388,7 +373,7 @@ export class RiskMitigationTracker {
         report += `- **${r.title}** (${r.category})\n`;
         report += `  - Score: ${r.score}\n`;
         report += `  - Owner: ${r.owner}\n`;
-        report += `  - Deadline: ${r.deadline?.toISOString().split("T")[0] || "NOT SET"}\n\n`;
+        report += `  - Deadline: ${r.deadline?.toISOString().split('T')[0] || 'NOT SET'}\n\n`;
       });
     }
 
@@ -400,9 +385,7 @@ export class RiskMitigationTracker {
   }
 
   getHistory(riskId: string): Array<{ event: string; timestamp: Date }> {
-    return this.history
-      .filter((h) => h.riskId === riskId)
-      .map((h) => ({ event: h.event, timestamp: h.timestamp }));
+    return this.history.filter((h) => h.riskId === riskId).map((h) => ({ event: h.event, timestamp: h.timestamp }));
   }
 }
 ```
@@ -414,43 +397,43 @@ const tracker = new RiskMitigationTracker();
 
 // Register critical security risk
 tracker.addRisk({
-  id: "risk-001",
-  category: "SEC",
-  title: "SQL injection vulnerability in user search",
-  description: "Unsanitized input allows arbitrary SQL execution",
+  id: 'risk-001',
+  category: 'SEC',
+  title: 'SQL injection vulnerability in user search',
+  description: 'Unsanitized input allows arbitrary SQL execution',
   probability: 3,
   impact: 3,
   score: 9,
-  owner: "security-team",
-  status: "OPEN",
+  owner: 'security-team',
+  status: 'OPEN',
 });
 
 // Add mitigation actions
 tracker.addMitigationAction({
-  riskId: "risk-001",
-  action: "Add parameterized queries to user-search endpoint",
-  owner: "alice@example.com",
-  deadline: new Date("2025-10-20"),
-  status: "IN_PROGRESS",
+  riskId: 'risk-001',
+  action: 'Add parameterized queries to user-search endpoint',
+  owner: 'alice@example.com',
+  deadline: new Date('2025-10-20'),
+  status: 'IN_PROGRESS',
 });
 
 tracker.addMitigationAction({
-  riskId: "risk-001",
-  action: "Add WAF rule to block SQL injection patterns",
-  owner: "bob@example.com",
-  deadline: new Date("2025-10-22"),
-  status: "PENDING",
+  riskId: 'risk-001',
+  action: 'Add WAF rule to block SQL injection patterns',
+  owner: 'bob@example.com',
+  deadline: new Date('2025-10-22'),
+  status: 'PENDING',
 });
 
 // Complete first action
-tracker.completeMitigation("risk-001", 0);
+tracker.completeMitigation('risk-001', 0);
 
 // Generate report
 console.log(tracker.generateReport());
 // Markdown report with critical risks, owners, deadlines
 
 // View history
-console.log(tracker.getHistory("risk-001"));
+console.log(tracker.getHistory('risk-001'));
 // [
 //   { event: 'Risk registered: SQL injection...', timestamp: ... },
 //   { event: 'Mitigation action added: Add parameterized queries...', timestamp: ... },
@@ -479,7 +462,7 @@ export type AcceptanceCriterion = {
   id: string;
   story: string;
   criterion: string;
-  priority: "P0" | "P1" | "P2" | "P3";
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
 };
 
 export type TestCase = {
@@ -495,10 +478,7 @@ export type CoverageMatrix = {
   waiverReason?: string;
 };
 
-export function buildCoverageMatrix(
-  criteria: AcceptanceCriterion[],
-  tests: TestCase[]
-): CoverageMatrix[] {
+export function buildCoverageMatrix(criteria: AcceptanceCriterion[], tests: TestCase[]): CoverageMatrix[] {
   return criteria.map((criterion) => {
     const matchingTests = tests.filter((t) => t.criteriaIds.includes(criterion.id));
 
@@ -526,14 +506,14 @@ export function extractCriteriaFromTests(testFiles: string[]): TestCase[] {
   // Here we simulate extraction from test names
   return [
     {
-      file: "tests/e2e/auth/login.spec.ts",
-      name: "should allow user to login with valid credentials",
-      criteriaIds: ["AC-001", "AC-002"], // Linked to acceptance criteria
+      file: 'tests/e2e/auth/login.spec.ts',
+      name: 'should allow user to login with valid credentials',
+      criteriaIds: ['AC-001', 'AC-002'], // Linked to acceptance criteria
     },
     {
-      file: "tests/e2e/auth/password-reset.spec.ts",
-      name: "should send password reset email",
-      criteriaIds: ["AC-003"],
+      file: 'tests/e2e/auth/password-reset.spec.ts',
+      name: 'should send password reset email',
+      criteriaIds: ['AC-003'],
     },
   ];
 }
@@ -568,7 +548,7 @@ export function generateTraceabilityReport(matrix: CoverageMatrix[]): string {
   matrix
     .filter((m) => m.covered)
     .forEach((m) => {
-      const testList = m.tests.map((t) => `\`${t.file}\``).join(", ");
+      const testList = m.tests.map((t) => `\`${t.file}\``).join(', ');
       report += `| ${m.criterion.story} | ${m.criterion.criterion} | ${testList} |\n`;
     });
 
@@ -581,27 +561,14 @@ export function generateTraceabilityReport(matrix: CoverageMatrix[]): string {
 ```typescript
 // Define acceptance criteria
 const criteria: AcceptanceCriterion[] = [
-  { id: "AC-001", story: "US-123", criterion: "User can login with email", priority: "P0" },
-  {
-    id: "AC-002",
-    story: "US-123",
-    criterion: "User sees error on invalid password",
-    priority: "P0",
-  },
-  {
-    id: "AC-003",
-    story: "US-124",
-    criterion: "User receives password reset email",
-    priority: "P1",
-  },
-  { id: "AC-004", story: "US-125", criterion: "User can update profile", priority: "P2" }, // NO TEST
+  { id: 'AC-001', story: 'US-123', criterion: 'User can login with email', priority: 'P0' },
+  { id: 'AC-002', story: 'US-123', criterion: 'User sees error on invalid password', priority: 'P0' },
+  { id: 'AC-003', story: 'US-124', criterion: 'User receives password reset email', priority: 'P1' },
+  { id: 'AC-004', story: 'US-125', criterion: 'User can update profile', priority: 'P2' }, // NO TEST
 ];
 
 // Extract tests
-const tests: TestCase[] = extractCriteriaFromTests([
-  "tests/e2e/auth/login.spec.ts",
-  "tests/e2e/auth/password-reset.spec.ts",
-]);
+const tests: TestCase[] = extractCriteriaFromTests(['tests/e2e/auth/login.spec.ts', 'tests/e2e/auth/password-reset.spec.ts']);
 
 // Build matrix
 const matrix = buildCoverageMatrix(criteria, tests);

@@ -42,12 +42,14 @@ export function startKeepalives(res, intervalMs, writer) {
 export function sendSSE(res, payload) {
   try {
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    res.flush?.();
   } catch {}
 }
 
 export function sendComment(res, text) {
   try {
     res.write(`: ${String(text)}\n\n`);
+    res.flush?.();
   } catch {}
 }
 
