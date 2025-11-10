@@ -914,6 +914,11 @@ export async function postChatNonStream(req, res) {
           if (typeof payloadData === "string") {
             textSegment = payloadData;
             hasTextSegment = Boolean(textSegment);
+            toolCallAggregator.ingestMessage(
+              { message: { content: payloadData } },
+              { choiceIndex, emitIfMissing: true }
+            );
+            if (toolCallAggregator.hasCalls({ choiceIndex })) hasToolCalls = true;
           } else if (payloadData && typeof payloadData === "object") {
             if (isDelta) {
               const { updated } = toolCallAggregator.ingestDelta(payloadData, {
@@ -921,7 +926,10 @@ export async function postChatNonStream(req, res) {
               });
               if (updated) hasToolCalls = true;
             } else {
-              toolCallAggregator.ingestMessage(payloadData, { choiceIndex });
+              toolCallAggregator.ingestMessage(payloadData, {
+                choiceIndex,
+                emitIfMissing: true,
+              });
               if (toolCallAggregator.hasCalls({ choiceIndex })) hasToolCalls = true;
             }
             textSegment = coerceAssistantContent(payloadData.content ?? payloadData.text ?? "");
