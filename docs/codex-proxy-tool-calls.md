@@ -27,6 +27,10 @@ Implications:
 - Any mention of “can’t run shell/web” should be treated as an instruction bug—update AGENTS.md instead of re-enabling Codex tools.
 - The proxy enforces all finish reasons (`tool_calls`, truncation) exactly as if it had run the tool; the only difference is that the client-supplied tool outputs enter the conversation as normal `role:"tool"` messages.
 
+### Filtering phantom MCP noise
+
+Codex App Server occasionally emits `function_call_output` events with payloads like `resources/list failed: unknown MCP server 'obsidian'` during startup probes. These were surfacing in SSE streams ahead of the real `<use_tool>` blocks and confusing clients into thinking a tool completed. The streaming handler now detects those error payloads and drops them server-side, keeping the wire protocol limited to genuine tool blocks.
+
 ---
 
 ## Scope
