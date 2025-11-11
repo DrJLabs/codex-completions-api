@@ -389,7 +389,8 @@ Environment variables:
 - `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
 - `CODEX_BIN` (default: `codex`) — set to `/app/scripts/fake-codex-proto.js` for the proto shim in dev.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
-- `PROXY_SANDBOX_MODE` (default: `danger-full-access`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Use `read-only` if clients should be prevented from file writes; use `danger-full-access` to avoid IDE plugins misinterpreting sandbox errors.
+- `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
+- Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
 - `PROXY_ENABLE_CORS` (default: `true`) — when `true`, Express emits CORS headers. Set to `false` if the edge fully manages CORS.
