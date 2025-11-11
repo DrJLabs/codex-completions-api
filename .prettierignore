@@ -3,6 +3,8 @@ web-bundles
 playwright-report
 test-results
 blob-report
+bmad-bak/
+.bmad/
 bmad/
 docs/
 .serena/

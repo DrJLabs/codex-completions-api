@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { parseSSE } from "../../tests/shared/transcript-utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,6 +19,7 @@ const ARTIFACT_DIR = resolve(
 
 const args = new Set(process.argv.slice(2));
 const includeUsage = args.has("--include-usage") || args.has("--includeUsage") || args.has("-u");
+const allowSingle = args.has("--allow-single");
 const baseUrl = process.env.BASE_URL || "http://127.0.0.1:11435";
 const trimmedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 const endpoint = `${trimmedBase}/v1/chat/completions?stream=true`;
@@ -102,6 +104,28 @@ try {
   clearTimeout(timeout);
 }
 
+const entries = parseSSE(rawSSE);
+const uniqueToolIds = new Set();
+for (const entry of entries) {
+  if (entry?.type !== "data") continue;
+  const choices = Array.isArray(entry.data?.choices) ? entry.data.choices : [];
+  for (const choice of choices) {
+    const deltas = Array.isArray(choice?.delta?.tool_calls) ? choice.delta.tool_calls : [];
+    deltas.forEach((call) => {
+      if (call?.id) uniqueToolIds.add(call.id);
+    });
+  }
+}
+if (!allowSingle) {
+  if (uniqueToolIds.size < 2) {
+    console.error(
+      `Expected at least 2 unique tool calls in stream but found ${uniqueToolIds.size}. ` +
+        "Use --allow-single to skip this check."
+    );
+    process.exit(1);
+  }
+}
+
 await mkdir(ARTIFACT_DIR, { recursive: true });
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const baseName = `streaming-tool-call-${timestamp}`;
@@ -119,6 +143,8 @@ console.log(
     status: "ok",
     endpoint,
     includeUsage,
+    multiCheckEnforced: !allowSingle,
+    uniqueToolCallCount: uniqueToolIds.size,
     logPath,
     hashPath,
     sha256: hash,

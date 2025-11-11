@@ -45,28 +45,86 @@ import { createJsonRpcChildAdapter } from "../../services/transport/child-adapte
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { mapTransportError } from "../../services/transport/index.js";
 
+const fingerprintToolCall = (record) => {
+  if (!record || typeof record !== "object") return null;
+  if (record.id && typeof record.id === "string") return `id:${record.id}`;
+  const fn = record.function && typeof record.function === "object" ? record.function : {};
+  const name = typeof fn.name === "string" ? fn.name : "";
+  const args = typeof fn.arguments === "string" ? fn.arguments : "";
+  return `fn:${name}:${args}`;
+};
+
+const normalizeToolCallSnapshot = (snapshot = []) => {
+  const list = Array.isArray(snapshot) ? snapshot.slice() : [];
+  let next = list;
+  if (TOOL_BLOCK_DEDUP && next.length) {
+    const seen = new Set();
+    next = next.filter((record) => {
+      const fingerprint = fingerprintToolCall(record);
+      if (!fingerprint) return true;
+      if (seen.has(fingerprint)) return false;
+      seen.add(fingerprint);
+      return true;
+    });
+  }
+  const maxBlocks = Number(CFG.PROXY_TOOL_BLOCK_MAX || 0);
+  const truncated = maxBlocks > 0 && next.length > maxBlocks;
+  const records = truncated ? next.slice(0, maxBlocks) : next;
+  return { records, truncated, observedCount: next.length };
+};
+
+const joinToolBlocks = (blocks = []) => {
+  if (!blocks.length) return null;
+  if (!TOOL_BLOCK_DELIMITER) return blocks.join("");
+  return blocks.join(TOOL_BLOCK_DELIMITER);
+};
+
 export const buildCanonicalXml = (snapshot = []) => {
   if (!Array.isArray(snapshot) || !snapshot.length) return null;
-  const record = snapshot[0];
-  const args = record?.function?.arguments || "";
-  if (!args) return null;
-  try {
-    JSON.parse(args);
-  } catch (err) {
-    console.error("[proxy][chat.nonstream] failed to build obsidian XML", err);
-    return null;
+  const { records } = normalizeToolCallSnapshot(snapshot);
+  const xmlBlocks = [];
+  for (const record of records) {
+    const args = record?.function?.arguments || "";
+    if (!args) continue;
+    try {
+      JSON.parse(args);
+    } catch (err) {
+      console.error("[proxy][chat.nonstream] failed to build obsidian XML", err);
+      continue;
+    }
+    const xml = toObsidianXml(record);
+    if (xml) xmlBlocks.push(xml);
   }
-  return toObsidianXml(record);
+  return joinToolBlocks(xmlBlocks);
 };
 
 export const extractTextualUseToolBlock = (text) => {
   if (!text || !text.length) return null;
   try {
     const { blocks } = extractUseToolBlocks(text, 0);
-    if (blocks && blocks.length) {
-      const first = blocks[0];
-      return text.slice(first.start ?? 0, first.end ?? text.length);
+    if (!blocks || !blocks.length) return null;
+    const seen = TOOL_BLOCK_DEDUP ? new Set() : null;
+    const results = [];
+    for (const block of blocks) {
+      const start = Number.isInteger(block.start)
+        ? block.start
+        : Number.isInteger(block.indexStart)
+          ? block.indexStart
+          : 0;
+      const end = Number.isInteger(block.end)
+        ? block.end
+        : Number.isInteger(block.indexEnd)
+          ? block.indexEnd
+          : text.length;
+      const literal = text.slice(start, end);
+      if (!literal) continue;
+      if (seen) {
+        if (seen.has(literal)) continue;
+        seen.add(literal);
+      }
+      results.push(literal);
     }
+    return joinToolBlocks(results);
   } catch {}
   return null;
 };
@@ -79,20 +137,26 @@ export const buildAssistantMessage = ({
   isObsidianOutput = true,
   functionCallPayload = null,
 } = {}) => {
+  const { records: toolCallRecords, truncated: toolCallsTruncated } =
+    normalizeToolCallSnapshot(snapshot);
+  const hasToolCalls = toolCallRecords.length > 0;
   let assistantContent = choiceContent && choiceContent.length ? choiceContent : normalizedContent;
   if (canonicalReason === "content_filter") {
     assistantContent = null;
-  } else if (snapshot.length) {
+  } else if (hasToolCalls) {
     assistantContent = isObsidianOutput
-      ? extractTextualUseToolBlock(choiceContent) || buildCanonicalXml(snapshot) || choiceContent
+      ? buildCanonicalXml(toolCallRecords) ||
+        extractTextualUseToolBlock(choiceContent) ||
+        normalizedContent ||
+        choiceContent
       : null;
   } else if (functionCallPayload) {
     assistantContent = null;
   }
 
   const message = { role: "assistant" };
-  if (snapshot.length) {
-    message.tool_calls = snapshot.map((entry) => ({
+  if (hasToolCalls) {
+    message.tool_calls = toolCallRecords.map((entry) => ({
       ...entry,
       function:
         entry.function && typeof entry.function === "object"
@@ -107,7 +171,7 @@ export const buildAssistantMessage = ({
     message.content = assistantContent;
   }
 
-  return { message, hasToolCalls: snapshot.length > 0 };
+  return { message, hasToolCalls, toolCallsTruncated, toolCallCount: toolCallRecords.length };
 };
 
 const API_KEY = CFG.API_KEY;
@@ -127,6 +191,9 @@ const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOW
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
+const TOOL_BLOCK_DEDUP = !!CFG.PROXY_TOOL_BLOCK_DEDUP;
+const TOOL_BLOCK_DELIMITER =
+  typeof CFG.PROXY_TOOL_BLOCK_DELIMITER === "string" ? CFG.PROXY_TOOL_BLOCK_DELIMITER : "";
 const APPROVAL_POLICY = (() => {
   const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
   const normalized = String(raw).trim().toLowerCase();
@@ -598,6 +665,7 @@ export async function postChatNonStream(req, res) {
   };
   const early = maybeEarlyTruncate();
 
+  res.setHeader("x-codex-stop-after-tools-mode", CFG.PROXY_STOP_AFTER_TOOLS_MODE || "burst");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   let buf2 = "";
   let prompt_tokens = 0;
@@ -605,6 +673,8 @@ export async function postChatNonStream(req, res) {
   let protoIdleReset = () => {};
   let protoIdleCancel = () => {};
   let sawTaskComplete = false;
+  let totalToolCallCount = 0;
+  let hasTruncatedToolCalls = false;
   const computeFinal = () =>
     getPrimaryContent() ||
     stripAnsi(out).trim() ||
@@ -674,7 +744,7 @@ export async function postChatNonStream(req, res) {
       const snapshot = toolCallAggregator.snapshot({ choiceIndex: idx });
       const state = getChoiceState(idx);
       const choiceContent = state.content && state.content.length ? state.content : final;
-      return buildAssistantMessage({
+      const result = buildAssistantMessage({
         snapshot,
         choiceContent,
         normalizedContent,
@@ -682,6 +752,13 @@ export async function postChatNonStream(req, res) {
         isObsidianOutput,
         functionCallPayload,
       });
+      if (Number.isFinite(result.toolCallCount)) {
+        totalToolCallCount += result.toolCallCount;
+      }
+      if (result.toolCallsTruncated) {
+        hasTruncatedToolCalls = true;
+      }
+      return result;
     };
 
     const pt =
@@ -714,6 +791,12 @@ export async function postChatNonStream(req, res) {
             ),
             tool_calls_by_choice: snapshots,
             parallel_supported: toolCallAggregator.supportsParallelCalls(),
+            tool_call_count_total: totalToolCallCount,
+            tool_call_truncated_total: hasTruncatedToolCalls ? 1 : 0,
+            stop_after_tools_mode: CFG.PROXY_STOP_AFTER_TOOLS_MODE || "burst",
+            stop_after_tools_enabled: Boolean(CFG.PROXY_STOP_AFTER_TOOLS),
+            tool_block_max: Number(CFG.PROXY_TOOL_BLOCK_MAX || 0),
+            suppress_tail_after_tools: Boolean(CFG.PROXY_SUPPRESS_TAIL_AFTER_TOOLS),
           });
         }
       } catch {}
@@ -753,6 +836,9 @@ export async function postChatNonStream(req, res) {
         has_function_call: !!functionCallPayload,
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
+        tool_call_count_total: totalToolCallCount,
+        tool_call_truncated_total: hasTruncatedToolCalls ? 1 : 0,
+        stop_after_tools_mode: CFG.PROXY_STOP_AFTER_TOOLS_MODE || "burst",
         choice_count: choiceCount,
         metadata_sanitizer_enabled: SANITIZE_METADATA,
         sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
@@ -816,6 +902,9 @@ export async function postChatNonStream(req, res) {
         finish_reason: determineChoiceFinishReason(idx, canonicalReason, choiceHasTools),
       };
     });
+
+    res.setHeader("x-codex-tool-call-count", String(totalToolCallCount));
+    res.setHeader("x-codex-tool-call-truncated", String(hasTruncatedToolCalls));
 
     const payload = {
       id: `chatcmpl-${nanoid()}`,
