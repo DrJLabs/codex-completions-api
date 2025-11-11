@@ -3,7 +3,6 @@ import fetch from "node-fetch";
 import { spawn } from "node:child_process";
 import getPort from "get-port";
 import { waitForUrlOk, stopServer, wait } from "./helpers.js";
-import { joinMessages } from "../../src/utils.js";
 import { config as CFG } from "../../src/config/index.js";
 
 const CAPTURE_TIMEOUT_MS = 4000;
