@@ -34,6 +34,8 @@ export default [
       ".codev/**",
       ".codex-api/**",
       "bmad/**",
+      ".bmad/**",
+      "bmad-bak/**",
       "external/**",
     ],
   },
