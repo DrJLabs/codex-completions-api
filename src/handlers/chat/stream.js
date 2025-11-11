@@ -5,6 +5,7 @@ import {
   startKeepalives,
   sendSSE as sendSSEUtil,
   finishSSE as finishSSEUtil,
+  sendComment as sendCommentUtil,
 } from "../../services/sse.js";
 import { nanoid } from "nanoid";
 import {
@@ -53,6 +54,7 @@ import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mo
 import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
+import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -64,7 +66,9 @@ const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
 const STOP_AFTER_TOOLS = CFG.PROXY_STOP_AFTER_TOOLS;
 const STOP_AFTER_TOOLS_MODE = CFG.PROXY_STOP_AFTER_TOOLS_MODE;
 const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
-const STOP_AFTER_TOOLS_MAX = Number(process.env.PROXY_TOOL_BLOCK_MAX || 0);
+const STOP_AFTER_TOOLS_MAX = Number(CFG.PROXY_TOOL_BLOCK_MAX || 0);
+const ENFORCE_STOP_AFTER_TOOLS =
+  STOP_AFTER_TOOLS || STOP_AFTER_TOOLS_MAX > 0 || STOP_AFTER_TOOLS_MODE === "first";
 const SUPPRESS_TAIL_AFTER_TOOLS = CFG.PROXY_SUPPRESS_TAIL_AFTER_TOOLS;
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
@@ -221,12 +225,12 @@ export async function postChatStream(req, res) {
         forwardedUpTo: 0,
         scanPos: 0,
         lastToolEnd: -1,
-        toolContentEmitted: false,
         textualToolContentSeen: false,
         dropAssistantContentAfterTools: false,
         sentAny: false,
         hasToolEvidence: false,
         structuredCount: 0,
+        forwardedToolCount: 0,
       });
     }
     return choiceStates.get(normalized);
@@ -454,6 +458,12 @@ export async function postChatStream(req, res) {
     if (invokeAdapter("onDone") === true) return;
     finishSSEUtil(res);
   };
+  const emitToolStatsComment = (payload) => {
+    if (!payload || responseWritable === false) return;
+    try {
+      sendCommentUtil(res, JSON.stringify(payload));
+    } catch {}
+  };
 
   // Stable id across stream
   const completionId = `chatcmpl-${nanoid()}`;
@@ -556,6 +566,7 @@ export async function postChatStream(req, res) {
       });
     };
   })();
+  res.setHeader("x-codex-stop-after-tools-mode", STOP_AFTER_TOOLS_MODE || "burst");
   setSSEHeaders(res);
 
   let keepalive;
@@ -595,8 +606,8 @@ export async function postChatStream(req, res) {
 
   sendRoleOnce();
   let buf = "";
-  let cutTimer = null;
-  let stoppedAfterTools = false;
+  const toolStats = { truncated: false };
+  let lastToolStats = { count: 0, truncated: 0 };
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
   const toolCallAggregator = createToolCallAggregator();
   const cloneToolCallDelta = (delta) => {
@@ -736,7 +747,7 @@ export async function postChatStream(req, res) {
       if (sanitizedPortion) {
         appendContentSegment(sanitizedPortion, { choiceIndex });
       } else if (portion.trim()) {
-        scheduleStopAfterTools();
+        scheduleStopAfterTools(choiceIndex);
       }
     };
     while (state.pending) {
@@ -976,47 +987,48 @@ export async function postChatStream(req, res) {
     return canonical;
   };
 
-  const structuredToolCount = () => {
+  const totalForwardedToolCount = () => {
     let total = 0;
     choiceStates.forEach((state) => {
-      total += state.structuredCount || 0;
+      total += state.forwardedToolCount || 0;
     });
     return total;
   };
 
-  const scheduleStopAfterTools = () => {
-    const totalToolCount = textualToolCount + structuredToolCount();
-    if (!STOP_AFTER_TOOLS || totalToolCount === 0 || stoppedAfterTools) return;
-    const cutNow = () => {
-      if (stoppedAfterTools) return;
-      stoppedAfterTools = true;
+  const forwardedToolCountForChoice = (choiceIndex) => {
+    if (!Number.isInteger(choiceIndex) || choiceIndex < 0) return 0;
+    const state = choiceStates.get(choiceIndex);
+    return state?.forwardedToolCount || 0;
+  };
+
+  const stopAfterToolsController = createStopAfterToolsController({
+    enforce: ENFORCE_STOP_AFTER_TOOLS,
+    stopAfterToolsMode: STOP_AFTER_TOOLS_MODE || "burst",
+    stopAfterToolsMax: STOP_AFTER_TOOLS_MAX,
+    graceMs: STOP_AFTER_TOOLS_GRACE_MS,
+    getTotalForwardedToolCount: () => totalForwardedToolCount(),
+    getChoiceForwardedToolCount: (choiceIndex) => forwardedToolCountForChoice(choiceIndex),
+    onCutoff: () => {
+      toolStats.truncated = true;
       try {
         clearKeepalive();
       } catch {}
       try {
-        finishSSE();
-      } catch {}
-      if (!finalized) trackFinishReason("length", "tool_cutoff");
-      try {
         child.kill("SIGTERM");
       } catch {}
-    };
-    if (STOP_AFTER_TOOLS_MAX > 0 && totalToolCount >= STOP_AFTER_TOOLS_MAX) {
-      cutNow();
-    } else if (STOP_AFTER_TOOLS_MODE === "first") {
-      cutNow();
-    } else {
-      try {
-        if (cutTimer) clearTimeout(cutTimer);
-      } catch {}
-      cutTimer = setTimeout(cutNow, Math.max(0, STOP_AFTER_TOOLS_GRACE_MS));
-    }
+      if (!finalized) trackFinishReason("length", "tool_cutoff");
+    },
+  });
+
+  const scheduleStopAfterTools = (choiceIndex = null) => {
+    const resolvedIndex = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : null;
+    stopAfterToolsController.schedule(resolvedIndex);
   };
 
   const appendContentSegment = (text, { choiceIndex = 0 } = {}) => {
     const state = ensureChoiceState(choiceIndex);
     if (state.dropAssistantContentAfterTools) {
-      scheduleStopAfterTools();
+      scheduleStopAfterTools(choiceIndex);
       return;
     }
     if (!text) return;
@@ -1040,7 +1052,7 @@ export async function postChatStream(req, res) {
       }
     }
     if (!appendText) {
-      scheduleStopAfterTools();
+      scheduleStopAfterTools(choiceIndex);
       return;
     }
     state.emitted += appendText;
@@ -1056,12 +1068,9 @@ export async function postChatStream(req, res) {
           const literal = state.emitted.slice(block.start, block.end);
           if (!literal) continue;
           if (isObsidianOutput) {
-            if (
-              !state.toolContentEmitted &&
-              emitToolContentChunk(literal, { source: "textual", choiceIndex })
-            ) {
+            if (emitToolContentChunk(literal, { source: "textual", choiceIndex })) {
               state.forwardedUpTo = block.end;
-              break;
+              continue;
             }
           } else {
             state.forwardedUpTo = block.end;
@@ -1081,30 +1090,34 @@ export async function postChatStream(req, res) {
       state.sentAny = true;
       state.forwardedUpTo = allowUntil;
     }
-    scheduleStopAfterTools();
+    scheduleStopAfterTools(choiceIndex);
   };
 
   const emitToolContentChunk = (content, { source = "aggregator", choiceIndex = 0 } = {}) => {
     if (!isObsidianOutput) return false;
     const state = ensureChoiceState(choiceIndex);
-    if (state.toolContentEmitted || state.textualToolContentSeen) return false;
+    if (source === "aggregator" && state.textualToolContentSeen) return false;
     const text = typeof content === "string" ? content : "";
     if (!text) return false;
     emitTextualToolMetadata(choiceIndex, text);
-    state.toolContentEmitted = true;
     state.dropAssistantContentAfterTools = true;
     state.hasToolEvidence = true;
     sendChoiceDelta(choiceIndex, { content: text });
     state.sentAny = true;
+    state.forwardedToolCount = Math.max(0, (state.forwardedToolCount || 0) + 1);
     if (source === "textual") state.textualToolContentSeen = true;
-    scheduleStopAfterTools();
+    scheduleStopAfterTools(choiceIndex);
     return true;
   };
 
-  const buildObsidianXmlSnapshot = (choiceIndex = 0) => {
-    const snapshot = toolCallAggregator.snapshot({ choiceIndex });
-    if (!snapshot.length) return null;
-    const record = snapshot[0];
+  const shouldDropFunctionCallOutput = (payload = null) => {
+    if (!payload || typeof payload !== "object") return false;
+    const outputField = payload.output;
+    return typeof outputField === "string" && outputField.includes("resources/list failed");
+  };
+
+  const buildObsidianXmlRecord = (record = null) => {
+    if (!record) return null;
     const args = record?.function?.arguments || "";
     if (!args) return null;
     try {
@@ -1115,13 +1128,33 @@ export async function postChatStream(req, res) {
     return toObsidianXml(record);
   };
 
-  const emitAggregatorToolContent = (choiceIndex = 0) => {
+  const emitAggregatorToolContent = (choiceIndex = 0, snapshot = null) => {
+    if (!isObsidianOutput) return false;
     const state = ensureChoiceState(choiceIndex);
-    if (!isObsidianOutput || state.toolContentEmitted || state.textualToolContentSeen) return false;
+    if (state.textualToolContentSeen) {
+      const size = Array.isArray(snapshot)
+        ? snapshot.length
+        : toolCallAggregator.snapshot({ choiceIndex }).length;
+      state.forwardedToolCount = Math.max(state.forwardedToolCount || 0, size);
+      return false;
+    }
     try {
-      const xml = buildObsidianXmlSnapshot(choiceIndex);
-      if (!xml) return false;
-      return emitToolContentChunk(xml, { source: "aggregator", choiceIndex });
+      const records = Array.isArray(snapshot)
+        ? snapshot
+        : toolCallAggregator.snapshot({ choiceIndex });
+      let emitted = false;
+      while (state.forwardedToolCount < records.length) {
+        const ordinal = state.forwardedToolCount;
+        // eslint-disable-next-line security/detect-object-injection -- ordinal indexes sequential tool calls
+        const xml = buildObsidianXmlRecord(records[ordinal]);
+        if (!xml) break;
+        if (!emitToolContentChunk(xml, { source: "aggregator", choiceIndex })) break;
+        emitted = true;
+      }
+      if (!emitted && state.forwardedToolCount > records.length) {
+        state.forwardedToolCount = records.length;
+      }
+      return emitted;
     } catch (err) {
       try {
         console.error("[proxy][chat.stream] failed to build obsidian XML", err);
@@ -1220,6 +1253,9 @@ export async function postChatStream(req, res) {
         has_function_call: hasFunctionCall,
         tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
         tool_call_emitted: toolCallAggregator.hasCalls(),
+        tool_call_count_total: lastToolStats.count,
+        tool_call_truncated_total: lastToolStats.truncated,
+        stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
         choice_count: choiceCount,
         metadata_sanitizer_enabled: SANITIZE_METADATA,
         sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
@@ -1238,10 +1274,7 @@ export async function postChatStream(req, res) {
     finalized = true;
     responded = true;
     try {
-      if (cutTimer) {
-        clearTimeout(cutTimer);
-        cutTimer = null;
-      }
+      stopAfterToolsController.cancel();
     } catch {}
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "finalize" });
     const resolvedTrigger =
@@ -1250,6 +1283,16 @@ export async function postChatStream(req, res) {
       (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
     if (reason) trackFinishReason(reason, "finalize");
     const resolvedFinish = resolveFinishReason();
+    const forwardedToolCount = totalForwardedToolCount();
+    const truncatedTotal = toolStats.truncated ? 1 : 0;
+    lastToolStats = { count: forwardedToolCount, truncated: truncatedTotal };
+    if (forwardedToolCount > 0 || truncatedTotal > 0) {
+      emitToolStatsComment({
+        tool_call_count: forwardedToolCount,
+        tool_call_truncated: truncatedTotal > 0,
+        stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
+      });
+    }
     if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!finishSent) emitFinishChunk();
     if (!usageState.logged) logUsage(resolvedTrigger);
@@ -1274,6 +1317,12 @@ export async function postChatStream(req, res) {
           tool_calls: flattened,
           tool_calls_by_choice: summaries,
           parallel_supported: toolCallAggregator.supportsParallelCalls(),
+          tool_call_count_total: lastToolStats.count,
+          tool_call_truncated_total: lastToolStats.truncated,
+          stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
+          stop_after_tools_enabled: Boolean(STOP_AFTER_TOOLS),
+          tool_block_max: STOP_AFTER_TOOLS_MAX,
+          suppress_tail_after_tools: Boolean(SUPPRESS_TAIL_AFTER_TOOLS),
         });
       } catch {}
     }
@@ -1389,7 +1438,8 @@ export async function postChatStream(req, res) {
               const state = ensureChoiceState(choiceIndex);
               state.hasToolEvidence = true;
               if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
-              state.structuredCount = toolCallAggregator.snapshot({ choiceIndex }).length;
+              const snapshot = toolCallAggregator.snapshot({ choiceIndex });
+              state.structuredCount = snapshot.length;
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
@@ -1406,7 +1456,11 @@ export async function postChatStream(req, res) {
                   tool_calls: [cloneToolCallDelta(toolDelta)],
                 });
               }
-              emitAggregatorToolContent(choiceIndex);
+              if (!isObsidianOutput || state.textualToolContentSeen) {
+                state.forwardedToolCount = snapshot.length;
+              } else {
+                emitAggregatorToolContent(choiceIndex, snapshot);
+              }
             }
             const textDelta = coerceAssistantContent(
               deltaPayload.content ?? deltaPayload.text ?? ""
@@ -1437,7 +1491,6 @@ export async function postChatStream(req, res) {
               if (emitTextualToolMetadata(choiceIndex, rawMessage)) {
                 const state = ensureChoiceState(choiceIndex);
                 state.hasToolEvidence = true;
-                emitAggregatorToolContent(choiceIndex);
               }
               let aggregatedInfo = null;
               if (SANITIZE_METADATA) {
@@ -1467,9 +1520,9 @@ export async function postChatStream(req, res) {
                   suffix = sanitizedMessage;
                 }
                 if (suffix) appendContentSegment(suffix, { choiceIndex });
-                else if (SANITIZE_METADATA) scheduleStopAfterTools();
+                else if (SANITIZE_METADATA) scheduleStopAfterTools(choiceIndex);
               } else if (SANITIZE_METADATA) {
-                scheduleStopAfterTools();
+                scheduleStopAfterTools(choiceIndex);
               }
             }
           } else if (finalMessage && typeof finalMessage === "object") {
@@ -1477,12 +1530,11 @@ export async function postChatStream(req, res) {
               emitIfMissing: true,
               choiceIndex,
             });
+            const state = ensureChoiceState(choiceIndex);
             if (updated) {
               hasToolCallsFlag = true;
-              const state = ensureChoiceState(choiceIndex);
               state.hasToolEvidence = true;
               if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
-              state.structuredCount = toolCallAggregator.snapshot({ choiceIndex }).length;
               for (const toolDelta of deltas) {
                 if (LOG_PROTO) {
                   appendProtoEvent({
@@ -1501,7 +1553,13 @@ export async function postChatStream(req, res) {
               }
             }
             if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
-            emitAggregatorToolContent(choiceIndex);
+            const snapshot = toolCallAggregator.snapshot({ choiceIndex });
+            state.structuredCount = snapshot.length;
+            if (!isObsidianOutput || state.textualToolContentSeen) {
+              state.forwardedToolCount = snapshot.length;
+            } else {
+              emitAggregatorToolContent(choiceIndex, snapshot);
+            }
             const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
             let aggregatedInfo = null;
             if (SANITIZE_METADATA) {
@@ -1531,10 +1589,14 @@ export async function postChatStream(req, res) {
                 suffix = sanitizedText;
               }
               if (suffix) appendContentSegment(suffix, { choiceIndex });
-              else if (SANITIZE_METADATA) scheduleStopAfterTools();
+              else if (SANITIZE_METADATA) scheduleStopAfterTools(choiceIndex);
             } else {
-              scheduleStopAfterTools();
+              scheduleStopAfterTools(choiceIndex);
             }
+          }
+        } else if (t === "function_call_output") {
+          if (shouldDropFunctionCallOutput(messagePayload)) {
+            continue;
           }
         } else if (t === "metadata") {
           if (SANITIZE_METADATA && metadataInfo) {
