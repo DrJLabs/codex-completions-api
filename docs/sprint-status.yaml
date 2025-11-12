@@ -55,6 +55,8 @@ development_status:
   2-7-align-json-rpc-wiring-with-app-server-schema: done
   2-8-implement-tool-call-aggregator: done
   2-9-stream-and-nonstream-tool-calls: done
+  2-9a-multi-tool-calls-per-turn: review
+  # Blocked until FR002d multi-tool turn fidelity (Story 2-9a) lands (see docs/sprint-change-proposal-2025-11-10.md)
   2-10-tool-call-regression-and-smoke: drafted
   epic-2-retrospective: completed
   epic-3: backlog
@@ -80,3 +82,5 @@ development_status:
   5-4-regression-tests-and-documentation: backlog
   5-5-pilot-rollout-and-customer-feedback: backlog
   epic-5-retrospective: optional
+notes:
+  - "Story 2.10 remains blocked until the FR002d multi-tool turn fidelity slice (planned Story 2.9a) is scheduled and delivered. Reference docs/sprint-change-proposal-2025-11-10.md for scope."

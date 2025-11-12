@@ -11,12 +11,13 @@
 - Scope now covers the tool-call surface required by Stories **2.8–2.10**: the pure `ToolCallAggregator`, streaming/non-stream handler integration, and regression/smoke coverage across structured and textual flows described in `docs/codex-proxy-tool-calls.md`.
 - Existing parity diff work (proto vs. app) remains in place; this revision layers tool-call-specific risks, coverage, and CI gating on top of that baseline.
 - Test responsibilities align with the knowledge-base guidance (`risk-governance`, `probability-impact`, `test-levels-framework`, `test-priorities-matrix`, `fixture-architecture`, `network-first`). Unit tests protect the pure aggregator, integration tests guard handler wiring, and Playwright/smoke flows validate end-to-end behavior.
+- FR002d (multi-tool turn fidelity) is now normative, so coverage explicitly includes multi-call bursts, config rollback toggles, and telemetry assertions before Story 2.10 proceeds.
 
 ---
 
 ## Risk Summary
 
-- Total risks identified: **5**
+- Total risks identified: **6**
 - High-priority risks (score ≥6): **2** (TECH/DATA)
 - Dominant categories: **TECH, DATA, OPS, PERF**
 
@@ -37,6 +38,7 @@
 | ------- | -------- | ----------- | ----------- | ------ | ----- | ---------- | ----- |
 | R-103 | OPS | `PROXY_OUTPUT_MODE` / `x-proxy-output-mode` overrides may diverge between environments, returning the wrong envelope shape or metrics tags. | 2 | 2 | 4 | Configuration contract tests exercise default + override headers, emit telemetry (`tool_call_mode`) and guard mismatches in CI. | Dev |
 | R-104 | OPS | Smoke/CI jobs currently skip authenticated tool-call drills, so regressions in structured/textual flows or disconnect handling may ship. | 2 | 2 | 4 | Extend `scripts/smoke/dev|prod`, `npm run test:integration`, and Playwright suites with deterministic fixtures, client-disconnect smoke, and artifact uploads on failure. | QA |
+| R-106 | DATA | Multi-tool turn fidelity (FR002d) might quietly regress if tests keep assuming single-call behavior. | 2 | 2 | 4 | Add dedicated multi-call burst cases to integration, Playwright, and smoke suites, including `TOOL_BLOCK_MAX=1` rollback verification. | Dev + QA |
 
 ### Low-Priority Risks (Score 1–3)
 
@@ -56,6 +58,7 @@ The Epic 2 risk register tracks the items above so downstream stories can refere
 - **R-102 (DATA)** – Streaming/non-stream handler divergence. Mitigation: dual-mode integration + Playwright specs with `[DONE]` enforcement.
 - **R-103 (OPS)** – Output-mode config drift. Mitigation: config contract tests and telemetry guards.
 - **R-104 (OPS)** – Missing authenticated tool-call smoke coverage. Mitigation: upgrade `scripts/smoke/*`and CI requirements.
+- **R-106 (DATA)** – Multi-tool turn fidelity unverified; add integration/Playwright/smoke coverage for multi-call bursts plus rollback toggles.
 - **R-105 (PERF)** – Large-argument or parallel-call resource risk. Mitigation: perf regression monitors and keeping parallel mode behind a flag.
 
 Future risks should append to this list with the same structure so linked stories (2.8–2.10) can cite `docs/test-design-epic-2.md#risk-register` for authoritative context.
@@ -154,6 +157,13 @@ CI gating: PRs must pass Smoke + P0; `main` merges also run P1; nightly jobs run
 - **R-103:** Introduce config contract tests plus `npm run config:lint` to validate default/header overrides; dashboards alert on mixed modes.
 - **R-104:** Smoke scripts promoted to CI required jobs; failures upload SSE transcripts + server logs for debugging.
 - **R-105:** Perf regression job reports memory/time; thresholds in CI convert to warnings that block release if exceeded twice.
+
+### Story 2.9a Coverage Additions (2025-11-11)
+
+- **Config contract tests** – `tests/unit/config/tools-mode.spec.js` protects the new flag surface (`PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS(_MODE)`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_DEDUP`, `PROXY_TOOL_BLOCK_DELIMITER`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`) by asserting defaults vs. overrides before handlers consume them.
+- **Telemetry integration suite** – `tests/integration/chat.telemetry.tool-calls.int.test.js` drives the multi-tool burst shim twice (burst vs. capped) and inspects both usage NDJSON entries and `kind:"tool_call_summary"` proto logs for `tool_call_count_total`, `tool_call_truncated_total`, `stop_after_tools_mode`, `tool_block_max`, and `suppress_tail_after_tools`.
+- **Smoke harness** – `scripts/smoke/stream-tool-call.js` now enforces FR002d by failing if fewer than two unique tool IDs appear while burst mode is enabled; operators can pass `--allow-single` only when intentionally forcing legacy single-call behavior.
+- **Operational documentation** – `docs/app-server-migration/codex-completions-api-migration.md#n6-tool-call-burst-controls--telemetry` captures the flag matrix plus verification steps so platform engineers can flip/observe the rollout without digging through story notes.
 
 ---
 

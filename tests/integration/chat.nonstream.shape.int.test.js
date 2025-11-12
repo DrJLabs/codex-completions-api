@@ -101,13 +101,13 @@ test("non-stream canonicalizes tool_calls finish_reason when tool payload is ret
     expect(ch?.finish_reason).toBe("tool_calls");
     expect(Array.isArray(ch?.message?.tool_calls)).toBe(true);
     expect(ch?.message?.tool_calls?.length).toBeGreaterThan(0);
-    expect(ch?.message?.content).toBeNull();
+    expect(ch?.message?.content).toContain("<use_tool>");
   } finally {
     await stopServer(ctx.child);
   }
 }, 10_000);
 
-test("non-stream surfaces legacy function_call finish_reason when no tool_calls array", async () => {
+test("non-stream normalizes legacy function_call payloads into tool_calls[]", async () => {
   const ctx = await startServer({ FAKE_CODEX_MODE: "function_call" });
   try {
     const r = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
@@ -137,9 +137,11 @@ test("non-stream surfaces legacy function_call finish_reason when no tool_calls 
     expect(r.ok).toBeTruthy();
     const j = await r.json();
     const ch = j?.choices?.[0];
-    expect(ch?.finish_reason).toBe("function_call");
-    expect(ch?.message?.function_call).toBeTruthy();
-    expect(ch?.message?.tool_calls).toBeUndefined();
+    expect(ch?.finish_reason).toBe("tool_calls");
+    expect(Array.isArray(ch?.message?.tool_calls)).toBe(true);
+    expect(ch?.message?.tool_calls?.length).toBe(1);
+    expect(ch?.message?.function_call).toBeUndefined();
+    expect(ch?.message?.content).toContain("<use_tool>");
   } finally {
     await stopServer(ctx.child);
   }

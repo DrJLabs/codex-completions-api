@@ -40,6 +40,10 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 - **`src/handlers/chat/nonStream.js`** — accumulates JSON-RPC responses for non-streaming requests, constructing OpenAI-compatible payloads with deterministic `usage` fields.
 - **`tests/integration/chat-jsonrpc.test.js`** — exercises request translation and response adapters against the deterministic Codex shim, covering chat, tool-call, streaming, and error scenarios.
 - **Parity harness scripts (`scripts/parity/generate-fixtures.js`, `scripts/parity/diff-fixtures.js`)** — capture proto vs. app-server transcripts, sanitize dynamic fields, and surface CI diagnostics.
+- **`src/lib/tool-call-aggregator.js`** — merges structured and textual tool-call deltas, tracks per-choice completion, and synthesizes `<use_tool>` XML used by streaming/non-streaming handlers.
+- **`src/handlers/chat/stream.js` – multi-tool extensions** — maintain `forwardedToolCount`, `lastToolEnd`, and burst timers so every tool call emits before the finish frame, honoring `STOP_AFTER_TOOLS_MODE` semantics.
+- **`src/handlers/chat/nonstream.js` – multi-call envelopes** — concatenate ordered `<use_tool>` blocks, set `content:null` with `tool_calls[]` in OpenAI JSON mode, and respect delimiter/tail suppression flags for burst scenarios.
+- **`src/config/index.js` + documentation (`docs/codex-proxy-tool-calls.md`, `docs/app-server-migration/codex-completions-api-migration.md`)** — expose `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_TOOL_BLOCK_DELIMITER`, `PROXY_TOOL_BLOCK_DEDUP`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, and `PROXY_ENABLE_PARALLEL_TOOL_CALLS` with defaults and rollback guidance.
 - **Supporting config** — `src/config/models.js` for model normalization, `src/services/metrics/chat.js` to log latency budgets, and `src/services/errors/jsonrpc.js` for structured error mapping.
 
 ### Data Models and Contracts
@@ -69,6 +73,13 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
   - `generate-fixtures --scenario <name>` → captures dual transcripts, writes to `docs/app-server-migration/parity-fixtures/`.
   - `diff-fixtures` → compares fixtures, prints structured diff, fails CI on mismatch.
 
+### Multi-tool Turn Fidelity (Stories 2.9 & 2.9a)
+
+- Streaming handler must emit the assistant role chunk, then a `<use_tool>` frame for **every** tool call recorded by the aggregator before writing the single canonical finish chunk (`finish_reason:"tool_calls"`) and `[DONE]`. Burst handling honors `STOP_AFTER_TOOLS_MODE` (`first` legacy vs `burst` grace) and only suppresses tail text after the final call per choice.
+- Non-stream handler and responses adapter build a single assistant message that contains all `<use_tool>` blocks (Obsidian mode) or `content:null` with the complete `tool_calls[]` array (OpenAI JSON). Ordered tool calls stay isolated per choice, and configurable `TOOL_BLOCK_DELIMITER` / tail suppression settings determine how blocks render.
+- Configuration gates (`PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_DEDUP`, `PROXY_TOOL_BLOCK_DELIMITER`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`) default to unlimited/burst but allow immediate rollback to single-call behavior when capped.
+- Telemetry increments `tool_call_count_total`, `tool_call_truncated_total`, and structured log fields (burst size, truncation reason, config overrides). Smoke/Playwright suites and `scripts/smoke/*` collect multi-call transcripts for regression evidence reused by Story 2.10.
+
 ### Workflows and Sequencing
 
 - **1. Schema Binding (Story 2.1):** Generate or author TypeScript types for command and notification payloads. Validate via unit tests using sample transcripts from the migration doc.
@@ -77,6 +88,8 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 - **4. Error Alignment (Story 2.4):** Map JSON-RPC errors/timeouts to existing HTTP error classes, integrate backoff/circuit breaker signals from supervisor.
 - **5. Regression Evidence (Story 2.5):** Expand test suites and parity harness scripts in CI, capturing artifacts for review.
 - **6. Rollout Checklist (Story 2.6):** Compile documentation summarizing parity results, operational readiness, and stakeholder sign-off checklist.
+- **7. Tool-call Parity Hardening (Story 2.9):** Integrate the ToolCallAggregator with both streaming and non-streaming handlers, enforce role-first ordering, output-mode toggles, and finish-reason normalization, and refresh transcripts/tests documenting single-call parity.
+- **8. Multi-tool Turn Fidelity (Story 2.9a):** Enable burst forwarding of multiple tool calls per assistant turn, add config/telemetry controls (`PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS_MODE`, etc.), and extend unit/integration/E2E/smoke suites plus docs so Story 2.10 can rely on the new behavior.
 
 ## Non-Functional Requirements
 
@@ -121,6 +134,10 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 4. Error, timeout, and retry paths map JSON-RPC failures to existing error envelopes and backoff behavior, including retryable hints (Story 2.4).
 5. Regression suite (`npm run test:integration`, `npm test`) exercises JSON-RPC path, parity harness diffs proto vs. app-server transcripts, and CI artifacts capture comparison output (Story 2.5).
 6. Rollout checklist published in `docs/app-server-migration/` documenting parity evidence, metrics to monitor, and stakeholder approvals required before traffic cutover (Story 2.6).
+7. Tool-call aggregator integration ensures both streaming and non-streaming handlers emit role-first assistant frames, `<use_tool>` content, and `finish_reason:"tool_calls"` per choice, with OpenAI JSON vs Obsidian modes sharing the same state (Story 2.9).
+8. Multi-tool burst handling forwards every tool call emitted in a turn, honoring `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, and `PROXY_STOP_AFTER_TOOLS_MODE` semantics so operators can cap bursts or revert to legacy single-call behavior (Story 2.9a).
+9. Non-stream envelopes concatenate all `<use_tool>` blocks (with optional `TOOL_BLOCK_DELIMITER`), set `content:null` + complete `tool_calls[]` arrays, and only suppress tail text after the final block; streaming/textual fallbacks follow the same order (Story 2.9a).
+10. Telemetry (`tool_call_count_total`, `tool_call_truncated_total`) and documentation (`docs/codex-proxy-tool-calls.md`, migration guide, smoke instructions) capture the new defaults, and regression suites (unit/integration/E2E/smoke) exercise multi-call bursts before Story 2.10 resumes (Story 2.9a).
 
 ## Traceability Mapping
 
@@ -132,6 +149,10 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 | Error handling and retries aligned          | Detailed Design → Services and Modules / NFR Reliability     | `src/services/errors/jsonrpc.js`, supervisor backoff | Integration negative tests; unit tests for error mapping                       |
 | Regression suite & parity harness           | Test Strategy Summary                                        | `scripts/parity/*`, `tests/integration`, `tests/e2e` | CI pipeline artifacts, `npm test`                                              |
 | Rollout checklist & documentation           | Dependencies and Integrations; Test Strategy                 | `docs/app-server-migration/*`                        | Manual checklist validation, PR review sign-off                                |
+| Tool-call aggregator parity (Story 2.9)     | Detailed Design → Multi-tool Turn Fidelity; Services & Modules | `src/lib/tool-call-aggregator.js`, `src/handlers/chat/{stream,nonstream}.js` | `tests/integration/chat.stream.tool-calls.int.test.js`, `tests/integration/chat.nonstream.tool-calls.int.test.js` |
+| Burst config controls (Story 2.9a)          | Detailed Design → Multi-tool Turn Fidelity; Dependencies     | `src/config/index.js`, runtime env flags             | `tests/unit/config/tools-mode.test.js`, `tests/integration/chat.multi-choice-tools.int.test.js`                  |
+| Multi-call envelopes + ordering (Story 2.9a)| Detailed Design → Multi-tool Turn Fidelity                   | `src/handlers/chat/nonstream.js`, responses adapter  | `tests/integration/chat.nonstream.multi-call.int.test.js`, `tests/e2e/tool-calls.spec.ts`                       |
+| Telemetry & docs for bursts (Story 2.9a)    | Observability; Detailed Design → Multi-tool Turn Fidelity    | `src/services/metrics/chat.js`, `docs/codex-proxy-tool-calls.md`, `scripts/smoke/*` | `tests/integration/chat.telemetry.tool-calls.int.test.js`, `scripts/smoke/dev|prod` evidence                      |
 
 ## Risks, Assumptions, Open Questions
 

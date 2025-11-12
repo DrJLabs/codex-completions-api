@@ -1,0 +1,115 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>9a</storyId>
+    <title>Story 2.9a: Multi-tool calls per assistant turn</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-10T22:06:03Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-9a-multi-tool-calls-per-turn.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a backend developer</asA>
+    <iWant>streaming and non-streaming handlers to forward every tool call emitted in a turn</iWant>
+    <soThat>clients receive complete OpenAI-compatible `tool_calls[]` arrays and Obsidian `&lt;use_tool&gt;` blocks before regression testing starts.</soThat>
+    <tasks>- [ ] **Streaming handler state machine (AC #1, #3):** Rework `src/handlers/chat/stream.js` to maintain per-choice `forwardedToolCount`, burst timers, and `lastToolEnd`, stream every tool call, and gate suppression with the updated configs; include unit coverage for the new state helpers. [Source: docs/design/multi-tool-calls-v2.md#streaming-handler; docs/codex-proxy-tool-calls.md#streaming-detection--flow]
+  - [ ] Add integration tests (e.g., `tests/integration/chat.stream.multi-call-burst.int.test.js`) that cover multi-choice bursts, textual fallback, and stop-after-tools timers.
+- [ ] **Non-stream + responses updates (AC #2, #3):** Update `src/handlers/chat/nonstream.js` and shared helpers to concatenate `&lt;use_tool&gt;` blocks, emit full `tool_calls[]`, honor delimiter/tail suppression configs, and reuse the same logic in the responses adapter. [Source: docs/design/multi-tool-calls-v2.md#non-streaming-handler; docs/tech-spec-epic-2.md#detailed-design]
+  - [ ] Add unit/integration tests (`tests/unit/handlers/chat/nonstream.multi-call.test.js`, `tests/integration/chat.nonstream.multi-call.int.test.js`) that prove multiple `&lt;use_tool&gt;` blocks, tail suppression, and OpenAI JSON envelopes render correctly for burst scenarios (AC #2).
+  - [ ] Extend aggregator serialization helpers (`src/lib/tool-call-aggregator.js`) so snapshots expose ordered call metadata for both output modes.
+- [ ] **Config + telemetry plumbing (AC #3, #4):** Surface new env vars (`TOOL_BLOCK_MAX`, `TOOL_BLOCK_DEDUP`, `TOOL_BLOCK_DELIMITER`, `STOP_AFTER_TOOLS_MODE`) in `src/config/index.js`, wire `tool_call_count` metrics/logging in handlers, and document rollout toggles. [Source: docs/design/multi-tool-calls-v2.md#configuration--compatibility; docs/sprint-change-proposal-2025-11-10.md#42-prdmdfunctional-requirements]
+  - [ ] Add regression tests: (a) config unit coverage proving env defaults + overrides (`tests/unit/config/tools-mode.test.js`), and (b) streaming/non-stream integration specs that flip the burst/single-call flags at runtime to verify compatibility paths (AC #3).
+  - [ ] Instrument telemetry verification via integration/unit tests that assert `tool_call_count_total`, `tool_call_truncated_total`, and structured log fields fire for burst, capped, and legacy modes (`tests/integration/chat.telemetry.tool-calls.int.test.js`) (AC #4).
+  - [ ] Ensure metrics propagate to existing telemetry exporters and add alerts for abnormal burst counts.
+- [ ] **Regression suites + smoke (AC #5):** Add unit tests for new helpers, streaming/non-stream integration specs for multi-call bursts, Playwright coverage for multiple `&lt;use_tool&gt;` blocks, and smoke checks that issue Codex transcripts with ≥2 tool calls; update `npm run test:integration`, `npm test`, and `scripts/smoke/*` documentation. [Source: docs/test-design-epic-2.md#risk-register; docs/sprint-change-proposal-2025-11-10.md#45-docstest-design-epic-2md--citest-harnesses]
+  - [ ] Define acceptance-test checklist linking each AC to a concrete suite (unit, integration, E2E, smoke) and capture the exact commands/logs that Story 2.10 will reuse before closing this story (AC #5).
+  - [ ] Capture fixtures/logs so Story 2.10 can reuse them when expanding regression coverage.
+- [ ] **Doc + runbook updates (AC #4, #5):** Refresh `docs/codex-proxy-tool-calls.md`, `docs/app-server-migration/codex-completions-api-migration.md`, and PRD annotations with the new burst defaults, telemetry expectations, and rollback steps; link to the updated smoke instructions. [Source: docs/design/multi-tool-calls-v2.md#scope; docs/sprint-change-proposal-2025-11-10.md#46-secondary-artifacts]</tasks>
+  </story>
+
+  <acceptanceCriteria>Traceability: Story scope derives from Epic 2, FR002d, and the FR002d change proposal. [Source: docs/epics.md#story-29a-multi-tool-calls-per-assistant-turn; docs/PRD.md#functional-requirements; docs/sprint-change-proposal-2025-11-10.md#story-29a-multi-tool-calls-per-turn]
+
+1. **Streaming burst parity:** `src/handlers/chat/stream.js` tracks `forwardedToolCount` and `lastToolEnd` **per choice**, emits an SSE `&lt;use_tool&gt;` chunk (plus `delta.tool_calls` metadata) for every new tool call recorded by the aggregator, defers tail suppression until after the final call, and honors `STOP_AFTER_TOOLS_MODE` (`first` legacy vs `burst` grace) before sending a single `finish_reason:"tool_calls"` chunk and `[DONE]`. Streaming order must remain `assistant role → N tool-call frames → finish frame → [DONE]`, and `STOP_AFTER_TOOLS_MODE="burst"` should reset a short grace timer until the final call completes. [Source: docs/design/multi-tool-calls-v2.md#proposed-changes; docs/codex-proxy-tool-calls.md#multi-tool-turn-fidelity; docs/architecture.md#implementation-patterns]
+2. **Non-stream multi-call envelopes:** Non-stream chat/responses handlers build assistant messages by concatenating all `&lt;use_tool&gt;` blocks in order (with optional `TOOL_BLOCK_DELIMITER`), set `content:null` plus the complete `tool_calls[]` array for OpenAI JSON mode, ensure tail suppression only removes text after the last block, and keep `finish_reason:"tool_calls"` parity for every choice. Obsidian mode must render **all** tool blocks inside a single assistant message, while OpenAI JSON mode always sets `content=null` whenever `tool_calls[]` exists. [Source: docs/design/multi-tool-calls-v2.md#non-streaming-handler; docs/codex-proxy-tool-calls.md#non-streaming-detection--flow; docs/tech-spec-epic-2.md#detailed-design]
+3. **Config + compatibility controls:** Introduce or reuse the full flag surface so operators can cap bursts (default unlimited/burst) or revert to single-call mode, document defaults, and guarantee backward compatibility when toggles force legacy behavior: `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_TOOL_BLOCK_DEDUP`, `PROXY_TOOL_BLOCK_DELIMITER`, and `PROXY_ENABLE_PARALLEL_TOOL_CALLS`. Combining `PROXY_TOOL_BLOCK_MAX=1` with `PROXY_STOP_AFTER_TOOLS_MODE=first` must replicate legacy single-call behavior. [Source: docs/design/multi-tool-calls-v2.md#configuration--compatibility; docs/PRD.md#functional-requirements; docs/codex-proxy-tool-calls.md#config-declared-used-by-handlers-later]
+4. **Telemetry + documentation:** Emit per-turn telemetry (e.g., `tool_call_count_total`, `tool_call_truncated_total`) and structured logs that capture burst counts, config overrides, and suppression decisions, and update `docs/codex-proxy-tool-calls.md`, `docs/app-server-migration/codex-completions-api-migration.md`, and rollout notes so downstream teams understand the new defaults and rollback paths. [Source: docs/design/multi-tool-calls-v2.md#reasoning-assumptions--logic; docs/sprint-change-proposal-2025-11-10.md#detailed-change-proposals; docs/architecture.md#implementation-patterns]
+5. **Regression + smoke coverage:** Add integration, unit, E2E, and smoke tests covering streaming bursts (multi-choice, textual fallback, tail suppression), non-stream multi-call envelopes, config toggles, UTF-8 payloads, finish-reason parity, and disconnect handling; extend `docs/test-design-epic-2.md` plus `scripts/smoke/dev|prod` to exercise the new multi-call flow before Story 2.10 resumes. [Source: docs/design/multi-tool-calls-v2.md#rollout-plan; docs/test-design-epic-2.md#risk-register; docs/sprint-change-proposal-2025-11-10.md#4-detailed-change-proposals]</acceptanceCriteria>
+
+  <artifacts>
+      <docs>
+    <doc>
+      <path>docs/design/multi-tool-calls-v2.md</path>
+      <title>Multi-Tool Calls per Turn Implementation Plan</title>
+      <section>Proposed Changes - Streaming handler</section>
+      <snippet>Plan replaces the single emitted flag with per-choice forwardedToolCount counters, emits every new &lt;use_tool&gt; chunk and delta.tool_calls snapshot, delays suppression until lastToolEnd, and keeps STOP_AFTER_TOOLS first vs burst before one [DONE].</snippet>
+    </doc>
+    <doc>
+      <path>docs/PRD.md</path>
+      <title>Product Requirements Doc</title>
+      <section>FR002d - Multi-tool turn fidelity</section>
+      <snippet>Requirement states the proxy must forward every tool call in streaming and non-streaming modes, keep finish_reason=&quot;tool_calls&quot;, and expose TOOL_BLOCK_MAX, STOP_AFTER_TOOLS_MODE, SUPPRESS_TAIL_AFTER_TOOLS to restore legacy behavior.</snippet>
+    </doc>
+    <doc>
+      <path>docs/sprint-change-proposal-2025-11-10.md</path>
+      <title>Sprint Change Proposal 2025-11-10</title>
+      <section>Story 2.9a summary</section>
+      <snippet>Proposal locks Story 2.9a before Story 2.10, requiring streaming/non-stream handlers to emit all tool calls, config gates defaulting to burst, telemetry counters, and doc updates before QA proceeds.</snippet>
+    </doc>
+    <doc>
+      <path>docs/epics.md</path>
+      <title>Epics Overview</title>
+      <section>Epic 2 - Story 2.9a</section>
+      <snippet>Epic entry reiterates the same acceptance criteria: forward all tool calls per choice, concatenate multi-call XML and JSON envelopes, keep configurability, and publish telemetry to unblock Story 2.10.</snippet>
+    </doc>
+    <doc>
+      <path>docs/codex-proxy-tool-calls.md</path>
+      <title>Codex Proxy Tool Call Guide</title>
+      <section>Streaming Detection &amp; Flow</section>
+      <snippet>Guide shows how aggregator.ingestDelta drives SSE chunks: role delta first, streaming delta.tool_calls payloads, halting assistant content beyond tool blocks, then finishing with finish_reason=&quot;tool_calls&quot; and [DONE].</snippet>
+    </doc>
+    <doc>
+      <path>docs/test-design-epic-2.md</path>
+      <title>Test Design - Epic 2</title>
+      <section>Executive Summary</section>
+      <snippet>QA plan flags FR002d as normative, requiring multi-call burst coverage, config rollback toggles, telemetry assertions, and updated integration, Playwright, smoke suites before Story 2.10.</snippet>
+    </doc>
+    <doc>
+      <path>docs/app-server-migration/codex-completions-api-migration.md</path>
+      <title>Codex App Server Migration Runbook</title>
+      <section>Streaming and Non-streaming paths</section>
+      <snippet>Runbook states streaming deltas must keep existing shape, preserve tool/function call chunks, and map finish_reason from app-server responses (including tool_calls) in the JSON path.</snippet>
+    </doc>
+  </docs>
+    <code>- src/handlers/chat/stream.js#L600-L1505 — Streaming handler already wires `createToolCallAggregator()`, tracks per-choice `structuredCount`, emits every `delta.tool_calls` chunk, and enforces `STOP_AFTER_TOOLS`/burst timers; Story 2.9a extends this path so all tool calls stream before the finish frame.
+- src/handlers/chat/nonstream.js#L1-L220 — Non-stream handler builds assistant envelopes for Obsidian XML vs OpenAI JSON; needs updates to concatenate every `<use_tool>` block, keep `content:null` when `tool_calls[]` exists, and honor tail-suppression configs.
+- src/lib/tool-call-aggregator.js#L1-L210 — Aggregator snapshots structured and textual tool events; the story relies on its `ingestDelta/ingestMessage/snapshot` APIs to drive both streaming deltas and final envelopes.
+- src/config/index.js#L1-L80 — Centralizes `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`, and default output mode; new caps/dedup/delimiter flags must integrate here.
+- tests/integration/chat.multi-tool-burst.int.test.js#L1-L210 — Vitest integration coverage that already asserts multi-call streaming bursts, non-stream concatenation, and telemetry headers; expand to cover new config knobs and regression fixtures.
+- tests/integration/chat.multi-choice-tools.int.test.js#L1-L140 — Ensures multi-choice responses isolate tool metadata per choice; validates that only tool-producing choices get `finish_reason:"tool_calls"` and drives AC #1/#2 parity.
+- tests/support/fixtures/tool-burst.fixture.js#L1-L40 — Provides deterministic FAKE_CODEX envs for burst vs legacy single-call modes; extend to exercise `PROXY_TOOL_BLOCK_MAX`, dedupe, and delimiter permutations.</code>
+    <dependencies>- package.json (runtime) — `@openai/codex@0.56.0` supplies the Codex CLI/app-server whose JSON-RPC tool events the proxy forwards; story changes must stay compatible with this SDK.
+- package.json (runtime) — `express@4.21.2` hosts `/v1/chat/completions`; high-volume tool bursts must not break Express response lifecycle.
+- package.json (runtime) — `nanoid@5.1.6` already generates deterministic ids for tool calls; multi-call envelopes should keep id stability for clients.
+- package.json (dev) — `vitest@4.0.3` powers unit/integration suites cited by docs/test-design-epic-2.md.
+- package.json (dev) — `@playwright/test@1.56.1` underpins SSE/E2E verification for streaming bursts and textual fallbacks.
+- scripts/smoke/stream-tool-call.js — CLI smoke harness that exercises multi-call streaming end-to-end; update to cover burst vs capped configs before Story 2.10 resumes.</dependencies>
+  </artifacts>
+
+  <constraints>- docs/PRD.md#functional-requirements (FR002d) — Responses MUST forward every tool call, set `finish_reason:"tool_calls"`, and keep OpenAI-compatible envelopes with legacy behavior available only via flags.
+- docs/design/multi-tool-calls-v2.md#proposed-changes — Streaming order stays `role → N tool-call frames → finish → [DONE]`, tail suppression can only run after the last call, and STOP_AFTER_TOOLS must honor `first` vs `burst` semantics.
+- docs/codex-proxy-tool-calls.md#streaming-detection--flow — Role-first SSE chunks and `delta.tool_calls` payloads cannot be reordered or duplicated; textual fallback must stay equivalent to structured events.
+- docs/app-server-migration/codex-completions-api-migration.md#d-streaming-path-sse — App-server notifications map 1:1 to handler outputs, so proxy changes cannot alter the external stream/JSON schema.
+- docs/test-design-epic-2.md#risk-register — Risks R-101/R-102 classify multi-call fidelity as high priority, so unit, integration, Playwright, and smoke coverage must be updated before Story 2.10.</constraints>
+  <interfaces>- name: POST /v1/chat/completions (stream=true) | kind: REST endpoint | signature: postChatStream(req, res) streaming SSE contract; emits role-first deltas plus `finish_reason:"tool_calls"` (src/routes/chat.js → src/handlers/chat/stream.js).
+- name: POST /v1/chat/completions (stream=false) | kind: REST endpoint | signature: postChatNonStream(req, res) JSON/Obsidian response builder that must concatenate all `<use_tool>` blocks and populate `tool_calls[]` (src/routes/chat.js → src/handlers/chat/nonstream.js).
+- name: x-proxy-output-mode header | kind: HTTP override | signature: `x-proxy-output-mode: obsidian-xml|openai-json` toggles envelope shape via resolveOutputMode() (src/handlers/chat/shared.js); story work must keep both modes aligned with multi-call semantics.</interfaces>
+  <tests>
+    <standards>Follow docs/test-design-epic-2.md: run Vitest unit + integration matrices for aggregator/handlers, Playwright SSE/E2E flows for multi-call bursts, and smoke scripts (dev/prod + stream-tool-call) before marking Story 2.9a ready; capture transcripts/logs for telemetry evidence.</standards>
+    <locations>tests/unit/** (Vitest); tests/integration/**; tests/e2e/** (Playwright); scripts/smoke/stream-tool-call.js; scripts/dev-smoke.sh; scripts/prod-smoke.sh</locations>
+    <ideas>- AC #1 – Extend `tests/integration/chat.multi-tool-burst.int.test.js` to cover ≥2 streaming tool calls per choice, verify `STOP_AFTER_TOOLS_MODE=burst` grace timers, and assert response headers capture counts/truncation.
+- AC #2 – Add non-stream cases for both output modes that join all `<use_tool>` blocks, ensure `content:null` whenever `tool_calls[]` exists, and validate tail suppression only trims after the final block.
+- AC #3/#4 – Introduce config + telemetry regression tests flipping `PROXY_TOOL_BLOCK_MAX`, dedup, and delimiter flags to prove backward-compatibility and metric emission.
+- AC #5 – Update Playwright + smoke harnesses (`scripts/smoke/stream-tool-call.js`, live tests) so CI publishes transcripts/logs showing multi-call bursts succeed before Story 2.10 proceeds.</ideas>
+  </tests>
+</story-context>

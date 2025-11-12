@@ -136,7 +136,6 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       existing = toolCalls.get(fallbackId);
     }
 
-    const created = !existing;
     if (!existing) {
       const resolvedOrdinal = Number.isInteger(ordinal) ? ordinal : toolCalls.size;
       existing = {
