@@ -198,9 +198,10 @@ COMMON MISTAKES TO AVOID:
 
 - Wrong: Using different markers like "---- SEARCH" or "SEARCH -------"
 - Wrong: Including too many unchanged lines
-- Wrong: Not matching whitespace/indentation exactly</diff>
+- Wrong: Not matching whitespace/indentation exactly
+    </diff>
   </parameters>
-  </replaceInFile>
+</replaceInFile>
 
 <youtubeTranscription>
 <description>Get transcripts of YouTube videos when the user provides YouTube URLs</description>
