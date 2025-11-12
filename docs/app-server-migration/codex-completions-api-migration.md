@@ -290,3 +290,31 @@ Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs l
 ### N.5 Operational change log additions
 
 - 2025-10-31 — Documented feature flag rollout, environment matrix, and probe verification steps for the app-server cutover. Linked smoke harnesses and Story 1.5 probe evidence so partner teams can reuse readiness data (Source: [../epics.md#story-16-document-foundation-and-operational-controls](../epics.md#story-16-document-foundation-and-operational-controls); [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#change-log)).
+
+### N.6 Tool-call burst controls & telemetry (Story 2.9a)
+
+Multi-tool turn fidelity ships behind explicit flags so operators can cap or roll back behavior without redeploying:
+
+| Variable | Default | Effect | Rollback pairing |
+| --- | --- | --- | --- |
+| `PROXY_STOP_AFTER_TOOLS` | `false` | When `true`, terminate the stream immediately after a tool burst (still emits finish chunk + `[DONE]`). | Combine with MODE=`first` for legacy single-call behavior. |
+| `PROXY_STOP_AFTER_TOOLS_MODE` | `burst` | `burst` resets a short grace timer so all sequential tool calls finish; `first` cuts after the first call. | Set to `first` with `PROXY_TOOL_BLOCK_MAX=1` to fully mimic Story 2.8 behavior. |
+| `PROXY_TOOL_BLOCK_MAX` | `0` (unlimited) | Hard cap on the number of tool calls forwarded per choice. | Use `1` during incident mitigation; telemetry records truncation when the cap hits. |
+| `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` | `false` | Drops assistant narration that arrives after the last `<use_tool>` block. | Leave `true` while burst mode is active to keep responders from seeing stray prose. |
+| `PROXY_TOOL_BLOCK_DEDUP` | `false` | Removes duplicate textual `<use_tool>` blocks when Codex emits identical payloads. | Leave `false` unless clients complain about duplicates. |
+| `PROXY_TOOL_BLOCK_DELIMITER` | `""` | Separator between textual blocks in Obsidian mode. Set to `true` (newline) or a literal string (supports `\n`). | Set to `false`/empty to restore tightly packed XML. |
+| `PROXY_ENABLE_PARALLEL_TOOL_CALLS` | `false` | Exposes Codex’s experimental parallel tools. Keep disabled until app + downstream clients fully support it. | Leave `false` unless staging tests explicitly require parallel execution. |
+
+**Telemetry expectations**
+
+- Streaming handlers emit an SSE comment before `[DONE]` with `{"tool_call_count":N,"tool_call_truncated":bool,"stop_after_tools_mode":"..."}`. Tail `scripts/smoke/stream-tool-call.js` output or run `curl` with `--no-buffer` to verify counts.
+- Non-stream responses include HTTP headers: `x-codex-stop-after-tools-mode`, `x-codex-tool-call-count`, and `x-codex-tool-call-truncated`.
+- Structured logs now capture the same data:
+  - `TOKEN_LOG_PATH` (usage NDJSON) records `tool_call_count_total`, `tool_call_truncated_total`, and `stop_after_tools_mode` per request.
+  - `PROTO_LOG_PATH` includes `kind:"tool_call_summary"` entries with burst counts, truncation flags, `stop_after_tools_mode`, and `tool_block_max`.
+
+**Operational validation**
+
+1. Run `node scripts/smoke/stream-tool-call.js` (requires `KEY` env) to assert at least two tool calls stream under normal burst mode. Pass `--allow-single` only when intentionally capping to single-call mode.
+2. Tail usage logs to ensure `tool_call_truncated_total` flips to `1` when you set `PROXY_TOOL_BLOCK_MAX=1` (legacy mode) and returns to `0` when the cap is removed.
+3. Document any flag flips in the rollout notes and keep `docs/codex-proxy-tool-calls.md` aligned with production defaults.

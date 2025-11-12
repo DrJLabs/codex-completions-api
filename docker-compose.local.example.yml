@@ -10,7 +10,7 @@ services:
       PORT: "${PORT:-11435}"
       PROXY_API_KEY: "${PROXY_API_KEY?set-in-env}"
       CODEX_MODEL: "${CODEX_MODEL:-gpt-5}"
-      PROXY_SANDBOX_MODE: "${PROXY_SANDBOX_MODE:-danger-full-access}"
+      PROXY_SANDBOX_MODE: "${PROXY_SANDBOX_MODE:-read-only}"
       PROXY_CODEX_WORKDIR: "${PROXY_CODEX_WORKDIR:-/tmp/codex-work}"
       PROXY_ENABLE_CORS: "true"
       PROXY_CORS_ALLOWED_ORIGINS: "${PROXY_CORS_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
