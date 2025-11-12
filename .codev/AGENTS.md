@@ -110,9 +110,10 @@ EXAMPLE USAGE:
 
 - "what time is 6pm PT in Tokyo" → time: "6pm", fromOffset: "-8", toOffset: "+9"
 - "convert 3:30 PM EST to London time" → time: "3:30 PM", fromOffset: "-5", toOffset: "+0"
-- "what is 9am Beijing time in New York" → time: "9am", fromOffset: "+8", toOffset: "-5"</toOffset>
+- "what is 9am Beijing time in New York" → time: "9am", fromOffset: "+8", toOffset: "-5"
+    </toOffset>
   </parameters>
-  </convertTimeBetweenTimezones>
+</convertTimeBetweenTimezones>
 
 <readNote>
 <description>Read a single note in search v3 sized chunks. Use only when you already know the exact note path and need its contents.</description>
