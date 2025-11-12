@@ -3,3 +3,13 @@ sandbox_mode = "read-only"
 approval_policy = "never"
 preferred_auth_method = "chatgpt"
 project_doc_max_bytes = 0
+
+[features]
+web_search_request = false
+streamable_shell = false
+unified_exec = false
+apply_patch_freeform = false
+view_image_tool = false
+
+[tools]
+web_search = false

@@ -23,6 +23,16 @@ const resolveTruncateMs = () => {
   return 0;
 };
 const bool = (name, def) => String(process.env[name] ?? def).toLowerCase() === "true";
+const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
+const boolishFalse = (value) => /^(0|false|no|off)$/i.test(String(value ?? "").trim());
+
+const resolveToolBlockDelimiter = () => {
+  const raw = process.env.PROXY_TOOL_BLOCK_DELIMITER;
+  if (raw === undefined || raw === null || raw === "") return "";
+  if (boolishFalse(raw)) return "";
+  if (boolishTrue(raw)) return "\n\n";
+  return String(raw).replace(/\\n/g, "\n");
+};
 
 export const config = {
   PORT: num("PORT", 11435),
@@ -32,7 +42,7 @@ export const config = {
   CODEX_MODEL: str("CODEX_MODEL", "gpt-5"),
   CODEX_BIN: str("CODEX_BIN", "codex"),
   CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
-  PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "danger-full-access").toLowerCase(),
+  PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),
   PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
   PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", "false"),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
@@ -42,6 +52,9 @@ export const config = {
   PROXY_STOP_AFTER_TOOLS: bool("PROXY_STOP_AFTER_TOOLS", ""),
   PROXY_STOP_AFTER_TOOLS_MODE: str("PROXY_STOP_AFTER_TOOLS_MODE", "burst").toLowerCase(),
   PROXY_SUPPRESS_TAIL_AFTER_TOOLS: bool("PROXY_SUPPRESS_TAIL_AFTER_TOOLS", ""),
+  PROXY_TOOL_BLOCK_MAX: num("PROXY_TOOL_BLOCK_MAX", 0),
+  PROXY_TOOL_BLOCK_DEDUP: bool("PROXY_TOOL_BLOCK_DEDUP", "false"),
+  PROXY_TOOL_BLOCK_DELIMITER: resolveToolBlockDelimiter(),
   PROXY_OUTPUT_MODE: str("PROXY_OUTPUT_MODE", "obsidian-xml").toLowerCase(),
   // Timeouts
   PROXY_TIMEOUT_MS: num("PROXY_TIMEOUT_MS", 300000),

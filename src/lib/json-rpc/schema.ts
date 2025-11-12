@@ -210,7 +210,7 @@ export type JsonValue = unknown;
 const APPROVAL_FALLBACK: AskForApproval = "on-request";
 const SUMMARY_FALLBACK: ReasoningSummary = "auto";
 
-const SANDBOX_FALLBACK: SandboxPolicy = { mode: "danger-full-access" };
+const SANDBOX_FALLBACK: SandboxPolicy = { mode: "read-only" };
 
 export interface BuildInitializeOptions {
   clientInfo: ClientInfo;
@@ -241,6 +241,7 @@ export interface BuildSendUserTurnOptions {
   model?: string;
   effort?: ReasoningEffort | string | null;
   summary?: ReasoningSummary | string | null;
+  tools?: JsonValue;
 }
 
 export interface BuildSendUserMessageOptions {
@@ -377,6 +378,10 @@ export function buildSendUserTurnParams(
 
   if (effort !== undefined) {
     params.effort = effort;
+  }
+
+  if (options.tools !== undefined) {
+    params.tools = options.tools ?? null;
   }
 
   return params;

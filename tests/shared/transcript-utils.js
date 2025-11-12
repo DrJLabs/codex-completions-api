@@ -259,9 +259,15 @@ export function sanitizeResponsesNonStream(payload) {
 }
 
 export function sanitizeResponsesStreamTranscript(entries) {
-  return entries.map((entry) => {
+  const sanitized = entries.map((entry) => {
     if (!entry) return entry;
-    if (entry.type === "done" || entry.type === "comment") {
+    if (entry.type === "comment") {
+      if (/tool_call_count/.test(entry.comment || "")) {
+        return null;
+      }
+      return entry.event ? { ...entry } : entry;
+    }
+    if (entry.type === "done") {
       return entry.event ? { ...entry } : entry;
     }
     if (entry.type === "data") {
@@ -294,6 +300,7 @@ export function sanitizeResponsesStreamTranscript(entries) {
     }
     return entry;
   });
+  return sanitized.filter((entry) => entry !== null);
 }
 
 export async function loadResponsesTranscript(filename) {

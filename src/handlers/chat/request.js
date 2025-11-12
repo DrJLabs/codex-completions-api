@@ -24,13 +24,6 @@ const toPositiveInteger = (value) => {
   return num;
 };
 
-const normalizeUser = (value) => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  return trimmed.slice(0, 256);
-};
-
 const flattenMessageContent = (content) => {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -152,8 +145,8 @@ export const normalizeChatJsonRpcRequest = ({
   body = {},
   messages = [],
   prompt = "",
-  reqId,
-  requestedModel,
+  reqId: _reqId,
+  requestedModel: _requestedModel,
   effectiveModel,
   choiceCount = 1,
   stream = false,

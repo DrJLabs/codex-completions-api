@@ -147,6 +147,84 @@ async function emitMultiChoiceToolCall(choiceCount = 2, toolCallIndexes = [0]) {
   }
 }
 
+async function emitMultiToolBurst(count = 2) {
+  const normalizedCount = Number.isInteger(count) && count > 0 ? count : 1;
+  const toolCalls = [];
+  for (let idx = 0; idx < normalizedCount; idx += 1) {
+    const toolId = `burst_tool_${idx}`;
+    const fnName = idx % 2 === 0 ? "lookup_user" : "send_email";
+    const argumentPayload = buildToolArgumentPayload(idx);
+    toolCalls.push({
+      id: toolId,
+      type: "function",
+      function: {
+        name: fnName,
+        arguments: argumentPayload,
+      },
+    });
+    write({
+      type: "agent_message_delta",
+      msg: {
+        parallel_tool_calls: true,
+        delta: {
+          tool_calls: [
+            {
+              index: idx,
+              id: toolId,
+              type: "function",
+              function: { name: fnName },
+            },
+          ],
+        },
+      },
+    });
+    await delay(5);
+    const argChunks = splitToolArgumentPayload(argumentPayload, idx);
+    for (const chunk of argChunks) {
+      write({
+        type: "agent_message_delta",
+        msg: {
+          choice_index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: idx,
+                function: { arguments: chunk },
+              },
+            ],
+          },
+        },
+      });
+      await delay(5);
+    }
+    const xmlBlock = `<use_tool>\n  <name>${fnName}</name>\n  <args>${argumentPayload}</args>\n</use_tool>`;
+    write({
+      type: "agent_message_delta",
+      msg: {
+        choice_index: 0,
+        delta: {
+          content: xmlBlock,
+        },
+      },
+    });
+    await delay(5);
+  }
+
+  write({
+    type: "agent_message",
+    msg: {
+      choice_index: 0,
+      message: {
+        role: "assistant",
+        content: null,
+        tool_calls: toolCalls,
+      },
+    },
+  });
+  await delay(5);
+  return toolCalls.length;
+}
+
 const runProto = async () => {
   let submission = "";
   try {
@@ -246,6 +324,29 @@ const runProto = async () => {
           .filter((value) => Number.isInteger(value) && value >= 0)
       : [0];
     await emitMultiChoiceToolCall(choiceCount, toolCallIndexes.length ? toolCallIndexes : [0]);
+    const tokenCountMsg = {
+      prompt_tokens: 8,
+      completion_tokens: 0,
+    };
+    write({
+      type: "token_count",
+      msg: tokenCountMsg,
+    });
+    await delay(5);
+    write({
+      type: "task_complete",
+      msg: { finish_reason: finishReason },
+    });
+    try {
+      process.stdout.end?.();
+    } catch {}
+    return;
+  }
+
+  if (scenario === "multi_tool_burst") {
+    const burstCountEnv = Number(process.env.FAKE_CODEX_TOOL_BURST_COUNT);
+    const burstCount = Number.isInteger(burstCountEnv) && burstCountEnv > 0 ? burstCountEnv : 2;
+    await emitMultiToolBurst(burstCount);
     const tokenCountMsg = {
       prompt_tokens: 8,
       completion_tokens: 0,

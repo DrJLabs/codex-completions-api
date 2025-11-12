@@ -13,7 +13,13 @@ logging/
 # Dependencies
 node_modules/
 bmad/
+bmad-bak/
+.bmad/
+.bmad-core/
+.bmad-infrastructure-devops/
+.serena/
 external/
+tmp/
 # Playwright artifacts
 test-results/*
 playwright-report/

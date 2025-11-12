@@ -144,6 +144,7 @@ so that clients experience consistent tool_calls/function_call semantics with co
 - 2025-11-09: Addressed code review findings – 2 items resolved (Date: 2025-11-09) by implementing choice-aware tool-call ingestion in `src/handlers/chat/nonstream.js`, enhancing fake proto configurability, adding integration coverage for “choice 1 only” tool-call flows, and rerunning `npm run test:integration` / `npm test` to confirm parity.
 - 2025-11-10: Added streaming regression/unit/Playwright tool-call suites, exported the non-stream assistant helper for isolation, and reran `npm run test:unit`, `npm run test:integration`, `npm test` to provide evidence for the remaining action items.
 - 2025-11-10: Addressed code review findings – 4 items resolved (Date: 2025-11-10) by reviving the disconnect regression, adding PROXY_OUTPUT_MODE env coverage, layering UTF-8 streaming fixtures, and introducing the SSE header contract test before rerunning the full test stack.
+- 2025-11-10: Synced the dev-stack `AGENTS.md` with the full Obsidian prompt (copied from `/home/drj/VAULTS/DrJLabs/codex-completions-api/obsidian-copilot-prompts.md`) and redeployed the dev docker stack so tool-call stories can be validated with the complete client catalog.
 - 2025-11-09: Senior Developer Review (AI) recorded outcome **Approved** with full AC/task verification and no follow-up actions.
 
 ## Dev Agent Record
