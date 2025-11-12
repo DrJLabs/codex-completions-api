@@ -303,6 +303,22 @@ So that clients experience OpenAI-perfect tool-call semantics in both modes.
 
 **Prerequisites:** Story 2.8
 
+**Story 2.9a: Multi-tool calls per assistant turn**
+
+As a backend developer,
+I want streaming and non-streaming handlers to forward every tool call emitted in a turn,
+So that clients receive complete OpenAI-compatible tool_call arrays and Obsidian `<use_tool>` blocks before regression testing starts.
+
+**Acceptance Criteria:**
+
+1. Streaming handler tracks `forwardedToolCount` per choice and emits all tool-call deltas plus `<use_tool>` chunks until the final call, honoring `STOP_AFTER_TOOLS_MODE` (first|burst) and `[DONE]` semantics. [Source: docs/design/multi-tool-calls-v2.md]
+2. Non-stream handler returns all tool calls in both JSON (`tool_calls[]`, `finish_reason:"tool_calls"`) and Obsidian XML (multiple `<use_tool>` blocks, delimiter support) with tail suppression happening only after the last call. [Source: docs/design/multi-tool-calls-v2.md]
+3. Config gates (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`, `SUPPRESS_TAIL_AFTER_TOOLS`) default to unlimited/burst but allow legacy single-call behavior via flags. [Source: docs/design/multi-tool-calls-v2.md]
+4. Telemetry counters expose per-turn tool-call counts, and docs reference the new behavior for downstream consumers. [Source: docs/design/multi-tool-calls-v2.md]
+
+**Prerequisites:** Stories 2.8-2.9
+**Prerequisite for:** Story 2.10
+
 **Story 2.10: Tool-call regression and smoke coverage**
 
 As a QA engineer,

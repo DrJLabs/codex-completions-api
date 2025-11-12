@@ -20,7 +20,7 @@ function buildSupervisorArgs() {
   pushConfig("model", quote(model));
 
   pushConfig("preferred_auth_method", '"chatgpt"');
-  const sandboxMode = (CFG.PROXY_SANDBOX_MODE || "danger-full-access").trim();
+  const sandboxMode = (CFG.PROXY_SANDBOX_MODE || "read-only").trim();
   pushConfig("sandbox_mode", quote(sandboxMode));
 
   const provider = (CFG.CODEX_FORCE_PROVIDER || "").trim();
