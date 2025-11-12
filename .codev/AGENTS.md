@@ -89,9 +89,10 @@ EXAMPLE WORKFLOW:
 
 1. User: "what did I do last week"
 2. First call getTimeRangeMs with timeExpression: "last week"
-3. Then use the returned time range with localSearch</timeExpression>
-   </parameters>
-   </getTimeRangeMs>
+3. Then use the returned time range with localSearch
+    </timeExpression>
+  </parameters>
+</getTimeRangeMs>
 
 <convertTimeBetweenTimezones>
 <description>Convert a specific time from one timezone to another using UTC offsets</description>
