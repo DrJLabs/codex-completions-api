@@ -63,8 +63,8 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
 
 - Auth: All non‑health routes require `Authorization: Bearer $PROXY_API_KEY` (except `/v1/models` when `PROXY_PROTECT_MODELS=false`).
 - Secrets: Never commit `.env`; sample is `.env.example`. Rotate keys; OpenAI‑style (`sk-...`) is supported.
-- Sandbox & workdir: default `PROXY_SANDBOX_MODE=read-only` with `PROXY_CODEX_WORKDIR=/tmp/codex-work` to block Codex tool calls from mutating the workspace. Override the sandbox to `danger-full-access` only when a workflow explicitly needs disk writes.
-- Tooling: Codex built-in tools (shell, apply_patch, web_search, view_image) are disabled; assistants must respond with plain text only and must never emit `<use_tool>` blocks or request tool calls.
+- Sandbox & workdir: default `PROXY_SANDBOX_MODE=read-only` with `PROXY_CODEX_WORKDIR=/tmp/codex-work` to block Codex tool calls from mutating the workspace. Override the sandbox to `danger-full-access` only when a workflow explicitly needs disk writes, and document the change.
+- Tooling: Codex built-in tools (shell, apply_patch, web_search, view_image) are disabled via the `[tools]` blocks in `.codev/config.toml` / `.codex-api/config.toml` (`... = false`). Assistants must respond with plain text only and must never emit `<use_tool>` blocks or request tool calls.
 - Codex HOME directories:
   - DEV uses project‑local `.codev/` (tracked seed files only; runtime artifacts ignored).
   - PROD uses project‑root `.codex-api/` (contains secrets) — MUST be writable in production because Codex CLI persists rollout/session state under its home.
@@ -131,7 +131,7 @@ These directives are mandatory for agents operating in this repository. They pre
 
 - Default to `PROXY_SANDBOX_MODE=read-only` with `PROXY_CODEX_WORKDIR=/tmp/codex-work` so Codex cannot write into the repo while still having a stable workspace path.
 - If a change proposes loosening to `danger-full-access`, document the client impact (tools regaining write access can surprise IDE flows) and update the README/runbooks accordingly.
-- Tooling: assistants must treat the environment as “text-only.” Codex shell/apply_patch/web_search/view_image tools are disabled, and `<use_tool>` XML must never be emitted.
+- Tooling: assistants must treat the environment as “text-only.” Codex shell/apply_patch/web_search/view_image tools are disabled (`[tools] ... = false`), and `<use_tool>` XML must never be emitted. Any “stop-after-tools” guidance elsewhere in the README only applies if a workflow explicitly re-enables those tools.
 - `CODEX_HOME` defaults to the project `.codex-api/` in this repo; dev launchers override to `.codev/`.
 - `.codex-api` MUST remain writable in PROD so Codex can create `rollouts/` and `sessions/` files. Mounting it read-only can break streaming and tool communication.
 

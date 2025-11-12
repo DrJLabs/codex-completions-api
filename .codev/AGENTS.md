@@ -44,7 +44,7 @@ Available tools:
 <parameters>
 <query>The search query</query>
 <salientTerms>List of salient terms extracted from the query</salientTerms>
-<timeRange>No description</timeRange>
+<timeRange>Optional object with `startMs`/`endMs` (Unix ms) describing the window to search. Usually taken from `getTimeRangeMs`; omit to search all time.</timeRange>
 </parameters>
 </localSearch>
 
@@ -59,7 +59,7 @@ Available tools:
 <getCurrentTime>
 <description>Get the current time in local timezone or at a specified UTC offset. Returns epoch time, ISO string, and formatted strings.</description>
 <parameters>
-<timezoneOffset>No description</timezoneOffset>
+<timezoneOffset>Numeric UTC offset such as `-8`, `+2`, or `+5:30`. Defaults to the local machine offset.</timezoneOffset>
 </parameters>
 </getCurrentTime>
 
@@ -114,7 +114,7 @@ EXAMPLE USAGE:
 <description>Read a single note in search v3 sized chunks. Use only when you already know the exact note path and need its contents.</description>
 <parameters>
 <notePath>Full path to the note (relative to the vault root) that needs to be read, such as 'Projects/plan.md'.</notePath>
-<chunkIndex>No description</chunkIndex>
+<chunkIndex>Zero-based chunk number to stream when the note spans multiple segments (0 returns the first chunk).</chunkIndex>
 </parameters>
 </readNote>
 
@@ -210,8 +210,8 @@ COMMON MISTAKES TO AVOID:
 <getTagList>
 <description>Get the list of tags in the vault with occurrence statistics.</description>
 <parameters>
-<includeInline>No description</includeInline>
-<maxEntries>No description</maxEntries>
+<includeInline>`true` to include inline (in-note) tags, `false` to show only frontmatter tags.</includeInline>
+<maxEntries>Maximum number of tag rows to return; defaults to 100 if omitted.</maxEntries>
 </parameters>
 </getTagList>
 

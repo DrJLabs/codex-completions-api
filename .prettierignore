@@ -5,6 +5,8 @@ test-results
 blob-report
 bmad-bak/
 .bmad/
+.bmad-core/
+.bmad-infrastructure-devops/
 bmad/
 docs/
 .serena/
