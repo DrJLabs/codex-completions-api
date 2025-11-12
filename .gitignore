@@ -13,6 +13,9 @@ logging/
 # Dependencies
 node_modules/
 bmad/
+bmad-bak/
+.bmad/
+.serena/
 external/
 # Playwright artifacts
 test-results/*
