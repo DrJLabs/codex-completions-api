@@ -17,6 +17,7 @@ bmad-bak/
 .bmad/
 .serena/
 external/
+tmp/
 # Playwright artifacts
 test-results/*
 playwright-report/
