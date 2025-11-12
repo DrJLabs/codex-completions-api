@@ -34,7 +34,7 @@ When you need to use a tool, format it EXACTLY like this:
 <another_parameter>["array", "values"]</another_parameter>
 </use_tool>
 
-IMPORTANT: Use the EXACT parameter names as shown in the tool descriptions below. Do NOT use generic names like "param1" or "param".
+IMPORTANT: Use the EXACT parameter names as shown in the tool descriptions below. Do NOT use generic names like "param1" or "param". Always emit `<use_tool>` blocks exactly as shown and remember: the Obsidian client executes them. The Codex proxy must never invoke built-in tools (shell, apply_patch, web_search, view_image) itself—treat the XML as pure text output. If no tool is needed, respond with plain text.
 
 Available tools:
 <localSearch>
