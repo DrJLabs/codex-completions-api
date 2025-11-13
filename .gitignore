@@ -18,7 +18,10 @@ bmad-bak/
 .bmad-core/
 .bmad-infrastructure-devops/
 .serena/
-external/
+external/*
+!external/codex
+!external/codex/
+!external/codex/**
 tmp/
 # Playwright artifacts
 test-results/*
