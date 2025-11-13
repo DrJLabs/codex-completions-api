@@ -4,6 +4,21 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 > **Disclaimer:** This project is an independent community effort and is not affiliated with or endorsed by OpenAI.
 
+## Table of Contents
+
+1. [Features](#features)
+2. [Getting Started](#getting-started)
+3. [Usage](#usage)
+4. [Project Structure](#project-structure-high-level)
+5. [Environments](#environments-prod-vs-dev)
+6. [Backend Modes](#backend-modes)
+7. [Production Smoke](#production-smoke)
+8. [Documentation](#documentation)
+9. [License](#license)
+10. [Contributing](#contributing)
+11. [Testing](#testing)
+12. [Deployment](#deployment-traefik--cloudflare-docker-compose)
+
 ## Features
 
 - OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
@@ -14,21 +29,60 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
-- Worker supervisor: production runs long-lived `codex app-server` workers gated by handshake/readiness timers; proto mode stays available for local development.
+- Worker supervisor: production and dev run long-lived `codex app-server` workers gated by handshake/readiness timers (see [Backend Modes](#backend-modes)). A deterministic proto shim still exists for CI, but the real proto binary requires Codex CLI ≤ 0.44.x.
 
-## Quick Start
+## Getting Started
 
-### Local Docker (example compose)
+### Prerequisites
 
-1. Copy the example compose file and adjust environment variables as needed:
+- Node.js ≥ 22 and npm 10+
+- Codex CLI ≥ 0.53.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
+- Docker + Docker Compose v2 (optional but recommended for parity with production)
+- `curl`/`jq` for quick health checks
+- Legacy proto mode requires Codex CLI ≤ 0.44.x; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x) for details
+
+### Run locally with Node
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Seed `.codev/` with your Codex CLI config (`config.toml`, `auth.json`).
+3. Start the proxy (defaults to port `18000`):
+
+   ```bash
+   PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
+   ```
+
+4. Smoke-test the API:
+
+   ```bash
+   # health
+   curl -s http://127.0.0.1:11435/healthz | jq .
+   # models
+   curl -s http://127.0.0.1:11435/v1/models | jq .
+   ```
+
+5. Issue a sample chat completion (non-stream):
+
+   ```bash
+   curl -s http://127.0.0.1:11435/v1/chat/completions \
+     -H "Authorization: Bearer codex-local-secret" -H 'Content-Type: application/json' \
+     -d '{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Say hello."}]}' | jq .
+   ```
+
+### Run with Docker Compose
+
+1. Copy the example compose file and adjust environment variables:
 
    ```bash
    cp docker-compose.local.example.yml docker-compose.local.yml
    # edit docker-compose.local.yml to set PROXY_API_KEY or other overrides
    ```
 
-2. Ensure you have a Codex CLI config available under `.codex-api/` (ignored by Git). At minimum place your `config.toml` and `auth.json` there.
-
+2. Populate `.codex-api/` with your Codex CLI config (ignored by Git).
 3. Launch the stack:
 
    ```bash
@@ -41,16 +95,44 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
    curl -s http://127.0.0.1:11435/v1/models | jq .
    ```
 
-### Node.js (without Docker)
+### Dev helpers
 
-Install dependencies (`npm install`) and run `npm run dev` (or `npm run dev:shim` to use the fake proto shim). The server listens on port `18000` by default and expects Codex CLI binaries/config under `.codev/`.
+- `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
+- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount.
+- `npm run dev:shim` — starts the proxy against the deterministic legacy proto shim (no Codex install required). This is only for CI/offline testing; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x).
 
-### Backend modes (proto vs. app-server)
+## Usage
 
-- Proto mode (default): `PROXY_USE_APP_SERVER=false`. Each request spawns a short-lived Codex proto process. Handy for local dev without the Rust app-server dependency and mirrors the historic behavior.
-- App-server mode: `PROXY_USE_APP_SERVER=true`. A worker supervisor keeps one or more long-lived `codex app-server` processes alive and routes JSON-RPC traffic that matches the exported schema bundle under `docs/app-server-migration/`. Production currently runs in this mode.
-- Toggle either mode by setting `PROXY_USE_APP_SERVER` in `.env.dev`, `.env`, or the relevant compose file. When switching to app-server locally ensure `codex --version` ≥ 0.53.0 and refresh `auth.json` in `.codev/` (e.g., by copying from `~/.codex/auth.json`).
-- Readiness in app-server mode is gated by `initialize` JSON-RPC success; the proxy only advertises readiness once the worker handshake completes. Override `WORKER_*_TIMEOUT_MS` if using slower hardware.
+### Authentication
+
+- All `/v1/chat/completions` requests require `Authorization: Bearer $PROXY_API_KEY`.
+- `/v1/models` is public in dev but can be protected by setting `PROXY_PROTECT_MODELS=true`.
+- ForwardAuth (Traefik) also checks the same key to keep edge and origin consistent.
+
+### Model selection
+
+- Production advertises `codex-5{,-low,-medium,-high,-minimal}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
+- Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5`) and applies the implied reasoning effort automatically.
+- Do not override `CODEX_MODEL` unless you are purposely testing unsupported combinations; let the proxy map inputs.
+
+### Requests
+
+- Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
+- Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
+- `PROXY_STREAM_MODE=jsonl` outputs raw Codex JSON lines for debugging; default mode emits OpenAI-style SSE envelopes.
+
+### Streaming controls for tool-heavy clients
+
+- `PROXY_SUPPRESS_TAIL_AFTER_TOOLS=true` — hide assistant narrative after the final `<use_tool>` block while keeping the stream open.
+- `PROXY_STOP_AFTER_TOOLS=true` — cut the stream immediately after the final `<use_tool>` block.
+- `PROXY_STOP_AFTER_TOOLS_MODE=burst|first` — allow a small burst of tool blocks before cutting or stop after the first one.
+- `PROXY_STOP_AFTER_TOOLS_GRACE_MS=300` — grace window for burst mode.
+- `PROXY_TOOL_BLOCK_MAX=10` — optional cap on tool blocks to prevent client overload.
+
+### Usage metrics
+
+- The proxy logs estimated prompt/completion token usage for each request and exposes the aggregates via `/v1/usage`.
+- Metrics are approximate because Codex CLI does not expose raw token counts for every release; treat them as guidance rather than billable totals.
 
 ## Project Structure (high‑level)
 
@@ -62,7 +144,7 @@ src/utils.js                    # Utilities (tokens, join/normalize, CORS helper
 auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
 vitest.config.ts                # Unit test config + coverage thresholds (V8)
-playwright.config.ts            # E2E config (spawns server with proto shim)
+playwright.config.ts            # E2E config (spawns server with the legacy proto shim for CI)
 scripts/                        # Dev + CI helpers (dev.sh, prod-smoke.sh)
 scripts/setup-testing-ci.sh     # Idempotent test/CI scaffolder (useful for forks)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
@@ -220,6 +302,22 @@ Build context hygiene:
 
 - `.dockerignore` excludes `.codex-api/**`, `.codev/**`, `.env*`, logs, and other local artifacts so secrets are never sent to the Docker daemon.
 
+## Backend Modes
+
+### App-server (default)
+
+- `PROXY_USE_APP_SERVER=true` boots a worker supervisor that keeps one or more `codex app-server` processes alive.
+- Readiness hinges on the JSON-RPC `initialize` handshake; `/healthz` only reports ready once the worker has completed it.
+- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.53.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
+- Tune worker lifecycle with `WORKER_*_TIMEOUT_MS`, `PROXY_KILL_ON_DISCONNECT`, and `PROXY_WORKER_COUNT` when running on slower hardware or when you need multiple concurrent workers.
+
+### Legacy proto mode (Codex CLI ≤ 0.44.x)
+
+- `PROXY_USE_APP_SERVER=false` reverts to the historical proto workflow (one `codex proto` process per request) and only works with Codex CLI 0.44.x or older.
+- Keep references to this path minimal; it exists solely for compatibility testing and to support the deterministic shim used in CI.
+- Commands such as `npm run dev:shim`, `npm run test:integration`, and `npm test` launch `scripts/fake-codex-proto.js` so suites can run without a Codex install. Treat the shim as a stand-in for this legacy mode.
+- Because proto mode lacks long-lived workers, features like streaming clean-up and usage logging can diverge slightly; always validate changes against the app-server path before shipping.
+
 ## Production Smoke
 
 Run a minimal end‑to‑end check of origin (Traefik) and edge (Cloudflare):
@@ -241,57 +339,16 @@ This repository ships with a minimal public documentation stub (`docs/README.md`
 
 This project is released under the [MIT License](LICENSE).
 
-### Streaming shaping for tool-heavy clients
+## Contributing
 
-Some clients expect the assistant’s message to contain only `<use_tool>` blocks and may misbehave if narrative text appears after tools. You can either suppress any post-tool narrative or cut the stream entirely:
-
-Environment variables:
-
-- `PROXY_SUPPRESS_TAIL_AFTER_TOOLS=true` — hide assistant narrative after the last complete tool block while allowing the backend to finish normally.
-- `PROXY_STOP_AFTER_TOOLS=true` — enable early-cut behavior.
-- `PROXY_STOP_AFTER_TOOLS_MODE=burst|first` —
-  - `burst` (default): allow multiple back-to-back tool blocks to arrive within a short grace window, then cut.
-  - `first`: cut immediately after the first complete tool block.
-- `PROXY_STOP_AFTER_TOOLS_GRACE_MS=300` — grace window for `burst` mode.
-- `PROXY_TOOL_BLOCK_MAX=0` — optional cap on tool blocks before cutting (0 = unlimited).
-
-`PROXY_SUPPRESS_TAIL_AFTER_TOOLS` keeps streaming open; `PROXY_STOP_AFTER_TOOLS` terminates the stream after tools. Client-side tools still run as usual.
-
-#### Client tool batching cap (important)
-
-- Policy: group at most 10 `<use_tool>` blocks in a single assistant message; queue or stagger any additional calls.
-- Rationale: earlier versions of Obsidian Copilot struggled with 8+ parallel tool requests; current builds tolerate up to 10, and raising the cap keeps the proxy aligned with `.codev/AGENTS.md` guidance.
-- Optional enforcement: set `PROXY_TOOL_BLOCK_MAX=10` to cut the stream after 10 tool blocks and prevent over‑batching at the transport layer.
-
-## Quick start
-
-- Prereqs: Node ≥ 22, npm, curl (or Docker Compose).
-
-Option A — Node (local):
-
-```bash
-npm install
-PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
-# health
-curl -s http://127.0.0.1:11435/healthz | jq .
-# models
-curl -s http://127.0.0.1:11435/v1/models | jq .
-# chat (non-stream)
-curl -s http://127.0.0.1:11435/v1/chat/completions \
-  -H "Authorization: Bearer codex-local-secret" -H 'Content-Type: application/json' \
-  -d '{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Respond with a short sentence."}]}' | jq .
-```
-
-Option B — Docker Compose:
-
-```bash
-docker compose up -d --build
-curl -s http://127.0.0.1:11435/healthz | jq .
-```
-
-## Local development
-
-Use the curl snippets above to validate endpoints while `npm run start` is running.
+- Start every task from a clean checkout and create a work branch using the `feat/<kebab>`, `fix/<kebab>`, or `chore/<kebab>` pattern before editing files.
+- Use Conventional Commit subjects (≤ 72 chars). Keep review follow-ups in separate commits instead of amending history.
+- Follow the test selection policy:
+  - `src/utils.js` only → `npm run test:unit`
+  - `server.js` or streaming changes → `npm run test:integration` then `npm test`
+  - Docker/Traefik changes → rebuild + `npm run smoke:prod`
+- Before opening a PR, run `npm run verify:all` (formatting, lint, unit, integration, Playwright) unless the task explicitly calls for a different subset.
+- Align code style with the repo defaults: ESM Node.js, 2-space indentation, double quotes, and Prettier/ESLint configs already checked in.
 
 ## Testing
 
@@ -310,7 +367,7 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 2. Integration (Vitest, real server, no external deps)
 
-- Scope: Express endpoints with a deterministic Codex "proto" shim; exercises auth, error codes, non‑stream chat, usage endpoints, plus HTTP verbs and CORS preflight for `/v1/chat/completions`.
+- Scope: Express endpoints exercised against the deterministic legacy proto shim; auth, error codes, non‑stream chat, usage endpoints, and CORS preflight for `/v1/chat/completions`.
 - Notes: spawns `node server.js` on a random port and sets `CODEX_BIN=scripts/fake-codex-proto.js`, so no Codex installation is required.
 - Command: `npm run test:integration`
 
@@ -322,7 +379,7 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 Live E2E (real Codex)
 
-- Purpose: run E2E against a live proxy (local compose or edge) using your `.env` key to catch issues that the proto shim cannot (e.g., writable `.codex-api` rollouts).
+- Purpose: run E2E against a live proxy (local compose or edge) using your `.env` key to catch issues that the legacy shim cannot (e.g., writable `.codex-api` rollouts).
 - Command: `npm run test:live`
 - Env:
 - `KEY` or `PROXY_API_KEY` (loaded from `.env` or environment)
@@ -361,7 +418,7 @@ Notes
 - Requires Node ≥ 22 and npm; does not touch your `.env` or secrets.
 - Ensures `.codex-api/` and `.codev/` exist and are writable.
 - Installs Playwright Chromium and OS deps when supported; falls back gracefully if not.
-- Tests use a deterministic proto shim and do not require a real Codex binary.
+- Tests use the deterministic proto shim and do not require a real Codex binary.
 
 ### Environment variables (Codex Cloud)
 
@@ -387,9 +444,9 @@ Environment variables:
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
-- `CODEX_BIN` (default: `codex`) — set to `/app/scripts/fake-codex-proto.js` for the proto shim in dev.
+- `CODEX_BIN` (default: `codex`) — override to `/app/scripts/fake-codex-proto.js` only when you explicitly need the legacy proto shim (CI/offline tests).
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
-- `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to Codex proto via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
+- `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
 - Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls. Sections that describe tool-tail streaming (e.g., stop-after-tools) are therefore inactive unless you explicitly re-enable tools for a workflow.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -399,7 +456,7 @@ Environment variables:
 - `PROXY_TIMEOUT_MS` (default: `300000`) — overall request timeout (5 minutes).
 - `PROXY_IDLE_TIMEOUT_MS` (default: `15000`) — non‑stream idle timeout while waiting for backend output.
 - `PROXY_STREAM_IDLE_TIMEOUT_MS` (default: `300000`) — stream idle timeout between chunks (5 minutes).
-- `PROXY_PROTO_IDLE_MS` (default: `120000`) — non‑stream aggregation idle guard for proto mode.
+- `PROXY_PROTO_IDLE_MS` (default: `120000`) — non‑stream aggregation idle guard for the legacy proto mode/shim.
 - `PROXY_MAX_PROMPT_TOKENS` (default: `0`) — when >0, rejects overlong prompts with `403 tokens_exceeded_error` based on the proxy’s rough token estimator (≈1 token per 4 chars).
 - `PROXY_KILL_ON_DISCONNECT` (default: `false`) — if true, terminate Codex when client disconnects.
 - `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
@@ -419,26 +476,20 @@ An example file is in `config/roo-openai-compatible.json`.
 
 ## API mapping
 
-- `model`: passthrough to `-m <model>`.
-  - Accepts aliases like `codex/<model>` (e.g., `codex/gpt-5`), which normalize to `<model>` when invoking Codex.
-- `messages[]`: joined into a single positional prompt with `[role]` prefixes.
-- `stream: true`:
-  - Default: role-first SSE chunk, then one aggregated content chunk on process close, then `[DONE]`.
-  - With `PROXY_STREAM_MODE=jsonl`: proxy parses `codex proto --json` JSON-lines. If Codex emits `agent_message_delta`, deltas are streamed incrementally; otherwise the full `agent_message` is forwarded immediately without waiting for process exit.
-- `reasoning.effort ∈ {low,medium,high,minimal}`: attempts `--config reasoning.effort="<effort>"`.
-- Other knobs (temperature, top_p, penalties, max_tokens): ignored.
+- `model`: normalized to the effective Codex model before invoking the JSON-RPC transport. Aliases such as `codex/gpt-5` are accepted but rewritten to the underlying `gpt-5` call.
+- `messages[]`: transformed into the Codex schema (`system_prompt`, `messages`, `metadata`) and passed to `sendUserTurn`. System and assistant messages remain in the transcript; tool calls are flattened into text so existing Codex releases can parse them.
+- `stream: true`: emits SSE with a role-first chunk, incremental content deltas, and `[DONE]`. When running the legacy proto shim, `PROXY_STREAM_MODE=jsonl` causes the proxy to forward raw JSON lines for debugging; app-server ignores this flag.
+- `reasoning.effort ∈ {low,medium,high,minimal}`: forwarded via `--config model_reasoning_effort=...` (and the older `--config reasoning.effort=...` for backwards compatibility) in addition to the JSON payload.
+- Sampling knobs (`temperature`, `top_p`, penalties, `max_tokens`) are ignored because Codex CLI does not expose them for app-server mode.
 
 ## How it works (main‑p)
 
-- The proxy normalizes the requested model (e.g., `codex-5` → effective `gpt-5`) and prepares Codex proto args:
-  - `preferred_auth_method="chatgpt"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `tools.web_search=false`, `model="<effective>"`, optional `model_provider`, and `reasoning.effort` when supplied.
-- It joins `messages[]` into a single text prompt `"[role] content"` lines and sends one `user_input` op to the Codex proto child process.
-- Streaming (`stream:true`):
-  - Sends an initial SSE chunk with `delta.role=assistant`.
-  - For each `agent_message_delta`, emits a content delta chunk; otherwise emits the full `agent_message` when received.
-  - Appends `[DONE]` and ends the stream. Keepalives (`: keepalive`) are sent every `SSE_KEEPALIVE_MS`.
-- Non‑stream: Accumulates deltas until `task_complete`, then responds with an OpenAI‑style JSON body.
-- One proto process per request: the child process is terminated on timeout/idle/close; no state is retained between requests.
+- A supervisor launches one or more `codex app-server` workers with `--config sandbox_mode=<...>`, `--config project_doc_max_bytes=0`, `--config tools.web_search=false`, and the normalized effective model (`gpt-5` unless overridden).
+- On boot the worker completes `initialize` against the exported schema bundle (`docs/app-server-migration/*`). Health endpoints stay unhealthy until this handshake succeeds.
+- Each `/v1/chat/completions` request acquires a worker channel, builds a JSON-RPC payload for `sendUserTurn`, and injects the OpenAI-style transcript (system → `system_prompt`, rest → `messages`). Optional `reasoning.effort` becomes both JSON metadata and `--config model_reasoning_effort`.
+- Streaming requests attach an event listener that forwards `agent_message_delta` notifications as SSE chunks (role-first, then deltas, then `[DONE]`). Keepalives (`: keepalive`) go out every `SSE_KEEPALIVE_MS`.
+- Non-stream requests buffer deltas until `task_complete` arrives, then respond with a single OpenAI-compatible JSON body.
+- Disconnects or idle timers trigger `cancelTask` and optionally `PROXY_KILL_ON_DISCONNECT`, ensuring app-server state does not leak across clients.
 
 ### Usage/Token tracking (approximate)
 
@@ -473,17 +524,7 @@ Behavior:
 - `GET /healthz` returns `{ ok: true }`.
 - `GET /v1/models` lists only `codex-5` (no slashes) so clients like Cursor won’t confuse it with OpenAI built-ins. Requests that specify `gpt-5` directly still work.
 - `POST /v1/chat/completions` with `stream:true` yields SSE with a role-first chunk and a `[DONE]` terminator (content chunk may arrive aggregated before `[DONE]`).
-- Codex child invoked as:
-
-```
-codex proto \
-  --sandbox read-only \
-  --config preferred_auth_method="chatgpt" \
-  --config project_doc_max_bytes=0 \
-  -m gpt-5 \
-  [--config model_reasoning_effort="high"] \
-  "<prompt>"
-```
+- App-server workers launch via `codex app-server` with flags such as `--config sandbox_mode=read-only`, `--config project_doc_max_bytes=0`, `--config tools.web_search=false`, and `--config model_reasoning_effort="<level>"`. Additional JSON payloads supply transcripts and metadata per request.
 
 ### Local dev with `.codev`
 
@@ -493,7 +534,7 @@ For an isolated dev setup that doesn’t touch your global Codex state, this rep
 PROXY_API_KEY=<your-dev-key> npm run start:codev
 ```
 
-If you don’t have the Codex CLI installed, you can use the built-in proto shim to mimic streaming behavior:
+If you don’t have the Codex CLI installed, you can use the built-in legacy proto shim to mimic streaming behavior (see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x)):
 
 ```
 PROXY_API_KEY=<your-dev-key> npm run start:codev:shim
@@ -526,7 +567,7 @@ npm run dev
 Options:
 
 - `npm run dev -- -p 19000` — change port
-- `npm run dev:shim` — run without Codex CLI, using the built-in proto shim
+- `npm run dev:shim` — run without Codex CLI, using the deterministic legacy proto shim (see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x))
 
 The launcher never prints secrets and prefers project-local `.codev` config via `CODEX_HOME=.codev`.
 
@@ -534,7 +575,7 @@ The launcher never prints secrets and prefers project-local `.codev` config via 
 
 Convenience scripts manage a self-contained dev stack that mirrors production behind Traefik:
 
-- `npm run dev:stack:up` — build and start on `http://127.0.0.1:18010/v1` using the proto shim
+- `npm run dev:stack:up` — build and start on `http://127.0.0.1:18010/v1` using the real app-server workers by default
 - `npm run dev:stack:logs` — follow logs
 - `npm run dev:stack:down` — stop and remove (prunes volumes)
 
@@ -543,20 +584,20 @@ Notes:
 - Compose reads `PROXY_API_KEY` from `.env.dev`.
 - Override port: `DEV_PORT=19010 npm run dev:stack:up`
 - Set `CODEX_BIN=codex` to use your host Codex CLI (requires `~/.cargo/bin/codex`).
-- File: `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, defaults to the proto shim at `/app/scripts/fake-codex-proto.js`, and configures ForwardAuth dev at `127.0.0.1:18081`.
+- File: `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, and configures ForwardAuth dev at `127.0.0.1:18081`. Set `CODEX_BIN=/app/scripts/fake-codex-proto.js` only if you explicitly need the legacy proto shim for CI/offline tests.
 
 ## Notes and troubleshooting
 
-- Approval flag: `codex proto` does not accept `--ask-for-approval`.
+- Legacy note: `codex proto` does not accept `--ask-for-approval`, so the shim ignores that config. The app-server path enforces sandboxing via `.codex-api/config.toml` instead.
 - Port already in use: If `11435` is busy, launch with `PORT=18000 npm run start` and run acceptance with `BASE_URL=http://127.0.0.1:18000/v1`.
-- Streaming shape: First SSE chunk sets the role; subsequent chunks are deltas when proto emits them; `[DONE]` terminates the stream.
+- Streaming shape: First SSE chunk sets the role; subsequent chunks are deltas as the backend emits them; `[DONE]` terminates the stream.
 - Auth: Ensure Codex CLI is logged in (e.g., `codex login`) if you are not using the test shim.
 - Sandboxing: On some containerized Linux setups, sandboxing may be limited; read-only intent remains.
 - Project docs are disabled for proxy runs: the proxy passes `--config project_doc_max_bytes=0` so the Codex backend behaves like a pure model API and does not ingest the app repo. The global `AGENTS.md` under `CODEX_HOME` still applies.
 
 ### Writable state and rollouts
 
-The Codex CLI persists lightweight session artifacts ("rollouts"). Use `PROXY_CODEX_WORKDIR` (default `/tmp/codex-work`) to isolate runtime writes from configuration. Rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from the proto session. They enable:
+The Codex CLI persists lightweight session artifacts ("rollouts"). Use `PROXY_CODEX_WORKDIR` (default `/tmp/codex-work`) to isolate runtime writes from configuration. Rollouts are small JSONL traces that include timestamps, minimal configuration, and high‑level event records from each Codex session. They enable:
 
 - Debugging and reproducibility of agent behavior
 - Auditability/telemetry for long‑running sessions
@@ -603,10 +644,6 @@ Expect an initial role delta, one or more `data: {"..."}` chunks, then `data: [D
 - Streaming: supported (role-first delta + `[DONE]`). For more granular deltas set `PROXY_STREAM_MODE=jsonl`.
 - Optional: set `PROXY_PROTECT_MODELS=true` to force auth on `/v1/models` during verification.
 - Hangs: if Codex is missing or stalls, responses will fail fast per `PROXY_TIMEOUT_MS` instead of hanging.
-
-## License
-
-UNLICENSED (see repository terms). Do not redistribute without permission.
 
 ## Deployment: Traefik + Cloudflare (Docker Compose)
 
@@ -732,10 +769,10 @@ Tightening origins
 
 ## Branch status
 
-This branch (`main-p`) uses one Codex proto process per request (stateless). Feature branches exist but are not merged:
+This branch (`main-p`) runs the app-server worker supervisor (stateless per request, but workers stay warm between calls). Feature branches exist but are not merged:
 
 - `feat/playwright-tests`: Playwright API/SSE tests with a deterministic shim.
 - `feat/prompt-cache-resume`: experimental, feature-gated caching hooks.
-- `feat/proto-continuous-sessions`: continuous proto sessions keyed by `session_id`.
+- `feat/proto-continuous-sessions`: experimental legacy proto sessions keyed by `session_id`.
 
 They remain idle; refer to their commit messages for details.
