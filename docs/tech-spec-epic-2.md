@@ -45,6 +45,11 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 - **`src/handlers/chat/nonstream.js` – multi-call envelopes** — concatenate ordered `<use_tool>` blocks, set `content:null` with `tool_calls[]` in OpenAI JSON mode, and respect delimiter/tail suppression flags for burst scenarios.
 - **`src/config/index.js` + documentation (`docs/codex-proxy-tool-calls.md`, `docs/app-server-migration/codex-completions-api-migration.md`)** — expose `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, `PROXY_STOP_AFTER_TOOLS_MODE`, `PROXY_TOOL_BLOCK_DELIMITER`, `PROXY_TOOL_BLOCK_DEDUP`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, and `PROXY_ENABLE_PARALLEL_TOOL_CALLS` with defaults and rollback guidance.
 - **Supporting config** — `src/config/models.js` for model normalization, `src/services/metrics/chat.js` to log latency budgets, and `src/services/errors/jsonrpc.js` for structured error mapping.
+- **`src/dev-trace/http.js`, `src/dev-trace/sanitize.js`, `src/services/sse.js` instrumentation, and `scripts/dev/trace-by-req-id.js`** — add deterministic tracing across ingress, JSON-RPC submission, backend lifecycle, SSE/non-stream egress, and `/v1/usage` summaries with strict sanitization + operator tooling (Story 2.11).
+
+### Story 2.11: End-to-end tracing
+
+Story 2.11 layers deterministic tracing on top of the parity foundation. Chat/completions handlers reuse the `access-log` `req_id` (falling back to `nanoid`) and propagate it to `JsonRpcChildAdapter`, `codex-runner`, SSE helpers, and `/v1/usage` bookkeeping so access logs, proto traces, and token summaries can be stitched together. `src/dev-trace/http.js` captures sanitized ingress payloads per request mode, `src/dev-trace/sanitize.js` centralizes redaction, and transport instrumentation emits `rpc_request`, `rpc_response`, `rpc_notification`, plus `backend_start/backend_exit` events. `src/services/sse.js` wraps `sendSSE`/`finishSSE` (plus non-stream `res.json`) to log payloads, keepalives, `[DONE]`, and HTTP statuses, while usage summaries persist `req_id`, route, method, and status for trace joins. `LOG_PROTO`/`PROXY_TRACE_REQUIRED` gates prevent accidental opt-out, and `docs/bmad/architecture/end-to-end-tracing-app-server.md` with `scripts/dev/trace-by-req-id.js` teach operators how to stitch access, proto, and token logs when debugging multi-tool regressions.
 
 ### Data Models and Contracts
 
@@ -90,6 +95,7 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 - **6. Rollout Checklist (Story 2.6):** Compile documentation summarizing parity results, operational readiness, and stakeholder sign-off checklist.
 - **7. Tool-call Parity Hardening (Story 2.9):** Integrate the ToolCallAggregator with both streaming and non-streaming handlers, enforce role-first ordering, output-mode toggles, and finish-reason normalization, and refresh transcripts/tests documenting single-call parity.
 - **8. Multi-tool Turn Fidelity (Story 2.9a):** Enable burst forwarding of multiple tool calls per assistant turn, add config/telemetry controls (`PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS_MODE`, etc.), and extend unit/integration/E2E/smoke suites plus docs so Story 2.10 can rely on the new behavior.
+- **9. Dev tracing instrumentation (Story 2.11):** Build the `req_id` spine, tracing helpers, sanitization/enforcement, `/v1/usage` linkage, and operator script/doc updates required to debug dev server requests end-to-end.
 
 ## Non-Functional Requirements
 
@@ -138,6 +144,7 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 8. Multi-tool burst handling forwards every tool call emitted in a turn, honoring `PROXY_TOOL_BLOCK_MAX`, `PROXY_STOP_AFTER_TOOLS`, and `PROXY_STOP_AFTER_TOOLS_MODE` semantics so operators can cap bursts or revert to legacy single-call behavior (Story 2.9a).
 9. Non-stream envelopes concatenate all `<use_tool>` blocks (with optional `TOOL_BLOCK_DELIMITER`), set `content:null` + complete `tool_calls[]` arrays, and only suppress tail text after the final block; streaming/textual fallbacks follow the same order (Story 2.9a).
 10. Telemetry (`tool_call_count_total`, `tool_call_truncated_total`) and documentation (`docs/codex-proxy-tool-calls.md`, migration guide, smoke instructions) capture the new defaults, and regression suites (unit/integration/E2E/smoke) exercise multi-call bursts before Story 2.10 resumes (Story 2.9a).
+11. Deterministic tracing covers ingress, JSON-RPC submission, backend lifecycle, SSE/non-stream egress, and `/v1/usage` summaries with shared `req_id`, sanitized payloads, enforcement flags (`LOG_PROTO`, `PROXY_TRACE_REQUIRED`), and operator documentation/script support (Story 2.11).
 
 ## Traceability Mapping
 
@@ -179,3 +186,5 @@ The design aligns with architecture sections mapping Epic 2 to `src/routes`, `s
 ## Post-Review Follow-ups
 
 - [Resolved 2025-11-01] High priority — Story 2.1: Reinstate strict pin of `@openai/codex` to 0.53.0 in dependencies and lockfile to preserve deterministic schema regeneration.
+- [Open 2025-11-16] Story 2.11: Ensure `logHttpRequest` fires immediately after JSON parsing (before validation or auth exits) in all chat/completions handlers so even unauthorized requests produce `phase:"http_ingress"` traces (current implementation still sits behind the API-key guard).
+- [Open 2025-11-16] Story 2.11: Emit `appendUsage` entries (req_id/route/method/mode/status_code) for every exit path—including auth failures and validation/transport errors—so `/v1/usage/raw` stays joinable with HTTP ingress traces per Phase 5 of the tracing plan.

@@ -334,6 +334,22 @@ So that Obsidian Copilot scenarios remain green when the app-server backend chan
 
 **Prerequisites:** Stories 2.8-2.9
 
+<a id="story-211-end-to-end-tracing"></a>
+**Story 2.11: End-to-end tracing for dev server requests**
+
+As a platform engineer,
+I want deterministic tracing across ingress, transport, and egress in the dev stack,
+So that every `/v1/chat|completions` request can be debugged by stitching sanitized trace artifacts.
+
+**Acceptance Criteria:**
+
+1. `/v1/chat|completions` handlers propagate a single `req_id` from `access-log` through `JsonRpcChildAdapter`, `appendProtoEvent`, and `appendUsage`, ensuring trace joins across HTTP logs, RPC events, and usage NDJSON. [Source: .bmad-ephemeral/stories/2-11-end-to-end-tracing.md]
+2. `src/dev-trace/http.js` captures sanitized ingress payloads per request mode, and the transport/runner emit `rpc_request/response/notification` plus `backend_start/backend_exit` events with redacted params. [Source: .bmad-ephemeral/stories/2-11-end-to-end-tracing.md]
+3. `src/services/sse.js` wraps `sendSSE`/`finishSSE` and non-stream handlers call `logJsonResponse`, logging every SSE payload, keepalive, `[DONE]`, and JSON response; `/v1/usage` summaries persist `req_id`, route, method, and status for correlation. [Source: .bmad-ephemeral/stories/2-11-end-to-end-tracing.md]
+4. `src/dev-trace/sanitize.js` enforces redaction with `LOG_PROTO`/`PROXY_TRACE_REQUIRED` guards, and new docs plus `scripts/dev/trace-by-req-id.js` teach operators how to stitch access, proto, and token logs. [Source: .bmad-ephemeral/stories/2-11-end-to-end-tracing.md]
+
+**Prerequisites:** Story 2.10
+
 ## Epic 3: Observability & Ops Hardening
 
 ### Expanded Goal

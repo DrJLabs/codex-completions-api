@@ -13,7 +13,7 @@ export function buildProtoArgs({
     "--config",
     'preferred_auth_method="chatgpt"',
     "--config",
-    "project_doc_max_bytes=0",
+    "project_doc_max_bytes=65536",
     "--config",
     'history.persistence="none"',
     "--config",

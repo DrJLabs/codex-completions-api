@@ -18,6 +18,11 @@ import {
   buildSendUserMessageParams,
   buildSendUserTurnParams,
 } from "../../lib/json-rpc/schema.ts";
+import {
+  logBackendNotification,
+  logBackendResponse,
+  logBackendSubmission,
+} from "../../dev-trace/backend.js";
 
 const JSONRPC_VERSION = "2.0";
 const LOG_PREFIX = "[proxy][json-rpc-transport]";
@@ -48,8 +53,9 @@ class TransportError extends Error {
 class RequestContext {
   #resolve;
   #reject;
-  constructor({ requestId, timeoutMs, onTimeout }) {
+  constructor({ requestId, timeoutMs, onTimeout, trace }) {
     this.requestId = requestId;
+    this.trace = trace || null;
     this.clientConversationId = `ctx_${nanoid(12)}`;
     this.conversationId = null;
     this.subscriptionId = null;
@@ -147,6 +153,7 @@ class JsonRpcTransport {
     this.contextsByRequest = new Map();
     this.activeRequests = 0;
     this.destroyed = false;
+    this.rpcTraceById = new Map();
 
     this.unsubscribeSpawn = onWorkerSupervisorEvent("spawn", (child) => {
       this.#onSpawn(child);
@@ -194,6 +201,7 @@ class JsonRpcTransport {
     }
     this.contextsByConversation.clear();
     this.contextsByRequest.clear();
+    this.rpcTraceById.clear();
   }
 
   async ensureHandshake() {
@@ -302,7 +310,7 @@ class JsonRpcTransport {
     return this.handshakePromise;
   }
 
-  async createChatRequest({ requestId, timeoutMs, signal, turnParams }) {
+  async createChatRequest({ requestId, timeoutMs, signal, turnParams, trace }) {
     if (this.destroyed) throw new TransportError("transport destroyed", { retryable: true });
     if (!this.child)
       throw new TransportError("worker not available", {
@@ -318,6 +326,7 @@ class JsonRpcTransport {
     const context = new RequestContext({
       requestId,
       timeoutMs: timeoutMs ?? CFG.WORKER_REQUEST_TIMEOUT_MS,
+      trace: trace || null,
       onTimeout: (ctx) =>
         this.#failContext(
           ctx,
@@ -495,6 +504,10 @@ class JsonRpcTransport {
         resolve,
         reject,
       });
+      if (context?.trace) {
+        this.rpcTraceById.set(rpcId, context.trace);
+        logBackendSubmission(context.trace, { rpcId, method, params });
+      }
       try {
         this.#write({
           jsonrpc: JSONRPC_VERSION,
@@ -565,6 +578,14 @@ class JsonRpcTransport {
       conversationId: context.conversationId ?? context.clientConversationId,
       requestId: context.clientConversationId,
     });
+    if (context.trace) {
+      this.rpcTraceById.set(messageRpcId, context.trace);
+      logBackendSubmission(context.trace, {
+        rpcId: messageRpcId,
+        method: "sendUserMessage",
+        params,
+      });
+    }
     try {
       this.#write({
         jsonrpc: JSONRPC_VERSION,
@@ -575,6 +596,9 @@ class JsonRpcTransport {
     } catch (err) {
       clearTimeout(timeout);
       this.pending.delete(messageRpcId);
+      if (context.trace) {
+        this.rpcTraceById.delete(messageRpcId);
+      }
       this.#failContext(
         context,
         err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -659,6 +683,14 @@ class JsonRpcTransport {
         conversationId: context.conversationId ?? context.clientConversationId,
         requestId: context.clientConversationId,
       });
+      if (context.trace) {
+        this.rpcTraceById.set(turnRpcId, context.trace);
+        logBackendSubmission(context.trace, {
+          rpcId: turnRpcId,
+          method: "sendUserTurn",
+          params,
+        });
+      }
       this.#write({
         jsonrpc: JSONRPC_VERSION,
         id: turnRpcId,
@@ -668,6 +700,9 @@ class JsonRpcTransport {
     } catch (err) {
       clearTimeout(timeout);
       this.pending.delete(turnRpcId);
+      if (context.trace) {
+        this.rpcTraceById.delete(turnRpcId);
+      }
       this.#failContext(
         context,
         err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -745,6 +780,7 @@ class JsonRpcTransport {
     this.contextsByConversation.clear();
     this.contextsByRequest.clear();
     this.activeRequests = 0;
+    this.rpcTraceById.clear();
     if (info && info.code !== 0) {
       console.warn(`${LOG_PREFIX} worker exit code=${info.code} signal=${info.signal}`);
     }
@@ -776,14 +812,30 @@ class JsonRpcTransport {
     if (!pending) return;
     clearTimeout(pending.timeout);
     this.pending.delete(message.id);
+    const trace = pending.context?.trace || this.rpcTraceById.get(message.id);
+    this.rpcTraceById.delete(message.id);
     if (message.error) {
       const errMessage = message.error?.message || "JSON-RPC error";
       const error = new TransportError(errMessage, {
         code: message.error?.code || "worker_error",
         retryable: true,
       });
+      if (trace) {
+        logBackendResponse(trace, {
+          rpcId: message.id,
+          method: pending.type || "rpc",
+          error: message.error,
+        });
+      }
       pending.reject?.(error);
       return;
+    }
+    if (trace) {
+      logBackendResponse(trace, {
+        rpcId: message.id,
+        method: pending.type || "rpc",
+        result: message.result ?? null,
+      });
     }
     pending.resolve?.(message.result ?? null);
   }
@@ -793,6 +845,11 @@ class JsonRpcTransport {
       message && message.params && typeof message.params === "object" ? message.params : {};
     const context = this.#resolveContext(params);
     if (!context) return;
+    if (context.trace) {
+      try {
+        logBackendNotification(context.trace, { method: message.method, params });
+      } catch {}
+    }
     try {
       context.emitter.emit("notification", message);
     } catch (err) {

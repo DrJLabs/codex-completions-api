@@ -2,7 +2,7 @@ model = "gpt-5"
 sandbox_mode = "read-only"
 approval_policy = "never"
 preferred_auth_method = "chatgpt"
-project_doc_max_bytes = 0
+project_doc_max_bytes = 65536
 
 [features]
 web_search_request = false

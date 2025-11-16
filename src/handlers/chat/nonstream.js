@@ -1,4 +1,5 @@
 import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
+import { installJsonLogger } from "../../services/sse.js";
 import { nanoid } from "nanoid";
 import {
   stripAnsi,
@@ -44,6 +45,8 @@ import {
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { mapTransportError } from "../../services/transport/index.js";
+import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
+import { logHttpRequest } from "../../dev-trace/http.js";
 
 const fingerprintToolCall = (record) => {
   if (!record || typeof record !== "object") return null;
@@ -200,6 +203,51 @@ const APPROVAL_POLICY = (() => {
   return normalized || "never";
 })();
 
+const logUsageFailure = ({
+  req,
+  res,
+  reqId,
+  started,
+  route,
+  mode,
+  statusCode,
+  reason = "error",
+  errorCode,
+  requestedModel,
+  effectiveModel,
+  stream = false,
+}) => {
+  try {
+    const ctx = getHttpContext(res) || {};
+    appendUsage({
+      req_id: reqId,
+      route: ctx.route || route,
+      mode: ctx.mode || mode,
+      method: req.method || "POST",
+      status_code: statusCode,
+      status: statusCode,
+      stream,
+      requested_model: requestedModel,
+      effective_model: effectiveModel,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      prompt_tokens_est: 0,
+      completion_tokens_est: 0,
+      total_tokens_est: 0,
+      duration_ms: Math.max(Date.now() - started, 0),
+      emission_trigger: reason,
+      usage_included: false,
+      user_agent: req.headers["user-agent"] || "",
+      error_code: errorCode,
+    });
+  } catch (err) {
+    if (IS_DEV_ENV) {
+      console.error("[dev][usage][nonstream] failed to append usage", err);
+    }
+  }
+};
+
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
     "n",
@@ -269,7 +317,9 @@ const respondWithJson = (res, statusCode, payload) => {
 
 // POST /v1/chat/completions with stream=false
 export async function postChatNonStream(req, res) {
-  const reqId = nanoid();
+  setHttpContext(res, { route: "/v1/chat/completions", mode: "chat_nonstream" });
+  const reqId = ensureReqId(res);
+  installJsonLogger(res);
   const started = Date.now();
   let responded = false;
   const unknownFinishReasons = new Set();
@@ -469,16 +519,45 @@ export async function postChatNonStream(req, res) {
     }
   };
 
+  const body = req.body || {};
+  logHttpRequest({
+    req,
+    res,
+    route: "/v1/chat/completions",
+    mode: "chat_nonstream",
+    body,
+  });
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 401,
+      reason: "auth_error",
+      errorCode: "unauthorized",
+    });
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
-
-  const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "messages_required",
+    });
     applyCors(null, res);
     return res.status(400).json({
       error: {
@@ -496,10 +575,32 @@ export async function postChatNonStream(req, res) {
     error: choiceError,
   } = normalizeChoiceCount(body.n);
   if (!choiceOk) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: choiceError?.error?.code || "invalid_choice",
+    });
     applyCors(null, res);
     return res.status(400).json(choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "invalid_choice_range",
+    });
     applyCors(null, res);
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
@@ -517,6 +618,17 @@ export async function postChatNonStream(req, res) {
     allowJsonSchema: backendMode === BACKEND_APP_SERVER,
   });
   if (!optionalValidation.ok) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 400,
+      reason: "invalid_optional_params",
+      errorCode: optionalValidation.error?.error?.code,
+    });
     applyCors(null, res);
     return res.status(400).json(optionalValidation.error);
   }
@@ -532,6 +644,18 @@ export async function postChatNonStream(req, res) {
     );
   } catch {}
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 404,
+      reason: "model_not_found",
+      errorCode: "model_not_found",
+      requestedModel,
+    });
     applyCors(null, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
@@ -564,6 +688,19 @@ export async function postChatNonStream(req, res) {
   const promptTokensEst = estTokensForMessages(messages);
   const MAX_TOKENS = CFG.PROXY_MAX_PROMPT_TOKENS;
   if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 403,
+      reason: "tokens_exceeded",
+      requestedModel,
+      effectiveModel,
+      errorCode: "prompt_too_large",
+    });
     applyCors(null, res);
     return res.status(403).json(tokensExceededBody("messages"));
   }
@@ -606,6 +743,19 @@ export async function postChatNonStream(req, res) {
       });
     } catch (err) {
       if (err instanceof ChatJsonRpcNormalizationError) {
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/chat/completions",
+          mode: "chat_nonstream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+        });
         applyCors(null, res);
         return res.status(err.statusCode).json(err.body);
       }
@@ -613,12 +763,14 @@ export async function postChatNonStream(req, res) {
     }
   }
 
+  const nonStreamTrace = { reqId, route: "/v1/chat/completions", mode: "chat_nonstream" };
   const child =
     backendMode === BACKEND_APP_SERVER
       ? createJsonRpcChildAdapter({
           reqId,
           timeoutMs: REQ_TIMEOUT_MS,
           normalizedRequest,
+          trace: nonStreamTrace,
         })
       : spawnCodex(args);
   if (SANITIZE_METADATA) {
@@ -641,6 +793,19 @@ export async function postChatNonStream(req, res) {
       child.kill("SIGKILL");
     } catch {}
     applyCors(null, res);
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 504,
+      reason: "backend_idle_timeout",
+      errorCode: "idle_timeout",
+      requestedModel,
+      effectiveModel,
+    });
     res.status(504).json({
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
@@ -816,11 +981,13 @@ export async function postChatNonStream(req, res) {
           sources: sanitizedMetadataSources,
         });
       }
+      const httpCtx = getHttpContext(res);
       appendUsage({
-        ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
-        method: "POST",
+        route: httpCtx.route || "/v1/chat/completions",
+        mode: httpCtx.mode || "chat_nonstream",
+        method: req.method || "POST",
+        status_code: statusCode,
         requested_model: requestedModel,
         effective_model: effectiveModel,
         stream: false,
@@ -882,6 +1049,19 @@ export async function postChatNonStream(req, res) {
     applyCors(null, res);
 
     if (statusCode !== 200 && errorBody) {
+      logUsageFailure({
+        req,
+        res,
+        reqId,
+        started,
+        route: "/v1/chat/completions",
+        mode: "chat_nonstream",
+        statusCode,
+        reason: reasonTrail[reasonTrail.length - 1] || "error",
+        errorCode: errorBody?.error?.code,
+        requestedModel,
+        effectiveModel,
+      });
       respondWithJson(res, statusCode, errorBody);
       return;
     }
@@ -1133,20 +1313,55 @@ export async function postChatNonStream(req, res) {
 
 // POST /v1/completions with stream=false
 export async function postCompletionsNonStream(req, res) {
-  const reqId = nanoid();
+  setHttpContext(res, { route: "/v1/completions", mode: "completions_nonstream" });
+  const reqId = ensureReqId(res);
+  installJsonLogger(res);
   const started = Date.now();
   let responded = false;
+
+  const body = req.body || {};
+  logHttpRequest({
+    req,
+    res,
+    route: "/v1/completions",
+    mode: "completions_nonstream",
+    body,
+  });
 
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_nonstream",
+      statusCode: 401,
+      reason: "auth_error",
+      errorCode: "unauthorized",
+      stream: false,
+    });
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
 
-  const body = req.body || {};
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
+
   if (!prompt) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "prompt_required",
+      stream: false,
+    });
     applyCors(null, res);
     return res.status(400).json({
       error: {
@@ -1164,6 +1379,19 @@ export async function postCompletionsNonStream(req, res) {
     Array.from(ACCEPTED_MODEL_IDS)
   );
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_nonstream",
+      statusCode: 404,
+      reason: "model_not_found",
+      errorCode: "model_not_found",
+      requestedModel,
+      stream: false,
+    });
     applyCors(null, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
@@ -1210,6 +1438,20 @@ export async function postCompletionsNonStream(req, res) {
       child.kill("SIGKILL");
     } catch {}
     applyCors(null, res);
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_nonstream",
+      statusCode: 504,
+      reason: "backend_idle_timeout",
+      errorCode: "idle_timeout",
+      requestedModel,
+      effectiveModel,
+      stream: false,
+    });
     res.status(504).json({
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
@@ -1302,11 +1544,13 @@ export async function postCompletionsNonStream(req, res) {
         }
       } catch {}
     }
+    const completionsCtx = getHttpContext(res);
     appendUsage({
-      ts: Date.now(),
       req_id: reqId,
-      route: "/v1/completions",
-      method: "POST",
+      route: completionsCtx.route || "/v1/completions",
+      mode: completionsCtx.mode || "completions_nonstream",
+      method: req.method || "POST",
+      status_code: 200,
       requested_model: requestedModel,
       effective_model: effectiveModel,
       stream: false,

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { config as CFG } from "../config/index.js";
 import fs from "node:fs";
+import { logBackendLifecycle } from "../dev-trace/backend.js";
 
 const CODEX_BIN = CFG.CODEX_BIN;
 export const resolvedCodexBin = path.isAbsolute(CODEX_BIN)
@@ -25,6 +26,18 @@ export function spawnCodex(args = [], options = {}) {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, CODEX_HOME: codexHome, ...(options.env || {}) },
     cwd: options.cwd || codexWorkdir,
+  });
+  try {
+    logBackendLifecycle("backend_start", {
+      pid: child.pid || null,
+      argv: Array.isArray(args) ? args.slice(0, 8) : [],
+      cwd: options.cwd || codexWorkdir,
+    });
+  } catch {}
+  child.on("exit", (code, signal) => {
+    try {
+      logBackendLifecycle("backend_exit", { pid: child.pid || null, code, signal });
+    } catch {}
   });
   try {
     child.stdout.setEncoding && child.stdout.setEncoding("utf8");
