@@ -7,7 +7,7 @@ const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 const toStringSafe = (data) => (typeof data === "string" ? data : (data?.toString?.("utf8") ?? ""));
 
 export class JsonRpcChildAdapter extends EventEmitter {
-  constructor({ reqId, timeoutMs, normalizedRequest = null }) {
+  constructor({ reqId, timeoutMs, normalizedRequest = null, trace = null }) {
     super();
     this.reqId = reqId;
     this.timeoutMs = timeoutMs;
@@ -16,6 +16,7 @@ export class JsonRpcChildAdapter extends EventEmitter {
     this.closed = false;
     this.started = false;
     this.normalizedRequest = normalizedRequest;
+    this.trace = trace;
 
     this.stdout = new EventEmitter();
     this.stderr = new EventEmitter();
@@ -67,6 +68,7 @@ export class JsonRpcChildAdapter extends EventEmitter {
         requestId: this.reqId,
         timeoutMs: this.timeoutMs,
         turnParams: turnPayload,
+        trace: this.trace,
       });
       if (this.closed) {
         this.transport.cancelContext(

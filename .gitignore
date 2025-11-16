@@ -17,6 +17,7 @@ bmad-bak/
 .bmad/
 .bmad-core/
 .bmad-infrastructure-devops/
+.bmad-ephemeral/
 .serena/
 external/*
 !external/codex
@@ -43,6 +44,9 @@ docs/private/
 .codev/*.log
 .codev/*.ndjson
 .codev/auth.json
+
+# Optional local tracing helpers
+src/dev-trace/
 
 # Production Codex HOME (.codex-api): contains secrets at runtime
 # Ignore everything except placeholders so the path exists after checkout.
