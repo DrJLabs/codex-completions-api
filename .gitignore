@@ -45,9 +45,6 @@ docs/private/
 .codev/*.ndjson
 .codev/auth.json
 
-# Optional local tracing helpers
-src/dev-trace/
-
 # Production Codex HOME (.codex-api): contains secrets at runtime
 # Ignore everything except placeholders so the path exists after checkout.
 .codex-api/*
