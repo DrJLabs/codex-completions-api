@@ -25,7 +25,7 @@ Branch: `main-p` (stateless: one Codex proto process per request). Feature branc
 
 - Language: ESM Node.js. Prefer `const/let`, 2‑space indentation, and double quotes to match existing files.
 - Routes: keep OpenAI‑compatible shapes under `/v1/*`. Set `Content-Type` precisely (`application/json; charset=utf-8` or `text/event-stream`).
-- Models: advertise per environment — dev: `codev-5{,-low,-medium,-high,-minimal}`, prod: `codex-5{,-low,-medium,-high,-minimal}`; accept both prefixes everywhere; normalize to effective `gpt-5` before spawning Codex.
+- Models: advertise per environment — dev: `codev-5{,-low,-medium,-high,-minimal}` plus `gpt-5.1-codev-{L,M,H}` (map to `gpt-5.1`), prod: `codex-5{,-low,-medium,-high,-minimal}`; accept both prefixes everywhere; normalize to the effective (`gpt-5` or `gpt-5.1`) target before spawning Codex.
 
 ## Testing Guidelines
 

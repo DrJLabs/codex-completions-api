@@ -1,3 +1,5 @@
+import { MODEL_TARGET_OVERRIDES, MODEL_REASONING_OVERRIDES } from "./config/models.js";
+
 // Pure utilities extracted from server.js for unit testing
 // ESM module
 
@@ -106,6 +108,9 @@ export const isModelText = (line) => {
 
 export const impliedEffortForModel = (requestedModel) => {
   const m = String(requestedModel || "").toLowerCase();
+  if (MODEL_REASONING_OVERRIDES.has(m)) {
+    return MODEL_REASONING_OVERRIDES.get(m) || "";
+  }
   const variants = ["low", "medium", "high", "minimal"];
   for (const v of variants) {
     if (m === `codex-5-${v}` || m === `codev-5-${v}`) return v;
@@ -127,13 +132,18 @@ export const normalizeModel = (
     "codev-5-medium",
     "codev-5-high",
     "codev-5-minimal",
+    "gpt-5.1-codev-l",
+    "gpt-5.1-codev-m",
+    "gpt-5.1-codev-h",
   ]
 ) => {
   const raw = String(name || "").trim();
   if (!raw) return { requested: "codex-5", effective: defaultModel };
   const lower = raw.toLowerCase();
-  if (lower === "codex-5") return { requested: "codex-5", effective: defaultModel };
-  if (publicIds.includes(lower)) return { requested: lower, effective: defaultModel };
+  const overrideTarget = MODEL_TARGET_OVERRIDES.get(lower);
+  const effective = overrideTarget || defaultModel;
+  if (lower === "codex-5") return { requested: "codex-5", effective };
+  if (publicIds.includes(lower)) return { requested: lower, effective };
   return { requested: raw, effective: raw };
 };
 
