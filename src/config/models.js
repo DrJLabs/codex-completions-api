@@ -11,7 +11,7 @@ const GPT51_VARIANTS = [
 const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
 
 const buildGpt51Models = (isDevEnv) =>
-  isDevEnv ? GPT51_VARIANTS.map(({ suffix }) => `gpt-5.1-codev-${suffix}`) : [];
+  isDevEnv ? GPT51_VARIANTS.map(({ suffix }) => `codev-5.1-${suffix}`) : [];
 
 export function publicModelIds(isDevEnv) {
   const base = isDevEnv ? DEV_BASE : PROD_BASE;
@@ -22,7 +22,7 @@ const buildOverrideMaps = () => {
   const target = new Map();
   const reasoning = new Map();
   for (const { suffix, effort } of GPT51_VARIANTS) {
-    const key = `gpt-5.1-codev-${suffix.toLowerCase()}`;
+    const key = `codev-5.1-${suffix.toLowerCase()}`;
     target.set(key, GPT51_TARGET_MODEL);
     reasoning.set(key, effort);
   }
