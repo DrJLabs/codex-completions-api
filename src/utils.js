@@ -132,9 +132,9 @@ export const normalizeModel = (
     "codev-5-medium",
     "codev-5-high",
     "codev-5-minimal",
-    "gpt-5.1-codev-l",
-    "gpt-5.1-codev-m",
-    "gpt-5.1-codev-h",
+    "codev-5.1-l",
+    "codev-5.1-m",
+    "codev-5.1-h",
   ]
 ) => {
   const raw = String(name || "").trim();
