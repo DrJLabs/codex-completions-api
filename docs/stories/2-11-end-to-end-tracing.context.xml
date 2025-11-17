@@ -1,0 +1,109 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>11</storyId>
+    <title>Story 2.11: End-to-end tracing for dev server requests</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-15T10:16:18Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-11-end-to-end-tracing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a platform engineer</asA>
+    <iWant>deterministic end-to-end tracing across the dev server request pipeline</iWant>
+    <soThat>tool-call regressions can be debugged by replaying every transformation from HTTP ingress through JSON-RPC transport and SSE/JSON egress</soThat>
+    <tasks>- [ ] **Trace spine plumbing (AC #1)** – Ensure `res.locals.req_id` from `src/middleware/access-log.js` flows through chat/completions handlers, the `JsonRpcChildAdapter`, `appendProtoEvent`, and `appendUsage`, asserting req IDs are never missing. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#61-phase-0--align-request-ids-http--handlers--transport; docs/tech-spec-epic-2.md#story-211-end-to-end-tracing]_
+- [ ] **Ingress logger (AC #2)** – Build `src/dev-trace/http.js::logHttpRequest` to emit `phase:"http_ingress"`, `kind:"client_request"`, sanitized headers/body, and truncation markers per request mode immediately after JSON parsing. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#62-phase-1--http-ingress-capture-backend-agnostic]_
+- [ ] **Transport instrumentation (AC #3)** – Introduce a single `callRpc(ctx, method, params)` entry in `src/services/transport/child-adapter.js`, maintain JSON-RPC id → `req_id` maps, and log `rpc_request`, `rpc_response`, `rpc_notification`, and `tool_block` events plus `backend_start/backend_exit` lifecycle signals from `src/services/codex-runner.js`. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#63-phase-2--backend-submission-json-rpc-layer; #64-phase-3]_
+- [ ] **Client egress logging (AC #4)** – Wrap `src/services/sse.js` helpers and add a `logJsonResponse` hook so each SSE payload, keepalive, `[DONE]`, and JSON response records `phase:"client_egress"`, `kind:"client_sse|client_json"`, `direction`, route, and mode metadata. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#65-phase-4--client-egress-sse--json]_
+- [ ] **Usage linkage (AC #5)** – Expand `appendUsage` data and `/v1/usage|/v1/usage/raw` routes so NDJSON entries persist `req_id`, `route`, `method`, `status_code`, `mode`, and `phase:"usage_summary"`, enabling joins with access and proto traces. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#66-phase-5--usage-events--v1usage]_
+- [ ] **Docs + helper script (AC #7)** – Publish the operator-facing runbook (`docs/bmad/architecture/end-to-end-tracing-app-server.md`), extend the plan per the sprint change proposal, and ship `scripts/dev/trace-by-req-id.js` that stitches access, proto, and usage logs for a `req_id`. _[Source: docs/sprint-change-proposal-2025-11-13.md; docs/dev/end-to-end-tracing-plan.app-server.md#8-next-steps-for-implementation]_
+- [ ] **Testing – AC #1** – Extend integration tests (e.g., `tests/integration/chat.tracing.req-id.int.test.js`) to prove the same `req_id` appears in access log lines, dev trace events, and `/v1/usage` NDJSON for streaming and non-stream chat/completions flows. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #2** – Unit test `src/dev-trace/http.js::logHttpRequest` for sanitized headers, truncation markers, and one-time invocation per request, and smoke it via middleware tests. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #3** – Add transport adapter tests covering `rpc_request/response/notification` logging, JSON-RPC id → `req_id` mapping, and sanitized payload snapshots, plus golden fixtures for tool-block events. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #4** – Expand SSE/non-stream integration specs so every streaming request logs `client_sse` chunks and exactly one `client_sse_done`, while non-stream handlers emit `client_json` entries before `res.json`. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #5** – Update `/v1/usage` regression and `/v1/usage/raw` dumps to assert `req_id`, `route`, `method`, `status_code`, `mode`, and `phase:"usage_summary"` fields and prove joins across traces using fixtures. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #6** – Cover `src/dev-trace/sanitize.js` and the `LOG_PROTO`/`PROXY_TRACE_REQUIRED` enforcement paths (dev vs non-dev) via unit tests toggling env vars. _[Source: docs/test-design-epic-2.md#risk-register]_
+- [ ] **Testing – AC #7** – Add doc linting plus a CLI integration test for `scripts/dev/trace-by-req-id.js` that reconstructs streaming, tool-heavy, and error traces for a sample `req_id`, ensuring operator docs stay accurate. _[Source: docs/test-design-epic-2.md#risk-register]_</tasks>
+  </story>
+
+  <acceptanceCriteria>Traceability derives from Epic 2, the tech spec, the sprint change proposal, and the dedicated tracing plan.
+
+1. **Single `req_id` spine** – `/v1/chat|completions` handlers must reuse `res.locals.req_id` from `src/middleware/access-log.js` (falling back to `nanoid()` only if absent), propagate it through `JsonRpcChildAdapter`, and ensure every `appendProtoEvent` and `appendUsage` entry includes the same id so HTTP ingress, JSON-RPC transport, client egress, and usage NDJSON can be joined deterministically; logging helpers must not silently skip when `req_id` is missing. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#61-phase-0--align-request-ids-http--handlers--transport; docs/epics.md#story-211-end-to-end-tracing]_
+2. **HTTP ingress logging** – Implement `src/dev-trace/http.js::logHttpRequest` that records method, route, sanitized headers (redacting Authorization/cookies), and the OpenAI-style body once per request mode immediately after JSON parsing, tagging each event with `phase:"http_ingress"`, `kind:"client_request"`, and `direction:"inbound"`, with truncation markers for large payloads. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#62-phase-1--http-ingress-capture-backend-agnostic]_
+3. **JSON-RPC submission + IO visibility** – Route all app-server calls through a single `callRpc` entrypoint that emits `backend_submission` events (`kind:"rpc_request"`, `direction:"outbound"`) and maintain JSON-RPC id → `req_id` mappings so follow-up `rpc_response`, `rpc_notification`, and tool-block events log under `phase:"backend_io"`, all sanitized via `src/dev-trace/sanitize.js`. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#63-phase-2--backend-submission-json-rpc-layer; #64-phase-3]_
+4. **Client egress tracing** – `src/services/sse.js` must tag `res.locals.httpRoute`/`mode`, wrap SSE writes, and log each payload and `[DONE]` frame as `client_egress` (`kind:"client_sse"`/`client_sse_done`), while non-stream handlers call `logJsonResponse` before `res.json` to record status, truncated body, and metadata. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#65-phase-4--client-egress-sse--json]_
+5. **Usage/metrics linkage** – `appendUsage` NDJSON and `/v1/usage` summaries must persist `req_id`, `route`, `method`, `status_code`, `mode`, and `phase:"usage_summary"` for every request so trace joins never rely on timestamp heuristics. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#66-phase-5--usage-events--v1usage]_
+6. **Dev enforcement + sanitization** – `src/dev-trace/sanitize.js` centralizes redaction (`sanitizeHeaders`, `sanitizeBody`, `sanitizeRpcPayload`) and all logging helpers must use it; dev mode should enable tracing by default, `PROXY_TRACE_REQUIRED=true` should fail fast if tracing is disabled, and prod/non-dev must keep tracing off unless explicitly enabled. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#67-phase-6--enforce-logging-and-redaction-in-dev; docs/bmad/architecture/end-to-end-tracing-app-server.md#guardrails--alerts]_
+7. **Operator documentation &amp; helper** – `docs/bmad/architecture/end-to-end-tracing-app-server.md` must teach how to debug by `req_id` (streaming, tool-heavy, error cases) and `scripts/dev/trace-by-req-id.js` must accept a `req_id`, ingest access/proto/usage logs, and emit a merged timeline for investigations. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#8-next-steps-for-implementation; docs/sprint-change-proposal-2025-11-13.md]_
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/dev/end-to-end-tracing-plan.app-server.md (§1–§6) — canonical source for tracing phases, req_id spine requirements, sanitization, and dev enforcement before enabling downstream tool-call work. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md]_
+- docs/bmad/architecture/end-to-end-tracing-app-server.md — operator runbook detailing the five trace phases, guardrails, and the upcoming `trace-by-req-id` workflow. _[Source: docs/bmad/architecture/end-to-end-tracing-app-server.md]_
+- docs/tech-spec-epic-2.md#story-211-end-to-end-tracing — integrates Story 2.11 into Epic 2’s solution design, highlighting new modules (`src/dev-trace/*`, `scripts/dev/trace-by-req-id.js`).
+- docs/epics.md#story-211-end-to-end-tracing — backlog definition tying this story to Epic 2 prerequisites and ensuring tracing blocks Story 2-10 deliverables.
+- docs/PRD.md#goals-and-background-context — establishes observability and parity goals that tracing must satisfy before further rollout. _[Source: docs/PRD.md#goals-and-background-context]_
+- docs/sprint-change-proposal-2025-11-13.md — mandates adding tracing to Epic 2 scope, enumerates affected modules, and frames the gating requirement before new tool-call work. _[Source: docs/sprint-change-proposal-2025-11-13.md]_
+- docs/app-server-migration/codex-completions-api-migration.md#k-parity-fixture-maintenance-workflow — documents parity fixture workflows and commands that must keep working once tracing augments logging. _[Source: docs/app-server-migration/codex-completions-api-migration.md#k-parity-fixture-maintenance-workflow]_
+- docs/bmad/architecture/tech-stack.md#testing--qa — describes the Node 22 runtime, verification commands (`npm run verify:all`, smokes), and testing baselines Story 2.11 must uphold. _[Source: docs/bmad/architecture/tech-stack.md#testing--qa]_
+- docs/chat-completions-request-flow.md — illustrates the HTTP → handler → transport → SSE pipeline the trace spine must instrument without altering API shape. _[Source: docs/chat-completions-request-flow.md]_
+- docs/stories/2-10-tool-call-regression-and-smoke.md — highlights pending regression suites that will consume deterministic traces from Story 2.11. _[Source: docs/stories/2-10-tool-call-regression-and-smoke.md]_
+</docs>
+    <code>- server.js:1-44 — bootstraps backend mode selection, worker supervisor, and JSON-RPC transport handshake; tracing hooks must not regress startup logging or graceful shutdown. _[Source: server.js]_
+- src/app.js:1-120 — creates the Express app, applies CORS, attaches structured access logging, and mounts chat/completions/usage routes; new middleware (ingress logger) plugs in here. _[Source: src/app.js]_
+- src/middleware/access-log.js:1-34 — generates the canonical `req_id`, sets `X-Request-Id`, and emits JSON access logs that tracing must reuse. _[Source: src/middleware/access-log.js]_
+- src/handlers/chat/stream.js &amp; src/handlers/chat/nonstream.js — orchestrate chat/completions flows, invoke SSE helpers, append proto events/usages, and will host the ingress logger and new context plumbing. _[Source: src/handlers/chat/stream.js; src/handlers/chat/nonstream.js]_
+- src/services/transport/child-adapter.js — current JSON-RPC adapter that will emit `rpc_request/response/notification`, maintain id maps, and surface backend lifecycle telemetry. _[Source: src/services/transport/child-adapter.js]_
+- src/services/codex-runner.js — supervises Codex app-server processes and exposes spawn helpers; tracing must leverage it for `backend_start/backend_exit` events and CODEX_HOME/WORKDIR guarantees. _[Source: src/services/codex-runner.js]_
+- src/services/sse.js — houses `setSSEHeaders`, `startKeepalives`, `sendSSE`, and `finishSSE`; needs wrapping to log every SSE frame and `[DONE]`. _[Source: src/services/sse.js]_
+- src/dev-logging.js — defines `appendUsage`, `appendProtoEvent`, sanitization logs, and log file paths (TOKEN_LOG_PATH, PROTO_LOG_PATH, SANITIZER_LOG_PATH); Story 2.11 expands payloads here. _[Source: src/dev-logging.js]_
+- src/routes/usage.js — `/v1/usage` and `/v1/usage/raw` endpoints that aggregate TOKEN_LOG_PATH; updates ensure new fields (`req_id`, `phase`) propagate to clients/tests. _[Source: src/routes/usage.js]_
+- scripts/smoke/*.sh &amp; scripts/test-live.sh — smoke and live harnesses invoked before pushes; new tracing flags must keep these scripts passing without extra env setup. _[Source: scripts/dev-smoke.sh; scripts/prod-smoke.sh; scripts/test-live.sh]_
+</code>
+    <dependencies>- Node.js ≥22 runtime with ECMAScript modules per `package.json` `engines.node`. _[Source: package.json]_
+- `express@^4.21.2` for routing/middleware, `nanoid@^5.1.6` for req ids/stream ids, and `@openai/codex@0.57.0` supplying the Codex CLI/app-server entrypoints. _[Source: package.json]_
+- Dev tooling: `vitest@^4`, `@playwright/test@^1.56.1`, `@eslint/eslintrc`, `eslint@^9.38.0`, `prettier@^3.3.3`, `secretlint@^11.2.5`, Husky + lint-staged hooks enforced via `npm run verify:all`. _[Source: package.json]_
+- Scripts rely on `bash`, Docker/Compose (`compose.dev.stack.yml`, `docker-compose.yml`), and the Codex CLI environment variables (`CODEX_HOME`, `PROXY_CODEX_WORKDIR`, `PROXY_ENV`, `PROXY_API_KEY`). _[Source: package.json; docker-compose.yml]_
+</dependencies>
+  </artifacts>
+
+  <constraints>- Observability-only change: tracing must not alter `/v1/models`, `/v1/chat/completions`, or `/v1/usage` request/response contracts; all instrumentation must be side-channel logging per plan §1. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#1-goal--scope]_
+- Dev-only by default: tracing runs when `PROXY_ENV=dev`, `LOG_PROTO` stays true, and `PROXY_TRACE_REQUIRED` can fail fast if loggers are disabled; production/non-dev deployments must keep verbose logging off unless a controlled override is documented. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#67-phase-6--enforce-logging-and-redaction-in-dev]_
+- Single `req_id` contract: `access-log` is the source of truth, and handlers/transport/loggers should throw/assert when the id is absent rather than downgrading to best effort, avoiding silent drops that would break joins. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#61-phase-0--align-request-ids-http--handlers--transport]_
+- Sanitization is mandatory for headers, bodies, and RPC params; truncation with explicit markers is preferred over omission, and the sanitizer module should host shared allowlists/redaction rules. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#62-phase-1--http-ingress-capture-backend-agnostic; #67-phase-6]_
+- Logging must remain non-blocking: instrumentation cannot materially increase handler latency; use async appends and short critical sections (mirroring `src/dev-logging.js` queues) to keep SSE responsiveness. _[Source: docs/architecture.md#implementation-patterns; docs/bmad/architecture/end-to-end-tracing-app-server.md#architecture-layers]_
+- Tool-call stories (2-10, 2-9a) depend on deterministic trace transcripts, so new helpers must keep existing fixtures/tests deterministic and update docs when sanitization/fields change. _[Source: docs/stories/2-10-tool-call-regression-and-smoke.md; docs/design/multi-tool-calls-v2.md]_
+</constraints>
+
+  <interfaces>- `src/middleware/access-log.js` → chat/completions handlers: populates `res.locals.req_id` and `X-Request-Id`, which the ingress logger, transport adapter, SSE logger, and usage writer must consume without re-generating ids. _[Source: src/middleware/access-log.js; src/handlers/chat/stream.js]_
+- Handlers → `src/dev-trace/http.js` → `appendProtoEvent`: ingress logger attaches sanitized method/route/body snapshots before normalization so downstream events share the same metadata fields and `req_id`. _[Source: docs/dev/end-to-end-tracing-plan.app-server.md#62-phase-1--http-ingress-capture-backend-agnostic]_
+- Handlers → `JsonRpcChildAdapter` → `appendProtoEvent`: create a `callRpc(ctx, method, params)` surface carrying `ctx = { reqId, httpRoute, mode }`, map JSON-RPC ids to req ids, and emit backend submission/IO/tool-block events that SSE/logging helpers can correlate. _[Source: src/services/transport/child-adapter.js; docs/dev/end-to-end-tracing-plan.app-server.md#63-phase-2--backend-submission-json-rpc-layer]_
+- `src/services/sse.js`/`logJsonResponse` → `appendProtoEvent`: SSE wrappers take the same `req_id`, `httpRoute`, and `mode` from `res.locals`, log each payload/keepalive/`[DONE]`, and inform `appendUsage` when the response ends. _[Source: src/services/sse.js; docs/dev/end-to-end-tracing-plan.app-server.md#65-phase-4--client-egress-sse--json]_
+- `appendUsage` → `/v1/usage` routes (`src/routes/usage.js`) → `scripts/dev/trace-by-req-id.js`: NDJSON entries enriched with `req_id`, `phase:"usage_summary"`, and metadata feed the API plus the CLI helper that stitches access/proto/usage logs for investigations. _[Source: src/dev-logging.js; src/routes/usage.js; docs/bmad/architecture/end-to-end-tracing-app-server.md#operator-workflow]_
+- `LOG_PROTO`/`PROXY_TRACE_REQUIRED` envs → bootstrap (`server.js`) and configuration (`src/config/index.js`): new guards must integrate with existing env parsing so CI, smoke tests, and dev shells can enable/disable tracing predictably. _[Source: docs/bmad/architecture/tech-stack.md#configuration-surface-selected; server.js]_
+</interfaces>
+
+  <tests>
+    <standards>- Follow `docs/bmad/architecture/tech-stack.md#testing--qa`: run `npm run verify:all` (format check, ESLint, Vitest unit/integration, Playwright) plus smoke (`npm run smoke:dev` / `npm run smoke:prod`) before merging tracing changes, capturing evidence for Story 2.10 handoff. _[Source: docs/bmad/architecture/tech-stack.md#testing--qa]_
+- Keep new suites deterministic: Vitest unit specs live in `tests/unit`, integration specs in `tests/integration`, Playwright SSE validations in `tests/live` config, and `/v1/usage` joins must have golden fixtures committed under `tests/integration`. Roll new scripts into CI via `package.json` scripts only after local verification. _[Source: package.json; docs/app-server-migration/codex-completions-api-migration.md#k-parity-fixture-maintenance-workflow]_
+    </standards>
+    <locations>- `tests/unit` — add suites for `src/dev-trace/http.js`, `src/dev-trace/sanitize.js`, and new helpers (req id propagation, env toggles).
+- `tests/integration` — chat/completions tracing specs covering SSE and JSON responses with real handlers.
+- `tests/parity` — ensure transcript tooling still passes after instrumentation changes.
+- `playwright.config.ts` &amp; `tests` Playwright suites — verify SSE frames and `[DONE]` logging align with UI flows.
+- `scripts/smoke/*.sh` and `scripts/test-live.sh` — quick sanity before/after enabling tracing flags.
+- `docs/bmad/architecture/end-to-end-tracing-app-server.md` validation pipeline — doc lint check via `npm run lint:runbooks` once operator guide updates land.
+    </locations>
+    <ideas>- **Req id spine** — Integration test that issues streaming and non-stream chat calls, asserts `X-Request-Id` == `req_id` inside proto/usage logs, and fails if any log omits the id.
+- **Ingress logger** — Unit test `logHttpRequest` with mocked requests containing Authorization headers and oversized bodies to verify redaction/truncation plus `phase/kind/direction` tags.
+- **Transport logging** — Harness `JsonRpcChildAdapter` with a fake transport to ensure every `callRpc` emits `backend_submission`, `rpc_response`, `rpc_notification`, and tool-block events carrying sanitized params and req ids.
+- **Client egress** — SSE integration spec that inspects `appendProtoEvent` output for every `sendSSE` call plus a `[DONE]` entry, and a non-stream test that ensures `logJsonResponse` fires before `res.json` with status + truncated body.
+- **Usage linkage** — `/v1/usage` and `/v1/usage/raw` tests verifying `phase:"usage_summary"`, `req_id`, route, method, status_code, and mode fields exist and align with trace events for the same id.
+- **Sanitizer + enforcement** — Unit tests toggling `PROXY_ENV`, `LOG_PROTO`, and `PROXY_TRACE_REQUIRED` to prove dev mode fails fast when tracing is disabled and production skips verbose logs; add snapshots for sanitizer allowlists.
+- **Trace-by-req-id CLI** — Integration test invoking `scripts/dev/trace-by-req-id.js` with sample access/proto/usage logs to ensure merged timelines render streaming, tool-heavy, and error cases, matching the operator guide.
+    </ideas>
+  </tests>
+
+</story-context>

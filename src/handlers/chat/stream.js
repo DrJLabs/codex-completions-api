@@ -55,6 +55,8 @@ import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
+import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
+import { logHttpRequest } from "../../dev-trace/http.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -87,6 +89,51 @@ const APPROVAL_POLICY = (() => {
   return normalized || "never";
 })();
 
+const logUsageFailure = ({
+  req,
+  res,
+  reqId,
+  started,
+  route,
+  mode,
+  statusCode,
+  reason = "error",
+  errorCode,
+  requestedModel,
+  effectiveModel,
+  stream = true,
+}) => {
+  try {
+    const ctx = getHttpContext(res) || {};
+    appendUsage({
+      req_id: reqId,
+      route: ctx.route || route,
+      mode: ctx.mode || mode,
+      method: req.method || "POST",
+      status_code: statusCode,
+      status: statusCode,
+      stream,
+      requested_model: requestedModel,
+      effective_model: effectiveModel,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      prompt_tokens_est: 0,
+      completion_tokens_est: 0,
+      total_tokens_est: 0,
+      duration_ms: Math.max(Date.now() - started, 0),
+      emission_trigger: reason,
+      usage_included: false,
+      user_agent: req.headers["user-agent"] || "",
+      error_code: errorCode,
+    });
+  } catch (err) {
+    if (IS_DEV_ENV) {
+      console.error("[dev][usage][stream] failed to append usage", err);
+    }
+  }
+};
+
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
     "n",
@@ -109,7 +156,8 @@ const normalizeChoiceCount = (raw) => {
 
 // POST /v1/chat/completions with stream=true
 export async function postChatStream(req, res) {
-  const reqId = nanoid();
+  setHttpContext(res, { route: "/v1/chat/completions", mode: "chat_stream" });
+  const reqId = ensureReqId(res);
   const started = Date.now();
   let responded = false;
   let responseWritable = true;
@@ -136,18 +184,47 @@ export async function postChatStream(req, res) {
     return undefined;
   };
 
+  const body = req.body || {};
+  logHttpRequest({
+    req,
+    res,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    body,
+  });
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 401,
+      reason: "auth_error",
+      errorCode: "unauthorized",
+    });
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
-
-  const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "messages_required",
+    });
     applyCors(null, res);
     return res.status(400).json({
       error: {
@@ -165,10 +242,32 @@ export async function postChatStream(req, res) {
     error: choiceError,
   } = normalizeChoiceCount(body.n);
   if (!choiceOk) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: choiceError?.error?.code || "invalid_choice",
+    });
     applyCors(null, res);
     return res.status(400).json(choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "invalid_choice_range",
+    });
     applyCors(null, res);
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
@@ -271,6 +370,17 @@ export async function postChatStream(req, res) {
     allowJsonSchema: isAppServerBackend,
   });
   if (!optionalValidation.ok) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 400,
+      reason: "invalid_optional_params",
+      errorCode: optionalValidation.error?.error?.code,
+    });
     applyCors(null, res);
     return res.status(400).json(optionalValidation.error);
   }
@@ -286,6 +396,18 @@ export async function postChatStream(req, res) {
     );
   } catch {}
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 404,
+      reason: "model_not_found",
+      errorCode: "model_not_found",
+      requestedModel,
+    });
     applyCors(null, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
@@ -317,6 +439,19 @@ export async function postChatStream(req, res) {
   const promptTokensEst = estTokensForMessages(messages);
   const MAX_TOKENS = CFG.PROXY_MAX_PROMPT_TOKENS;
   if (MAX_TOKENS > 0 && promptTokensEst > MAX_TOKENS) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 403,
+      reason: "tokens_exceeded",
+      requestedModel,
+      effectiveModel,
+      errorCode: "prompt_too_large",
+    });
     applyCors(null, res);
     return res.status(403).json(tokensExceededBody("messages"));
   }
@@ -329,6 +464,17 @@ export async function postChatStream(req, res) {
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
       applyCors(null, res);
+      logUsageFailure({
+        req,
+        res,
+        reqId,
+        started,
+        route: "/v1/chat/completions",
+        mode: "chat_stream",
+        statusCode: 429,
+        reason: "concurrency_exceeded",
+        errorCode: "concurrency_exceeded",
+      });
       res.status(429).json({
         error: {
           message: "too many concurrent streams",
@@ -395,6 +541,19 @@ export async function postChatStream(req, res) {
           responded = true;
           releaseGuard("normalization_error");
         }
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/chat/completions",
+          mode: "chat_stream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+        });
         applyCors(null, res);
         return res.status(err.statusCode).json(err.body);
       }
@@ -402,13 +561,19 @@ export async function postChatStream(req, res) {
     }
   }
 
+  const traceContext = { reqId, route: "/v1/chat/completions", mode: "chat_stream" };
   const child = isAppServerBackend
     ? createJsonRpcChildAdapter({
         reqId,
         timeoutMs: REQ_TIMEOUT_MS,
         normalizedRequest,
+        trace: traceContext,
       })
-    : spawnCodex(args);
+    : spawnCodex(args, {
+        reqId,
+        route: traceContext.route,
+        mode: traceContext.mode,
+      });
 
   const onChildError = (error) => {
     try {
@@ -427,6 +592,19 @@ export async function postChatStream(req, res) {
         sendSSEUtil(res, sseErrorBody(error));
       }
     } catch {}
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: (mapped && mapped.statusCode) || 502,
+      reason: "backend_error",
+      errorCode: mapped?.body?.error?.code || "backend_error",
+      requestedModel,
+      effectiveModel,
+    });
     try {
       finishSSEUtil(res);
     } catch {}
@@ -1223,11 +1401,13 @@ export async function postChatStream(req, res) {
       });
     }
     try {
+      const httpCtx = getHttpContext(res);
       appendUsage({
-        ts: Date.now(),
         req_id: reqId,
-        route: "/v1/chat/completions",
-        method: "POST",
+        route: httpCtx.route || "/v1/chat/completions",
+        mode: httpCtx.mode || "chat_stream",
+        method: req.method || "POST",
+        status_code: 200,
         requested_model: requestedModel,
         effective_model: effectiveModel,
         stream: true,
@@ -1761,14 +1941,35 @@ export async function postCompletionsStream(req, res) {
   try {
     console.log("[completions] POST /v1/completions received");
   } catch {}
-  const reqId = nanoid();
+  setHttpContext(res, { route: "/v1/completions", mode: "completions_stream" });
+  const reqId = ensureReqId(res);
   const started = Date.now();
   let responded = false;
   let responseWritable = true;
 
+  const body = req.body || {};
+  logHttpRequest({
+    req,
+    res,
+    route: "/v1/completions",
+    mode: "completions_stream",
+    body,
+  });
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || token !== API_KEY) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_stream",
+      statusCode: 401,
+      reason: "auth_error",
+      errorCode: "unauthorized",
+    });
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
@@ -1776,7 +1977,6 @@ export async function postCompletionsStream(req, res) {
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
 
-  const body = req.body || {};
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
   if (IS_DEV_ENV) {
     try {
@@ -1794,6 +1994,17 @@ export async function postCompletionsStream(req, res) {
     }
   }
   if (!prompt) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "prompt_required",
+    });
     applyCors(null, res);
     return res.status(400).json({
       error: {
@@ -1816,6 +2027,18 @@ export async function postCompletionsStream(req, res) {
     );
   } catch {}
   if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_stream",
+      statusCode: 404,
+      reason: "model_not_found",
+      errorCode: "model_not_found",
+      requestedModel,
+    });
     applyCors(null, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
@@ -1867,6 +2090,17 @@ export async function postCompletionsStream(req, res) {
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
       applyCors(null, res);
+      logUsageFailure({
+        req,
+        res,
+        reqId,
+        started,
+        route: "/v1/completions",
+        mode: "completions_stream",
+        statusCode: 429,
+        reason: "concurrency_exceeded",
+        errorCode: "concurrency_exceeded",
+      });
       res.status(429).json({
         error: {
           message: "too many concurrent streams",
@@ -1884,16 +2118,21 @@ export async function postCompletionsStream(req, res) {
   const releaseGuard = (outcome) => guardContext.release(outcome);
   applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
+  const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_stream" };
   const child =
     backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS })
-      : spawnCodex(args);
+      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS, trace: completionsTrace })
+      : spawnCodex(args, {
+          reqId,
+          route: completionsTrace.route,
+          mode: completionsTrace.mode,
+        });
   const onChildError = (error) => {
     try {
       console.log("[proxy] child error (completions):", error?.message || String(error));
     } catch {}
     if (responded) return;
-    responded = true;
+    markCompletionsResponded();
     try {
       clearTimeout(timeout);
     } catch {}
@@ -1905,6 +2144,19 @@ export async function postCompletionsStream(req, res) {
         sendSSEUtil(res, sseErrorBody(error));
       }
     } catch {}
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_stream",
+      statusCode: (mapped && mapped.statusCode) || 502,
+      reason: "backend_error",
+      errorCode: mapped?.body?.error?.code || "backend_error",
+      requestedModel,
+      effectiveModel,
+    });
     try {
       finishSSEUtil(res);
     } catch {}
@@ -1923,9 +2175,16 @@ export async function postCompletionsStream(req, res) {
   }, REQ_TIMEOUT_MS);
 
   let idleTimerCompletions;
+  function cancelIdleCompletions() {
+    if (idleTimerCompletions) {
+      clearTimeout(idleTimerCompletions);
+      idleTimerCompletions = null;
+    }
+  }
   const resetIdleCompletions = () => {
-    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    cancelIdleCompletions();
     idleTimerCompletions = setTimeout(() => {
+      idleTimerCompletions = null;
       if (responded) return;
       try {
         console.log("[proxy] completions idle timeout; terminating child");
@@ -1939,12 +2198,29 @@ export async function postCompletionsStream(req, res) {
         res.write("data: [DONE]\n\n");
         res.end();
       } catch {}
-      responded = true;
+      logUsageFailure({
+        req,
+        res,
+        reqId,
+        started,
+        route: "/v1/completions",
+        mode: "completions_stream",
+        statusCode: 504,
+        reason: "backend_idle_timeout",
+        errorCode: "idle_timeout",
+        requestedModel,
+        effectiveModel,
+      });
+      markCompletionsResponded();
       try {
         child.kill("SIGTERM");
       } catch {}
     }, STREAM_IDLE_TIMEOUT_MS);
   };
+  function markCompletionsResponded() {
+    responded = true;
+    cancelIdleCompletions();
+  }
   resetIdleCompletions();
   req.on("close", () => {
     if (responded) return;
@@ -2162,11 +2438,13 @@ export async function postCompletionsStream(req, res) {
               }
             } catch {}
           }
+          const completionsCtx = getHttpContext(res);
           appendUsage({
-            ts: Date.now(),
             req_id: reqId,
-            route: "/v1/completions",
-            method: "POST",
+            route: completionsCtx.route || "/v1/completions",
+            mode: completionsCtx.mode || "completions_stream",
+            method: req.method || "POST",
+            status_code: 200,
             requested_model: requestedModel,
             effective_model: effectiveModel,
             stream: true,
@@ -2177,6 +2455,7 @@ export async function postCompletionsStream(req, res) {
             status: 200,
             user_agent: req.headers["user-agent"] || "",
           });
+          markCompletionsResponded();
           finishSSE();
           return;
         }
@@ -2201,7 +2480,7 @@ export async function postCompletionsStream(req, res) {
   });
   child.on("close", (_code) => {
     clearTimeout(timeout);
-    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    cancelIdleCompletions();
     // If not completed via task_complete, still finish stream
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
