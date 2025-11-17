@@ -25,7 +25,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
-- Dev vs Prod model IDs: advertises `codev-5*` in dev, `codex-5*` in prod; accepts both prefixes everywhere.
+- Dev vs Prod model IDs: dev advertises `codev-5*` plus `gpt-5.1-codev-{L,M,H}` (map to `gpt-5.1` low/medium/high); prod advertises `codex-5*`. Both prefixes are accepted everywhere.
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
@@ -36,7 +36,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Prerequisites
 
 - Node.js ≥ 22 and npm 10+
-- Codex CLI ≥ 0.53.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
+- Codex CLI ≥ 0.58.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
 - Docker + Docker Compose v2 (optional but recommended for parity with production)
 - `curl`/`jq` for quick health checks
 - Legacy proto mode requires Codex CLI ≤ 0.44.x; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x) for details
@@ -112,7 +112,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Model selection
 
 - Production advertises `codex-5{,-low,-medium,-high,-minimal}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
-- Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5`) and applies the implied reasoning effort automatically.
+- Dev also exposes `gpt-5.1-codev-{L,M,H}` which map directly to `gpt-5.1` with implied low/medium/high reasoning effort (uppercase suffix is optional; IDs are case-insensitive).
+- Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5` or `gpt-5.1` for the new aliases) and applies the implied reasoning effort automatically.
 - Do not override `CODEX_MODEL` unless you are purposely testing unsupported combinations; let the proxy map inputs.
 
 ### Requests
@@ -221,7 +222,7 @@ Notes:
 #### Model IDs and client compatibility
 
 - Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`.
-- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`.
+- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`, plus `gpt-5.1-codev-{L,M,H}` which route to `gpt-5.1` automatically.
 - The server accepts both prefixes everywhere, but many SDKs/tools validate against `GET /v1/models` and will reject an ID that isn’t advertised by that environment. Use the environment‑appropriate prefix, or specify `model: "gpt-5"` and set `reasoning.effort`.
 
 Examples
@@ -264,10 +265,10 @@ Dev parity stack (public behind Traefik):
 Model IDs in dev vs prod:
 
 - Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`.
-- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`.
-- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5`) with the implied reasoning effort.
+- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`, plus `gpt-5.1-codev-{L,M,H}` which normalize to `gpt-5.1` at low/medium/high reasoning effort.
+- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5` for the `codex/codev-5*` aliases, `gpt-5.1` for `gpt-5.1-codev-*`) with the implied reasoning effort.
 - Do **not** override `CODEX_MODEL` in dev to force a specific reasoning tier. Leave it unset so the proxy maps
-  `codev-5-*` requests to `gpt-5` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
+  `codev-5-*` requests to `gpt-5` and `gpt-5.1-codev-*` requests to `gpt-5.1` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
   `400 Unsupported model` otherwise.
 
 Notes:
@@ -308,7 +309,7 @@ Build context hygiene:
 
 - `PROXY_USE_APP_SERVER=true` boots a worker supervisor that keeps one or more `codex app-server` processes alive.
 - Readiness hinges on the JSON-RPC `initialize` handshake; `/healthz` only reports ready once the worker has completed it.
-- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.53.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
+- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.58.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
 - Tune worker lifecycle with `WORKER_*_TIMEOUT_MS`, `PROXY_KILL_ON_DISCONNECT`, and `PROXY_WORKER_COUNT` when running on slower hardware or when you need multiple concurrent workers.
 
 ### Legacy proto mode (Codex CLI ≤ 0.44.x)

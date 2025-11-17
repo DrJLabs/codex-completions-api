@@ -1,14 +1,48 @@
 const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
+const DEV_BASE = "codev-5";
+const PROD_BASE = "codex-5";
+const GPT51_TARGET_MODEL = "gpt-5.1";
+const GPT51_VARIANTS = [
+  { suffix: "L", effort: "low" },
+  { suffix: "M", effort: "medium" },
+  { suffix: "H", effort: "high" },
+];
+
+const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
+
+const buildGpt51Models = (isDevEnv) =>
+  isDevEnv ? GPT51_VARIANTS.map(({ suffix }) => `gpt-5.1-codev-${suffix}`) : [];
 
 export function publicModelIds(isDevEnv) {
-  const base = isDevEnv ? "codev-5" : "codex-5";
-  return [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
+  const base = isDevEnv ? DEV_BASE : PROD_BASE;
+  return [...buildBaseModels(base), ...buildGpt51Models(isDevEnv)];
 }
 
+export const MODEL_TARGET_OVERRIDES = (() => {
+  const map = new Map();
+  for (const variant of GPT51_VARIANTS) {
+    const key = `gpt-5.1-codev-${variant.suffix.toLowerCase()}`;
+    map.set(key, GPT51_TARGET_MODEL);
+  }
+  return map;
+})();
+
+export const MODEL_REASONING_OVERRIDES = (() => {
+  const map = new Map();
+  for (const variant of GPT51_VARIANTS) {
+    const key = `gpt-5.1-codev-${variant.suffix.toLowerCase()}`;
+    map.set(key, variant.effort);
+  }
+  return map;
+})();
+
 export function acceptedModelIds(defaultModel = "gpt-5") {
-  const dev = publicModelIds(true);
-  const prod = publicModelIds(false);
-  return new Set([...dev, ...prod, defaultModel]);
+  const dev = publicModelIds(true).map((id) => id.toLowerCase());
+  const prod = publicModelIds(false).map((id) => id.toLowerCase());
+  const normalizedDefault = String(defaultModel || "").toLowerCase();
+  const values = [...dev, ...prod];
+  if (normalizedDefault) values.push(normalizedDefault);
+  return new Set(values);
 }
 
 export { REASONING_VARIANTS };

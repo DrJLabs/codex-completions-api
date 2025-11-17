@@ -63,7 +63,7 @@
 - scripts/smoke/*.sh &amp; scripts/test-live.sh — smoke and live harnesses invoked before pushes; new tracing flags must keep these scripts passing without extra env setup. _[Source: scripts/dev-smoke.sh; scripts/prod-smoke.sh; scripts/test-live.sh]_
 </code>
     <dependencies>- Node.js ≥22 runtime with ECMAScript modules per `package.json` `engines.node`. _[Source: package.json]_
-- `express@^4.21.2` for routing/middleware, `nanoid@^5.1.6` for req ids/stream ids, and `@openai/codex@0.57.0` supplying the Codex CLI/app-server entrypoints. _[Source: package.json]_
+- `express@^4.21.2` for routing/middleware, `nanoid@^5.1.6` for req ids/stream ids, and `@openai/codex@0.58.0` supplying the Codex CLI/app-server entrypoints. _[Source: package.json]_
 - Dev tooling: `vitest@^4`, `@playwright/test@^1.56.1`, `@eslint/eslintrc`, `eslint@^9.38.0`, `prettier@^3.3.3`, `secretlint@^11.2.5`, Husky + lint-staged hooks enforced via `npm run verify:all`. _[Source: package.json]_
 - Scripts rely on `bash`, Docker/Compose (`compose.dev.stack.yml`, `docker-compose.yml`), and the Codex CLI environment variables (`CODEX_HOME`, `PROXY_CODEX_WORKDIR`, `PROXY_ENV`, `PROXY_API_KEY`). _[Source: package.json; docker-compose.yml]_
 </dependencies>
