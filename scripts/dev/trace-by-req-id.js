@@ -1,7 +1,25 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { PROTO_LOG_PATH, TOKEN_LOG_PATH } from "../../src/dev-logging.js";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(scriptDir, "../..");
+
+const SAFE_BASE_DIRS = [PROJECT_ROOT, path.resolve(os.tmpdir())];
+
+const isWithinBase = (base, candidate) => {
+  const relative = path.relative(base, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
+const isAllowedOverridePath = (candidatePath) => {
+  const resolved = path.resolve(candidatePath);
+  return SAFE_BASE_DIRS.some((base) => isWithinBase(base, resolved));
+};
 
 function parseArgs(argv) {
   const entries = new Map();
@@ -35,18 +53,23 @@ function parseJsonLines(contents) {
     .filter(Boolean);
 }
 
-async function loadLog(pathName) {
+async function loadLog(pathName, { enforceSafeBase = false } = {}) {
   if (!pathName) return [];
+  const resolvedPath = path.resolve(pathName);
+  if (enforceSafeBase && !isAllowedOverridePath(resolvedPath)) {
+    console.warn(`[trace] refusing to read path outside trusted directories: ${pathName}`);
+    return [];
+  }
   try {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CLI-provided log path
-    const contents = await fs.readFile(pathName, "utf8");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- validated log path
+    const contents = await fs.readFile(resolvedPath, "utf8");
     return parseJsonLines(contents);
   } catch (err) {
     if (err && err.code === "ENOENT") {
-      console.warn(`[trace] log not found at ${pathName}`);
+      console.warn(`[trace] log not found at ${resolvedPath}`);
       return [];
     }
-    console.warn(`[trace] failed to read ${pathName}:`, err?.message || err);
+    console.warn(`[trace] failed to read ${resolvedPath}:`, err?.message || err);
     return [];
   }
 }
@@ -54,7 +77,11 @@ async function loadLog(pathName) {
 function normalizeTs(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : Date.now();
+  if (!Number.isFinite(parsed)) {
+    console.warn(`[trace] invalid timestamp: ${value}, using current time`);
+    return Date.now();
+  }
+  return parsed;
 }
 
 function formatEvent(event) {
@@ -73,14 +100,17 @@ async function main() {
     );
     process.exit(1);
   }
+  const accessOverride = Boolean(argv["access-log"]);
+  const protoOverride = Boolean(argv["proto-log"]);
+  const usageOverride = Boolean(argv["usage-log"]);
   const accessPath = argv["access-log"] || process.env.ACCESS_LOG_PATH || "";
   const protoPath = argv["proto-log"] || PROTO_LOG_PATH;
   const usagePath = argv["usage-log"] || TOKEN_LOG_PATH;
 
   const [accessEntries, protoEntries, usageEntries] = await Promise.all([
-    loadLog(accessPath),
-    loadLog(protoPath),
-    loadLog(usagePath),
+    loadLog(accessPath, { enforceSafeBase: accessOverride }),
+    loadLog(protoPath, { enforceSafeBase: protoOverride }),
+    loadLog(usagePath, { enforceSafeBase: usageOverride }),
   ]);
 
   const filtered = [];

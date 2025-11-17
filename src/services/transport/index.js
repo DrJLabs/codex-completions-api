@@ -184,6 +184,11 @@ class JsonRpcTransport {
     }
   }
 
+  #clearRpcTrace(rpcId) {
+    if (rpcId === null || rpcId === undefined) return;
+    this.rpcTraceById.delete(rpcId);
+  }
+
   destroy() {
     this.destroyed = true;
     this.unsubscribeSpawn?.();
@@ -230,6 +235,7 @@ class JsonRpcTransport {
       const rpcId = this.#nextRpcId();
       const timeout = setTimeout(() => {
         this.pending.delete(rpcId);
+        this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
         reject(
           new TransportError("JSON-RPC handshake timed out", {
@@ -249,6 +255,7 @@ class JsonRpcTransport {
             models: this.#extractAdvertisedModels(result),
           };
           this.pending.delete(rpcId);
+          this.#clearRpcTrace(rpcId);
           this.handshakePromise = null;
           const recorder = this.supervisor?.recordHandshakeSuccess;
           if (typeof recorder === "function") {
@@ -263,6 +270,7 @@ class JsonRpcTransport {
         reject: (err) => {
           clearTimeout(timeout);
           this.pending.delete(rpcId);
+          this.#clearRpcTrace(rpcId);
           this.handshakePromise = null;
           const recorder = this.supervisor?.recordHandshakeFailure;
           if (typeof recorder === "function") {
@@ -295,6 +303,7 @@ class JsonRpcTransport {
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(rpcId);
+        this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
         const recorder = this.supervisor?.recordHandshakeFailure;
         if (typeof recorder === "function") {
@@ -490,6 +499,7 @@ class JsonRpcTransport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(rpcId);
+        this.#clearRpcTrace(rpcId);
         reject(
           new TransportError(`${method} timeout`, {
             code: "worker_request_timeout",
@@ -518,6 +528,7 @@ class JsonRpcTransport {
       } catch (err) {
         clearTimeout(timeout);
         this.pending.delete(rpcId);
+        this.#clearRpcTrace(rpcId);
         reject(err instanceof Error ? err : new TransportError(String(err)));
       }
     });
@@ -536,6 +547,7 @@ class JsonRpcTransport {
     context.rpc.messageId = messageRpcId;
     const timeout = setTimeout(() => {
       this.pending.delete(messageRpcId);
+      this.#clearRpcTrace(messageRpcId);
       this.#failContext(
         context,
         new TransportError("sendUserMessage timeout", {
@@ -551,6 +563,7 @@ class JsonRpcTransport {
       resolve: (result) => {
         clearTimeout(timeout);
         this.pending.delete(messageRpcId);
+        this.#clearRpcTrace(messageRpcId);
         context.setResult(result);
         const finishReason = result?.finish_reason || result?.status;
         context.setFinishReason(finishReason);
@@ -559,6 +572,7 @@ class JsonRpcTransport {
       reject: (err) => {
         clearTimeout(timeout);
         this.pending.delete(messageRpcId);
+        this.#clearRpcTrace(messageRpcId);
         this.#failContext(
           context,
           err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -596,9 +610,7 @@ class JsonRpcTransport {
     } catch (err) {
       clearTimeout(timeout);
       this.pending.delete(messageRpcId);
-      if (context.trace) {
-        this.rpcTraceById.delete(messageRpcId);
-      }
+      this.#clearRpcTrace(messageRpcId);
       this.#failContext(
         context,
         err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -619,6 +631,7 @@ class JsonRpcTransport {
       if (pending.context !== context) continue;
       clearTimeout(pending.timeout);
       this.pending.delete(rpcId);
+      this.#clearRpcTrace(rpcId);
       try {
         pending.reject?.(reason);
       } catch (err) {
@@ -642,6 +655,7 @@ class JsonRpcTransport {
     context.rpc.turnId = turnRpcId;
     const timeout = setTimeout(() => {
       this.pending.delete(turnRpcId);
+      this.#clearRpcTrace(turnRpcId);
       this.#failContext(
         context,
         new TransportError("sendUserTurn timeout", {
@@ -657,6 +671,7 @@ class JsonRpcTransport {
       resolve: (result) => {
         clearTimeout(timeout);
         this.pending.delete(turnRpcId);
+        this.#clearRpcTrace(turnRpcId);
         const serverConversationId = result?.conversation_id || result?.conversationId || null;
         if (serverConversationId) {
           context.conversationId = String(serverConversationId);
@@ -669,6 +684,7 @@ class JsonRpcTransport {
       reject: (err) => {
         clearTimeout(timeout);
         this.pending.delete(turnRpcId);
+        this.#clearRpcTrace(turnRpcId);
         this.#failContext(
           context,
           err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -700,9 +716,7 @@ class JsonRpcTransport {
     } catch (err) {
       clearTimeout(timeout);
       this.pending.delete(turnRpcId);
-      if (context.trace) {
-        this.rpcTraceById.delete(turnRpcId);
-      }
+      this.#clearRpcTrace(turnRpcId);
       this.#failContext(
         context,
         err instanceof Error ? err : new TransportError(String(err), { retryable: true })
@@ -813,7 +827,7 @@ class JsonRpcTransport {
     clearTimeout(pending.timeout);
     this.pending.delete(message.id);
     const trace = pending.context?.trace || this.rpcTraceById.get(message.id);
-    this.rpcTraceById.delete(message.id);
+    this.#clearRpcTrace(message.id);
     if (message.error) {
       const errMessage = message.error?.message || "JSON-RPC error";
       const error = new TransportError(errMessage, {

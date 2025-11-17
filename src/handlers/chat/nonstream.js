@@ -772,7 +772,7 @@ export async function postChatNonStream(req, res) {
           normalizedRequest,
           trace: nonStreamTrace,
         })
-      : spawnCodex(args);
+      : spawnCodex(args, { reqId });
   if (SANITIZE_METADATA) {
     appendProtoEvent({
       ts: Date.now(),
@@ -1427,7 +1427,7 @@ export async function postCompletionsNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
-  const child = spawnCodex(args);
+  const child = spawnCodex(args, { reqId });
   let out = "",
     err = "";
 
