@@ -2132,7 +2132,7 @@ export async function postCompletionsStream(req, res) {
       console.log("[proxy] child error (completions):", error?.message || String(error));
     } catch {}
     if (responded) return;
-    responded = true;
+    markCompletionsResponded();
     try {
       clearTimeout(timeout);
     } catch {}
@@ -2175,9 +2175,16 @@ export async function postCompletionsStream(req, res) {
   }, REQ_TIMEOUT_MS);
 
   let idleTimerCompletions;
+  function cancelIdleCompletions() {
+    if (idleTimerCompletions) {
+      clearTimeout(idleTimerCompletions);
+      idleTimerCompletions = null;
+    }
+  }
   const resetIdleCompletions = () => {
-    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    cancelIdleCompletions();
     idleTimerCompletions = setTimeout(() => {
+      idleTimerCompletions = null;
       if (responded) return;
       try {
         console.log("[proxy] completions idle timeout; terminating child");
@@ -2204,12 +2211,16 @@ export async function postCompletionsStream(req, res) {
         requestedModel,
         effectiveModel,
       });
-      responded = true;
+      markCompletionsResponded();
       try {
         child.kill("SIGTERM");
       } catch {}
     }, STREAM_IDLE_TIMEOUT_MS);
   };
+  function markCompletionsResponded() {
+    responded = true;
+    cancelIdleCompletions();
+  }
   resetIdleCompletions();
   req.on("close", () => {
     if (responded) return;
@@ -2444,6 +2455,7 @@ export async function postCompletionsStream(req, res) {
             status: 200,
             user_agent: req.headers["user-agent"] || "",
           });
+          markCompletionsResponded();
           finishSSE();
           return;
         }
@@ -2468,7 +2480,7 @@ export async function postCompletionsStream(req, res) {
   });
   child.on("close", (_code) => {
     clearTimeout(timeout);
-    if (idleTimerCompletions) clearTimeout(idleTimerCompletions);
+    cancelIdleCompletions();
     // If not completed via task_complete, still finish stream
     if (!sentAny) {
       const content = stripAnsi(out).trim() || "No output from backend.";
