@@ -569,7 +569,11 @@ export async function postChatStream(req, res) {
         normalizedRequest,
         trace: traceContext,
       })
-    : spawnCodex(args, { reqId });
+    : spawnCodex(args, {
+        reqId,
+        route: traceContext.route,
+        mode: traceContext.mode,
+      });
 
   const onChildError = (error) => {
     try {
@@ -2118,7 +2122,11 @@ export async function postCompletionsStream(req, res) {
   const child =
     backendMode === BACKEND_APP_SERVER
       ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS, trace: completionsTrace })
-      : spawnCodex(args, { reqId });
+      : spawnCodex(args, {
+          reqId,
+          route: completionsTrace.route,
+          mode: completionsTrace.mode,
+        });
   const onChildError = (error) => {
     try {
       console.log("[proxy] child error (completions):", error?.message || String(error));

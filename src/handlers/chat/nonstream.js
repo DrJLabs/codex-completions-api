@@ -248,6 +248,17 @@ const logUsageFailure = ({
   }
 };
 
+const resolveEmissionTrigger = (trail, fallback = "error") => {
+  if (!Array.isArray(trail) || trail.length === 0) return fallback;
+  const last = trail[trail.length - 1];
+  if (!last) return fallback;
+  if (typeof last === "string") return last || fallback;
+  if (typeof last === "object") {
+    return last.canonical || last.raw || last.source || fallback;
+  }
+  return fallback;
+};
+
 const buildInvalidChoiceError = (value) =>
   invalidRequestBody(
     "n",
@@ -772,7 +783,11 @@ export async function postChatNonStream(req, res) {
           normalizedRequest,
           trace: nonStreamTrace,
         })
-      : spawnCodex(args, { reqId });
+      : spawnCodex(args, {
+          reqId,
+          route: nonStreamTrace.route,
+          mode: nonStreamTrace.mode,
+        });
   if (SANITIZE_METADATA) {
     appendProtoEvent({
       ts: Date.now(),
@@ -1049,6 +1064,7 @@ export async function postChatNonStream(req, res) {
     applyCors(null, res);
 
     if (statusCode !== 200 && errorBody) {
+      const emissionTrigger = resolveEmissionTrigger(reasonTrail);
       logUsageFailure({
         req,
         res,
@@ -1057,7 +1073,7 @@ export async function postChatNonStream(req, res) {
         route: "/v1/chat/completions",
         mode: "chat_nonstream",
         statusCode,
-        reason: reasonTrail[reasonTrail.length - 1] || "error",
+        reason: emissionTrigger,
         errorCode: errorBody?.error?.code,
         requestedModel,
         effectiveModel,
@@ -1427,7 +1443,11 @@ export async function postCompletionsNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
-  const child = spawnCodex(args, { reqId });
+  const child = spawnCodex(args, {
+    reqId,
+    route: "/v1/completions",
+    mode: "completions_nonstream",
+  });
   let out = "",
     err = "";
 

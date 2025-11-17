@@ -11,6 +11,22 @@ const base = (trace = {}) => ({
 const hasTrace = (trace) =>
   Boolean(trace && (trace.reqId || trace.req_id || trace.route || trace.mode));
 
+const nestedToolPayload = (params) => {
+  if (!params || typeof params !== "object") return null;
+  if (params.tool_calls) return params.tool_calls;
+  if (params.tool_call) return params.tool_call;
+  const nestedSources = [params.msg, params.message, params.data?.msg, params.data?.message];
+  for (const candidate of nestedSources) {
+    if (candidate && typeof candidate === "object") {
+      if (candidate.tool_calls) return candidate.tool_calls;
+      if (candidate.tool_call) return candidate.tool_call;
+      if (candidate.kind === "tool_call" && candidate.payload) return candidate.payload;
+    }
+  }
+  if (params.kind === "tool_call" && params.payload) return params.payload;
+  return null;
+};
+
 export function logBackendSubmission(trace, { rpcId, method, params }) {
   if (!hasTrace(trace)) return;
   appendProtoEvent({
@@ -51,29 +67,37 @@ export function logBackendNotification(trace, { method, params }) {
     payload,
     ...base(trace),
   });
-  if (params && (params.tool_calls || params.tool_call || params.kind === "tool_call")) {
+  const toolPayload = nestedToolPayload(params);
+  if (toolPayload) {
     appendProtoEvent({
       ts: Date.now(),
       phase: "backend_io",
       direction: "inbound",
       kind: "tool_block",
       notification_method: method,
-      payload: sanitizeRpcPayload(params.tool_calls || params.tool_call || params),
+      payload: sanitizeRpcPayload(toolPayload),
       ...base(trace),
     });
   }
 }
 
 export function logBackendLifecycle(event, detail = {}) {
+  const {
+    req_id: reqIdFromDetail = null,
+    reqId = null,
+    route = null,
+    mode = null,
+    ...rest
+  } = detail || {};
   appendProtoEvent({
     ts: Date.now(),
     phase: "backend_lifecycle",
     direction: "none",
     kind: event,
-    payload: detail,
-    req_id: null,
-    route: null,
-    mode: null,
+    payload: rest,
+    req_id: reqIdFromDetail ?? reqId ?? null,
+    route,
+    mode,
   });
 }
 
