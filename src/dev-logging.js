@@ -37,6 +37,19 @@ export const PROTO_LOG_PATH =
 export const SANITIZER_LOG_PATH = resolveSanitizerLogPath(process.env.SANITIZER_LOG_PATH);
 export const LOG_PROTO =
   IS_DEV_ENV && String(process.env.PROXY_LOG_PROTO || "true").toLowerCase() !== "false";
+const TRACE_REQUIRED_FLAG = String(
+  process.env.PROXY_TRACE_REQUIRED || (IS_DEV_ENV ? "true" : "false")
+)
+  .trim()
+  .toLowerCase();
+export const TRACE_REQUIRED = TRACE_REQUIRED_FLAG === "true" || TRACE_REQUIRED_FLAG === "1";
+
+if (TRACE_REQUIRED && !LOG_PROTO) {
+  console.error(
+    "[dev-logging] PROXY_TRACE_REQUIRED enabled but LOG_PROTO is disabled. Set PROXY_LOG_PROTO=true or PROXY_TRACE_REQUIRED=false."
+  );
+  throw new Error("Tracing is required in this environment but LOG_PROTO is disabled.");
+}
 
 // Ensure directories exist on module load
 try {
@@ -101,7 +114,15 @@ export const __whenAppendIdle = (filePath) => {
 };
 
 export const appendUsage = (obj = {}) => {
-  appendJsonLine(TOKEN_LOG_PATH, obj);
+  const payload = {
+    ts: Date.now(),
+    phase: "usage_summary",
+    ...obj,
+  };
+  if (!Object.prototype.hasOwnProperty.call(payload, "req_id")) {
+    payload.req_id = null;
+  }
+  appendJsonLine(TOKEN_LOG_PATH, payload);
 };
 
 export const appendProtoEvent = (obj = {}) => {

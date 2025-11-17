@@ -6,6 +6,8 @@ const ORIGINAL_REQUEST_TIMEOUT = process.env.WORKER_REQUEST_TIMEOUT_MS;
 
 process.env.WORKER_HANDSHAKE_TIMEOUT_MS = "20";
 process.env.WORKER_REQUEST_TIMEOUT_MS = "20";
+const ORIGINAL_TRACE_BODY_LIMIT = process.env.PROXY_TRACE_BODY_LIMIT;
+process.env.PROXY_TRACE_BODY_LIMIT = "64";
 
 const supervisorMock = {
   waitForReady: vi.fn(() => Promise.resolve()),
@@ -16,6 +18,9 @@ const state = {
   child: null,
   handlers: new Map(),
 };
+
+const appendProtoEvent = vi.fn();
+vi.mock("../../../src/dev-logging.js", () => ({ appendProtoEvent }));
 
 vi.mock("../../../src/services/backend-mode.js", () => ({
   selectBackendMode: vi.fn(() => "app-server"),
@@ -67,6 +72,50 @@ function createMockChild() {
   };
 }
 
+const flushAsync = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function wireJsonResponder(child, handler) {
+  let buffer = "";
+  child.stdin.on("data", (chunk) => {
+    buffer += chunk.toString();
+    while (buffer.includes("\n")) {
+      const newlineIndex = buffer.indexOf("\n");
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+      if (!line) continue;
+      const payload = JSON.parse(line);
+      handler(payload);
+    }
+  });
+}
+
+const writeRpcResult = (child, id, payload) => {
+  child.stdout.write(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      ...payload,
+    }) + "\n"
+  );
+};
+
+const writeRpcNotification = (child, method, params) => {
+  child.stdout.write(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      method,
+      params,
+    }) + "\n"
+  );
+};
+
+const waitForProtoEvents = async (minCount) => {
+  const deadline = Date.now() + 500;
+  while (appendProtoEvent.mock.calls.length < minCount && Date.now() < deadline) {
+    await flushAsync();
+  }
+};
+
 beforeEach(() => {
   resetJsonRpcTransport();
   __setChild(null);
@@ -74,6 +123,7 @@ beforeEach(() => {
   state.handlers = new Map();
   supervisorMock.waitForReady.mockResolvedValue();
   vi.clearAllMocks();
+  appendProtoEvent.mockReset();
   CFG.WORKER_MAX_CONCURRENCY = ORIGINAL_MAX_CONCURRENCY;
 });
 
@@ -133,6 +183,11 @@ afterAll(() => {
     delete process.env.WORKER_REQUEST_TIMEOUT_MS;
   } else {
     process.env.WORKER_REQUEST_TIMEOUT_MS = ORIGINAL_REQUEST_TIMEOUT;
+  }
+  if (ORIGINAL_TRACE_BODY_LIMIT === undefined) {
+    delete process.env.PROXY_TRACE_BODY_LIMIT;
+  } else {
+    process.env.PROXY_TRACE_BODY_LIMIT = ORIGINAL_TRACE_BODY_LIMIT;
   }
 });
 
@@ -450,5 +505,148 @@ describe("JsonRpcTransport request lifecycle", () => {
     const replacementPending = replacement.promise.catch((err) => err);
     transport.cancelContext(replacement);
     await expect(replacementPending).resolves.toMatchObject({ code: "request_aborted" });
+  });
+});
+
+describe("trace logging instrumentation", () => {
+  it("logs backend submissions, responses, and notifications with sanitized payloads", async () => {
+    const child = createMockChild();
+    const conversationId = "conv-trace";
+    const trace = { reqId: "req-trace", route: "/v1/chat/completions", mode: "chat_stream" };
+
+    wireJsonResponder(child, (message) => {
+      switch (message.method) {
+        case "initialize":
+          writeRpcResult(child, message.id, { result: { advertised_models: ["codex-5"] } });
+          break;
+        case "newConversation":
+          writeRpcResult(child, message.id, { result: { conversation_id: conversationId } });
+          break;
+        case "addConversationListener":
+          writeRpcResult(child, message.id, { result: { subscription_id: "sub-trace" } });
+          break;
+        case "sendUserTurn":
+          writeRpcResult(child, message.id, { result: { conversation_id: conversationId } });
+          setTimeout(() => {
+            const heavy = "x".repeat(256);
+            writeRpcNotification(child, "codex/event/agent_message", {
+              conversation_id: conversationId,
+              request_id: "ctx-trace",
+              msg: {
+                metadata: { chunk: heavy },
+                tool_calls: [
+                  {
+                    type: "function",
+                    function: { name: "diagnostics", arguments: JSON.stringify({ blob: heavy }) },
+                  },
+                ],
+              },
+            });
+            writeRpcNotification(child, "codex/event/task_complete", {
+              conversation_id: conversationId,
+              msg: { finish_reason: "stop" },
+            });
+          }, 0);
+          break;
+        default:
+          break;
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-trace",
+      timeoutMs: 50,
+      turnParams: { model: "codex-5" },
+      trace,
+    });
+
+    await waitForProtoEvents(8);
+
+    const events = appendProtoEvent.mock.calls.map(([payload]) => payload);
+    const rpcRequest = events.find(
+      (event) => event.kind === "rpc_request" && event.method === "sendUserTurn"
+    );
+    expect(rpcRequest).toBeTruthy();
+    expect(rpcRequest.req_id).toBe(trace.reqId);
+
+    const rpcResponse = events.find(
+      (event) => event.kind === "rpc_response" && event.method === "sendUserTurn"
+    );
+    expect(rpcResponse).toBeTruthy();
+    expect(rpcResponse.rpc_id).toBe(rpcRequest.rpc_id);
+    expect(rpcResponse.req_id).toBe(trace.reqId);
+
+    const notification = events.find(
+      (event) =>
+        event.kind === "rpc_notification" &&
+        event.notification_method === "codex/event/agent_message"
+    );
+    expect(notification).toBeTruthy();
+    expect(notification.req_id).toBe(trace.reqId);
+    expect(notification.payload).toMatchObject({ truncated: true });
+
+    const toolBlock = events.find((event) => event.kind === "tool_block");
+    expect(toolBlock).toBeTruthy();
+    expect(toolBlock.req_id).toBe(trace.reqId);
+    expect(toolBlock.payload).toMatchObject({ truncated: true });
+
+    transport.cancelContext(context);
+    await context.promise.catch(() => {});
+  });
+
+  it("logs rpc_error events with consistent req_id mapping", async () => {
+    const child = createMockChild();
+    const trace = { reqId: "req-error", route: "/v1/chat/completions", mode: "chat_stream" };
+
+    wireJsonResponder(child, (message) => {
+      switch (message.method) {
+        case "initialize":
+          writeRpcResult(child, message.id, { result: { advertised_models: ["codex-5"] } });
+          break;
+        case "newConversation":
+          writeRpcResult(child, message.id, { result: { conversation_id: "conv-error" } });
+          break;
+        case "addConversationListener":
+          writeRpcResult(child, message.id, { result: { subscription_id: "sub-error" } });
+          break;
+        case "sendUserTurn":
+          writeRpcResult(child, message.id, {
+            error: {
+              code: 500,
+              message: "worker exploded",
+              data: { detail: "z".repeat(256) },
+            },
+          });
+          break;
+        default:
+          break;
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-error",
+      timeoutMs: 50,
+      turnParams: { model: "codex-5" },
+      trace,
+    });
+
+    await expect(context.promise).rejects.toBeInstanceOf(TransportError);
+    await waitForProtoEvents(6);
+
+    const events = appendProtoEvent.mock.calls.map(([payload]) => payload);
+    const rpcRequest = [...events]
+      .reverse()
+      .find((event) => event.kind === "rpc_request" && event.method === "sendUserTurn");
+    expect(rpcRequest).toBeTruthy();
+
+    const rpcError = events.find((event) => event.kind === "rpc_error");
+    expect(rpcError).toBeTruthy();
+    expect(rpcError.rpc_id).toBe(rpcRequest.rpc_id);
+    expect(rpcError.req_id).toBe(trace.reqId);
+    expect(rpcError.payload).toMatchObject({ truncated: true });
   });
 });

@@ -17,6 +17,7 @@ bmad-bak/
 .bmad/
 .bmad-core/
 .bmad-infrastructure-devops/
+.bmad-ephemeral/
 .serena/
 external/*
 !external/codex
