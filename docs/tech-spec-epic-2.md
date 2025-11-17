@@ -186,5 +186,5 @@ Story 2.11 layers deterministic tracing on top of the parity foundation. Chat/c
 ## Post-Review Follow-ups
 
 - [Resolved 2025-11-01] High priority — Story 2.1: Reinstate strict pin of `@openai/codex` to 0.53.0 in dependencies and lockfile to preserve deterministic schema regeneration.
-- [Open 2025-11-16] Story 2.11: Ensure `logHttpRequest` fires immediately after JSON parsing (before validation or auth exits) in all chat/completions handlers so even unauthorized requests produce `phase:"http_ingress"` traces (current implementation still sits behind the API-key guard).
-- [Open 2025-11-16] Story 2.11: Emit `appendUsage` entries (req_id/route/method/mode/status_code) for every exit path—including auth failures and validation/transport errors—so `/v1/usage/raw` stays joinable with HTTP ingress traces per Phase 5 of the tracing plan.
+- [Resolved 2025-11-16] Story 2.11: Ensure `logHttpRequest` fires immediately after JSON parsing (before validation or auth exits) in all chat/completions handlers so even unauthorized requests produce `phase:"http_ingress"` traces (current implementation still sits behind the API-key guard).
+- [Resolved 2025-11-16] Story 2.11: Emit `appendUsage` entries (req_id/route/method/mode/status_code) for every exit path—including auth failures and validation/transport errors—so `/v1/usage/raw` stays joinable with HTTP ingress traces per Phase 5 of the tracing plan.

@@ -15,28 +15,38 @@ export const codexHome = CFG.CODEX_HOME;
 export const codexWorkdir = CFG.PROXY_CODEX_WORKDIR;
 
 export function spawnCodex(args = [], options = {}) {
+  const { reqId = null, ...spawnOptions } = options;
   try {
     // Ensure working directory exists before spawning child process
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- codexWorkdir from config, not request
-    fs.mkdirSync(options.cwd || codexWorkdir, { recursive: true });
+    fs.mkdirSync(spawnOptions.cwd || codexWorkdir, { recursive: true });
   } catch (e) {
-    console.error(`[codex-runner] failed to ensure workdir at ${options.cwd || codexWorkdir}:`, e);
+    console.error(
+      `[codex-runner] failed to ensure workdir at ${spawnOptions.cwd || codexWorkdir}:`,
+      e
+    );
   }
+  const childEnv = { ...process.env, CODEX_HOME: codexHome, ...(spawnOptions.env || {}) };
+  const childCwd = spawnOptions.cwd || codexWorkdir;
   const child = spawn(resolvedCodexBin, args, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, CODEX_HOME: codexHome, ...(options.env || {}) },
-    cwd: options.cwd || codexWorkdir,
+    env: childEnv,
+    cwd: childCwd,
   });
+  const lifecycleBase = {
+    req_id: reqId || null,
+    pid: child.pid || null,
+  };
   try {
     logBackendLifecycle("backend_start", {
-      pid: child.pid || null,
+      ...lifecycleBase,
       argv: Array.isArray(args) ? args.slice(0, 8) : [],
-      cwd: options.cwd || codexWorkdir,
+      cwd: childCwd,
     });
   } catch {}
   child.on("exit", (code, signal) => {
     try {
-      logBackendLifecycle("backend_exit", { pid: child.pid || null, code, signal });
+      logBackendLifecycle("backend_exit", { ...lifecycleBase, code, signal });
     } catch {}
   });
   try {

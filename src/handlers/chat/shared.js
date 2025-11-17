@@ -1,5 +1,7 @@
 import { invalidRequestBody } from "../../lib/errors.js";
 
+const PROJECT_DOC_MAX_BYTES = 65536;
+
 export function buildProtoArgs({
   SANDBOX_MODE,
   effectiveModel,
@@ -13,7 +15,7 @@ export function buildProtoArgs({
     "--config",
     'preferred_auth_method="chatgpt"',
     "--config",
-    "project_doc_max_bytes=65536",
+    `project_doc_max_bytes=${PROJECT_DOC_MAX_BYTES}`,
     "--config",
     'history.persistence="none"',
     "--config",
