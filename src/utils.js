@@ -143,7 +143,15 @@ export const normalizeModel = (
   const overrideTarget = MODEL_TARGET_OVERRIDES.get(lower);
   const effective = overrideTarget || defaultModel;
   if (lower === "codex-5") return { requested: "codex-5", effective };
-  if (publicIds.includes(lower)) return { requested: lower, effective };
+  const normalizedIds = (() => {
+    if (!publicIds) return new Set();
+    if (publicIds instanceof Set)
+      return new Set(Array.from(publicIds, (value) => String(value).toLowerCase()));
+    if (Array.isArray(publicIds))
+      return new Set(publicIds.map((value) => String(value).toLowerCase()));
+    return new Set([String(publicIds).toLowerCase()]);
+  })();
+  if (normalizedIds.has(lower)) return { requested: lower, effective };
   return { requested: raw, effective: raw };
 };
 

@@ -18,23 +18,20 @@ export function publicModelIds(isDevEnv) {
   return [...buildBaseModels(base), ...buildGpt51Models(isDevEnv)];
 }
 
-export const MODEL_TARGET_OVERRIDES = (() => {
-  const map = new Map();
-  for (const variant of GPT51_VARIANTS) {
-    const key = `gpt-5.1-codev-${variant.suffix.toLowerCase()}`;
-    map.set(key, GPT51_TARGET_MODEL);
+const buildOverrideMaps = () => {
+  const target = new Map();
+  const reasoning = new Map();
+  for (const { suffix, effort } of GPT51_VARIANTS) {
+    const key = `gpt-5.1-codev-${suffix.toLowerCase()}`;
+    target.set(key, GPT51_TARGET_MODEL);
+    reasoning.set(key, effort);
   }
-  return map;
-})();
+  return { target, reasoning };
+};
 
-export const MODEL_REASONING_OVERRIDES = (() => {
-  const map = new Map();
-  for (const variant of GPT51_VARIANTS) {
-    const key = `gpt-5.1-codev-${variant.suffix.toLowerCase()}`;
-    map.set(key, variant.effort);
-  }
-  return map;
-})();
+const overrides = buildOverrideMaps();
+export const MODEL_TARGET_OVERRIDES = overrides.target;
+export const MODEL_REASONING_OVERRIDES = overrides.reasoning;
 
 export function acceptedModelIds(defaultModel = "gpt-5") {
   const dev = publicModelIds(true).map((id) => id.toLowerCase());
