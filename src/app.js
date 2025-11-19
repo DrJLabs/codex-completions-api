@@ -10,6 +10,7 @@ import responsesRouter from "./routes/responses.js";
 import usageRouter from "./routes/usage.js";
 import rateLimit from "./middleware/rate-limit.js";
 import { guardSnapshot } from "./services/concurrency-guard.js";
+import { toolBufferMetrics } from "./services/metrics/chat.js";
 
 export default function createApp() {
   const app = express();
@@ -84,6 +85,13 @@ export default function createApp() {
       } catch (error) {
         return res.status(500).json({ ok: false, error: error?.message || String(error) });
       }
+    });
+    app.get("/__test/tool-buffer-metrics", (_req, res) => {
+      res.json({ ok: true, summary: toolBufferMetrics.summary() });
+    });
+    app.post("/__test/tool-buffer-metrics/reset", (_req, res) => {
+      toolBufferMetrics.reset();
+      res.json({ ok: true });
     });
   }
   app.use(healthRouter());

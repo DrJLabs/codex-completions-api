@@ -350,6 +350,22 @@ So that every `/v1/chat|completions` request can be debugged by stitching saniti
 
 **Prerequisites:** Story 2.10
 
+**Story 2.12: Stream tool-call buffering for Obsidian mode**
+
+As an application developer,
+I want the streaming handler to buffer textual `<use_tool>` blocks until their closing tags arrive,
+So that Obsidian-mode clients only see each tool invocation once while structured `tool_calls[]` deltas remain unchanged.
+
+**Acceptance Criteria:**
+
+1. `src/handlers/chat/stream.js` tracks per-choice buffering state. When `<use_tool` is detected outside an active buffer, the handler pauses emission for that choice, accumulates incoming characters until `</use_tool>`, then forwards the canonical XML via `emitToolContentChunk()` exactly once before clearing the buffer.
+2. Nested or malformed `<use_tool>` markers log a warning, flush the current buffer safely, and restart buffering so the stream never deadlocks. Cleanup paths flush partial buffers verbatim (disconnects, backend aborts) to preserve whatever Codex produced.
+3. Buffered text still flows through the existing sanitizer/telemetry pipeline, and new counters (`tool_buffer_started`, `tool_buffer_flushed`, `tool_buffer_aborted`) feed ops dashboards via `/v1/usage`.
+4. Unit, integration, and Playwright specs reproduce chunked textual blocks like `.codev/proto-events.ndjson` request `HevrLsVQESL3K1M3_3dHi`, asserting a single textual `<use_tool>` SSE chunk, no duplicate aggregator replay, and proper finish sequencing.
+5. Documentation (`docs/tool-call-buffering-brief.md`, `docs/tech-spec-epic-2.md`, `docs/test-design-epic-2.md`) references the buffering design and test strategy.
+
+**Prerequisites:** Story 2.9
+
 ## Epic 3: Observability & Ops Hardening
 
 ### Expanded Goal

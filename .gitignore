@@ -76,3 +76,7 @@ releases/*.latest.path
 
 # Ensure example env remains tracked even with broader patterns above
 !.env.example
+
+# Local helper scripts
+scripts/watch-docs-sync.sh
+scripts/sync-docs-to-vault.sh

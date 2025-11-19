@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-- Scope now covers the tool-call surface required by Stories **2.8–2.10**: the pure `ToolCallAggregator`, streaming/non-stream handler integration, and regression/smoke coverage across structured and textual flows described in `docs/codex-proxy-tool-calls.md`.
+- Scope now covers the tool-call surface required by Stories **2.8–2.12**: the pure `ToolCallAggregator`, streaming/non-stream handler integration (including buffering Story 2.12), and regression/smoke coverage across structured and textual flows described in `docs/codex-proxy-tool-calls.md`.
 - Existing parity diff work (proto vs. app) remains in place; this revision layers tool-call-specific risks, coverage, and CI gating on top of that baseline.
 - Test responsibilities align with the knowledge-base guidance (`risk-governance`, `probability-impact`, `test-levels-framework`, `test-priorities-matrix`, `fixture-architecture`, `network-first`). Unit tests protect the pure aggregator, integration tests guard handler wiring, and Playwright/smoke flows validate end-to-end behavior.
 - FR002d (multi-tool turn fidelity) is now normative, so coverage explicitly includes multi-call bursts, config rollback toggles, and telemetry assertions before Story 2.10 proceeds.
@@ -45,6 +45,7 @@
 | Risk ID | Category | Description | Probability | Impact | Score | Action |
 | ------- | -------- | ----------- | ----------- | ------ | ----- | ------ |
 | R-105 | PERF | Large (>8 KB) arguments or parallel tool-call toggles could inflate memory/time if buffer trimming or UTF-8 safety is insufficient. | 1 | 2 | 2 | Monitor via perf regression test and leak detector; keep optional parallel mode behind flag. |
+| R-107 | TECH | Streaming handler still duplicates textual `<use_tool>` blocks unless Story 2.12 buffering lands, causing Obsidian clients to see repeated XML and weakening regression signals. | 2 | 2 | 4 | Implement the per-choice buffering logic, add telemetry counters (surfaced via `/v1/usage`), and add unit/integration/Playwright fixtures (replaying req `HevrLsVQESL3K1M3_3dHi`) that assert single emission. |
 
 **Risk Category Legend:** TECH = architecture defects, DATA = schema or payload corruption, OPS = CI/smoke/process gaps, PERF = latency/resource regressions.
 
@@ -157,6 +158,7 @@ CI gating: PRs must pass Smoke + P0; `main` merges also run P1; nightly jobs run
 - **R-103:** Introduce config contract tests plus `npm run config:lint` to validate default/header overrides; dashboards alert on mixed modes.
 - **R-104:** Smoke scripts promoted to CI required jobs; failures upload SSE transcripts + server logs for debugging.
 - **R-105:** Perf regression job reports memory/time; thresholds in CI convert to warnings that block release if exceeded twice.
+- **R-107:** Story 2.12 buffering work plus the associated telemetry/tests must land before sign-off; CI will run the new fixtures and alerts trigger if `tool_buffer_aborted` spikes. Coverage threads: `tests/unit/tool-buffer.spec.js` (multi-chunk + nested guardrails), `tests/integration/chat.stream.tool-buffer.int.test.js` (HevrLsVQESL3K1M3_3dHi replay via `scripts/replay-codex-fixture.js`), and the Playwright flows in `tests/e2e/tool-calls.spec.ts` that assert one `<use_tool>` frame even when Codex aborts mid-block. `/v1/usage` now includes the `tool_buffer_*` counters so live smoke dashboards inherit the same signals.
 
 ### Story 2.9a Coverage Additions (2025-11-11)
 

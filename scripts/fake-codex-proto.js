@@ -19,6 +19,12 @@ const write = (obj) => {
 
 const CUSTOM_TOOL_ARGUMENT = String(process.env.FAKE_CODEX_TOOL_ARGUMENT || "");
 const TOOL_ARGUMENT_CHUNK_SIZE = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
+const TOOL_XML_CHUNK_SIZE = Number(process.env.FAKE_CODEX_TOOL_XML_CHUNK_SIZE || 0);
+const TRUNCATE_TOOL_XML =
+  String(process.env.FAKE_CODEX_TRUNCATE_TOOL_XML || "").toLowerCase() === "true";
+const ABORT_AFTER_TOOL_XML =
+  String(process.env.FAKE_CODEX_ABORT_AFTER_TOOL_XML || "").toLowerCase() === "true";
+
 const hasCustomToolArgument = CUSTOM_TOOL_ARGUMENT.length > 0;
 const hasChunkOverride = Number.isFinite(TOOL_ARGUMENT_CHUNK_SIZE) && TOOL_ARGUMENT_CHUNK_SIZE > 0;
 
@@ -37,6 +43,44 @@ const splitToolArgumentPayload = (payload, choiceIndex = 0) => {
   }
   if (hasCustomToolArgument) return [payload];
   return ['{"id":"', String(42 + choiceIndex), '"}'];
+};
+
+const splitXmlPayload = (payload) => {
+  if (!TOOL_XML_CHUNK_SIZE || TOOL_XML_CHUNK_SIZE <= 0) return [payload];
+  const chunks = [];
+  for (let index = 0; index < payload.length; index += TOOL_XML_CHUNK_SIZE) {
+    chunks.push(payload.slice(index, index + TOOL_XML_CHUNK_SIZE));
+  }
+  return chunks.length ? chunks : [payload];
+};
+
+const normalizeXmlBlock = (xmlBlock) => {
+  if (!TRUNCATE_TOOL_XML) return xmlBlock;
+  if (!xmlBlock.includes("</use_tool>")) return xmlBlock;
+  return xmlBlock.replace(/<\/use_tool>\s*$/i, "");
+};
+
+const emitToolXmlContent = async (choiceIndex, xmlBlock) => {
+  const payload = normalizeXmlBlock(xmlBlock);
+  const chunks = splitXmlPayload(payload);
+  for (const chunk of chunks) {
+    write({
+      type: "agent_message_delta",
+      msg: {
+        choice_index: choiceIndex,
+        delta: {
+          content: chunk,
+        },
+      },
+    });
+    await delay(5);
+  }
+  if (ABORT_AFTER_TOOL_XML) {
+    await delay(5);
+    process.exit(0);
+    return true;
+  }
+  return false;
 };
 
 async function emitMultiChoiceToolCall(choiceCount = 2, toolCallIndexes = [0]) {
@@ -85,16 +129,7 @@ async function emitMultiChoiceToolCall(choiceCount = 2, toolCallIndexes = [0]) {
         await delay(5);
       }
       const xmlBlock = `<use_tool>\n  <name>lookup_user</name>\n  <id>${42 + idx}</id>\n</use_tool>`;
-      write({
-        type: "agent_message_delta",
-        msg: {
-          choice_index: idx,
-          delta: {
-            content: xmlBlock,
-          },
-        },
-      });
-      await delay(5);
+      if (await emitToolXmlContent(idx, xmlBlock)) return;
     } else {
       write({
         type: "agent_message_delta",
@@ -198,16 +233,7 @@ async function emitMultiToolBurst(count = 2) {
       await delay(5);
     }
     const xmlBlock = `<use_tool>\n  <name>${fnName}</name>\n  <args>${argumentPayload}</args>\n</use_tool>`;
-    write({
-      type: "agent_message_delta",
-      msg: {
-        choice_index: 0,
-        delta: {
-          content: xmlBlock,
-        },
-      },
-    });
-    await delay(5);
+    if (await emitToolXmlContent(0, xmlBlock)) return;
   }
 
   write({
