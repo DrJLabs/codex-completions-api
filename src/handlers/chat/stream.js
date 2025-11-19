@@ -57,6 +57,16 @@ import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./re
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
+import { toolBufferMetrics } from "../../services/metrics/chat.js";
+import {
+  createToolBufferTracker,
+  trackToolBufferOpen,
+  detectNestedToolBuffer,
+  clampEmittableIndex,
+  completeToolBuffer,
+  abortToolBuffer,
+  shouldSkipBlock,
+} from "./tool-buffer.js";
 
 const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
@@ -330,6 +340,7 @@ export async function postChatStream(req, res) {
         hasToolEvidence: false,
         structuredCount: 0,
         forwardedToolCount: 0,
+        toolBuffer: createToolBufferTracker(),
       });
     }
     return choiceStates.get(normalized);
@@ -1203,6 +1214,38 @@ export async function postChatStream(req, res) {
     stopAfterToolsController.schedule(resolvedIndex);
   };
 
+  const logToolBufferWarning = (code, meta = {}) => {
+    const payload = { event: "tool_buffer", code, req_id: reqId, ...meta };
+    try {
+      console.warn(`[proxy][chat.stream][tool-buffer] ${JSON.stringify(payload)}`);
+    } catch {}
+  };
+
+  const flushActiveToolBuffer = (state, choiceIndex, reason = "abort") => {
+    if (!isObsidianOutput) return false;
+    if (!state?.toolBuffer?.active) return false;
+    const { literal } = abortToolBuffer(state.toolBuffer, state.emitted);
+    toolBufferMetrics.abort({ output_mode: outputMode, reason });
+    logToolBufferWarning(reason, { choice_index: choiceIndex });
+    if (!literal) return false;
+    const emitted = emitToolContentChunk(literal, { source: "textual", choiceIndex });
+    if (emitted) {
+      state.textualToolContentSeen = true;
+      state.sentAny = true;
+      state.forwardedUpTo = state.emitted.length;
+      state.scanPos = state.emitted.length;
+      state.dropAssistantContentAfterTools = true;
+    }
+    return emitted;
+  };
+
+  const flushDanglingToolBuffers = (reason = "finalize") => {
+    if (!isObsidianOutput) return;
+    choiceStates.forEach((state, idx) => {
+      flushActiveToolBuffer(state, idx, reason);
+    });
+  };
+
   const appendContentSegment = (text, { choiceIndex = 0 } = {}) => {
     const state = ensureChoiceState(choiceIndex);
     if (state.dropAssistantContentAfterTools) {
@@ -1234,6 +1277,16 @@ export async function postChatStream(req, res) {
       return;
     }
     state.emitted += appendText;
+    if (isObsidianOutput) {
+      const startedAt = trackToolBufferOpen(state.toolBuffer, state.emitted, state.forwardedUpTo);
+      if (startedAt >= 0) {
+        toolBufferMetrics.start({ output_mode: outputMode });
+      }
+      const nestedAt = detectNestedToolBuffer(state.toolBuffer, state.emitted);
+      if (nestedAt >= 0) {
+        flushActiveToolBuffer(state, choiceIndex, "nested_open");
+      }
+    }
     try {
       const { blocks, nextPos } = extractUseToolBlocks(state.emitted, state.scanPos);
       if (blocks && blocks.length) {
@@ -1243,11 +1296,14 @@ export async function postChatStream(req, res) {
         state.scanPos = nextPos;
         for (const block of blocks) {
           if (block.end <= state.forwardedUpTo) continue;
+          if (shouldSkipBlock(state.toolBuffer, block.end)) continue;
           const literal = state.emitted.slice(block.start, block.end);
           if (!literal) continue;
           if (isObsidianOutput) {
             if (emitToolContentChunk(literal, { source: "textual", choiceIndex })) {
               state.forwardedUpTo = block.end;
+              completeToolBuffer(state.toolBuffer, block.end);
+              toolBufferMetrics.flush({ output_mode: outputMode });
               continue;
             }
           } else {
@@ -1258,10 +1314,14 @@ export async function postChatStream(req, res) {
         }
       }
     } catch {}
-    let allowUntil = state.emitted.length;
-    if ((SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && state.lastToolEnd >= 0) {
-      allowUntil = state.lastToolEnd;
-    }
+    const limitTail = SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS;
+    const allowUntil = clampEmittableIndex(
+      state.toolBuffer,
+      state.forwardedUpTo,
+      state.emitted.length,
+      state.lastToolEnd,
+      limitTail
+    );
     const segment = state.emitted.slice(state.forwardedUpTo, allowUntil);
     if (segment) {
       sendChoiceDelta(choiceIndex, { content: segment });
@@ -1456,6 +1516,7 @@ export async function postChatStream(req, res) {
     try {
       stopAfterToolsController.cancel();
     } catch {}
+    flushDanglingToolBuffers("finalize");
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "finalize" });
     const resolvedTrigger =
       trigger ||
@@ -1897,6 +1958,7 @@ export async function postChatStream(req, res) {
   } catch {}
   const handleChildClose = () => {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
+    flushDanglingToolBuffers("disconnect");
     if (finalized) return;
     if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
       trackFinishReason("stop", "token_count_fallback");

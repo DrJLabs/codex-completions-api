@@ -15,6 +15,7 @@ test.describe("chat tool-call parity", () => {
       CODEX_BIN: "scripts/fake-codex-proto.js",
       FAKE_CODEX_MODE: "tool_call",
       PROXY_SSE_KEEPALIVE_MS: "0",
+      PROXY_SANITIZE_METADATA: "false",
     });
 
     try {
@@ -58,6 +59,7 @@ test.describe("chat tool-call parity", () => {
       CODEX_BIN: "scripts/fake-codex-proto.js",
       FAKE_CODEX_MODE: "tool_call",
       PROXY_SSE_KEEPALIVE_MS: "0",
+      PROXY_SANITIZE_METADATA: "false",
     });
 
     try {
@@ -134,6 +136,75 @@ test.describe("chat tool-call parity", () => {
       expect(choice.message.content).toContain("<use_tool>");
       expect(choice.message.content.trim().endsWith("</use_tool>")).toBe(true);
       expect(choice.finish_reason).toBe("tool_calls");
+    } finally {
+      await stopServer(ctx.child);
+    }
+  });
+
+  test("obsidian streaming emits a single chunk even when XML arrives fragmented", async () => {
+    const ctx = await startServer({
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      FAKE_CODEX_MODE: "multi_choice_tool_call",
+      FAKE_CODEX_CHOICE_COUNT: "1",
+      FAKE_CODEX_TOOL_CALL_CHOICES: "0",
+      FAKE_CODEX_TOOL_XML_CHUNK_SIZE: "6",
+      PROXY_SSE_KEEPALIVE_MS: "0",
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions?stream=true`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-sk-ci",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(streamRequestBody),
+      });
+
+      expect(response.ok).toBeTruthy();
+      const raw = await response.text();
+      const entries = parseSSE(raw).filter((entry) => entry?.type === "data");
+      const chunks = entries
+        .map((entry) => entry.data?.choices?.[0]?.delta?.content)
+        .filter((segment) => typeof segment === "string");
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toContain("<use_tool>");
+      expect(chunks[0].trim().endsWith("</use_tool>")).toBe(true);
+    } finally {
+      await stopServer(ctx.child);
+    }
+  });
+
+  test("obsidian streaming flushes partial buffers when backend disconnects mid-block", async () => {
+    const ctx = await startServer({
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      FAKE_CODEX_MODE: "multi_choice_tool_call",
+      FAKE_CODEX_CHOICE_COUNT: "1",
+      FAKE_CODEX_TOOL_CALL_CHOICES: "0",
+      FAKE_CODEX_TOOL_XML_CHUNK_SIZE: "4",
+      FAKE_CODEX_TRUNCATE_TOOL_XML: "true",
+      FAKE_CODEX_ABORT_AFTER_TOOL_XML: "true",
+      PROXY_SSE_KEEPALIVE_MS: "0",
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions?stream=true`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-sk-ci",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(streamRequestBody),
+      });
+
+      expect(response.ok).toBeTruthy();
+      const raw = await response.text();
+      const entries = parseSSE(raw).filter((entry) => entry?.type === "data");
+      const chunk = entries
+        .map((entry) => entry.data?.choices?.[0]?.delta?.content)
+        .find((segment) => typeof segment === "string");
+      expect(chunk).toBeDefined();
+      expect(chunk?.includes("<use_tool")).toBe(true);
     } finally {
       await stopServer(ctx.child);
     }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import fsp from "node:fs/promises";
 import { TOKEN_LOG_PATH } from "../dev-logging.js";
 import { aggregateUsage, parseTime } from "../utils.js";
+import { toolBufferMetrics } from "../services/metrics/chat.js";
 
 async function loadUsageEvents() {
   try {
@@ -28,13 +29,18 @@ async function loadUsageEvents() {
 export default function usageRouter() {
   const r = Router();
 
+  const attachToolBufferMetrics = (payload = {}) => ({
+    ...payload,
+    tool_buffer_metrics: toolBufferMetrics.summary(),
+  });
+
   r.get("/v1/usage", async (req, res) => {
     const start = parseTime(req.query.start) || 0;
     const end = parseTime(req.query.end) || Date.now() + 1;
     const group = (req.query.group || "").toString();
     const events = await loadUsageEvents();
     const agg = aggregateUsage(events, start, end, group);
-    res.json(agg);
+    res.json(attachToolBufferMetrics(agg));
   });
 
   r.get("/v1/usage/raw", async (req, res) => {
@@ -43,7 +49,7 @@ export default function usageRouter() {
     const limit = Math.max(1, Math.min(10000, base));
     const events = await loadUsageEvents();
     const count = Math.min(limit, events.length);
-    res.json({ count, events: events.slice(-limit) });
+    res.json(attachToolBufferMetrics({ count, events: events.slice(-limit) }));
   });
 
   return r;
