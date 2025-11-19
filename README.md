@@ -25,7 +25,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
-- Dev vs Prod model IDs: advertises `codev-5*` in dev, `codex-5*` in prod; accepts both prefixes everywhere.
+- Dev vs Prod model IDs: dev advertises `codev-5*` plus `codev-5.1-{L,M,H}` (map to `gpt-5.1` low/medium/high); prod advertises `codex-5*`. Both prefixes are accepted everywhere.
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
@@ -36,7 +36,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Prerequisites
 
 - Node.js ≥ 22 and npm 10+
-- Codex CLI ≥ 0.53.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
+- Codex CLI ≥ 0.58.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
+- `@openai/codex` is intentionally pinned to an exact version (currently 0.58.0) so JSON-RPC schemas and CLI behavior stay deterministic across dev/prod; bump only after coordinating schema/regression updates.
 - Docker + Docker Compose v2 (optional but recommended for parity with production)
 - `curl`/`jq` for quick health checks
 - Legacy proto mode requires Codex CLI ≤ 0.44.x; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x) for details
@@ -98,7 +99,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Dev helpers
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
-- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount.
+- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount. Traefik now sources the `codex-dev` routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml` (file provider) instead of Docker labels, so make sure that file exists on the host when bringing the stack up.
 - `npm run dev:shim` — starts the proxy against the deterministic legacy proto shim (no Codex install required). This is only for CI/offline testing; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x).
 
 ## Usage
@@ -112,7 +113,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Model selection
 
 - Production advertises `codex-5{,-low,-medium,-high,-minimal}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
-- Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5`) and applies the implied reasoning effort automatically.
+- Dev also exposes `codev-5.1-{L,M,H}` which map directly to `gpt-5.1` with implied low/medium/high reasoning effort (uppercase suffix is optional; IDs are case-insensitive).
+- Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5` or `gpt-5.1` for the new aliases) and applies the implied reasoning effort automatically.
 - Do not override `CODEX_MODEL` unless you are purposely testing unsupported combinations; let the proxy map inputs.
 
 ### Requests
@@ -221,7 +223,7 @@ Notes:
 #### Model IDs and client compatibility
 
 - Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`.
-- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`.
+- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`, plus `codev-5.1-{L,M,H}` which route to `gpt-5.1` automatically.
 - The server accepts both prefixes everywhere, but many SDKs/tools validate against `GET /v1/models` and will reject an ID that isn’t advertised by that environment. Use the environment‑appropriate prefix, or specify `model: "gpt-5"` and set `reasoning.effort`.
 
 Examples
@@ -255,7 +257,7 @@ Dev parity stack (public behind Traefik):
   - If local port 18010 is in use, override:
     - `DEV_PORT=19010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
   - Uses the host Codex CLI by default (`CODEX_BIN=codex`, requires `~/.cargo/bin/codex`)
-- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
+- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). The dev host now loads its routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml`, so keep that file in sync with the compose labels if you tweak origins/CORS.
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
@@ -264,10 +266,10 @@ Dev parity stack (public behind Traefik):
 Model IDs in dev vs prod:
 
 - Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`.
-- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`.
-- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5`) with the implied reasoning effort.
+- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`, plus `codev-5.1-{L,M,H}` which normalize to `gpt-5.1` at low/medium/high reasoning effort.
+- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5` for the `codex/codev-5*` aliases, `gpt-5.1` for `codev-5.1-*`) with the implied reasoning effort.
 - Do **not** override `CODEX_MODEL` in dev to force a specific reasoning tier. Leave it unset so the proxy maps
-  `codev-5-*` requests to `gpt-5` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
+  `codev-5-*` requests to `gpt-5` and `codev-5.1-*` requests to `gpt-5.1` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
   `400 Unsupported model` otherwise.
 
 Notes:
@@ -308,7 +310,7 @@ Build context hygiene:
 
 - `PROXY_USE_APP_SERVER=true` boots a worker supervisor that keeps one or more `codex app-server` processes alive.
 - Readiness hinges on the JSON-RPC `initialize` handshake; `/healthz` only reports ready once the worker has completed it.
-- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.53.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
+- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.58.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
 - Tune worker lifecycle with `WORKER_*_TIMEOUT_MS`, `PROXY_KILL_ON_DISCONNECT`, and `PROXY_WORKER_COUNT` when running on slower hardware or when you need multiple concurrent workers.
 
 ### Legacy proto mode (Codex CLI ≤ 0.44.x)
