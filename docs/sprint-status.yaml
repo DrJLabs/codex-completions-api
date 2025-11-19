@@ -59,6 +59,7 @@ development_status:
   # Blocked until FR002d multi-tool turn fidelity (Story 2-9a) lands (see docs/sprint-change-proposal-2025-11-10.md)
   2-10-tool-call-regression-and-smoke: drafted
   2-11-end-to-end-tracing: review
+  2-12-stream-tool-call-buffering: done
   epic-2-retrospective: completed
   epic-3: backlog
   3-1-structured-logging-for-worker-lifecycle: backlog
@@ -85,3 +86,4 @@ development_status:
   epic-5-retrospective: optional
 notes:
   - "Story 2.10 remains blocked until the FR002d multi-tool turn fidelity slice (planned Story 2.9a) is scheduled and delivered. Reference docs/sprint-change-proposal-2025-11-10.md for scope."
+  - "Story 2.12 (tool-call buffering) added from sprint-change-proposal-2025-11-13; dev+QA coordination required to finalize buffering tests before release."

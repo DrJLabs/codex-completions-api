@@ -14,3 +14,5 @@ Routing guidance:
 | 2025-11-16 | 2-11  | 2    | Bug         | High     | TBD   | Done   | Move `logHttpRequest` earlier in all chat/completions handlers so HTTP ingress traces are captured even when validation returns 4xx. |
 | 2025-11-16 | 2-11  | 2    | Bug         | High     | TBD   | Done   | Emit `appendUsage` entries (req_id/route/method/mode/status_code) for every exit path so `/v1/usage/raw` stays joinable with HTTP ingress traces. |
 | 2025-11-16 | 2-11  | 2    | Bug         | Medium   | TBD   | Done   | Ensure `logHttpRequest` executes immediately after JSON parsing even for unauthorized requests so 401s still produce `phase:"http_ingress"` events. |
+| 2025-11-19 | 2-12  | 2    | Observability | Medium | TBD | Done | `/v1/usage` and `/v1/usage/raw` now embed `tool_buffer_metrics`, exposing the counters without PROXY_TEST_ENDPOINTS (2025-11-19). |
+| 2025-11-19 | 2-12  | 2    | Test Gap    | Medium   | TBD   | Done   | Added deterministic Codex replay fixture `tests/fixtures/proto-replay/req-HevrLsVQESL3K1M3_3dHi.jsonl` plus integration test verifying a single textual `<use_tool>` SSE chunk (2025-11-19). |
