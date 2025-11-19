@@ -99,7 +99,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Dev helpers
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
-- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount.
+- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount. Traefik now sources the `codex-dev` routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml` (file provider) instead of Docker labels, so make sure that file exists on the host when bringing the stack up.
 - `npm run dev:shim` — starts the proxy against the deterministic legacy proto shim (no Codex install required). This is only for CI/offline testing; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x).
 
 ## Usage
@@ -257,7 +257,7 @@ Dev parity stack (public behind Traefik):
   - If local port 18010 is in use, override:
     - `DEV_PORT=19010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
   - Uses the host Codex CLI by default (`CODEX_BIN=codex`, requires `~/.cargo/bin/codex`)
-- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare).
+- Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). The dev host now loads its routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml`, so keep that file in sync with the compose labels if you tweak origins/CORS.
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
