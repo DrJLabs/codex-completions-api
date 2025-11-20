@@ -181,7 +181,7 @@ export const buildAssistantMessage = ({
     message.content = assistantContent;
   }
 
-  if (typeof message.content === "string" && message.content.includes("<use_tool")) {
+  if (typeof message.content === "string" && message.content.includes("</use_tool>")) {
     message.content = trimTrailingTextAfterToolBlocks(message.content);
   }
 
