@@ -1,0 +1,44 @@
+groups:
+  - name: codex-app-server
+    interval: 30s
+    rules:
+      - alert: CodexHighLatencyP95
+        expr: histogram_quantile(0.95, sum by (le,route,method,status_family) (rate(codex_http_latency_ms_bucket{route="/v1/chat/completions"}[5m]))) > 1.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "P95 latency high for chat/completions"
+          runbook: "docs/app-server-migration/metrics-and-alerts.md"
+      - alert: CodexErrorRate
+        expr: rate(codex_http_errors_total{route="/v1/chat/completions"}[5m]) / clamp_min(rate(codex_http_requests_total{route="/v1/chat/completions"}[5m]), 1) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate >1% on chat/completions"
+          runbook: "docs/app-server-migration/metrics-and-alerts.md"
+      - alert: CodexWorkerRestarts
+        expr: increase(codex_worker_restarts_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker restarted in the last 10 minutes"
+          runbook: "docs/app-server-migration/metrics-and-alerts.md"
+      - alert: CodexToolBufferAborts
+        expr: rate(codex_tool_buffer_aborted_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tool buffer aborts observed"
+          runbook: "docs/app-server-migration/metrics-and-alerts.md"
+      - alert: CodexMaintenanceEnabled
+        expr: codex_maintenance_mode == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Maintenance mode enabled"
+          runbook: "docs/app-server-migration/metrics-and-alerts.md"

@@ -18,12 +18,22 @@ KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
 REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
 STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
+METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:11435/metrics}"
+METRICS_TOKEN="${METRICS_TOKEN:-${PROXY_METRICS_TOKEN:-}}"
 
 pass() { printf "[PASS] %s\n" "$*"; }
 fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
 
 curl_cf() { curl -sS -m "$REQUEST_TIMEOUT" -f "$@"; }
 curl_origin() { curl -sS -m "$REQUEST_TIMEOUT" -f -k -H "Host: $DOMAIN" "https://$ORIGIN_HOST$1"; }
+curl_metrics() {
+  local url="$1"
+  local header=()
+  if [[ -n "$METRICS_TOKEN" ]]; then
+    header=(-H "Authorization: Bearer $METRICS_TOKEN")
+  fi
+  curl -sS -m "$REQUEST_TIMEOUT" -f "${header[@]}" "$url"
+}
 
 IMAGE="${IMAGE:-codex-completions-api:latest}"
 
@@ -45,6 +55,16 @@ if [[ "${SKIP_ORIGIN:-0}" != "1" ]]; then
   curl_origin "/v1/models" | jq -e '.object=="list"' >/dev/null && pass "origin /v1/models" || fail "origin /v1/models"
 else
   echo "(Skipping origin checks)"
+fi
+
+if [[ "${SKIP_METRICS:-0}" != "1" ]]; then
+  if curl_metrics "$METRICS_ENDPOINT" | grep -q "codex_http_requests_total"; then
+    pass "metrics scrape"
+  else
+    fail "metrics scrape (${METRICS_ENDPOINT})"
+  fi
+else
+  echo "(Skipping metrics scrape; set SKIP_METRICS=0 and METRICS_ENDPOINT if needed)"
 fi
 
 curl_cf -D- -o /dev/null "$BASE_CF/healthz" | grep -q " 200 " && pass "cf /healthz" || fail "cf /healthz"
