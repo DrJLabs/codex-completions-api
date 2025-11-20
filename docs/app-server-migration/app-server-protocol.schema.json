@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Codex App Server JSON-RPC Schema Bundle",
-  "cliVersion": "0.53.0",
-  "generatedAt": "2025-11-02T19:53:00.325Z",
+  "cliVersion": "0.56.0",
+  "generatedAt": "2025-11-19T22:40:09.602Z",
   "definitions": {
     "InitializeParams": {
       "type": "object",
@@ -11,13 +11,22 @@
           "$ref": "#/definitions/ClientInfo"
         },
         "capabilities": {
-          "$ref": "#/definitions/Record<string,unknown>"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "protocolVersion": {
           "type": "string"
         }
       },
-      "required": ["clientInfo"],
+      "required": [
+        "clientInfo"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "ClientInfo": {
@@ -31,10 +40,16 @@
           "type": "string"
         },
         "title": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         }
       },
-      "required": ["name", "version"]
+      "required": [
+        "name",
+        "version"
+      ]
     },
     "Record<string,unknown>": {
       "type": "object"
@@ -44,48 +59,96 @@
       "additionalProperties": {},
       "properties": {
         "model": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "modelProvider": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "profile": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "cwd": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "approvalPolicy": {
-          "$ref": "#/definitions/AskForApproval"
+          "anyOf": [
+            {
+              "enum": [
+                "never",
+                "on-failure",
+                "on-request",
+                "untrusted"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "sandbox": {
-          "$ref": "#/definitions/SandboxMode"
+          "anyOf": [
+            {
+              "enum": [
+                "danger-full-access",
+                "read-only",
+                "workspace-write"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "config": {
-          "$ref": "#/definitions/Record<string,unknown>"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "baseInstructions": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "developerInstructions": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "compactPrompt": {
-          "type": "string"
+          "type": [
+            "null",
+            "string"
+          ]
         },
         "includeApplyPatchTool": {
-          "type": "boolean"
+          "type": [
+            "null",
+            "boolean"
+          ]
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#"
-    },
-    "AskForApproval": {
-      "enum": ["never", "on-failure", "on-request", "untrusted"],
-      "type": "string"
-    },
-    "SandboxMode": {
-      "enum": ["danger-full-access", "read-only", "workspace-write"],
-      "type": "string"
     },
     "AddConversationListenerParams": {
       "type": "object",
@@ -98,7 +161,9 @@
           "type": "boolean"
         }
       },
-      "required": ["conversationId"],
+      "required": [
+        "conversationId"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "RemoveConversationListenerParams": {
@@ -109,7 +174,9 @@
           "type": "string"
         }
       },
-      "required": ["subscriptionId"],
+      "required": [
+        "subscriptionId"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "SendUserTurnParams": {
@@ -138,16 +205,43 @@
           "type": "string"
         },
         "effort": {
-          "$ref": "#/definitions/ReasoningEffort"
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "minimal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "summary": {
           "$ref": "#/definitions/ReasoningSummary"
         },
         "metadata": {
-          "$ref": "#/definitions/Record<string,unknown>"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "tools": {
-          "$ref": "#/definitions/Record<string,unknown>"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -177,10 +271,15 @@
                   "type": "string"
                 }
               },
-              "required": ["text"]
+              "required": [
+                "text"
+              ]
             }
           },
-          "required": ["data", "type"]
+          "required": [
+            "data",
+            "type"
+          ]
         },
         {
           "type": "object",
@@ -196,10 +295,15 @@
                   "type": "string"
                 }
               },
-              "required": ["image_url"]
+              "required": [
+                "image_url"
+              ]
             }
           },
-          "required": ["data", "type"]
+          "required": [
+            "data",
+            "type"
+          ]
         },
         {
           "type": "object",
@@ -215,12 +319,26 @@
                   "type": "string"
                 }
               },
-              "required": ["path"]
+              "required": [
+                "path"
+              ]
             }
           },
-          "required": ["data", "type"]
+          "required": [
+            "data",
+            "type"
+          ]
         }
       ]
+    },
+    "AskForApproval": {
+      "enum": [
+        "never",
+        "on-failure",
+        "on-request",
+        "untrusted"
+      ],
+      "type": "string"
     },
     "SandboxPolicy": {
       "anyOf": [
@@ -232,7 +350,9 @@
               "const": "danger-full-access"
             }
           },
-          "required": ["mode"]
+          "required": [
+            "mode"
+          ]
         },
         {
           "type": "object",
@@ -242,7 +362,9 @@
               "const": "read-only"
             }
           },
-          "required": ["mode"]
+          "required": [
+            "mode"
+          ]
         },
         {
           "type": "object",
@@ -267,16 +389,19 @@
               "type": "boolean"
             }
           },
-          "required": ["mode"]
+          "required": [
+            "mode"
+          ]
         }
       ]
     },
-    "ReasoningEffort": {
-      "enum": ["high", "low", "medium", "minimal"],
-      "type": "string"
-    },
     "ReasoningSummary": {
-      "enum": ["auto", "concise", "detailed", "none"],
+      "enum": [
+        "auto",
+        "concise",
+        "detailed",
+        "none"
+      ],
       "type": "string"
     },
     "SendUserMessageParams": {
@@ -324,7 +449,10 @@
         "finalOutputJsonSchema": {},
         "final_output_json_schema": {}
       },
-      "required": ["conversationId", "items"],
+      "required": [
+        "conversationId",
+        "items"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "JsonRpcErrorResponse": {
@@ -341,24 +469,37 @@
           "const": "2.0"
         }
       },
-      "required": ["error", "id", "jsonrpc"],
+      "required": [
+        "error",
+        "id",
+        "jsonrpc"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "JsonRpcId": {
-      "type": ["string", "number"]
+      "type": [
+        "string",
+        "number"
+      ]
     },
     "JsonRpcErrorObject": {
       "type": "object",
       "properties": {
         "code": {
-          "type": ["string", "number"]
+          "type": [
+            "string",
+            "number"
+          ]
         },
         "message": {
           "type": "string"
         },
         "data": {}
       },
-      "required": ["code", "message"]
+      "required": [
+        "code",
+        "message"
+      ]
     },
     "JsonRpcSuccessResponse": {
       "type": "object",
@@ -374,7 +515,11 @@
           "const": "2.0"
         }
       },
-      "required": ["id", "jsonrpc", "result"],
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "Result": {

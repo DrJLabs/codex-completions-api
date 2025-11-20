@@ -321,7 +321,7 @@ export function buildNewConversationParams(
   if (typeof modelProvider === "string") params.modelProvider = modelProvider;
 
   const profile = toNullableString(options.profile);
-  if (typeof profile === "string") params.profile = profile;
+  if (profile !== undefined) params.profile = profile;
 
   const cwd = toNullableString(options.cwd);
   if (typeof cwd === "string") params.cwd = cwd;
@@ -340,9 +340,7 @@ export function buildNewConversationParams(
   if (typeof baseInstructions === "string") params.baseInstructions = baseInstructions;
 
   const developerInstructions = toNullableString(options.developerInstructions);
-  if (typeof developerInstructions === "string") {
-    params.developerInstructions = developerInstructions;
-  }
+  if (developerInstructions !== undefined) params.developerInstructions = developerInstructions;
 
   const compactPrompt = toNullableString(options.compactPrompt);
   if (typeof compactPrompt === "string") params.compactPrompt = compactPrompt;
@@ -380,8 +378,9 @@ export function buildSendUserTurnParams(
     params.effort = effort;
   }
 
-  if (options.tools !== undefined) {
-    params.tools = options.tools ?? null;
+  const tools = toRecordOrNull(options.tools);
+  if (tools !== undefined) {
+    params.tools = tools;
   }
 
   return params;
@@ -878,4 +877,13 @@ function normalizeSandboxModeOption(
     }
   }
   return undefined;
+}
+
+function toRecordOrNull(value: unknown): Record<string, unknown> | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  return null;
 }

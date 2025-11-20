@@ -82,6 +82,13 @@ const joinToolBlocks = (blocks = []) => {
   return blocks.join(TOOL_BLOCK_DELIMITER);
 };
 
+const trimTrailingTextAfterToolBlocks = (content = "") => {
+  if (!content || typeof content !== "string") return content;
+  const lastClose = content.lastIndexOf("</use_tool>");
+  if (lastClose === -1) return content;
+  return content.slice(0, lastClose + "</use_tool>".length).trim();
+};
+
 export const buildCanonicalXml = (snapshot = []) => {
   if (!Array.isArray(snapshot) || !snapshot.length) return null;
   const { records } = normalizeToolCallSnapshot(snapshot);
@@ -172,6 +179,10 @@ export const buildAssistantMessage = ({
     message.content = assistantContent;
   } else {
     message.content = assistantContent;
+  }
+
+  if (typeof message.content === "string" && message.content.includes("</use_tool>")) {
+    message.content = trimTrailingTextAfterToolBlocks(message.content);
   }
 
   return { message, hasToolCalls, toolCallsTruncated, toolCallCount: toolCallRecords.length };
