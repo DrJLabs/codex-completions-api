@@ -169,6 +169,18 @@ spawn("codex", [
 
     Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
 
+  - _Probe payload expectations:_ `/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`). Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts; slow starts keep readiness false until handshake completes. Backoff respects the 250 ms→5 s policy—guard alerting on `next_restart_delay_ms > 5000` or `restarts_total` growth.
+
+  - _Smoke commands (local)_:
+
+    ```bash
+    curl -fsS http://127.0.0.1:${PORT:-11435}/readyz | jq '.health.readiness'
+    curl -fsS http://127.0.0.1:${PORT:-11435}/livez | jq '.health.liveness'
+    curl -fsS http://127.0.0.1:${PORT:-11435}/metrics | grep codex_worker_restarts_total
+    ```
+
+    Expect `ok:true` when the worker handshakes; crash loops should show `reason:"worker_exit"` plus incremented `restarts_total` and non-zero `next_restart_delay_ms` until recovery.
+
 ---
 
 ## I. Code touch‑points (typical repo)

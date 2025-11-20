@@ -11,16 +11,41 @@ export default function healthRouter() {
     const supervisorStatus = getWorkerStatus();
     const appServerEnabled = backendMode === BACKEND_APP_SERVER;
     const supervisorHealth = supervisorStatus.health || {};
+    const restartMeta = appServerEnabled
+      ? {
+          restarts_total: supervisorStatus.restarts_total ?? 0,
+          consecutive_failures: supervisorStatus.consecutive_failures ?? 0,
+          next_restart_delay_ms: supervisorStatus.next_restart_delay_ms ?? 0,
+          last_exit: supervisorStatus.last_exit ?? null,
+          last_ready_at: supervisorStatus.last_ready_at ?? null,
+          startup_latency_ms: supervisorStatus.startup_latency_ms ?? null,
+          last_log_sample: supervisorStatus.last_log_sample ?? null,
+        }
+      : {
+          restarts_total: 0,
+          consecutive_failures: 0,
+          next_restart_delay_ms: 0,
+          last_exit: null,
+          last_ready_at: null,
+          startup_latency_ms: null,
+          last_log_sample: null,
+        };
+
     const readiness = appServerEnabled
       ? {
           ...(supervisorHealth.readiness ?? {
             ready: false,
             reason: "worker_not_started",
           }),
+          details: {
+            ...(supervisorHealth.readiness?.details ?? {}),
+            ...restartMeta,
+          },
         }
       : {
           ready: true,
           reason: "app_server_disabled",
+          details: restartMeta,
         };
     const liveness = appServerEnabled
       ? {
@@ -28,10 +53,15 @@ export default function healthRouter() {
             live: false,
             reason: "worker_not_started",
           }),
+          details: {
+            ...(supervisorHealth.liveness?.details ?? {}),
+            ...restartMeta,
+          },
         }
       : {
           live: true,
           reason: "app_server_disabled",
+          details: restartMeta,
         };
     const health = { readiness, liveness };
     const workerSupervisor = appServerEnabled
