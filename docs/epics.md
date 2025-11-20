@@ -370,107 +370,107 @@ So that Obsidian-mode clients only see each tool invocation once while structure
 
 ### Expanded Goal
 
-Instrument the app-server path with the telemetry, alerts, and operational safeguards needed so SRE can monitor, troubleshoot, and enforce SLAs once traffic moves off proto.
+Use the tracing/usage groundwork from Epic 2 to deliver production-grade observability, controlled degradation, and compliance for the app-server path.
 
 ### Stories
 
-**Story 3.1: Structured logging for worker lifecycle**
+**Story 3.1: Structured logging schema**
 
 As an SRE,
-I want structured logs for worker start, restart, and exit events,
-So that I can trace incidents and correlate with request failures.
+I want a standardized JSON logging schema for worker lifecycle and request/trace events,
+So that incident timelines are consistent and redaction rules stay enforced.
 
 **Acceptance Criteria:**
 
-1. Logs include timestamp, severity, correlation id, and worker state transitions.
-2. Crash loops emit warnings with backoff details.
-3. Logging filter maintains existing redaction rules.
+1. Define and apply a log schema (timestamp, severity, req_id, component/event fields, worker state) to worker lifecycle logs and existing trace/usage emitters.
+2. Preserve redaction rules and avoid field drift across access, trace, and worker logs.
+3. Document the schema and sampling/rotation expectations for ops.
 
-**Prerequisites:** Epic 1 worker supervision in place.
+**Prerequisites:** Epic 1 worker supervision; Epic 2 tracing in place.
 
-**Story 3.2: Metrics pipeline for app-server path**
+**Story 3.2: Metrics export and dashboards**
 
 As a monitoring engineer,
-I want Prometheus metrics describing throughput, latency, and errors,
-So that dashboards and alerts can track SLIs/SLOs post-migration.
+I want Prometheus-style metrics for the app-server path,
+So that dashboards and alerts cover SLIs/SLOs with parity to proto.
 
 **Acceptance Criteria:**
 
-1. Metrics export request counts, streaming durations, error buckets, and restarts.
-2. Histogram/summary buckets align with existing monitoring conventions.
-3. Dashboards updated to visualize new metrics alongside legacy ones.
+1. Expose a `/metrics` endpoint (or equivalent) with request counts, latency, error buckets, restarts, and the existing `tool_buffer_*` and restart counters.
+2. Histogram/summary buckets align with current conventions; metrics document labels and cardinality expectations.
+3. Dashboards/alerts created or updated for throughput, latency, errors, restarts, and tool-buffer anomalies.
 
-**Prerequisites:** Stories 2.2-2.5
+**Prerequisites:** Stories 2.2-2.12, 3.1
 
-**Story 3.3: Health probe integration tests**
+**Story 3.3: Health probe robustness**
 
 As a reliability engineer,
-I want automated tests validating readiness/liveness behavior,
-So that orchestration configs are trustworthy in staging and production.
+I want probes and tests that reflect worker state and restart/backoff behavior,
+So that orchestrators react correctly to crashes and slow starts.
 
 **Acceptance Criteria:**
 
-1. Tests simulate worker crash and slow startup to verify probe responses.
-2. Compose/systemd configs updated to reference the new probe endpoints.
-3. Documentation covers typical probe thresholds and tuning knobs.
+1. Tests cover crash, slow-start, and restart scenarios, asserting readyz/livez transitions within documented thresholds.
+2. Compose/systemd configs consume the probe endpoints and timing guidance.
+3. Probes and metrics/logs corroborate each other in docs/runbooks.
 
 **Prerequisites:** Stories 1.5, 3.1-3.2
 
-**Story 3.4: Incident alerting and runbook updates**
+**Story 3.4: Alerting and runbooks**
 
 As an on-call engineer,
-I want alerts and runbooks tailored to the app-server path,
-So that I can respond quickly when issues arise post-cutover.
+I want actionable alerts and updated runbooks for the app-server path,
+So that incidents are triaged quickly using the new signals.
 
 **Acceptance Criteria:**
 
-1. Alerts configured for latency breach, restart frequency, and sustained error rate.
-2. Runbooks include troubleshooting steps, log/metric queries, and escalation paths.
-3. Dry-run incident exercise proves runbook clarity.
+1. Alerts cover latency/SLO breach, restart frequency, sustained error rate, and tool-buffer anomalies, referencing the new metrics.
+2. Runbooks include `req_id` trace stitching, metrics/log queries, and escalation paths; dry-run exercise validates clarity.
+3. Incident dashboards link to the trace-by-id helper and schema docs.
 
 **Prerequisites:** Stories 3.1-3.3
 
-**Story 3.5: Maintenance flag and customer communication workflow**
+**Story 3.5: Maintenance flag and comms workflow**
 
 As an incident commander,
-I want a controlled maintenance mode and comms checklist,
-So that we can handle Codex outages without proto fallback.
+I want a controlled maintenance mode with retry hints and comms,
+So that we can degrade safely without proto fallback.
 
 **Acceptance Criteria:**
 
-1. Feature flag or route toggle enables temporary maintenance responses (503 with retry hints).
-2. Status-page templates and comms cadence documented (15-minute updates).
-3. Backlog captures follow-up actions (e.g., `/v1/responses` post-cutover) in incident review.
+1. `PROXY_MAINTENANCE_MODE` (and guarded toggle endpoint) returns 503 with `Retry-After` + retryable hints; gated by auth.
+2. Status-page templates and comms cadence documented; maintenance on/off is observable via logs/metrics/health.
+3. Runbook includes rollback/exit criteria and captures follow-ups in incident review.
 
-**Prerequisites:** Stories 2.4, 3.4
+**Prerequisites:** Stories 3.1-3.4
 
-**Story 3.6: Security audit and compliance validation**
+**Story 3.6: Security/compliance review**
 
 As a security lead,
-I want assurance the app-server migration meets audit and PII requirements,
-So that we maintain compliance commitments.
+I want logging/metrics/tracing reviewed for PII/retention/compliance impact,
+So that observability features meet audit requirements.
 
 **Acceptance Criteria:**
 
-1. Review confirms logs/metrics redact sensitive data and respect retention limits.
-2. Pen test or threat model updated to include new worker surface.
-3. Compliance checklist signed off before production cutover begins.
+1. Validate redaction and retention for access/trace/usage/metrics outputs; document retention knobs and defaults.
+2. Update threat model/pen test scope to include app-server observability surfaces.
+3. Compliance checklist signed off with any remediation tickets filed.
 
 **Prerequisites:** Stories 3.1-3.5
 
-**Story 3.7: JSON-RPC trace buffer retention**
+**Story 3.7: Trace buffer retention**
 
 As an observability engineer,
-I want short-lived JSON-RPC trace artifacts captured with enforced retention,
-So that we can triage incidents without violating data-handling policies.
+I want an optional, TTL-limited JSON-RPC trace buffer,
+So that rare incidents can be debugged without violating data-handling policies.
 
 **Acceptance Criteria:**
 
-1. Worker supervisor emits JSON-RPC trace files to `.codex-api/trace-buffer/` using `{timestamp}-{requestId}.json` naming only when tracing is enabled.
-2. A TTL sweeper enforces both a maximum age of 24 hours and a maximum count of 100 files, logging the pruning activity via structured logs and Prometheus metrics.
-3. Runbooks document how to enable, inspect, and purge trace artifacts, including PII redaction expectations and SOC-compliant retention guidance.
+1. If enabled, trace artifacts store `{timestamp}-{req_id}.json` under `.codex-api/trace-buffer/` with TTL/count limits and structured pruning logs/metrics.
+2. Enablement is gated (env or flag) and documented alongside redaction/sanitization expectations.
+3. Runbooks describe how to enable, inspect, and purge the buffer and when to prefer existing trace/usage logs.
 
-**Prerequisites:** Stories 3.1-3.3
+**Prerequisites:** Stories 3.1-3.3, 3.6
 
 ## Epic 4: Production Cutover & Validation
 

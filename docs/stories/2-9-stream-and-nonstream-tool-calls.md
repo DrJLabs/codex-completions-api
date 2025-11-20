@@ -1,6 +1,6 @@
 # Story 2.9: Stream & non-stream handler parity for tool calls
 
-Status: review
+Status: done
 
 ## Story
 

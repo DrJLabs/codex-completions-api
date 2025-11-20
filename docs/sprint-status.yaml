@@ -58,11 +58,11 @@ development_status:
   2-9a-multi-tool-calls-per-turn: review
   # Blocked until FR002d multi-tool turn fidelity (Story 2-9a) lands (see docs/sprint-change-proposal-2025-11-10.md)
   2-10-tool-call-regression-and-smoke: drafted
-  2-11-end-to-end-tracing: review
+  2-11-end-to-end-tracing: done
   2-12-stream-tool-call-buffering: done
   epic-2-retrospective: completed
-  epic-3: backlog
-  3-1-structured-logging-for-worker-lifecycle: backlog
+  epic-3: contexted
+  3-1-structured-logging-for-worker-lifecycle: done
   3-2-metrics-pipeline-for-app-server-path: backlog
   3-3-health-probe-integration-tests: backlog
   3-4-incident-alerting-and-runbook-updates: backlog
