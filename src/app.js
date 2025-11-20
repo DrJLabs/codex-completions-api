@@ -8,14 +8,17 @@ import modelsRouter from "./routes/models.js";
 import chatRouter from "./routes/chat.js";
 import responsesRouter from "./routes/responses.js";
 import usageRouter from "./routes/usage.js";
+import metricsRouter from "./routes/metrics.js";
 import rateLimit from "./middleware/rate-limit.js";
 import { guardSnapshot } from "./services/concurrency-guard.js";
 import { toolBufferMetrics } from "./services/metrics/chat.js";
 import { logStructured } from "./services/logging/schema.js";
+import metricsMiddleware from "./middleware/metrics.js";
 
 export default function createApp() {
   const app = express();
   app.use(express.json({ limit: "16mb" }));
+  app.use(metricsMiddleware());
 
   // Global CORS
   const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
@@ -90,6 +93,9 @@ export default function createApp() {
       toolBufferMetrics.reset();
       res.json({ ok: true });
     });
+  }
+  if (CFG.PROXY_ENABLE_METRICS) {
+    app.use(metricsRouter());
   }
   app.use(healthRouter());
   app.use(modelsRouter());
