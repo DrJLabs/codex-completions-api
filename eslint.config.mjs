@@ -2,6 +2,8 @@ import js from "@eslint/js";
 import globals from "globals";
 import playwright from "eslint-plugin-playwright";
 import security from "eslint-plugin-security";
+import tseslint from "typescript-eslint";
+import vitest from "eslint-plugin-vitest";
 import { FlatCompat } from "@eslint/eslintrc";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +26,7 @@ const commonTestRules = {
   "n/no-unsupported-features/node-builtins": "off",
   "no-constant-condition": "off",
 };
+const tsFilePatterns = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
 export default [
   {
@@ -37,6 +40,7 @@ export default [
       ".bmad/**",
       "bmad-bak/**",
       "external/**",
+      "eslint.config.mjs",
     ],
   },
   js.configs.recommended,
@@ -55,6 +59,14 @@ export default [
       globals: {
         ...globals.node,
       },
+    },
+    settings: {
+      "import/resolver": {
+        node: {
+          extensions: [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".json"],
+        },
+      },
+      "import/core-modules": ["vitest/config"],
     },
     // Pull in security ruleset for flat config by spreading the rules directly,
     // then soften a few high-noise rules. Keep plugin registered for rule IDs.
@@ -77,14 +89,51 @@ export default [
       "security/detect-unsafe-regex": "error",
     },
   },
+  // TypeScript (non-type-checked) linting
+  {
+    name: "typescript",
+    files: tsFilePatterns,
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaVersion: 2023,
+        sourceType: "module",
+      },
+    },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    settings: {
+      "import/resolver": {
+        node: {
+          extensions: [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".json"],
+        },
+      },
+      "import/core-modules": ["vitest/config"],
+    },
+    rules: {
+      "no-undef": "off",
+      "no-unused-vars": "off",
+      "no-redeclare": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-redeclare": "error",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-unused-expressions": "off",
+      "n/no-missing-import": "off",
+    },
+  },
   // Vitest + integration tests (non-Playwright)
   {
     name: "vitest-and-integration",
-    files: ["tests/unit/**/*.js", "tests/integration/**/*.js"],
+    files: ["tests/unit/**/*.{js,ts}", "tests/integration/**/*.{js,ts}"],
     languageOptions: {
       globals: { ...testGlobals },
     },
-    rules: commonTestRules,
+    plugins: { vitest },
+    rules: {
+      ...(vitest.configs?.recommended?.rules || {}),
+      "vitest/valid-expect": "off",
+      ...commonTestRules,
+    },
   },
   // Playwright E2E tests only
   {
