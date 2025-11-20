@@ -20,6 +20,7 @@ REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
 STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
 METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:11435/metrics}"
 METRICS_TOKEN="${METRICS_TOKEN:-${PROXY_METRICS_TOKEN:-}}"
+METRICS_PAYLOAD=""
 
 pass() { printf "[PASS] %s\n" "$*"; }
 fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
@@ -58,7 +59,8 @@ else
 fi
 
 if [[ "${SKIP_METRICS:-0}" != "1" ]]; then
-  if curl_metrics "$METRICS_ENDPOINT" | grep -q "codex_http_requests_total"; then
+  METRICS_PAYLOAD="$(curl_metrics "$METRICS_ENDPOINT")"
+  if echo "$METRICS_PAYLOAD" | grep -q "codex_http_requests_total"; then
     pass "metrics scrape"
   else
     fail "metrics scrape (${METRICS_ENDPOINT})"
@@ -69,6 +71,29 @@ fi
 
 curl_cf -D- -o /dev/null "$BASE_CF/healthz" | grep -q " 200 " && pass "cf /healthz" || fail "cf /healthz"
 curl_cf "$BASE_CF/v1/models" | jq -e '.object=="list"' >/dev/null && pass "cf /v1/models" || fail "cf /v1/models"
+READY_PAYLOAD="$(curl_cf "$BASE_CF/readyz")" || fail "cf /readyz"
+READY_OK="$(echo "$READY_PAYLOAD" | jq -r '.health.readiness.ready')"
+READY_RESTARTS="$(echo "$READY_PAYLOAD" | jq -r '.health.readiness.details.restarts_total')"
+READY_BACKOFF="$(echo "$READY_PAYLOAD" | jq -r '.health.readiness.details.next_restart_delay_ms')"
+if [[ "$READY_OK" == "true" ]] && [[ "$READY_RESTARTS" =~ ^[0-9]+$ ]] && [[ "$READY_BACKOFF" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+  pass "cf /readyz (ready with restart/backoff metadata)"
+else
+  echo "$READY_PAYLOAD" | jq .
+  fail "cf /readyz"
+fi
+
+if [[ -n "$METRICS_PAYLOAD" ]]; then
+  METRIC_RESTARTS="$(awk '/^codex_worker_restarts_total/{print $2; exit}' <<<"$METRICS_PAYLOAD")"
+  METRIC_BACKOFF="$(awk '/^codex_worker_backoff_ms/{print $2; exit}' <<<"$METRICS_PAYLOAD")"
+  if [[ -n "$METRIC_RESTARTS" && "$METRIC_RESTARTS" == "$READY_RESTARTS" ]]; then
+    pass "metrics restart count matches /readyz (${METRIC_RESTARTS})"
+  else
+    fail "metrics restart count mismatch (/readyz=$READY_RESTARTS metrics=${METRIC_RESTARTS:-missing})"
+  fi
+  if [[ -n "$METRIC_BACKOFF" ]]; then
+    pass "metrics backoff gauge present (${METRIC_BACKOFF} ms)"
+  fi
+fi
 
 if [[ -n "$KEY" ]]; then
   PAY='{"model":"codex-5","stream":false,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}'

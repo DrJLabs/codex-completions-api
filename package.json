@@ -16,6 +16,7 @@
     "smoke:dev": "bash scripts/dev-smoke.sh",
     "smoke:dev-edge": "bash scripts/dev-edge-smoke.sh",
     "smoke:stream-tool-call": "node scripts/smoke/stream-tool-call.js --include-usage",
+    "lint:readyz-doc": "node scripts/qa/check-readyz-doc.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:runbooks": "prettier -c docs/app-server-migration",
