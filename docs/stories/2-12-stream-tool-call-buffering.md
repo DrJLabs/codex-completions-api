@@ -1,6 +1,6 @@
 # Story 2.12: Stream tool-call buffering for Obsidian mode
 
-Status: review
+Status: done
 
 ## Story
 
@@ -140,7 +140,7 @@ codex-5 (planned)
 
 - Reviewer: Amelia (Developer Agent)
 - Date: 2025-11-19
-- Outcome: **Changes Requested**
+- Outcome: **Approved** (findings resolved)
 
 ### Summary
 

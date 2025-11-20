@@ -4,11 +4,31 @@ import { setTimeout as delay } from "node:timers/promises";
 import { performance } from "node:perf_hooks";
 import { spawnCodex } from "../codex-runner.js";
 import { config as CFG } from "../../config/index.js";
-
-const LOG_PREFIX = "[proxy][worker-supervisor]";
+import { logStructured } from "../logging/schema.js";
 const READY_EVENT_KEYS = new Set(["ready", "listening", "healthy"]);
 
 const quote = (value) => `"${String(value).replaceAll('"', '\\"')}"`;
+
+const logWorker = (event, level, state, extra = {}) => {
+  const worker_state = extra.worker_state
+    ? extra.worker_state
+    : state?.ready
+      ? "ready"
+      : state?.running
+        ? "running"
+        : "stopped";
+  return logStructured(
+    {
+      component: "worker",
+      event,
+      level,
+      worker_state,
+      restart_count: state?.restarts,
+      backoff_ms: extra.backoff_ms ?? state?.nextBackoffMs,
+    },
+    extra
+  );
+};
 
 function buildSupervisorArgs() {
   const args = ["app-server"];
@@ -288,13 +308,20 @@ class CodexWorkerSupervisor extends EventEmitter {
       });
       return;
     }
-    console.log(
-      `${LOG_PREFIX} draining worker pid=${child.pid} signal=${signal} reason=${reason} grace_ms=${this.cfg.WORKER_SHUTDOWN_GRACE_MS}`
-    );
+    logWorker("shutdown_initiated", "info", this.state, {
+      pid: child.pid,
+      signal,
+      reason: shutdownReason,
+      grace_ms: this.cfg.WORKER_SHUTDOWN_GRACE_MS,
+    });
     try {
       child.kill(signal);
     } catch (err) {
-      console.error(`${LOG_PREFIX} failed to forward ${signal}:`, err);
+      logWorker("shutdown_signal_error", "error", this.state, {
+        signal,
+        reason: shutdownReason,
+        message: err?.message || String(err),
+      });
     }
 
     if (child.exitCode !== null || child.signalCode !== null) {
@@ -316,11 +343,18 @@ class CodexWorkerSupervisor extends EventEmitter {
         }),
       ]);
     } catch (err) {
-      console.warn(`${LOG_PREFIX} shutdown grace exceeded, sending SIGKILL`, err);
+      logWorker("shutdown_grace_exceeded", "warn", this.state, {
+        signal,
+        reason: shutdownReason,
+        message: err?.message || String(err),
+      });
       try {
         child.kill("SIGKILL");
       } catch (killErr) {
-        console.error(`${LOG_PREFIX} failed to SIGKILL worker:`, killErr);
+        logWorker("shutdown_sigkill_failed", "error", this.state, {
+          signal: "SIGKILL",
+          message: killErr?.message || String(killErr),
+        });
       }
       try {
         await once(child, "exit");
@@ -348,11 +382,10 @@ class CodexWorkerSupervisor extends EventEmitter {
     });
     const startedAt = this.state.launchStartedAt;
     const launchArgs = buildSupervisorArgs();
-    console.log(
-      `${LOG_PREFIX} launching app-server attempt=${this.state.startAttempts} args=${launchArgs
-        .slice(1)
-        .join(" ")}`
-    );
+    logWorker("worker_launch", "info", this.state, {
+      attempt: this.state.startAttempts,
+      args: launchArgs.slice(1).join(" "),
+    });
     const child = spawnCodex(launchArgs, {
       env: {
         ...process.env,
@@ -376,7 +409,10 @@ class CodexWorkerSupervisor extends EventEmitter {
     attach("stderr", child.stderr);
 
     child.on("spawn", () => {
-      console.log(`${LOG_PREFIX} spawned pid=${child.pid}`);
+      logWorker("worker_spawned", "info", this.state, {
+        pid: child.pid,
+        restarts_total: this.state.restarts,
+      });
       this.#updateLiveness({
         live: true,
         reason: "worker_running",
@@ -385,7 +421,9 @@ class CodexWorkerSupervisor extends EventEmitter {
     });
 
     child.on("error", (err) => {
-      console.error(`${LOG_PREFIX} spawn error:`, err);
+      logWorker("worker_spawn_error", "error", this.state, {
+        message: err?.message || String(err),
+      });
       this.#handleExit({ code: null, signal: null, error: err });
     });
 
@@ -402,9 +440,10 @@ class CodexWorkerSupervisor extends EventEmitter {
         const now = performance.now();
         this.state.startupLatencyMs = Math.round(now - startedAt);
         this.state.lastReadyAt = nowIso();
-        console.log(
-          `${LOG_PREFIX} worker ready pid=${child.pid} latency_ms=${this.state.startupLatencyMs}`
-        );
+        logWorker("worker_ready", "info", this.state, {
+          pid: child.pid,
+          latency_ms: this.state.startupLatencyMs,
+        });
         if (this.state.health.readiness?.reason !== "handshake_complete") {
           this.recordHandshakePending({
             startup_latency_ms: this.state.startupLatencyMs,
@@ -412,7 +451,9 @@ class CodexWorkerSupervisor extends EventEmitter {
           });
         }
       } catch (err) {
-        console.warn(`${LOG_PREFIX} readiness wait timed out: ${err.message}`);
+        logWorker("worker_ready_timeout", "warn", this.state, {
+          message: err?.message || String(err),
+        });
       }
     };
     readyWatcher();
@@ -426,15 +467,27 @@ class CodexWorkerSupervisor extends EventEmitter {
     const line = rawLine?.toString?.() ?? "";
     const trimmed = line.trim();
     if (!trimmed) return;
-    this.state.lastLogSample = { stream: streamName, line: trimmed, ts: nowIso() };
+    this.state.lastLogSample = {
+      stream: streamName,
+      stream_len: trimmed.length,
+      ts: nowIso(),
+    };
     let parsed = null;
     if (trimmed.startsWith("{")) parsed = parseMaybeJson(trimmed);
-    const payload = parsed || { message: trimmed };
-    try {
-      console.log(`${LOG_PREFIX} ${streamName} ${JSON.stringify(payload)}`);
-    } catch {
-      console.log(`${LOG_PREFIX} ${streamName} ${trimmed}`);
-    }
+    const payloadEvent =
+      (parsed?.event ?? parsed?.status ?? parsed?.type)?.toLowerCase?.() || undefined;
+    const payloadStatus = parsed?.status ?? parsed?.event ?? parsed?.type ?? undefined;
+    const payloadRetryable =
+      parsed && typeof parsed.retryable === "boolean" ? parsed.retryable : undefined;
+    const payloadErrorCode = typeof parsed?.error_code === "string" ? parsed.error_code : undefined;
+    logWorker("worker_stream", streamName === "stderr" ? "warn" : "info", this.state, {
+      stream: streamName,
+      stream_len: trimmed.length,
+      payload_event: payloadEvent,
+      payload_status: payloadStatus,
+      payload_retryable: payloadRetryable,
+      payload_error_code: payloadErrorCode,
+    });
     if (parsed) {
       const ready =
         parsed.ready === true ||
@@ -489,7 +542,10 @@ class CodexWorkerSupervisor extends EventEmitter {
         reason: "shutdown_in_progress",
         details: { exit: exitInfo },
       });
-      console.log(`${LOG_PREFIX} worker exited during shutdown code=${code} signal=${signal}`);
+      logWorker("worker_exit_during_shutdown", "info", this.state, {
+        exit_code: code,
+        signal,
+      });
       return;
     }
     this.state.ready = false;
@@ -504,13 +560,14 @@ class CodexWorkerSupervisor extends EventEmitter {
         restarts_total: this.state.restarts,
       },
     });
-    console.warn(
-      `${LOG_PREFIX} worker exited code=${code} signal=${signal} restarts_total=${this.state.restarts}`
-    );
+    logWorker("worker_exit", "warn", this.state, {
+      exit_code: code,
+      signal,
+    });
     if (this.state.restarts > this.cfg.WORKER_RESTART_MAX) {
-      console.error(
-        `${LOG_PREFIX} reached WORKER_RESTART_MAX=${this.cfg.WORKER_RESTART_MAX}; supervisor halted`
-      );
+      logWorker("worker_restart_limit", "error", this.state, {
+        restart_max: this.cfg.WORKER_RESTART_MAX,
+      });
       this.state.running = false;
       this.#updateLiveness({
         live: false,
@@ -523,7 +580,9 @@ class CodexWorkerSupervisor extends EventEmitter {
       return;
     }
     const delayMs = Math.min(this.state.nextBackoffMs, this.cfg.WORKER_BACKOFF_MAX_MS);
-    console.warn(`${LOG_PREFIX} scheduling restart in ${delayMs}ms`);
+    logWorker("worker_restart_scheduled", "warn", this.state, {
+      backoff_ms: delayMs,
+    });
     this.state.nextBackoffMs = Math.min(delayMs * 2, this.cfg.WORKER_BACKOFF_MAX_MS);
     this.#updateLiveness({
       live: true,

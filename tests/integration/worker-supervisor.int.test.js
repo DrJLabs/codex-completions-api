@@ -106,6 +106,48 @@ test("worker restarts with bounded backoff and exposes metrics", async () => {
   expect(ws.pid).not.toBe(pid);
 });
 
+test("worker stream logs are redacted and keep canonical fields", async () => {
+  const logs = [];
+  const capture = (chunk) => {
+    for (const line of chunk.toString().split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && parsed.component === "worker" && parsed.event === "worker_stream") {
+          logs.push(parsed);
+        }
+      } catch {
+        // ignore non-JSON lines
+      }
+    }
+  };
+  child.stdout.on("data", capture);
+  child.stderr.on("data", capture);
+
+  const before = await fetchHealth();
+  const prevRestarts = before.worker_supervisor.restarts_total;
+  process.kill(before.worker_supervisor.pid, "SIGTERM");
+  await waitForRestart(prevRestarts);
+  await wait(100);
+
+  child.stdout.off("data", capture);
+  child.stderr.off("data", capture);
+
+  expect(logs.length).toBeGreaterThan(0);
+  for (const entry of logs) {
+    expect(entry.event).toBe("worker_stream");
+    expect(entry.component).toBe("worker");
+    expect(entry.stream).toBeDefined();
+    expect(entry.message).toBeUndefined();
+    expect(entry.level === "info" || entry.level === "warn").toBe(true);
+    expect(entry.ts).toBeDefined();
+    expect(entry).not.toHaveProperty("messages");
+    expect(entry).not.toHaveProperty("payload");
+    expect(entry).not.toHaveProperty("body");
+  }
+});
+
 test("graceful shutdown drains worker within grace period", async () => {
   const started = Date.now();
   child.kill("SIGTERM");
