@@ -61,6 +61,15 @@ const streamsActive = new Gauge({
   registers: [registry],
 });
 
+const toolBufferAnomaly = new Gauge({
+  name: "codex_tool_buffer_anomaly",
+  help: "Tool buffer anomaly signal (1 when active within the last 2m, else 0)",
+  registers: [registry],
+});
+toolBufferAnomaly.set(0);
+
+let toolBufferAnomalyReset;
+
 const toolBufferStarted = new Counter({
   name: "codex_tool_buffer_started_total",
   help: "Tool buffer started events",
@@ -144,6 +153,12 @@ export function recordToolBufferEvent(kind, labels = {}) {
     toolBufferFlushed.inc(safeLabels);
   } else if (kind === "abort") {
     toolBufferAborted.inc(safeLabels);
+    toolBufferAnomaly.set(1);
+    if (toolBufferAnomalyReset) clearTimeout(toolBufferAnomalyReset);
+    toolBufferAnomalyReset = setTimeout(() => {
+      toolBufferAnomaly.set(0);
+      toolBufferAnomalyReset = undefined;
+    }, 120000);
   }
 }
 

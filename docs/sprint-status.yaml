@@ -65,7 +65,7 @@ development_status:
   3-1-structured-logging-for-worker-lifecycle: done
   3-2-metrics-pipeline-for-app-server-path: done
   3-3-health-probe-integration-tests: done
-  3-4-incident-alerting-and-runbook-updates: backlog
+  3-4-incident-alerting-and-runbook-updates: done
   3-5-maintenance-flag-and-customer-communication-workflow: backlog
   3-6-security-audit-and-compliance-validation: backlog
   3-7-json-rpc-trace-buffer-retention: backlog
