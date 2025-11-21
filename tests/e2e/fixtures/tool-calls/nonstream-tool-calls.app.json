@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "captured_at": "2025-11-21T07:12:42.252Z",
+    "include_usage": false,
+    "codex_bin": "scripts/fake-codex-jsonrpc.js",
+    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "cli_version": "0.58.0",
+    "node_version": "v24.11.0",
+    "scenario": "nonstream-tool-calls",
+    "backend": "app-server",
+    "backend_storage": "app",
+    "expected_status": 200
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Run the lookup tool for user 42"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
+  },
+  "response": {
+    "id": "<dynamic-id>",
+    "object": "chat.completion",
+    "created": "<timestamp>",
+    "model": "codex-5",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "id": "tool_fake_1",
+              "type": "function",
+              "function": {
+                "name": "lookup_user",
+                "arguments": "{\"id\":\"42\"}"
+              }
+            }
+          ],
+          "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>42</id>\n</use_tool>"
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 0,
+      "total_tokens": 8
+    }
+  }
+}

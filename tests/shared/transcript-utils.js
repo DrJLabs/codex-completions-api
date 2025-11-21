@@ -192,7 +192,7 @@ const REQUIRED_TRANSCRIPTS = [
   "streaming-multi-choice.json",
 ];
 
-export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS, { backend = "proto" } = {}) {
+export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS, { backend = "app" } = {}) {
   const backends = Array.isArray(backend) ? backend : [backend];
   const missing = [];
   for (const name of backends) {

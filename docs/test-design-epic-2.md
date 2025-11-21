@@ -121,8 +121,8 @@ CI gating: PRs must pass Smoke + P0; `main` merges also run P1; nightly jobs run
 
 ## Tooling & Environment
 
-- **Fixtures:** Add deterministic JSON-RPC + textual transcripts under `tests/e2e/fixtures/tool-calls/` with seed metadata (`codex_version`, `scenario`).
-- **Fake Codex modes:** Update `scripts/fake-codex-jsonrpc.js` & `scripts/fake-codex-proto-tools.js` to emit multi-choice, large-arg, and error-after-tool scenarios controlled via env flags.
+- **Fixtures:** Add deterministic JSON-RPC + textual transcripts under `tests/e2e/fixtures/tool-calls/` with seed metadata (`codex_version`, `scenario`). Proto parity is deprecated for Story 2.10; matrix is app-server only.
+- **Fake Codex modes:** Update `scripts/fake-codex-jsonrpc.js` to emit multi-choice, large-arg, error-before/after-tool, and function→tool migration scenarios controlled via env flags (proto helper no longer required for this story).
 - **Config:** Introduce `PROXY_OUTPUT_MODE` + `x-proxy-output-mode` header override defaults, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`, `PROXY_STOP_AFTER_TOOLS_MODE` permutations documented in `.env.example`.
 - **Telemetry:** Record `tool_call_count`, `tool_call_mode`, and tail-trim indicators in structured logs/metrics for observability validation.
 - **Smoke scripts:** `scripts/dev-smoke.sh`, `scripts/prod-smoke.sh`, and `scripts/dev-edge-smoke.sh` gain authenticated tool-call drills and artifact upload (`test-results/tool-calls/*`).

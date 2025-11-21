@@ -57,7 +57,7 @@ development_status:
   2-9-stream-and-nonstream-tool-calls: done
   2-9a-multi-tool-calls-per-turn: review
   # Blocked until FR002d multi-tool turn fidelity (Story 2-9a) lands (see docs/sprint-change-proposal-2025-11-10.md)
-  2-10-tool-call-regression-and-smoke: drafted
+  2-10-tool-call-regression-and-smoke: done
   2-11-end-to-end-tracing: done
   2-12-stream-tool-call-buffering: done
   epic-2-retrospective: completed
@@ -66,7 +66,7 @@ development_status:
   3-2-metrics-pipeline-for-app-server-path: done
   3-3-health-probe-integration-tests: done
   3-4-incident-alerting-and-runbook-updates: done
-  3-5-maintenance-flag-and-customer-communication-workflow: backlog
+  3-5-maintenance-flag-and-customer-communication-workflow: drafted
   3-6-security-audit-and-compliance-validation: backlog
   3-7-json-rpc-trace-buffer-retention: backlog
   epic-3-retrospective: optional

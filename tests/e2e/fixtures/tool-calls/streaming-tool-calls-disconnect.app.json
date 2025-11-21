@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "codex_bin": "scripts/fake-codex-jsonrpc.js",
+    "cli_version": "0.58.0",
+    "node_version": "v24.11.0",
+    "backend": "app-server",
+    "backend_storage": "app",
+    "expected_status": 200,
+    "captured_at": "2025-11-21T08:59:37.127Z",
+    "include_usage": false,
+    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "env": {
+      "FAKE_CODEX_MODE": "tool_call"
+    },
+    "scenario": "disconnect-after-first-tool",
+    "abort_after_first_tool": true
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "Stream tool execution (stop-after-tools first)"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
+  },
+  "stream": []
+}
