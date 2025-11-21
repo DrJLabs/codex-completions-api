@@ -20,6 +20,7 @@
 - `codex_worker_backoff_ms` — next restart backoff or startup latency.
 - `codex_worker_ready` — 1 when supervisor reports ready, else 0.
 - `codex_streams_active` — SSE/concurrency guard snapshot.
+- `codex_tool_buffer_anomaly` — gauge that flips to 1 on buffer abort and auto-resets to 0 after 2m.
 - `codex_tool_buffer_started_total|_flushed_total|_aborted_total{output_mode,reason}` — textual tool buffer transitions.
 - `codex_maintenance_mode` — 1 when maintenance flag is enabled, else 0.
 - Default process metrics from `prom-client` remain registered for scrape health (cpu, memory, heap).
@@ -38,15 +39,16 @@
 
 ## Dashboard and Alert Templates (example thresholds; tune per NFR002/FR011)
 
-- **Latency:** `codex_http_latency_summary_ms{route="/v1/chat/completions",status_family="2xx"}` — alert when p95 > 1500ms for 5m; p99 > 2500ms for 5m.
-- **Error rate:** `rate(codex_http_errors_total{route="/v1/chat/completions"}[5m]) / rate(codex_http_requests_total{route="/v1/chat/completions"}[5m])` > 0.01 for 5m.
+- **Latency:** `codex_http_latency_summary_ms{route="/v1/chat/completions",status_family="2xx"}` — alert when p95 > (`SLO_P95_BASELINE_MS` × 1.05) for 3m; default baseline 1500ms (override in Prom value template).
+- **Error rate:** `rate(codex_http_errors_total{route="/v1/chat/completions"}[5m]) / rate(codex_http_requests_total{route="/v1/chat/completions"}[5m])` > 0.02 for 5m.
 - **Throughput:** `rate(codex_http_requests_total[1m])` overlay per route; dashboard panel only.
-- **Restarts/backoff:** `increase(codex_worker_restarts_total[10m]) > 0` or `codex_worker_backoff_ms > 0` triggers warning; page if repeating >3 times/hour.
+- **Restarts/backoff:** `increase(codex_worker_restarts_total[10m]) > 3` or `codex_worker_backoff_ms > 0` triggers warning; page if repeating >3 times/hour.
 - **Active streams:** `codex_streams_active` gauge; alert if sustained > `PROXY_SSE_MAX_CONCURRENCY` for 2m.
-- **Tool buffer anomalies:** `increase(codex_tool_buffer_aborted_total[5m]) > 0` or `rate(codex_tool_buffer_started_total[5m])` spikes without flushes.
+- **Tool buffer anomalies:** `max_over_time(codex_tool_buffer_anomaly[2m]) > 0` and `rate(codex_tool_buffer_aborted_total[5m]) > 0` to confirm signal is live.
 - **Maintenance state:** `codex_maintenance_mode` panel and alert when ==1 for >2m; mirror 503 spikes in error-rate alert.
 
 Dashboards should link to runbooks and include scrape target (host/pod), version/build id, and ForwardAuth status for context.
+Alert labels must include `owner=sre` and `page_service=codex-app` to keep paging rules consistent.
 
 ## Artifacts
 
