@@ -1,0 +1,216 @@
+{
+  "metadata": {
+    "codex_bin": "scripts/fake-codex-jsonrpc.js",
+    "cli_version": "0.58.0",
+    "node_version": "v24.11.0",
+    "backend": "app-server",
+    "backend_storage": "app",
+    "expected_status": 200,
+    "captured_at": "2025-11-21T08:59:36.664Z",
+    "include_usage": true,
+    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "env": {
+      "PROXY_STOP_AFTER_TOOLS": "true",
+      "PROXY_STOP_AFTER_TOOLS_MODE": "first",
+      "FAKE_CODEX_MODE": "tool_call"
+    },
+    "scenario": "stop-after-tools-first",
+    "abort_after_first_tool": false
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "Stream tool execution (stop-after-tools first)"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
+  },
+  "stream": [
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "id": "tool_fake_1",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_user"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "function": {
+                    "arguments": "{\"id\":\""
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "function": {
+                    "arguments": "{\"id\":\"42"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "function": {
+                    "arguments": "{\"id\":\"42\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "chatcmpl-ldnlCwjZ6vEbTDqW2MnA1",
+        "object": "chat.completion.chunk",
+        "created": 1763715576,
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>42</id>\n</use_tool>"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "error": {
+          "message": "request aborted by client",
+          "type": "request_cancelled",
+          "code": "request_aborted"
+        }
+      }
+    },
+    {
+      "type": "done"
+    }
+  ]
+}

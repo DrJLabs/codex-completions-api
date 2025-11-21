@@ -120,6 +120,45 @@ if [[ -n "$KEY" ]]; then
     fail "cf POST /v1/chat/completions (stream)"
   fi
   rm -f "$SSE_OUT"
+
+  # Tool-call streaming smoke (structured + optional modes)
+  TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
+  TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured,disconnect}"
+  run_tool_smoke() {
+    local mode="$1"; shift
+    local flags=("$@")
+    local out
+    out=$(mktemp)
+    if BASE_URL="$BASE_CF" MODEL="$TOOL_SMOKE_MODEL" KEY="$KEY" TIMEOUT_MS="$TOOL_SMOKE_TIMEOUT_MS" \
+      node "$ROOT_DIR/scripts/smoke/stream-tool-call.js" "${flags[@]}" >"$out" 2>&1; then
+      pass "cf tool-call smoke (${mode})"
+      cat "$out"
+    else
+      echo "--- tool-call smoke output (${mode}) ---"; cat "$out"; echo "------------------------------------"
+      rm -f "$out"
+      fail "cf tool-call smoke (${mode})"
+    fi
+    rm -f "$out"
+  }
+
+  IFS=',' read -ra MODES <<<"$TOOL_SMOKE_MODES"
+  for mode in "${MODES[@]}"; do
+    case "$mode" in
+      structured|"")
+        run_tool_smoke "structured" ${TOOL_SMOKE_FLAGS:-}
+        ;;
+      disconnect)
+        run_tool_smoke "disconnect" --disconnect-after-first-tool --allow-single ${TOOL_SMOKE_FLAGS:-}
+        ;;
+      textual)
+        run_tool_smoke "textual" --expect-xml --allow-single ${TOOL_SMOKE_FLAGS:-}
+        ;;
+      *)
+        echo "(Skipping unknown tool-call smoke mode: $mode)"
+        ;;
+    esac
+  done
 else
   echo "(Skipping auth chat tests; set KEY=...)"
 fi

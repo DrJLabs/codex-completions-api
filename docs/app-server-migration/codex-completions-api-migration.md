@@ -253,6 +253,14 @@ spawn("codex", [
 
 ---
 
+### K.1 Tool-call regression anchors (Story 2.10)
+
+- **Structured fixtures (stop-after-tools on/off):** Run `npm run transcripts:generate` twice with `PROXY_STOP_AFTER_TOOLS=false` and `PROXY_STOP_AFTER_TOOLS=true PROXY_STOP_AFTER_TOOLS_MODE=burst`, writing results under `tests/e2e/fixtures/tool-calls/*.{app,proto}.json` and updating `manifest.json` to record backend, stop policy, and seed. These fixtures back ACs 1/2/9/23/29/31/37.
+- **Textual fallback + large-arg stub:** Capture a replay that streams a literal `<use_tool>` block (multibyte, 8KB+) and document the expected tail stripping in `tests/e2e/fixtures/tool-calls/README.md`. If the generator lacks this scenario, add a placeholder entry and link to the captured transcript path so smoke/tests can reference it (ACs 3/7/15/16/40).
+- **Disconnect/error smoke stub:** Add a smoke path that aborts after the first `delta.tool_calls` and verifies no more frames arrive; record the gap until the harness exists. Note expected artifacts: raw SSE, normalized JSON, backend stderr (ACs 12/13/18/26/36).
+- **Smoke runner usage:** `node scripts/smoke/stream-tool-call.js [--expect-xml] [--allow-single] [--include-usage]` writes artifacts to `docs/bmad/qa/artifacts/streaming-tool-call/` and fails on mixed frames or multiple finish chunks. Extend it with disconnect/textual scenarios when added, and wire into CI smoke once present (ACs 4/10/19/20/25/27/33/42).
+- **CI gate reminder:** `npm run test:integration && npm test` must pass after fixture refresh; parity or smoke failures block rollout. Upload updated fixtures plus hashes to the PR and cite the seed/CLI version in the change summary (AC 5/18).
+
 ## L. Remaining gaps
 
 1. **No CI/dev mock:** add a lightweight JSON‑RPC fake app-server for tests (fixtures for initialize, deltas, final).

@@ -1,0 +1,15 @@
+{
+  "backend": "app-server",
+  "model": "codex-5",
+  "fixtures": [
+    "nonstream-tool-calls.app.json",
+    "streaming-tool-calls.app.json",
+    "streaming-tool-calls-sequential.app.json",
+    "streaming-tool-calls-stop-after-tools.app.json",
+    "streaming-tool-calls-textual.app.json",
+    "streaming-tool-calls-disconnect.app.json"
+  ],
+  "source": "ad-hoc capture via startServer + scripts/fake-codex-jsonrpc.js",
+  "generated_at": "2025-11-22",
+  "notes": "App-server-only fixtures for Story 2.10 tool-call regression suites; stop-after-tools(first), textual fallback, and disconnect-after-first-tool captured against fake-codex-jsonrpc with PROXY_USE_APP_SERVER=true."
+}

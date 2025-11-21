@@ -12,6 +12,9 @@ const heartbeatMs = Number(process.env.FAKE_CODEX_WORKER_HEARTBEAT_MS ?? 0);
 const autoExitMs = Number(process.env.FAKE_CODEX_WORKER_AUTOEXIT_MS ?? 0);
 const shutdownDelayMs = Number(process.env.FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS ?? 20);
 const exitCode = Number(process.env.FAKE_CODEX_WORKER_EXIT_CODE ?? 0);
+const errorAfterFirstTool =
+  String(process.env.FAKE_CODEX_ERROR_AFTER_FIRST_TOOL || "").toLowerCase() === "true";
+const toolCallCount = Math.max(1, Number(process.env.FAKE_CODEX_TOOL_CALL_COUNT || 1));
 
 let heartbeatTimer = null;
 let autoExitTimer = null;
@@ -205,24 +208,112 @@ async function runJsonRpcWorker() {
           });
           return;
         }
+        if (scenario === "multi_choice_tool") {
+          const convId = resolveConversationId(params);
+          const calls = [
+            { id: "multi_tool_0", name: "lookup_user" },
+            { id: "multi_tool_1", name: "send_email" },
+          ];
+          calls.forEach((call, idx) => {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: params.request_id || convId,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: call.id,
+                      type: "function",
+                      function: { name: call.name },
+                    },
+                  ],
+                },
+                choice_index: idx,
+              },
+            });
+            ['{"id":"', String(42 + idx), '"}'].forEach((chunk) => {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessageDelta",
+                params: {
+                  conversation_id: convId,
+                  request_id: params.request_id || convId,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        function: { arguments: chunk },
+                      },
+                    ],
+                  },
+                  choice_index: idx,
+                },
+              });
+            });
+          });
+          calls.forEach((call, idx) => {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessage",
+              params: {
+                conversation_id: convId,
+                request_id: params.request_id || convId,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: call.id,
+                      type: "function",
+                      function: { name: call.name, arguments: `{"id":"${42 + idx}"}` },
+                    },
+                  ],
+                },
+                choice_index: idx,
+              },
+            });
+          });
+          write({
+            jsonrpc: "2.0",
+            method: "tokenCount",
+            params: {
+              conversation_id: convId,
+              request_id: params.request_id || convId,
+              prompt_tokens: 5,
+              completion_tokens: 5,
+              finish_reason: "tool_calls",
+            },
+          });
+          write({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              finish_reason: "tool_calls",
+            },
+          });
+          return;
+        }
+
         const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
           .trim()
           .toLowerCase();
+        const requestedLength =
+          ["length", "max_tokens", "token_limit", "token_limit_reached"].includes(
+            requestedFinish
+          ) || scenario === "truncation";
         let finishReason = "stop";
-        if (
-          ["length", "max_tokens", "token_limit", "token_limit_reached"].includes(requestedFinish)
-        ) {
-          finishReason = "length";
-        }
-        if (scenario === "truncation") {
-          finishReason = "length";
-        }
         if (scenario === "content_filter") {
           finishReason = "content_filter";
-        } else if (scenario === "function_call" && finishReason !== "length") {
-          finishReason = "function_call";
-        } else if (scenario === "tool_call" && finishReason !== "length") {
+        } else if (scenario === "tool_call" || scenario === "textual_tool") {
+          // Tool calls take precedence over length/stop reasons.
           finishReason = "tool_calls";
+        } else if (scenario === "function_call" && !requestedLength) {
+          finishReason = "function_call";
+        } else if (requestedLength) {
+          finishReason = "length";
         }
 
         const parallelToolCalls = !/^false$/i.test(
@@ -238,19 +329,17 @@ async function runJsonRpcWorker() {
               }
             : null;
 
-        const toolCalls =
-          scenario === "tool_call"
-            ? [
-                {
-                  id: "tool_fake_1",
-                  type: "function",
-                  function: {
-                    name: "lookup_user",
-                    arguments: '{"id":"42"}',
-                  },
-                },
-              ]
-            : null;
+        const shouldEmitToolCalls = scenario === "tool_call" || scenario === "function_then_tool";
+        const toolCalls = shouldEmitToolCalls
+          ? Array.from({ length: toolCallCount }).map((_, idx) => ({
+              id: `tool_fake_${idx + 1}`,
+              type: "function",
+              function: {
+                name: idx % 2 === 0 ? "lookup_user" : "send_email",
+                arguments: '{"id":"42"}',
+              },
+            }))
+          : null;
 
         const functionCall =
           scenario === "function_call"
@@ -275,46 +364,52 @@ async function runJsonRpcWorker() {
         if (scenario === "truncation" && !toolCalls && !functionCall) {
           messageText = "Hello (truncated) from fake-codex.";
         }
+        if (scenario === "textual_tool") {
+          messageText =
+            '<use_tool id="tool_0_0" name="lookup_user">{"id":"ユーザー-12345"}</use_tool>';
+        }
 
         if (toolCalls && parallelToolCalls) {
-          write({
-            jsonrpc: "2.0",
-            method: "agentMessageDelta",
-            params: {
-              conversation_id: convId,
-              request_id: params.request_id || convId,
-              parallel_tool_calls: true,
-              delta: {
-                tool_calls: [
-                  {
-                    index: 0,
-                    id: toolCalls[0].id,
-                    type: toolCalls[0].type,
-                    function: { name: toolCalls[0].function.name },
-                  },
-                ],
-              },
-            },
-          });
-          const argChunks = ['{"id":"', "42", '"}'];
-          for (const chunk of argChunks) {
+          toolCalls.forEach((call, idx) => {
             write({
               jsonrpc: "2.0",
               method: "agentMessageDelta",
               params: {
                 conversation_id: convId,
                 request_id: params.request_id || convId,
+                parallel_tool_calls: true,
                 delta: {
                   tool_calls: [
                     {
-                      index: 0,
-                      function: { arguments: chunk },
+                      index: idx,
+                      id: call.id,
+                      type: call.type,
+                      function: { name: call.function.name },
                     },
                   ],
                 },
               },
             });
-          }
+            const argChunks = ['{"id":"', "42", '"}'];
+            for (const chunk of argChunks) {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessageDelta",
+                params: {
+                  conversation_id: convId,
+                  request_id: params.request_id || convId,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: idx,
+                        function: { arguments: chunk },
+                      },
+                    ],
+                  },
+                },
+              });
+            }
+          });
         } else if (messageText) {
           write({
             jsonrpc: "2.0",
@@ -343,6 +438,24 @@ async function runJsonRpcWorker() {
         if (toolCalls) {
           messageEnvelope.parallel_tool_calls = parallelToolCalls;
         }
+        if (scenario === "function_then_tool") {
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessage",
+            params: {
+              ...messageEnvelope,
+              message: {
+                role: "assistant",
+                content: null,
+                function_call: {
+                  name: "lookup_user",
+                  arguments: '{"id":"42"}',
+                },
+              },
+            },
+          });
+        }
+
         write({
           jsonrpc: "2.0",
           method: "agentMessage",
@@ -373,6 +486,32 @@ async function runJsonRpcWorker() {
           method: "tokenCount",
           params: usagePayload,
         });
+
+        if (errorAfterFirstTool && shouldEmitToolCalls) {
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessage",
+            params: {
+              conversation_id: convId,
+              request_id: params.request_id || convId,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: toolCalls,
+              },
+            },
+          });
+          write({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              finish_reason: "tool_calls",
+            },
+          });
+          clearTimers();
+          process.nextTick(() => process.exit(1));
+          return;
+        }
 
         write({
           jsonrpc: "2.0",
