@@ -1,6 +1,8 @@
 # Migrating `codex-completions-api` to `codex app-server`
 
-> **Goal:** Switch backend from `codex proto` to `codex app-server` **without changing** the proxy’s external OpenAI‑compatible API responses (both streaming and non‑streaming).
+⚠️ Proto backend is fully **decommissioned**. This doc is retained for historical migration notes; all environments, fixtures, tests, and smoke scripts are app-server only. Do **not** run `codex proto` or capture proto fixtures; references below describe the completed cutover.
+
+> **Goal (completed):** Switch backend from `codex proto` to `codex app-server` **without changing** the proxy’s external OpenAI‑compatible API responses (both streaming and non‑streaming).
 
 ---
 
@@ -220,8 +222,10 @@ spawn("codex", [
 
 ## K. Parity fixture maintenance workflow
 
-1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator now writes to `test-results/chat-completions/{proto,app}/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
-2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs.
+> Proto mode is **retired**. Do not regenerate proto fixtures or flip `PROXY_USE_APP_SERVER` to false; all parity evidence must use the app-server JSON-RPC shim or real app-server binary.
+
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture app-server outputs. The generator writes to `test-results/chat-completions/app/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
+2. **Verify parity** – execute `npm run test:parity` to compare normalized app transcripts (proto fixtures have been retired for Story 2.10+). The harness fails fast when a scenario diverges or is missing, producing actionable diffs.
 3. **Smoke the baseline** – before publishing updated fixtures, run:
    ```bash
    npm run test:integration
@@ -255,7 +259,7 @@ spawn("codex", [
 
 ### K.1 Tool-call regression anchors (Story 2.10)
 
-- **Structured fixtures (stop-after-tools on/off):** Run `npm run transcripts:generate` twice with `PROXY_STOP_AFTER_TOOLS=false` and `PROXY_STOP_AFTER_TOOLS=true PROXY_STOP_AFTER_TOOLS_MODE=burst`, writing results under `tests/e2e/fixtures/tool-calls/*.{app,proto}.json` and updating `manifest.json` to record backend, stop policy, and seed. These fixtures back ACs 1/2/9/23/29/31/37.
+- **Structured fixtures (stop-after-tools on/off):** Run `npm run transcripts:generate` twice with `PROXY_STOP_AFTER_TOOLS=false` and `PROXY_STOP_AFTER_TOOLS=true PROXY_STOP_AFTER_TOOLS_MODE=burst`, writing results under `tests/e2e/fixtures/tool-calls/*.app.json` and updating `manifest.json` to record backend, stop policy, and seed. Proto variants have been removed for Story 2.10+. These fixtures back ACs 1/2/9/23/29/31/37.
 - **Textual fallback + large-arg stub:** Capture a replay that streams a literal `<use_tool>` block (multibyte, 8KB+) and document the expected tail stripping in `tests/e2e/fixtures/tool-calls/README.md`. If the generator lacks this scenario, add a placeholder entry and link to the captured transcript path so smoke/tests can reference it (ACs 3/7/15/16/40).
 - **Disconnect/error smoke stub:** Add a smoke path that aborts after the first `delta.tool_calls` and verifies no more frames arrive; record the gap until the harness exists. Note expected artifacts: raw SSE, normalized JSON, backend stderr (ACs 12/13/18/26/36).
 - **Smoke runner usage:** `node scripts/smoke/stream-tool-call.js [--expect-xml] [--allow-single] [--include-usage]` writes artifacts to `docs/bmad/qa/artifacts/streaming-tool-call/` and fails on mixed frames or multiple finish chunks. Extend it with disconnect/textual scenarios when added, and wire into CI smoke once present (ACs 4/10/19/20/25/27/33/42).
@@ -301,7 +305,7 @@ spawn("codex", [
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Local / Dev stack | proto (`false`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`)                     | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
+| Local / Dev stack | proto (`false`, historical only; do not use) | `.env.dev` (`PROXY_USE_APP_SERVER=true`)                     | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
 | Staging           | proto (`false`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true`) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
 | Production        | proto (`false`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf`  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 

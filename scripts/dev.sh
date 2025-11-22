@@ -44,11 +44,15 @@ if [[ -z "${PROXY_API_KEY:-}" ]]; then
 fi
 
 if [[ "$USE_SHIM" == "1" && -z "$CODEX_BIN" ]]; then
-  CODEX_BIN="$ROOT_DIR/scripts/fake-codex-proto.js"
+  CODEX_BIN="$ROOT_DIR/scripts/fake-codex-jsonrpc.js"
 fi
 
 export PORT PROXY_API_KEY CODEX_HOME PROXY_ENV
 PROXY_ENV="${PROXY_ENV:-dev}"
+if [[ "$USE_SHIM" == "1" ]]; then
+  export PROXY_USE_APP_SERVER="${PROXY_USE_APP_SERVER:-true}"
+  export CODEX_WORKER_SUPERVISED="${CODEX_WORKER_SUPERVISED:-true}"
+fi
 if [[ -n "$CODEX_BIN" ]]; then export CODEX_BIN; fi
 
 mkdir -p "$CODEX_HOME"

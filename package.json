@@ -28,7 +28,7 @@
     "husky:fix-perms": "chmod +x .husky/* || true",
     "build:png": "node scripts/svg2png.playwright.mjs",
     "start:codev": "PORT=18000 CODEX_HOME=.codev node server.js",
-    "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js",
+    "start:codev:shim": "PORT=18000 CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-jsonrpc.js PROXY_USE_APP_SERVER=true CODEX_WORKER_SUPERVISED=true node server.js",
     "smoke": "bash scripts/smoke.sh",
     "jsonrpc:schema": "node scripts/jsonrpc/render-schema.mjs",
     "jsonrpc:bundle": "node scripts/jsonrpc/export-json-schema.mjs",

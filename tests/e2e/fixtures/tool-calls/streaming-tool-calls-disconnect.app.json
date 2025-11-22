@@ -6,9 +6,9 @@
     "backend": "app-server",
     "backend_storage": "app",
     "expected_status": 200,
-    "captured_at": "2025-11-21T08:59:37.127Z",
+    "captured_at": "2025-11-22T04:43:44.804Z",
     "include_usage": false,
-    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "commit": "e8300ed0086bdf9503d67e56f48bd299be184aa8",
     "env": {
       "FAKE_CODEX_MODE": "tool_call"
     },
@@ -52,5 +52,169 @@
       }
     }
   },
-  "stream": []
+  "stream": [
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "id": "tool_0_0",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_user",
+                    "arguments": "{\"id\": \"42\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>42</id>\n</use_tool>"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 1,
+                  "id": "tool_fake_1",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_user"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 1,
+                  "function": {
+                    "arguments": "{\"id\":\"42\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "comment",
+      "comment": "{\"tool_call_count\":2,\"tool_call_truncated\":false,\"stop_after_tools_mode\":\"burst\"}"
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 0,
+          "total_tokens": 8,
+          "time_to_first_token": null,
+          "throughput_after_first_token": null,
+          "emission_trigger": "token_count"
+        }
+      }
+    },
+    {
+      "type": "done"
+    }
+  ]
 }

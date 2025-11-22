@@ -4,6 +4,7 @@ Date: 2025-10-31
 Author: drj
 Epic ID: 2
 Status: Draft
+⚠️ Proto backend is permanently decommissioned. All parity language is historical; production, dev, fixtures, tests, and smoke are **app-server only** with `PROXY_USE_APP_SERVER=true`. Do not capture, run, or gate on proto.
 
 ---
 
@@ -11,7 +12,7 @@ Status: Draft
 
 This epic completes the migration of `/v1/chat/completions` onto the Codex App Server by adding JSON-RPC request/response adapters, preserving the proxy's OpenAI-compatible contract called out in FR001–FR004. Building on the supervised worker and transport channel landed in Epic 1, we translate every chat invocation into deterministic JSON-RPC calls while maintaining identical latency budgets, streaming semantics, and retry envelopes.
 
-The work establishes automated parity evidence so production rollout can proceed with confidence. Transcript capture, schema bindings, and regression harnesses provide objective proof that the new backend matches proto behavior before we touch traffic toggles.
+Proto parity is historical only; the proto path is removed from smoke, fixtures, and CI. All regression evidence now targets the app-server baseline.
 
 ## Objectives and Scope
 

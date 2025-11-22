@@ -48,8 +48,14 @@ describe.each(STREAM_SCENARIOS)(
 
     beforeAll(async () => {
       ensureTranscripts(STREAM_SCENARIOS.map((scenario) => scenario.transcriptFile));
-      transcript = await loadTranscript(transcriptFile);
-      serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js", ...env });
+      transcript = await loadTranscript(transcriptFile, { backend: "app" });
+      serverCtx = await startServer({
+        CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+        PROXY_USE_APP_SERVER: "true",
+        CODEX_WORKER_SUPERVISED: "true",
+        PROXY_PROTECT_MODELS: "false",
+        ...env,
+      });
     }, 10_000);
 
     afterAll(async () => {
@@ -84,9 +90,12 @@ describe("chat completion streaming output mode overrides", () => {
 
   beforeAll(async () => {
     ensureTranscripts(["streaming-tool-calls.json"]);
-    transcript = await loadTranscript("streaming-tool-calls.json");
+    transcript = await loadTranscript("streaming-tool-calls.json", { backend: "app" });
     serverCtx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      PROXY_USE_APP_SERVER: "true",
+      CODEX_WORKER_SUPERVISED: "true",
+      PROXY_PROTECT_MODELS: "false",
       FAKE_CODEX_MODE: "tool_call",
     });
   }, 10_000);

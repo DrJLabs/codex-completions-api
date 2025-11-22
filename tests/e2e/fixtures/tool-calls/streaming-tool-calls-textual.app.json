@@ -6,9 +6,9 @@
     "backend": "app-server",
     "backend_storage": "app",
     "expected_status": 200,
-    "captured_at": "2025-11-21T08:59:36.904Z",
+    "captured_at": "2025-11-22T04:43:44.804Z",
     "include_usage": false,
-    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "commit": "e8300ed0086bdf9503d67e56f48bd299be184aa8",
     "env": {
       "FAKE_CODEX_MODE": "textual_tool"
     },
@@ -31,9 +31,9 @@
     {
       "type": "data",
       "data": {
-        "id": "chatcmpl-epHVrcBGYeadiFXUupGUj",
+        "id": "<dynamic-id>",
         "object": "chat.completion.chunk",
-        "created": 1763715576,
+        "created": "<timestamp>",
         "model": "codex-5",
         "choices": [
           {
@@ -50,9 +50,9 @@
     {
       "type": "data",
       "data": {
-        "id": "chatcmpl-epHVrcBGYeadiFXUupGUj",
+        "id": "<dynamic-id>",
         "object": "chat.completion.chunk",
-        "created": 1763715576,
+        "created": "<timestamp>",
         "model": "codex-5",
         "choices": [
           {
@@ -65,7 +65,7 @@
                   "type": "function",
                   "function": {
                     "name": "lookup_user",
-                    "arguments": "{\"id\":\"ユーザー-12345\"}"
+                    "arguments": "{\"id\": \"ユーザー-12345\"}"
                   }
                 }
               ]
@@ -79,15 +79,15 @@
     {
       "type": "data",
       "data": {
-        "id": "chatcmpl-epHVrcBGYeadiFXUupGUj",
+        "id": "<dynamic-id>",
         "object": "chat.completion.chunk",
-        "created": 1763715576,
+        "created": "<timestamp>",
         "model": "codex-5",
         "choices": [
           {
             "index": 0,
             "delta": {
-              "content": "<use_tool id=\"tool_0_0\" name=\"lookup_user\">{\"id\":\"ユーザー-12345\"}</use_tool>"
+              "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>ユーザー-12345</id>\n</use_tool>"
             },
             "finish_reason": null
           }
@@ -98,9 +98,9 @@
     {
       "type": "data",
       "data": {
-        "id": "chatcmpl-epHVrcBGYeadiFXUupGUj",
+        "id": "<dynamic-id>",
         "object": "chat.completion.chunk",
-        "created": 1763715576,
+        "created": "<timestamp>",
         "model": "codex-5",
         "choices": [
           {

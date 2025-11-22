@@ -13,6 +13,7 @@ Purpose: deterministic fixtures for structured and textual tool-call flows (app-
 - Payloads: structured tool_calls, textual `<use_tool>` fallback, large-args (>=8KB UTF-8), multi-choice
 - Error paths: pre-tool-call error, mid-stream error after first tool delta
 - Disconnect: client close after first `delta.tool_calls`
+- Proto fixtures were removed in favor of the app-server JSON-RPC shim to align with Stories 2.11/2.12 and Epic 3.
 
 ## Usage
 

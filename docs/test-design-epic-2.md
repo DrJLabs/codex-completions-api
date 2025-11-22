@@ -9,7 +9,7 @@
 ## Executive Summary
 
 - Scope now covers the tool-call surface required by Stories **2.8–2.12**: the pure `ToolCallAggregator`, streaming/non-stream handler integration (including buffering Story 2.12), and regression/smoke coverage across structured and textual flows described in `docs/codex-proxy-tool-calls.md`.
-- Existing parity diff work (proto vs. app) remains in place; this revision layers tool-call-specific risks, coverage, and CI gating on top of that baseline.
+- Proto backend is decommissioned; all parity/fixture/smoke work is **app-server only** and any proto diff harnesses are historical references only.
 - Test responsibilities align with the knowledge-base guidance (`risk-governance`, `probability-impact`, `test-levels-framework`, `test-priorities-matrix`, `fixture-architecture`, `network-first`). Unit tests protect the pure aggregator, integration tests guard handler wiring, and Playwright/smoke flows validate end-to-end behavior.
 - FR002d (multi-tool turn fidelity) is now normative, so coverage explicitly includes multi-call bursts, config rollback toggles, and telemetry assertions before Story 2.10 proceeds.
 
@@ -95,7 +95,7 @@ Future risks should append to this list with the same structure so linked storie
 | Requirement | Story | Test Level | Risk Link | Test Count | Owner | Notes |
 | ----------- | ----- | ---------- | --------- | ---------- | ----- | ----- |
 | Malformed/duplicate event resilience (`ingestDelta` receiving gaps, mixed IDs) | 2.8 | Unit | R-101 | 1 | QA | Property-based fuzz suite verifying aggregator never throws and `resetTurn()` frees buffers. |
-| Tool-call golden transcript diff (`npm run test:parity -- --tool-calls`) | 2.10 | CLI harness | R-104 | 1 | QA | Generates sanitized proto vs. app fixtures and uploads diff artifacts for auditing. |
+| Tool-call golden transcript diff (`npm run test:parity -- --tool-calls`) | 2.10 | CLI harness | R-104 | 1 | QA | Generates sanitized app-server fixtures and uploads diff artifacts for auditing. Proto diff is retired. |
 
 ### P3 (Low) – On-demand / Pre-release
 
@@ -121,7 +121,7 @@ CI gating: PRs must pass Smoke + P0; `main` merges also run P1; nightly jobs run
 
 ## Tooling & Environment
 
-- **Fixtures:** Add deterministic JSON-RPC + textual transcripts under `tests/e2e/fixtures/tool-calls/` with seed metadata (`codex_version`, `scenario`). Proto parity is deprecated for Story 2.10; matrix is app-server only.
+- **Fixtures:** Add deterministic JSON-RPC + textual transcripts under `tests/e2e/fixtures/tool-calls/` with seed metadata (`codex_version`, `scenario`). Proto parity is deprecated for Story 2.10; matrix is app-server only. Do not add proto fixtures.
 - **Fake Codex modes:** Update `scripts/fake-codex-jsonrpc.js` to emit multi-choice, large-arg, error-before/after-tool, and function→tool migration scenarios controlled via env flags (proto helper no longer required for this story).
 - **Config:** Introduce `PROXY_OUTPUT_MODE` + `x-proxy-output-mode` header override defaults, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`, `PROXY_STOP_AFTER_TOOLS_MODE` permutations documented in `.env.example`.
 - **Telemetry:** Record `tool_call_count`, `tool_call_mode`, and tail-trim indicators in structured logs/metrics for observability validation.
