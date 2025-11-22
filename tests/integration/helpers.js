@@ -43,6 +43,11 @@ export async function startServer(envOverrides = {}) {
     stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
+  if (
+    String(envOverrides.PROXY_USE_APP_SERVER || process.env.PROXY_USE_APP_SERVER || "") === "true"
+  ) {
+    await waitForUrlOk(`http://127.0.0.1:${PORT}/readyz`);
+  }
   return { PORT, child };
 }
 

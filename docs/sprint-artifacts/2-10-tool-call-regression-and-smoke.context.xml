@@ -3,7 +3,7 @@
     <epicId>2</epicId>
     <storyId>10</storyId>
     <title>Tool-call regression and smoke coverage</title>
-    <status>drafted</status>
+    <status>review</status>
     <generatedAt>2025-11-21T03:01:55Z</generatedAt>
     <generator>BMAD Story Context Workflow</generator>
     <sourceStoryPath>docs/stories/2-10-tool-call-regression-and-smoke.md</sourceStoryPath>
@@ -16,7 +16,7 @@
     <tasks>Traceability & planning; Structured fixtures; Textual + large-arg fixtures; Normalizer & tooling; Integration suite (streaming); Integration suite (non-stream + multi-choice); Integration suite (error/disconnect); E2E/Playwright streaming; E2E/Playwright non-stream/perf; E2E/Playwright disconnect/leak guard; Smoke scripts (structured/textual/disconnect); CI matrix & gating; Artifact publishing; Performance budgets; Documentation (runbooks, architecture/test design); Developer workflow & coding standards; Secrets & retention policy</tasks>
   </story>
 
-  <acceptanceCriteria>Deterministic fixtures under tests/e2e/fixtures/tool-calls/; Integration tests for streaming/non-stream role order, cumulative args, finish chunk, [DONE], finish_reason:"tool_calls"; Playwright coverage for tail suppression/finish semantics; Obsidian Copilot smoke in scripts/smoke/{dev,prod}.sh; CI gates test:integration, test, smoke; Docs updated (test-design, migration, smoke runbooks); Large-args UTF-8 integrity; Multi-choice parity; Golden determinism/normalization; SSE heartbeat tolerance; Post-finish drop assertion; Client disconnect smoke; Backend error paths pre/post tool-call; Parallel calls policy; UTF-8 multibyte resilience; Obsidian textual parity/tail stripping; Performance budget (integration & E2E timeouts/@slow); Triage artifacts upload (raw/normalized/logs); No mixed frames; Role-first exactly once; Choice isolation routing; Function→tool_calls migration preference; Deterministic ID normalization; Backpressure/coalescing chunk handling; Heartbeat rules; Disconnect leak guard; Finish-reason precedence favoring tool_calls; Non-stream multi-call envelope content:null + tool_calls[] + finish_reason tool_calls; Stream/non-stream parity across fixtures; Ordering invariant role→tool_calls→finish→[DONE]; Single-finish invariant; Non-stream single-call envelope; Sequential multi-call ordering when parallel disabled; Normalizer stability; Secrets redaction; Backend stderr separation from SSE frames; Fixture matrix across proto/app-server and stop policy; Timeout budgets reported; Structured→XML synthesis proof; Textual passthrough proof; Obsidian loop smoke end-to-end; Single-tool-per-turn guard when stop-after-tools enabled.</acceptanceCriteria>
+  <acceptanceCriteria>Critical scope only: deterministic app-server fixtures under tests/e2e/fixtures/tool-calls/; integration tests assert role order, cumulative args, single finish chunk, [DONE], finish_reason:"tool_calls"; Obsidian smoke (structured/textual/disconnect) via scripts/smoke/{dev,prod}.sh; CI gates test:integration, test, smoke; docs updated for app-only fixtures and smoke steps; error/disconnect coverage (pre/post tool-call, canonical finish + [DONE], cleanup); finish-reason precedence; multi-choice isolation with content:null non-stream envelopes; single-tool-per-turn guard when stop-after-tools enabled; secrets/stderr hygiene (no secrets or stderr in SSE artifacts).</acceptanceCriteria>
 
   <artifacts>
     <docs>

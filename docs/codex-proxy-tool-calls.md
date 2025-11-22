@@ -1,6 +1,8 @@
 
 # Implementing OpenAI-Style Function/Tool Calls in the Codex Completions Proxy
 
+⚠️ Proto backend is **retired**. All guidance here is app-server only; any proto fixtures, tests, or smoke gates have been removed and must not be reintroduced.
+
 **Goal:** Add reliable OpenAI-style function/tool call support to the proxy at `/v1/chat/completions`, using the `main` branch of the `codex-completions-api` repository as the clean foundation. Support both streaming (`stream: true`) and non-streaming (`stream: false`) modes and ensure compatibility with Obsidian Copilot’s autonomous agent tool invocation.
 
 ---

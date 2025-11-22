@@ -192,6 +192,7 @@ if (!finishReasons.includes("tool_calls")) {
 const roleFirstIndex = dataEntries.findIndex((entry) =>
   entry.data?.choices?.some((choice) => choice?.delta?.role === "assistant")
 );
+const hasRoleFirst = roleFirstIndex !== -1;
 if (roleFirstIndex === -1) {
   console.error("No assistant role chunk found.");
   process.exit(1);
@@ -266,6 +267,8 @@ if (expectXml) {
   }
 }
 
+const doneFrames = entries.filter((entry) => entry?.type === "done");
+
 if (disconnectAfterFirstTool) {
   const finishFrames = dataEntries.filter((entry) =>
     entry.data?.choices?.some((choice) => choice.finish_reason)
@@ -274,7 +277,6 @@ if (disconnectAfterFirstTool) {
     console.error("Expected no finish frames after client disconnect.");
     process.exit(1);
   }
-  const doneFrames = entries.filter((entry) => entry?.type === "done");
   if (doneFrames.length > 0) {
     console.error("Expected no [DONE] after client disconnect.");
     process.exit(1);
@@ -299,17 +301,36 @@ const hashPath = resolve(ARTIFACT_DIR, `${baseName}.sha256`);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is constructed from project-root constants and sanitized timestamp
 await writeFile(hashPath, `${hash}  ${baseName}.sse\n`, "utf8");
 
+const manifestPath = resolve(
+  PROJECT_ROOT,
+  "tests",
+  "e2e",
+  "fixtures",
+  "tool-calls",
+  "manifest.json"
+);
+const verdict = {
+  status: "ok",
+  endpoint,
+  includeUsage,
+  multiCheckEnforced: !allowSingle,
+  disconnectedEarly: abortedEarly,
+  abortReason,
+  uniqueToolCallCount: uniqueToolIds.size,
+  roleFirstSeen: hasRoleFirst,
+  finishReasons,
+  doneFrames: doneFrames.length,
+  logPath,
+  hashPath,
+  sha256: hash,
+  manifest: manifestPath,
+};
+
+console.log(JSON.stringify(verdict));
 console.log(
-  JSON.stringify({
-    status: "ok",
-    endpoint,
-    includeUsage,
-    multiCheckEnforced: !allowSingle,
-    disconnectedEarly: abortedEarly,
-    abortReason,
-    uniqueToolCallCount: uniqueToolIds.size,
-    logPath,
-    hashPath,
-    sha256: hash,
-  })
+  `SMOKE OK: tool-call stream (${expectXml ? "textual" : "structured"}${
+    disconnectAfterFirstTool ? ", disconnect" : ""
+  }); role-first=${hasRoleFirst}; finish=${finishReasons.join(",") || "none"}; done=${
+    doneFrames.length
+  }; manifest=${manifestPath}`
 );

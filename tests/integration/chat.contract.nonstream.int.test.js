@@ -9,11 +9,16 @@ import {
 describe("chat completion non-stream contract", () => {
   let serverCtx;
   let transcript;
+  const APP_SERVER_ENV = {
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    PROXY_USE_APP_SERVER: "true",
+    CODEX_WORKER_SUPERVISED: "true",
+  };
 
   beforeAll(async () => {
     ensureTranscripts(["nonstream-minimal.json"]);
     transcript = await loadTranscript("nonstream-minimal.json");
-    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
+    serverCtx = await startServer(APP_SERVER_ENV);
   }, 10_000);
 
   afterAll(async () => {
@@ -41,7 +46,10 @@ describe("chat completion non-stream contract", () => {
   test("truncation path matches golden transcript", async () => {
     ensureTranscripts(["nonstream-truncation.json"]);
     const truncation = await loadTranscript("nonstream-truncation.json");
-    const ctx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto-no-complete.js" });
+    const ctx = await startServer({
+      ...APP_SERVER_ENV,
+      FAKE_CODEX_MODE: "truncation",
+    });
     try {
       const res = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions`, {
         method: "POST",
@@ -64,7 +72,7 @@ describe("chat completion non-stream contract", () => {
     ensureTranscripts(["nonstream-tool-calls.json"]);
     const toolCall = await loadTranscript("nonstream-tool-calls.json");
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "tool_call",
     });
     try {

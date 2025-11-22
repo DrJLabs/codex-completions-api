@@ -4,6 +4,8 @@
 
 Codex Completions API is migrating from per-request `codex proto` executions to a supervised Codex App Server worker while preserving the OpenAI-compatible `/v1/chat/completions` surface. The design introduces an inline supervisor, single JSON-RPC transport, and expanded observability so Phase 4 implementation can proceed without regressions.
 
+⚠️ Proto backend is **retired**; the app-server path is the only supported backend. Feature flags remain for rollback wiring but must stay set to app-server in all environments; do not capture or run proto.
+
 ## Project Initialization
 
 This is a brownfield upgrade of `codex-completions-api`; no starter CLI is used. The first implementation story should wire the worker supervisor behind the existing feature flag (`PROXY_USE_APP_SERVER`) in this repository’s current layout.

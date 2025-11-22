@@ -91,14 +91,14 @@ function resolveTranscriptSavePath(filename, backend) {
   return resolve(baseRoot, filename);
 }
 
-export async function loadTranscript(filename, { backend = "proto" } = {}) {
+export async function loadTranscript(filename, { backend = "app" } = {}) {
   const fullPath = resolveTranscriptPath(filename, backend);
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   const raw = await readFile(fullPath, "utf8");
   return JSON.parse(raw);
 }
 
-export async function saveTranscript(filename, payload, { backend = "proto" } = {}) {
+export async function saveTranscript(filename, payload, { backend = "app" } = {}) {
   const fullPath = resolveTranscriptSavePath(filename, backend);
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   await mkdir(dirname(fullPath), { recursive: true });

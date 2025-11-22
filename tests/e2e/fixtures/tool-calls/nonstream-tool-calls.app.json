@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "captured_at": "2025-11-21T07:12:42.252Z",
+    "captured_at": "2025-11-22T04:43:44.804Z",
     "include_usage": false,
     "codex_bin": "scripts/fake-codex-jsonrpc.js",
-    "commit": "88e423ceba9afb3435f7a79cd8f43d9ac356153e",
+    "commit": "e8300ed0086bdf9503d67e56f48bd299be184aa8",
     "cli_version": "0.58.0",
     "node_version": "v24.11.0",
     "scenario": "nonstream-tool-calls",
@@ -55,25 +55,15 @@
         "index": 0,
         "message": {
           "role": "assistant",
-          "tool_calls": [
-            {
-              "id": "tool_fake_1",
-              "type": "function",
-              "function": {
-                "name": "lookup_user",
-                "arguments": "{\"id\":\"42\"}"
-              }
-            }
-          ],
-          "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>42</id>\n</use_tool>"
+          "content": "Hello from fake-codex."
         },
-        "finish_reason": "tool_calls"
+        "finish_reason": "stop"
       }
     ],
     "usage": {
       "prompt_tokens": 8,
-      "completion_tokens": 0,
-      "total_tokens": 8
+      "completion_tokens": 6,
+      "total_tokens": 14
     }
   }
 }

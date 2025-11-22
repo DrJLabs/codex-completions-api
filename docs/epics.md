@@ -72,13 +72,13 @@ Lay the groundwork for running the Codex App Server alongside the existing proxy
 
 As an operator,
 I want the proxy to support a runtime switch between proto and app-server,
-So that we can enable or disable the new backend without redeploying.
+So that we can enable or disable the new backend without redeploying. (Proto retired; flag kept only for rollback documentation.)
 
 **Acceptance Criteria:**
 
-1. Environment variable (e.g., `PROXY_USE_APP_SERVER`) toggles backend selection at startup.
-2. Configuration docs outline defaults for dev, staging, and prod.
-3. Unit tests cover both flag paths and ensure default matches current proto behavior.
+1. Environment variable (e.g., `PROXY_USE_APP_SERVER`) toggles backend selection at startup (proto path deprecated; default must be app-server).
+2. Configuration docs outline defaults for dev, staging, and prod (all app-server).
+3. Unit tests cover app-server default; proto path is historical only and must not be used.
 
 **Prerequisites:** None
 
@@ -168,8 +168,8 @@ So that Epic 2 development can rely on fast regression feedback and confident cu
 
 **Acceptance Criteria:**
 
-1. Transcript capture tooling records paired proto and app-server outputs for baseline chat, streaming, tool-call, and error scenarios, normalizing dynamic fields and storing version metadata in the repo.
-2. A parity diff harness runs in CI, comparing the paired fixtures with developer-friendly diagnostics, failing when transcripts diverge or required scenarios are missing.
+1. Transcript capture tooling records app-server outputs for baseline chat, streaming, tool-call, and error scenarios, normalizing dynamic fields and storing version metadata in the repo. Proto captures are retired.
+2. A parity diff harness runs in CI, comparing app-server fixtures with developer-friendly diagnostics, failing when transcripts diverge or required scenarios are missing.
 3. The Epic 1 app-server baseline is deployed and smoke-tested, with the capture process documented so fixtures reflect production-ready behavior.
 
 **Prerequisites:** Epic 1 stories delivering transport channel and worker lifecycle.
@@ -212,7 +212,7 @@ So that clients observe identical role/token sequencing.
 
 1. Adapter handles partial deltas, final `[DONE]`, finish reasons, and tool-call payloads.
 2. Latency budget tracked and logged for each stream.
-3. Golden transcript tests compare proto vs app-server streaming outputs byte-for-byte.
+3. Golden transcript tests compare app-server streaming outputs byte-for-byte; proto comparisons are historical only.
 
 **Prerequisites:** Stories 2.1-2.2
 
@@ -233,14 +233,14 @@ So that clients encounter the same HTTP codes and retry hints as before.
 **Story 2.5: Update regression suite for parity evidence**
 
 As a QA engineer,
-I want automated regression tests capturing proto vs app-server behavior,
-So that we can prove no regressions before rollout.
+I want automated regression tests capturing app-server behavior,
+So that we can prove no regressions before rollout (proto retired).
 
 **Acceptance Criteria:**
 
 1. Unit and integration tests run against deterministic JSON-RPC mocks.
 2. `npm run test:integration` and `npm test` incorporate app-server path.
-3. CI artifacts include parity comparison results (e.g., streaming transcripts).
+3. CI artifacts include app-server parity comparison results (e.g., streaming transcripts); proto parity is removed.
 
 **Prerequisites:** Stories 2.2-2.4
 
@@ -476,7 +476,7 @@ So that rare incidents can be debugged without violating data-handling policies.
 
 ### Expanded Goal
 
-Execute a staged rollout that transitions production traffic from proto to the Codex App Server, monitor NFRs in real time, and formally decommission proto once stability is proven.
+Execute a staged rollout that transitions production traffic to the Codex App Server, monitor NFRs in real time, and formally decommission proto (already completed; proto retired).
 
 ### Stories
 
@@ -512,7 +512,7 @@ So that confidence is built before full rollout.
 
 As an operations engineer,
 I want to flip all production traffic to the app-server once checks pass,
-So that the service fully decommissions proto usage.
+So that the service fully decommissions proto usage. (Completed; proto retired.)
 
 **Acceptance Criteria:**
 
@@ -531,22 +531,22 @@ So that we can react quickly if regressions surface post-cutover (without proto 
 **Acceptance Criteria:**
 
 1. 48-hour heightened alert mode with SRE on watch; dashboards highlight key NFRs.
-2. Maintenance flag path tested as contingency (since proto is no longer viable).
+2. Maintenance flag path tested as contingency (proto fallback removed).
 3. Retrospective documents lessons learned and backlog items.
 
 **Prerequisites:** Story 4.3
 
-**Story 4.5: Decommission proto artifacts**
+**Story 4.5: Decommission proto artifacts** (Completed)
 
 As a maintainer,
-I want to remove proto-specific code paths, configs, and docs,
+I removed proto-specific code paths, configs, and docs,
 So that the codebase reflects the new architecture and avoids drift.
 
 **Acceptance Criteria:**
 
-1. Proto handlers, scripts, and references pruned from repository.
-2. Documentation updated to reflect app-server as sole backend.
-3. Migration checklist signed off by engineering leadership.
+1. Proto handlers, scripts, and references pruned from repository. (done)
+2. Documentation updated to reflect app-server as sole backend. (done)
+3. Migration checklist signed off by engineering leadership. (done)
 
 **Prerequisites:** Story 4.4
 

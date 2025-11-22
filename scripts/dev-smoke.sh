@@ -118,7 +118,7 @@ if [[ -n "$KEY" ]]; then
   # Tool-call streaming smoke (structured + optional modes)
   TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codev-5}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
-  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured,disconnect}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured,textual,disconnect}"
   run_tool_smoke() {
     local mode="$1"; shift
     local flags=("$@")

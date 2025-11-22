@@ -47,6 +47,23 @@ const emitCapture = (direction, payload) => {
   } catch {}
 };
 
+const configuredToolArgument = process.env.FAKE_CODEX_TOOL_ARGUMENT;
+const toolArgumentChunkSize = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
+const toolXmlChunkSize = Number(process.env.FAKE_CODEX_TOOL_XML_CHUNK_SIZE || 0);
+const emitTextualXml =
+  String(process.env.FAKE_CODEX_EMIT_TEXTUAL_XML || "true").toLowerCase() !== "false";
+const buildCumulativeChunks = (value, chunkSize) => {
+  if (!chunkSize || chunkSize < 1) return [value];
+  const chunks = [];
+  for (let i = chunkSize; i < value.length; i += chunkSize) {
+    chunks.push(value.slice(0, i));
+  }
+  if (!chunks.length || chunks[chunks.length - 1] !== value) {
+    chunks.push(value);
+  }
+  return chunks;
+};
+
 async function runJsonRpcWorker() {
   process.stdin.setEncoding("utf8");
   write({ event: "starting" });
@@ -215,6 +232,11 @@ async function runJsonRpcWorker() {
             { id: "multi_tool_1", name: "send_email" },
           ];
           calls.forEach((call, idx) => {
+            const argumentValue = configuredToolArgument || `{"id":"${42 + idx}","choice":${idx}}`;
+            const argumentChunks = buildCumulativeChunks(
+              argumentValue,
+              toolArgumentChunkSize || argumentValue.length
+            );
             write({
               jsonrpc: "2.0",
               method: "agentMessageDelta",
@@ -234,7 +256,7 @@ async function runJsonRpcWorker() {
                 choice_index: idx,
               },
             });
-            ['{"id":"', String(42 + idx), '"}'].forEach((chunk) => {
+            argumentChunks.forEach((chunk) => {
               write({
                 jsonrpc: "2.0",
                 method: "agentMessageDelta",
@@ -336,7 +358,7 @@ async function runJsonRpcWorker() {
               type: "function",
               function: {
                 name: idx % 2 === 0 ? "lookup_user" : "send_email",
-                arguments: '{"id":"42"}',
+                arguments: configuredToolArgument || '{"id":"42"}',
               },
             }))
           : null;
@@ -350,26 +372,53 @@ async function runJsonRpcWorker() {
             : null;
 
         const baseMessage = "Hello from fake-codex.";
-        const includeMessageText = !["content_filter", "tool_call", "function_call"].includes(
-          scenario
-        );
-        let messageText = includeMessageText ? baseMessage : "";
-        if (includeMessageText && metadataPayload) {
-          const lines = Object.entries(metadataPayload)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("\n");
-          messageText = `${baseMessage}\n${lines}`;
-        }
-
-        if (scenario === "truncation" && !toolCalls && !functionCall) {
-          messageText = "Hello (truncated) from fake-codex.";
-        }
+        let messageText = "";
+        const argumentValue = configuredToolArgument || '{"id":"42"}';
         if (scenario === "textual_tool") {
-          messageText =
-            '<use_tool id="tool_0_0" name="lookup_user">{"id":"ユーザー-12345"}</use_tool>';
+          messageText = `<use_tool>
+  <name>lookup_user</name>
+  <id>ユーザー-12345</id>
+</use_tool>`;
+        } else if (
+          emitTextualXml &&
+          (shouldEmitToolCalls ||
+            scenario === "multi_choice_tool" ||
+            scenario === "multi_choice_tool_call")
+        ) {
+          const xmlId = toolCalls?.[0]?.id || "tool_0_0";
+          messageText = `<use_tool>
+  <name>lookup_user</name>
+  <id>${argumentValue.replace(/"/g, "").replace(/[{}]/g, "").split(":").at(-1) || "42"}</id>
+</use_tool>`;
+        } else {
+          const includeMessageText = ![
+            "content_filter",
+            "function_call",
+            "function_then_tool",
+          ].includes(scenario);
+          if (includeMessageText) {
+            messageText = baseMessage;
+            if (metadataPayload) {
+              const lines = Object.entries(metadataPayload)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join("\n");
+              messageText = `${baseMessage}\n${lines}`;
+            }
+            if (scenario === "truncation" && !toolCalls && !functionCall) {
+              messageText = "Hello (truncated) from fake-codex.";
+            }
+          }
         }
+        // XML chunk emission moved after toolCalls when present
+        const skipFinishOnDisconnect =
+          String(process.env.FAKE_CODEX_SKIP_FINISH_ON_DISCONNECT || "").toLowerCase() === "true";
 
-        if (toolCalls && parallelToolCalls) {
+        if (toolCalls) {
+          const argumentValue = configuredToolArgument || '{"id":"42"}';
+          const argumentChunks = buildCumulativeChunks(
+            argumentValue,
+            toolArgumentChunkSize || argumentValue.length
+          );
           toolCalls.forEach((call, idx) => {
             write({
               jsonrpc: "2.0",
@@ -377,7 +426,7 @@ async function runJsonRpcWorker() {
               params: {
                 conversation_id: convId,
                 request_id: params.request_id || convId,
-                parallel_tool_calls: true,
+                parallel_tool_calls: parallelToolCalls || toolCallCount > 1,
                 delta: {
                   tool_calls: [
                     {
@@ -390,8 +439,7 @@ async function runJsonRpcWorker() {
                 },
               },
             });
-            const argChunks = ['{"id":"', "42", '"}'];
-            for (const chunk of argChunks) {
+            for (const chunk of argumentChunks) {
               write({
                 jsonrpc: "2.0",
                 method: "agentMessageDelta",
@@ -410,6 +458,22 @@ async function runJsonRpcWorker() {
               });
             }
           });
+          if (messageText) {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: params.request_id || convId,
+                delta: messageText,
+              },
+            });
+          }
+
+          if (skipFinishOnDisconnect) {
+            clearTimers();
+            return;
+          }
         } else if (messageText) {
           write({
             jsonrpc: "2.0",
@@ -424,7 +488,7 @@ async function runJsonRpcWorker() {
 
         const assistantMessage = {
           role: "assistant",
-          content: toolCalls || functionCall ? null : messageText,
+          content: toolCalls || functionCall ? messageText || null : messageText || null,
         };
         if (toolCalls) assistantMessage.tool_calls = toolCalls;
         if (functionCall) assistantMessage.function_call = functionCall;
