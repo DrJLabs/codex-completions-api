@@ -108,7 +108,7 @@ codex-5 (planned)
 - 2025-11-20: Addressed review findings—secured `/metrics`, added smoke scrapes plus dashboard/alert artifacts, and returned story to review.
 - 2025-11-20: Senior Developer Review (AI) approved metrics pipeline and moved story to done.
 
-## Senior Developer Review (AI)
+## Senior Developer Review (AI) - Final Approval
 
 Reviewer: drj  
 Date: 2025-11-20  

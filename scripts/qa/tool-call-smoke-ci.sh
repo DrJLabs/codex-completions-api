@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # Tool-call smoke for CI using fake Codex backend.
 # Spins up proxy with scripts/fake-codex-jsonrpc.js and runs stream-tool-call.js modes.
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PORT="${PORT:-11435}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:${PORT}}"
 KEY="${KEY:-codex-ci}"
@@ -29,12 +29,18 @@ node "$ROOT_DIR/server.js" >"$ROOT_DIR/.smoke-tool-call.log" 2>&1 &
 SERVER_PID=$!
 
 # wait for health
+HEALTH_OK=false
 for _ in {1..30}; do
   if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
+    HEALTH_OK=true
     break
   fi
   sleep 1
 done
+if [[ "$HEALTH_OK" != "true" ]]; then
+  echo "[FAIL] Server did not become healthy within 30s on ${BASE_URL}/healthz" >&2
+  exit 1
+fi
 
 run_mode() {
   local mode="$1"; shift

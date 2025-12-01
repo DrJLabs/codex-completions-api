@@ -222,10 +222,8 @@ spawn("codex", [
 
 ## K. Parity fixture maintenance workflow
 
-> Proto mode is **retired**. Do not regenerate proto fixtures or flip `PROXY_USE_APP_SERVER` to false; all parity evidence must use the app-server JSON-RPC shim or real app-server binary.
-
-1. **Refresh transcripts** – run `npm run transcripts:generate` to capture app-server outputs. The generator writes to `test-results/chat-completions/app/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
-2. **Verify parity** – execute `npm run test:parity` to compare normalized app transcripts (proto fixtures have been retired for Story 2.10+). The harness fails fast when a scenario diverges or is missing, producing actionable diffs.
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator writes to `test-results/chat-completions/{proto,app}/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
+2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs; keep both fixtures updated until proto retirement lands in code + tests.
 3. **Smoke the baseline** – before publishing updated fixtures, run:
    ```bash
    npm run test:integration

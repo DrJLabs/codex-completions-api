@@ -20,7 +20,7 @@ groups:
           owner: sre
           page_service: codex-app
         annotations:
-          summary: "Error rate >2% on chat/completions for 5m"
+          summary: "Error rate >2% on chat/completions for 2m"
           runbook: "docs/app-server-migration/incident-runbook.md#error-rate"
       - alert: CodexWorkerRestarts
         expr: increase(codex_worker_restarts_total[10m]) > 3
@@ -40,7 +40,7 @@ groups:
           owner: sre
           page_service: codex-app
         annotations:
-          summary: "Tool buffer anomaly gauge signaled >0 for 2m"
+          summary: "Tool buffer anomaly gauge signaled >0 for 5m"
           runbook: "docs/app-server-migration/incident-runbook.md#tool-buffer-anomaly"
       - alert: CodexMaintenanceEnabled
         expr: codex_maintenance_mode == 1

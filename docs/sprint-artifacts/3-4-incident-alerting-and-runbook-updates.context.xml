@@ -26,18 +26,24 @@
 3) Incident dashboards link directly to the trace-by-id helper, schema/metric docs, and core panels (latency, error rate, restart/backoff, tool_buffer_*); all links are validated and screenshots/logs are stored as evidence.</acceptanceCriteria>
 
   <artifacts>
-    <docs>- path: docs/PRD.md | title: PRD | section: Functional Requirements | snippet: FR010 emits structured logs for worker lifecycle events and per-request summaries; FR011 publishes Prometheus-friendly metrics for throughput, latency, errors, restarts; FR012 persists short-lived JSON-RPC trace artifacts with PII scrubbing.
+    <docs>
+- path: docs/PRD.md | title: PRD | section: Functional Requirements | snippet: FR010 emits structured logs for worker lifecycle events and per-request summaries; FR011 publishes Prometheus-friendly metrics for throughput, latency, errors, restarts; FR012 persists short-lived JSON-RPC trace artifacts with PII scrubbing.
 - path: docs/sprint-artifacts/tech-spec-epic-3.md | title: Epic 3 Tech Spec | section: Services and Modules / Data Models | snippet: Metrics follow Prometheus with labels {route, method, status_family, model}; tool_buffer_* gauges come from Epic 2; restart/backoff telemetry and maintenance flag align with supervisor backoff 250ms→5s and 10s drains.
 - path: docs/architecture.md | title: Decision Architecture | section: Decision Summary | snippet: Observability uses structured JSON logs plus prom-client 15.1.3 for lifecycle, latency, restart counts; maintenance flag returns 503 with retry hints per operations decision; readiness/liveness stay the gating surface.
-- path: docs/app-server-migration/metrics-and-alerts.md | title: App-Server Metrics and Alerts | section: Metric Surface / Label Hygiene | snippet: /metrics exposes codex_http_* latency/error buckets, codex_worker_restarts/backoff/ready, codex_tool_buffer_* and codex_maintenance_mode with guarded access and constrained labels (route, method, status_family, model; output_mode, reason).</docs>
-- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migration Runbook | section: Probe payload expectations | snippet: /readyz exposes restart/backoff metadata (restarts_total, next_restart_delay_ms, last_exit, startup_latency_ms, last_ready_at); readiness flips to 503 within <5s on restart loops while /livez stays 200; guard alerts on backoff >5s or restart growth.</docs>
-    <code>- path: src/services/metrics/index.js | kind: service | symbol: registry + codex_* metrics | lines: 1-180 | reason: Defines Prometheus counters/gauges/histograms for latency, errors, restarts, backoff, streams, tool_buffer events, maintenance, with label normalization for {route, method, status_family, model}.
+- path: docs/app-server-migration/metrics-and-alerts.md | title: App-Server Metrics and Alerts | section: Metric Surface / Label Hygiene | snippet: /metrics exposes codex_http_* latency/error buckets, codex_worker_restarts/backoff/ready, codex_tool_buffer_* and codex_maintenance_mode with guarded access and constrained labels (route, method, status_family, model; output_mode, reason).
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migration Runbook | section: Probe payload expectations | snippet: /readyz exposes restart/backoff metadata (restarts_total, next_restart_delay_ms, last_exit, startup_latency_ms, last_ready_at); readiness flips to 503 within &lt;5s on restart loops while /livez stays 200; guard alerts on backoff &gt;5s or restart growth.
+    </docs>
+    <code>
+- path: src/services/metrics/index.js | kind: service | symbol: registry + codex_* metrics | lines: 1-180 | reason: Defines Prometheus counters/gauges/histograms for latency, errors, restarts, backoff, streams, tool_buffer events, maintenance, with label normalization for {route, method, status_family, model}.
 - path: src/routes/health.js | kind: route | symbol: /healthz /readyz /livez | lines: 1-120 | reason: Readiness/liveness JSON surfaces supervisor restart/backoff metadata and backend_mode; align alerts/runbooks with these fields.
-- path: scripts/dev-smoke.sh | kind: script | symbol: smoke flows | lines: n/a | reason: Dev/prod smoke hooks already scrape readiness and metrics; extend to validate alert fire/drain and label hygiene.</code>
-    <dependencies>- node: express@4.21.2
+- path: scripts/dev-smoke.sh | kind: script | symbol: smoke flows | lines: n/a | reason: Dev/prod smoke hooks already scrape readiness and metrics; extend to validate alert fire/drain and label hygiene.
+    </code>
+    <dependencies>
+- node: express@4.21.2
 - prometheus: prom-client@15.1.3
 - app-server: @openai/codex@0.58.0
-- id generation: nanoid@5.1.6</dependencies>
+- id generation: nanoid@5.1.6
+    </dependencies>
   </artifacts>
 
   <constraints>- Reuse existing metrics/telemetry sources (src/services/metrics, supervisor snapshots); do not add high-cardinality labels beyond {route, method, status_family, model}.
