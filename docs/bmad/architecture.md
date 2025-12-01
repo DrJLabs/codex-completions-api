@@ -19,8 +19,8 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 - **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes. Dev/test stacks now default to the app-server JSON-RPC shim for determinism; production still shells out to the packaged CLI.
 - **Proto mode status:** Proto mode is deprecated. All dev/test/CI stacks must run with `PROXY_USE_APP_SERVER=true` and the JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`) or real app-server binary. Do not flip to proto, regenerate proto fixtures, or add proto-only tests.
-- **Current Tech Stack:** Node.js ≥ 22, Express 4.19, Vitest, Playwright, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
-- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) spawning short-lived Codex child processes per request.
+- **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4, Playwright 1.56, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
+- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating JSON-RPC app-server child processes (dev/test default) or packaged Codex CLI (prod) per request.
 - **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
 
 ## Available Documentation
@@ -276,3 +276,10 @@ None — stabilization leveraged the existing stack and toggles.
 - `docs/bmad/architecture/source-tree.md` — directory-level breakdown.
 - `docs/bmad/stories/epic-stability-ci-hardening-sep-2025.md` — stability epic outcomes driving current architecture.
 - `docs/runbooks/operational.md` — incident response and smoke guidance.
+
+## Tracing (dev/app-server)
+
+- Enable `LOG_PROTO=true` (and optionally `PROXY_TRACE_REQUIRED=true`) in dev/test to capture request/response/notification/tool events across ingress, backend, and egress.
+- Event sources: `src/middleware/access-log.js` (req_id), `src/dev-trace/http.js` (ingress), `src/services/backend-mode.js` + `src/services/codex-runner.js` (backend submission/lifecycle), `src/dev-logging.js` (JSON-RPC responses/notifications/tool blocks), `src/services/sse.js` (stream egress), `/v1/usage` summaries.
+- Stitch logs with `scripts/dev/trace-by-req-id.js --req-id <id> [--access-log <file>] [--proto-log <file>] [--usage-log <file>]`. Defaults read `PROTO_LOG_PATH` and `TOKEN_LOG_PATH`.
+- See `docs/bmad/architecture/end-to-end-tracing-app-server.md` for the full operator workflow and sanitization rules.
