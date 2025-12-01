@@ -47,7 +47,6 @@ export const applyLogSchema = (payload = {}, canonical = {}) => {
 export const logStructured = (canonical = {}, extras = {}) => {
   const entry = applyLogSchema(extras, canonical);
   try {
-     
     console.log(JSON.stringify(entry));
   } catch {
     // Logging is best effort; swallow serialization errors.
