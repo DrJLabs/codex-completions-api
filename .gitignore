@@ -87,3 +87,6 @@ bmad-bak/
 .codex/
 docs/bmad/sprint-artifacts/
 docs/bmad/qa/artifacts/streaming-tool-call/*
+# Allow structured logging schema module under src
+!src/services/logging/
+!src/services/logging/**

@@ -72,14 +72,23 @@
     },
     {
       "id": 4,
-      "title": "Worker Restarts & Backoff",
+      "title": "Worker Restarts",
       "type": "timeseries",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "expr": "codex_worker_restarts_total",
           "legendFormat": "restarts"
-        },
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+    {
+      "id": 7,
+      "title": "Worker Backoff Delay",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
         {
           "expr": "codex_worker_backoff_ms",
           "legendFormat": "backoff_ms"

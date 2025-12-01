@@ -14,7 +14,14 @@ const shutdownDelayMs = Number(process.env.FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS ?
 const exitCode = Number(process.env.FAKE_CODEX_WORKER_EXIT_CODE ?? 0);
 const errorAfterFirstTool =
   String(process.env.FAKE_CODEX_ERROR_AFTER_FIRST_TOOL || "").toLowerCase() === "true";
-const toolCallCount = Math.max(1, Number(process.env.FAKE_CODEX_TOOL_CALL_COUNT || 1));
+const parseToolCallCount = () => {
+  const parsed = Number.parseInt(process.env.FAKE_CODEX_TOOL_CALL_COUNT ?? "1", 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return 1;
+};
+const toolCallCount = parseToolCallCount();
 
 let heartbeatTimer = null;
 let autoExitTimer = null;

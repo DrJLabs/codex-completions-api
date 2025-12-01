@@ -487,7 +487,8 @@ describe("chat streaming tool-call fixtures (stop-after-tools, textual, disconne
       // Disconnect path should not emit finish or done, but allow empty results.
       expect(finishFrames).toHaveLength(0);
       const doneFrames = entries.filter((entry) => entry?.type === "done");
-      expect(doneFrames.length).toBeGreaterThanOrEqual(0);
+      // Disconnect path may omit done; ensure we never emit multiple done frames.
+      expect(doneFrames.length).toBeLessThanOrEqual(1);
     });
   });
 });

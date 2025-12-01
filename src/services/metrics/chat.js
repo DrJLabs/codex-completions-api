@@ -45,15 +45,27 @@ const abortedCounter = createCounter("codex_tool_buffer_aborted_total");
 export const toolBufferMetrics = {
   start(labels = {}) {
     startedCounter.increment(labels);
-    recordToolBufferEvent("start", labels);
+    try {
+      recordToolBufferEvent("start", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   flush(labels = {}) {
     flushedCounter.increment(labels);
-    recordToolBufferEvent("flush", labels);
+    try {
+      recordToolBufferEvent("flush", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   abort(labels = {}) {
     abortedCounter.increment(labels);
-    recordToolBufferEvent("abort", labels);
+    try {
+      recordToolBufferEvent("abort", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   summary() {
     return {

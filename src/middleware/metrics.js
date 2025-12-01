@@ -9,23 +9,27 @@ export default function metricsMiddleware() {
   return (req, res, next) => {
     const startMs = hrtimeMs();
     res.on("finish", () => {
-      const durationMs = hrtimeMs() - startMs;
-      const route =
-        (req.route && req.route.path) || (req.baseUrl ? req.baseUrl : req.originalUrl || "");
-      const model =
-        typeof req.body?.model === "string"
-          ? req.body.model
-          : typeof req.query?.model === "string"
-            ? req.query.model
-            : undefined;
+      try {
+        const durationMs = hrtimeMs() - startMs;
+        const route =
+          (req.route && req.route.path) || (req.baseUrl ? req.baseUrl : req.originalUrl || "");
+        const model =
+          typeof req.body?.model === "string"
+            ? req.body.model
+            : typeof req.query?.model === "string"
+              ? req.query.model
+              : undefined;
 
-      observeHttpRequest({
-        route,
-        method: req.method,
-        statusCode: res.statusCode,
-        model,
-        durationMs,
-      });
+        observeHttpRequest({
+          route,
+          method: req.method,
+          statusCode: res.statusCode,
+          model,
+          durationMs,
+        });
+      } catch {
+        // Metrics are best-effort; never crash the request lifecycle.
+      }
     });
     next();
   };

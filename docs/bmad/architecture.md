@@ -19,7 +19,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 - **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes. Dev/test stacks now default to the app-server JSON-RPC shim for determinism; production still shells out to the packaged CLI.
 - **Proto mode status:** Proto mode is deprecated. All dev/test/CI stacks must run with `PROXY_USE_APP_SERVER=true` and the JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`) or real app-server binary. Do not flip to proto, regenerate proto fixtures, or add proto-only tests.
-- **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4, Playwright 1.56, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
+- **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4.0.x, Playwright 1.56.x, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
 - **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating JSON-RPC app-server child processes (dev/test default) or packaged Codex CLI (prod) per request.
 - **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
 
@@ -89,7 +89,7 @@ Recent work centers on brownfield stabilization: enforcing streaming parity, add
 | Web Framework    | Express                                 | 4.19.x           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
 | Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
 | Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                           |
-| Testing          | Vitest, Playwright                      | 3.2.4 / 1.55.0   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
+| Testing          | Vitest, Playwright                      | 4.0.3 / 1.56.1   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
 | Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM         | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                                                                                |
 | Containerization | Docker Compose                          | v2               | Prod/dev stacks, attaches to external `traefik` network.                     | Compose file is source of truth for routing labels.                                                     |
 
