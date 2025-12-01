@@ -49,19 +49,26 @@ const emitCapture = (direction, payload) => {
 
 const configuredToolArgument = process.env.FAKE_CODEX_TOOL_ARGUMENT;
 const toolArgumentChunkSize = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
-const toolXmlChunkSize = Number(process.env.FAKE_CODEX_TOOL_XML_CHUNK_SIZE || 0);
 const emitTextualXml =
   String(process.env.FAKE_CODEX_EMIT_TEXTUAL_XML || "true").toLowerCase() !== "false";
-const buildCumulativeChunks = (value, chunkSize) => {
-  if (!chunkSize || chunkSize < 1) return [value];
-  const chunks = [];
-  for (let i = chunkSize; i < value.length; i += chunkSize) {
-    chunks.push(value.slice(0, i));
+const splitToolArgumentPayload = (value) => {
+  if (Number.isFinite(toolArgumentChunkSize) && toolArgumentChunkSize > 0) {
+    const chunks = [];
+    for (let i = 0; i < value.length; i += toolArgumentChunkSize) {
+      chunks.push(value.slice(i, i + toolArgumentChunkSize));
+    }
+    return chunks.length ? chunks : [value];
   }
-  if (!chunks.length || chunks[chunks.length - 1] !== value) {
-    chunks.push(value);
+
+  if (!configuredToolArgument) {
+    const match = value.match(/^(\{"id":")([^"]+)(.*)$/);
+    if (match) {
+      const [, prefix, idValue, suffix] = match;
+      return [prefix, idValue, suffix].filter(Boolean);
+    }
   }
-  return chunks;
+
+  return [value];
 };
 
 async function runJsonRpcWorker() {
@@ -101,7 +108,7 @@ async function runJsonRpcWorker() {
     return generated;
   };
 
-  const handleLine = (line) => {
+  const handleLine = async (line) => {
     let message;
     try {
       message = JSON.parse(line);
@@ -233,10 +240,7 @@ async function runJsonRpcWorker() {
           ];
           calls.forEach((call, idx) => {
             const argumentValue = configuredToolArgument || `{"id":"${42 + idx}","choice":${idx}}`;
-            const argumentChunks = buildCumulativeChunks(
-              argumentValue,
-              toolArgumentChunkSize || argumentValue.length
-            );
+            const argumentChunks = splitToolArgumentPayload(argumentValue);
             write({
               jsonrpc: "2.0",
               method: "agentMessageDelta",
@@ -385,7 +389,6 @@ async function runJsonRpcWorker() {
             scenario === "multi_choice_tool" ||
             scenario === "multi_choice_tool_call")
         ) {
-          const xmlId = toolCalls?.[0]?.id || "tool_0_0";
           messageText = `<use_tool>
   <name>lookup_user</name>
   <id>${argumentValue.replace(/"/g, "").replace(/[{}]/g, "").split(":").at(-1) || "42"}</id>
@@ -415,10 +418,10 @@ async function runJsonRpcWorker() {
 
         if (toolCalls) {
           const argumentValue = configuredToolArgument || '{"id":"42"}';
-          const argumentChunks = buildCumulativeChunks(
-            argumentValue,
-            toolArgumentChunkSize || argumentValue.length
-          );
+          const shouldStreamArguments =
+            parallelToolCalls ||
+            (Number.isFinite(toolArgumentChunkSize) && toolArgumentChunkSize > 0);
+          const argumentChunks = splitToolArgumentPayload(argumentValue);
           toolCalls.forEach((call, idx) => {
             write({
               jsonrpc: "2.0",
@@ -433,31 +436,39 @@ async function runJsonRpcWorker() {
                       index: idx,
                       id: call.id,
                       type: call.type,
-                      function: { name: call.function.name },
+                      function: {
+                        name: call.function.name,
+                        ...(shouldStreamArguments ? {} : { arguments: argumentValue }),
+                      },
                     },
                   ],
                 },
               },
             });
-            for (const chunk of argumentChunks) {
-              write({
-                jsonrpc: "2.0",
-                method: "agentMessageDelta",
-                params: {
-                  conversation_id: convId,
-                  request_id: params.request_id || convId,
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: idx,
-                        function: { arguments: chunk },
-                      },
-                    ],
+            if (shouldStreamArguments) {
+              for (const chunk of argumentChunks) {
+                write({
+                  jsonrpc: "2.0",
+                  method: "agentMessageDelta",
+                  params: {
+                    conversation_id: convId,
+                    request_id: params.request_id || convId,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: idx,
+                          function: { arguments: chunk },
+                        },
+                      ],
+                    },
                   },
-                },
-              });
+                });
+              }
             }
           });
+          if (shouldEmitToolCalls) {
+            await delay(10);
+          }
           if (messageText) {
             write({
               jsonrpc: "2.0",
@@ -609,13 +620,13 @@ async function runJsonRpcWorker() {
       const line = buffer.slice(0, newlineIndex).replace(/\r$/, "").trim();
       buffer = buffer.slice(newlineIndex + 1);
       if (!line) continue;
-      handleLine(line);
+      await handleLine(line);
     }
   }
 
   const trailing = buffer.replace(/\r$/, "").trim();
   if (trailing) {
-    handleLine(trailing);
+    await handleLine(trailing);
   }
 }
 
