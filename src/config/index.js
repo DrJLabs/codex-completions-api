@@ -36,7 +36,8 @@ const resolveToolBlockDelimiter = () => {
 
 const resolveAppServerDefault = () => {
   const bin = String(process.env.CODEX_BIN || "").toLowerCase();
-  return bin.includes("proto") ? "false" : "true";
+  const base = path.basename(bin);
+  return base.includes("fake-codex-proto") || base.endsWith("proto.js") ? "false" : "true";
 };
 
 export const config = {

@@ -1,6 +1,6 @@
 # Migrating `codex-completions-api` to `codex app-server`
 
-⚠️ Proto backend is fully **decommissioned**. This doc is retained for historical migration notes; all environments, fixtures, tests, and smoke scripts are app-server only. Do **not** run `codex proto` or capture proto fixtures; references below describe the completed cutover.
+⚠️ Proto backend is fully **decommissioned** in production/staging. Parity fixtures and tests still capture **both** proto and app-server outputs until the parity suite is retired—keep them in sync, but do not run proto in live environments.
 
 > **Goal (completed):** Switch backend from `codex proto` to `codex app-server` **without changing** the proxy’s external OpenAI‑compatible API responses (both streaming and non‑streaming).
 
