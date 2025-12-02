@@ -474,7 +474,7 @@ describe("chat streaming tool-call fixtures (stop-after-tools, textual, disconne
           }
         }
       } catch (err) {
-        expect(err?.name).toBe("AbortError");
+        if (err?.name !== "AbortError") throw err;
       }
       raw += decoder.decode();
 

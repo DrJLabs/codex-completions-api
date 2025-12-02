@@ -12,8 +12,22 @@ afterEach(() => {
 });
 
 describe("backend mode selector", () => {
-  it("defaults to proto when env toggle is unset", async () => {
+  it("defaults to app-server when env toggle is unset", async () => {
     delete process.env.PROXY_USE_APP_SERVER;
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    const { selectBackendMode, isAppServerMode, isProtoMode, BACKEND_APP_SERVER } = await import(
+      "../../../src/services/backend-mode.js"
+    );
+
+    expect(config.PROXY_USE_APP_SERVER).toBe(true);
+    expect(selectBackendMode()).toBe(BACKEND_APP_SERVER);
+    expect(isAppServerMode()).toBe(true);
+    expect(isProtoMode()).toBe(false);
+  });
+
+  it("switches to proto mode when env toggle is explicitly false", async () => {
+    process.env.PROXY_USE_APP_SERVER = "false";
     vi.resetModules();
     const { config } = await import("../../../src/config/index.js");
     const { selectBackendMode, isAppServerMode, isProtoMode, BACKEND_PROTO } = await import(

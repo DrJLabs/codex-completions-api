@@ -19,13 +19,13 @@ describe("documentation alignment for PROXY_USE_APP_SERVER", () => {
 
     const tableMatches = Array.from(
       doc.matchAll(
-        /\|\s*(Local \/ Dev stack|Staging|Production)\s*\|\s*proto \(`(false|true)`\)\s*\|/g
+        /\|\s*(Local \/ Dev stack|Staging|Production)\s*\|\s*app-server \(`(true|false)`\)\s*\|/g
       )
     );
     expect(tableMatches).toHaveLength(3);
 
     for (const [, label, defaultValue] of tableMatches) {
-      expect(defaultValue).toBe("false");
+      expect(defaultValue).toBe("true");
       const expectedLine = `PROXY_USE_APP_SERVER=${defaultValue}`;
       expect(envExampleLines).toContain(expectedLine);
       expect(envDevExampleLines).toContain(expectedLine);
