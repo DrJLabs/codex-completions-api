@@ -21,6 +21,7 @@ STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
 METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:11435/metrics}"
 METRICS_TOKEN="${METRICS_TOKEN:-${PROXY_METRICS_TOKEN:-}}"
 METRICS_PAYLOAD=""
+METRICS_ENABLED="$(printf "%s" "${PROXY_ENABLE_METRICS:-}" | tr '[:upper:]' '[:lower:]')"
 
 pass() { printf "[PASS] %s\n" "$*"; }
 fail() { printf "[FAIL] %s\n" "$*"; exit 1; }
@@ -59,11 +60,15 @@ else
 fi
 
 if [[ "${SKIP_METRICS:-0}" != "1" ]]; then
-  METRICS_PAYLOAD="$(curl_metrics "$METRICS_ENDPOINT")"
-  if echo "$METRICS_PAYLOAD" | grep -q "codex_http_requests_total"; then
-    pass "metrics scrape"
+  if [[ "$METRICS_ENABLED" != "true" && "${REQUIRE_METRICS:-0}" != "1" ]]; then
+    echo "(Skipping metrics scrape; PROXY_ENABLE_METRICS is not true. Set REQUIRE_METRICS=1 to force.)"
   else
-    fail "metrics scrape (${METRICS_ENDPOINT})"
+    METRICS_PAYLOAD="$(curl_metrics "$METRICS_ENDPOINT")"
+    if echo "$METRICS_PAYLOAD" | grep -q "codex_http_requests_total"; then
+      pass "metrics scrape"
+    else
+      fail "metrics scrape (${METRICS_ENDPOINT})"
+    fi
   fi
 else
   echo "(Skipping metrics scrape; set SKIP_METRICS=0 and METRICS_ENDPOINT if needed)"

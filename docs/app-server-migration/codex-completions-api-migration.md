@@ -284,7 +284,7 @@ spawn("codex", [
 ### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
-  1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; keep proto default (`false`) elsewhere until rollout gates pass (Source: [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
+1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only for legacy proto rollback drills (Source: [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
   2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
   3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
 - **systemd (production host):**
@@ -303,9 +303,9 @@ spawn("codex", [
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Local / Dev stack | proto (`false`) | `.env.dev` (`PROXY_USE_APP_SERVER=false`; enable `true` only when validating app-server) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
-| Staging           | proto (`false`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true`) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
-| Production        | proto (`false`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf`  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
+| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set `false` only for proto compatibility checks) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
+| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only during rollback drills) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
+| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only for emergency proto fallback)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 
 Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
 
