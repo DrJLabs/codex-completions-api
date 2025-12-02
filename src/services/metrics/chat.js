@@ -1,3 +1,5 @@
+import { recordToolBufferEvent } from "./index.js";
+
 const normalizeLabels = (input = {}) => {
   const entries = Object.entries(input || {})
     .filter(([key]) => typeof key === "string" && key.length)
@@ -43,12 +45,27 @@ const abortedCounter = createCounter("codex_tool_buffer_aborted_total");
 export const toolBufferMetrics = {
   start(labels = {}) {
     startedCounter.increment(labels);
+    try {
+      recordToolBufferEvent("start", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   flush(labels = {}) {
     flushedCounter.increment(labels);
+    try {
+      recordToolBufferEvent("flush", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   abort(labels = {}) {
     abortedCounter.increment(labels);
+    try {
+      recordToolBufferEvent("abort", labels);
+    } catch {
+      // Metrics failures are non-critical; swallow to avoid impacting callers.
+    }
   },
   summary() {
     return {

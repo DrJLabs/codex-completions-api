@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { logStructured } from "../services/logging/schema.js";
 
 export default function accessLog() {
   return function accessLogMiddleware(req, res, next) {
@@ -12,23 +13,32 @@ export default function accessLog() {
         const dur_ms = Date.now() - started;
         const ua = req.headers["user-agent"] || "";
         const auth = req.headers.authorization ? "present" : "none";
-        const entry = {
-          ts: new Date(started).toISOString(),
-          level: "info",
-          req_id,
-          method: req.method,
-          route: req.originalUrl,
-          status: res.statusCode,
-          dur_ms,
-          ua,
-          auth,
-          kind: "access",
-        };
-        // JSON line for easy ingestion
-        console.log(JSON.stringify(entry));
+        logStructured(
+          {
+            component: "http",
+            event: "access_log",
+            req_id,
+            route: req.originalUrl,
+            level: "info",
+            latency_ms: dur_ms,
+            ts_ms: started,
+          },
+          {
+            method: req.method,
+            status: res.statusCode,
+            ua,
+            auth,
+            kind: "access",
+            dur_ms: dur_ms,
+          }
+        );
       } catch (err) {
-        // Ensure logging failures are visible
-        console.error("Failed to write access log:", err);
+        try {
+          logStructured(
+            { component: "http", event: "access_log_error", level: "error" },
+            { message: err?.message || String(err) }
+          );
+        } catch {}
       }
     });
     next();

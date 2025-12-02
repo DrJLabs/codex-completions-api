@@ -1,0 +1,184 @@
+{
+  "metadata": {
+    "captured_at": "2025-11-22T05:13:53.326Z",
+    "include_usage": true,
+    "codex_bin": "scripts/fake-codex-jsonrpc.js",
+    "backend": "app-server",
+    "backend_storage": "app",
+    "expected_status": 200,
+    "scenario": "streaming-tool-calls-sequential"
+  },
+  "request": {
+    "model": "codex-5",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "Stream tool execution"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "lookup_user",
+          "description": "Returns fake profile information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        }
+      }
+    ],
+    "tool_choice": {
+      "type": "function",
+      "function": {
+        "name": "lookup_user"
+      }
+    }
+  },
+  "stream": [
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "id": "tool_fake_1",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_user"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "function": {
+                    "arguments": "{\"id\":\"42\"}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "<use_tool>\n  <name>lookup_user</name>\n  <id>42</id>\n</use_tool>"
+            },
+            "finish_reason": null
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "usage": null
+      }
+    },
+    {
+      "type": "comment",
+      "comment": "{\"tool_call_count\":1,\"tool_call_truncated\":false,\"stop_after_tools_mode\":\"burst\"}"
+    },
+    {
+      "type": "data",
+      "data": {
+        "id": "<dynamic-id>",
+        "object": "chat.completion.chunk",
+        "created": "<timestamp>",
+        "model": "codex-5",
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 0,
+          "total_tokens": 8,
+          "time_to_first_token": null,
+          "throughput_after_first_token": null,
+          "emission_trigger": "token_count"
+        }
+      }
+    },
+    {
+      "type": "done"
+    }
+  ]
+}

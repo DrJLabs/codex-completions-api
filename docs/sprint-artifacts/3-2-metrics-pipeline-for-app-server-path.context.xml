@@ -1,0 +1,63 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>3</epicId>
+    <storyId>2</storyId>
+    <title>Metrics pipeline for app-server path</title>
+    <status>done</status>
+    <generatedAt>2025-11-20T10:42:35-05:00</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/3-2-metrics-pipeline-for-app-server-path.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>monitoring engineer</asA>
+    <iWant>Prometheus-style metrics for the app-server path</iWant>
+    <soThat>dashboards and alerts cover SLIs/SLOs with parity to proto</soThat>
+    <tasks>
+- [x] Implement `/metrics` exposure via `src/services/metrics` and route wiring, emitting request totals, latency buckets/summaries, error categories, restart/backoff, active streams, and `tool_buffer_*` counters; guard endpoint for internal scrape only. (AC1)
+- [x] Define metric names and label sets (route, method, status_family, optional model) with bucket configuration that matches existing latency conventions; ensure no high-cardinality or request_id/user labels. (AC1, AC2)
+- [x] Integrate worker supervisor and SSE/concurrency guard signals so restart/backoff state and active stream counts surface in metrics. (AC1)
+- [x] Add tests: unit coverage for metric registry and label validation; integration coverage to confirm `/metrics` returns the expected series and omits disallowed labels; extend smoke checks for `/metrics` scrape. (AC1, AC2)
+- [x] Document metrics, label hygiene, and retention/guard rails in runbooks; add dashboard/alert JSON or templates covering throughput, latency, errors, restarts, maintenance flag, and tool-buffer anomalies with thresholds tied to NFR002/FR011. (AC2, AC3)
+- [x] Update sprint tracking artifacts if new dashboards/alert files are added; note required environment wiring for internal scrape and ForwardAuth/Trafik guards. (AC3)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. `/metrics` (or equivalent internal path) exposes Prometheus metrics for request totals, latency buckets/summaries, error categories, restart/backoff state, active streams, and existing `tool_buffer_*` counters using `prom-client` 15.1.x; endpoint is scoped for internal scrape or guarded by Traefik/ForwardAuth.
+2. Metrics use normalized labels (route, method, status_family, optional model) with documented cardinality limits; latency buckets align with existing conventions and NFR002 latency budgets; published field names mirror the app-server architecture decisions and avoid request-level identifiers.
+3. Dashboards and alerts for throughput, latency, error rate, restart rate, maintenance state, and tool-buffer anomalies are created/updated with documented thresholds and links to the runbooks.
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/PRD.md: FR011 requires Prometheus-friendly metrics for throughput, latency percentiles, active streams, error categories, and restart counts to satisfy observability goals.
+- docs/architecture.md: Observability decision locks in prom-client 15.1.3 for lifecycle/latency/restart metrics under the existing Traefik stack, tying FR010–FR011 to production routing.
+- docs/sprint-artifacts/tech-spec-epic-3.md: /metrics design calls for prom-client 15.1.x counters/histograms (HTTP totals, latency, errors, active streams, worker_restarts, tool_buffer, maintenance gauge) with label hygiene limited to route/method/status_family/optional model and internal or Traefik-guarded scrape.
+- docs/epics.md#story-32-metrics-export-and-dashboards: Acceptance demands a /metrics endpoint exposing request counts, latency/error buckets, restarts, tool_buffer_* counters, aligned buckets, plus dashboards/alerts for throughput, latency, errors, restarts, and tool-buffer anomalies.
+- docs/sprint-artifacts/3-2-metrics-pipeline-for-app-server-path.md (Dev Notes): Metrics must use prom-client 15.1.x with normalized labels; guard /metrics for internal scrape or ForwardAuth; integrate restart/backoff and active stream signals; align histogram buckets with NFR002 latency budgets.</docs>
+    <code>- src/services/metrics/chat.js: In-memory counters for tool_buffer started/flushed/aborted with label normalization helper; seed for Prometheus registry integration or bridging into /metrics output.
+- src/app.js: Central Express bootstrap with PROXY_TEST_ENDPOINTS exposing tool-buffer metrics snapshots/reset; natural mount point for /metrics alongside CORS/rate-limit/logging policies.
+- src/routes/usage.js: /v1/usage attaches tool_buffer_metrics summary to aggregated usage payloads—pattern for exporting aggregated metrics without leaking raw events.
+- src/services/worker/supervisor.js: Tracks restart_count, backoff_ms, readiness/liveness state, and handshake metadata via logStructured; source for restart/backoff/health metrics.
+- server.js: Bootstraps supervisor and transport handshake; hook point to ensure metrics lifecycle mirrors worker readiness/shutdown.</code>
+    <dependencies>- Runtime: express@4.21.2, @openai/codex@0.58.0, nanoid@5.1.6.
+- Dev/tooling: vitest, @playwright/test, eslint/prettier, secretlint.
+- Planned per design: prom-client@15.1.x for Prometheus export (not yet in dependencies, required for this story).</dependencies>
+  </artifacts>
+
+  <constraints>- /metrics must be internal-only or ForwardAuth-guarded per architecture/tech spec; do not expose publicly.
+- Label hygiene: only route/method/status_family/optional model; no request_id/user identifiers; histogram buckets align with existing latency/NFR002 conventions.
+- Reuse worker supervisor state for restarts/backoff/ready signals; avoid altering Traefik routers or maintenance flag semantics.
+- Runtime artifacts belong under writable .codex-api/; keep CODEX_HOME semantics intact.</constraints>
+  <interfaces>- /v1/usage and /v1/usage/raw already embed tool_buffer_metrics summaries; ensure new metrics remain consistent with these aggregates.
+- PROXY_TEST_ENDPOINTS expose `/__test/tool-buffer-metrics` and reset for CI; useful to sanity-check counters before /metrics wiring.
+- Worker readiness/liveness surfaced via health router tied to supervisor state; metrics should mirror the same signals.</interfaces>
+  <tests>
+    <standards>- Target unit coverage for metric registry/label normalization and restart/backoff instrumentation; integration coverage for /metrics exposure and auth/guarding; smoke coverage for scrape readability in dev/prod stacks.
+- Align buckets/labels with architecture + tech-spec; omit high-cardinality labels; ensure maintenance flag visibility in metrics.</standards>
+    <locations>- tests/unit for registry helpers; tests/integration for /metrics output and health alignment; Playwright/E2E to ensure /metrics addition does not regress chat SSE; scripts/smoke/* for prod/dev scrape checks.</locations>
+    <ideas>- Integration: assert /metrics exports request totals, latency buckets, error counts, restarts, tool_buffer_* with allowed labels only.
+- Unit: normalizeLabels rejects missing/empty keys and preserves sorted label order; registry increments survive resets.
+- Ops smoke: scrape /metrics with ForwardAuth enabled/disabled toggles; verify restart/backoff counters change on forced worker restarts; confirm maintenance gauge flips with toggle endpoint.</ideas>
+  </tests>
+</story-context>

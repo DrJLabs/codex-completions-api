@@ -1,0 +1,54 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>10</storyId>
+    <title>Tool-call regression and smoke coverage</title>
+    <status>review</status>
+    <generatedAt>2025-11-21T03:01:55Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-10-tool-call-regression-and-smoke.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>QA engineer</asA>
+    <iWant>automated regression and smoke coverage for structured and textual tool-call flows</iWant>
+    <soThat>Obsidian Copilot and other clients rely on deterministic tool_calls/function_call behavior across streaming and non-streaming modes</soThat>
+    <tasks>Traceability & planning; Structured fixtures; Textual + large-arg fixtures; Normalizer & tooling; Integration suite (streaming); Integration suite (non-stream + multi-choice); Integration suite (error/disconnect); E2E/Playwright streaming; E2E/Playwright non-stream/perf; E2E/Playwright disconnect/leak guard; Smoke scripts (structured/textual/disconnect); CI matrix & gating; Artifact publishing; Performance budgets; Documentation (runbooks, architecture/test design); Developer workflow & coding standards; Secrets & retention policy</tasks>
+  </story>
+
+  <acceptanceCriteria>Critical scope only: deterministic app-server fixtures under tests/e2e/fixtures/tool-calls/; integration tests assert role order, cumulative args, single finish chunk, [DONE], finish_reason:"tool_calls"; Obsidian smoke (structured/textual/disconnect) via scripts/smoke/{dev,prod}.sh; CI gates test:integration, test, smoke; docs updated for app-only fixtures and smoke steps; error/disconnect coverage (pre/post tool-call, canonical finish + [DONE], cleanup); finish-reason precedence; multi-choice isolation with content:null non-stream envelopes; single-tool-per-turn guard when stop-after-tools enabled; secrets/stderr hygiene (no secrets or stderr in SSE artifacts).</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      docs/tech-spec-epic-2.md — Test strategy, fixture, and parity acceptance criteria for Epic 2 tool-call flows. Key sections: test strategy summary, risk register, acceptance-criteria-authoritative.
+      docs/codex-proxy-tool-calls.md — Behavioral notes for streaming/tool-call handling, textual fallback detection, finish-reason semantics, config knobs.
+      docs/openai-endpoint-golden-parity.md — Golden transcript normalization rules, artifact upload expectations, parity diff harness guidance.
+      docs/test-design-epic-2.md — Risk register, test strategy, and performance budget guidance for Epic 2.
+      docs/architecture.md — System architecture patterns: streaming/SSE ordering, heartbeat behavior, post-finish drop rules, observability constraints.
+      docs/app-server-migration/codex-completions-api-migration.md — Parity fixture maintenance workflow, conversation lifecycle, smoke guidance.
+      docs/PRD.md — Functional and non-functional requirements that constrain latency, availability, and parity guarantees.
+    </docs>
+    <code>
+      src/handlers/chat/stream.js — Streaming handler enforcing role-first, tool-call aggregation, finish chunk, tail suppression, disconnect handling (relevant to ACs on ordering, finish_reason, post-finish drops).
+      src/handlers/chat/nonstream.js — Non-stream response assembly for tool_calls/function_call envelopes, finish_reason tool_calls, content:null semantics.
+      src/handlers/chat/tool-buffer.js — Textual & buffering logic for &lt;use_tool&gt; chunks; ensures single emission and buffering metrics.
+      src/handlers/chat/stop-after-tools-controller.js — enforces stop-after-tools gating and single-tool-per-turn guard.
+      src/handlers/chat/shared.js — Shared helpers for tool-call normalization, SSE chunk emission, and finish handling.
+      scripts/smoke/stream-tool-call.js — Smoke helper used by dev/prod scripts to verify tool-call streaming behavior.
+      tests/integration — Vitest integration suites covering handler behavior; extend for tool-call invariants.
+      tests/e2e — Playwright suites for streaming/non-stream SSE contract and tool-call regression.
+    </code>
+    <dependencies>
+      Node/Express stack — express@4.x, prom-client@15.x, nanoid; Codex CLI binding @openai/codex@0.58.0.
+      Test toolchain — vitest, @vitest/coverage-v8, @playwright/test, ajv for schema, prettier/eslint for linting, secretlint for redaction checks.
+    </dependencies>
+  </artifacts>
+
+  <constraints>Maintain OpenAI-compatible SSE/JSON envelopes: role-first delta once, cumulative delta.tool_calls, single finish_reason "tool_calls", [DONE] terminator, no mixed frames; enforce post-finish drop and tail suppression; obey stop-after-tools / parallel-tool-calls flags; metrics/logging schemas with bounded labels; redact secrets in artifacts; latency budgets per PRD/NFR (integration ≤30s, E2E ≤2m, mark @slow if exceeded); preserve Traefik routers/labels and existing tool-buffer telemetry.</constraints>
+  <interfaces>/v1/chat/completions streaming SSE: role-first, delta.tool_calls cumulative, finish chunk then [DONE]; /v1/chat/completions non-stream JSON: content:null with tool_calls[] (or function_call) and finish_reason tool_calls; scripts/smoke/{dev,prod}.sh smoke entrypoints with auth for tool-call checks.</interfaces>
+  <tests>
+    <standards>Use Vitest for unit/integration (`tests/unit`, `tests/integration`, `tests/parity`), Playwright for E2E (`tests/e2e`), smoke scripts under `scripts/smoke/*.sh`; adhere to existing SSE ordering/finish invariants and redaction rules when asserting transcripts.</standards>
+    <locations>tests/unit; tests/integration; tests/parity; tests/e2e; scripts/smoke; scripts/qa; scripts/jsonrpc for schema helpers.</locations>
+    <ideas>Map fixtures to AC IDs; add integration specs covering role-first, single finish, post-finish drop, parallel toggle, disconnect cleanup; E2E specs for textual fallback buffering and large-argument UTF-8 integrity; smoke steps for stop-after-tools=on/off and disconnect leak guard.</ideas>
+  </tests>
+</story-context>

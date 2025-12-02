@@ -12,7 +12,6 @@ logs/
 logging/
 # Dependencies
 node_modules/
-bmad/
 bmad-bak/
 .bmad/
 .bmad-core/
@@ -80,3 +79,14 @@ releases/*.latest.path
 # Local helper scripts
 scripts/watch-docs-sync.sh
 scripts/sync-docs-to-vault.sh
+bmad-bak/
+.bmad/
+.bmad-core/
+.bmad-infrastructure-devops/
+.bmad-ephemeral/
+.codex/
+docs/bmad/sprint-artifacts/
+docs/bmad/qa/artifacts/streaming-tool-call/*
+# Allow structured logging schema module under src
+!src/services/logging/
+!src/services/logging/**

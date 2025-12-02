@@ -34,6 +34,12 @@ const resolveToolBlockDelimiter = () => {
   return String(raw).replace(/\\n/g, "\n");
 };
 
+const resolveAppServerDefault = () => {
+  const bin = String(process.env.CODEX_BIN || "").toLowerCase();
+  const base = path.basename(bin);
+  return base.includes("fake-codex-proto") || base.endsWith("proto.js") ? "false" : "true";
+};
+
 export const config = {
   PORT: num("PORT", 11435),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
@@ -44,7 +50,7 @@ export const config = {
   CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),
   PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
-  PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", "false"),
+  PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", resolveAppServerDefault()),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
   PROXY_SSE_KEEPALIVE_MS: num("PROXY_SSE_KEEPALIVE_MS", 15000),
@@ -65,6 +71,11 @@ export const config = {
   PROXY_ENABLE_CORS: str("PROXY_ENABLE_CORS", "true"),
   PROXY_CORS_ALLOWED_ORIGINS: str("PROXY_CORS_ALLOWED_ORIGINS", "*"),
   PROXY_LOG_CORS_ORIGIN: bool("PROXY_LOG_CORS_ORIGIN", "false"),
+  PROXY_ENABLE_METRICS: bool("PROXY_ENABLE_METRICS", "false"),
+  PROXY_METRICS_ALLOW_UNAUTH: bool("PROXY_METRICS_ALLOW_UNAUTH", "false"),
+  PROXY_METRICS_ALLOW_LOOPBACK: bool("PROXY_METRICS_ALLOW_LOOPBACK", "true"),
+  PROXY_METRICS_TOKEN: str("PROXY_METRICS_TOKEN", ""),
+  PROXY_MAINTENANCE_MODE: bool("PROXY_MAINTENANCE_MODE", "false"),
   PROXY_KILL_ON_DISCONNECT: str("PROXY_KILL_ON_DISCONNECT", "false"),
   PROXY_DEBUG_PROTO: str("PROXY_DEBUG_PROTO", ""),
   PROXY_SANITIZE_METADATA: bool("PROXY_SANITIZE_METADATA", "false"),

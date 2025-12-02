@@ -31,18 +31,45 @@ export async function waitForUrlOk(url, { timeoutMs = 5000, intervalMs = 100 } =
 // Start a test server on a random port and wait until /healthz is OK
 export async function startServer(envOverrides = {}) {
   const PORT = await getPort();
+  const desiredFlag =
+    envOverrides.PROXY_USE_APP_SERVER !== undefined
+      ? envOverrides.PROXY_USE_APP_SERVER
+      : process.env.PROXY_USE_APP_SERVER;
+  const binOverride = envOverrides.CODEX_BIN;
+  const binLower = String(binOverride || "").toLowerCase();
+  const inferredFlagFromBin = binOverride
+    ? binLower.includes("jsonrpc") || binLower.includes("app-server")
+      ? "true"
+      : "false"
+    : undefined;
+  let normalizedFlag = "false";
+  if (desiredFlag !== undefined) {
+    normalizedFlag = String(desiredFlag).toLowerCase() === "true" ? "true" : "false";
+  } else if (inferredFlagFromBin !== undefined) {
+    normalizedFlag = inferredFlagFromBin;
+  }
+  const resolvedBin =
+    binOverride ||
+    (normalizedFlag === "true" ? "scripts/fake-codex-jsonrpc.js" : "scripts/fake-codex-proto.js");
+  const resolvedSupervisor =
+    envOverrides.CODEX_WORKER_SUPERVISED || (normalizedFlag === "true" ? "true" : undefined);
   const child = spawn("node", ["server.js"], {
     env: {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: envOverrides.PROXY_API_KEY || "test-sk-ci",
-      CODEX_BIN: envOverrides.CODEX_BIN || "scripts/fake-codex-proto.js",
-      PROXY_PROTECT_MODELS: envOverrides.PROXY_PROTECT_MODELS || "false",
       ...(envOverrides || {}),
+      PROXY_USE_APP_SERVER: normalizedFlag,
+      CODEX_BIN: resolvedBin,
+      ...(resolvedSupervisor ? { CODEX_WORKER_SUPERVISED: resolvedSupervisor } : {}),
+      PROXY_PROTECT_MODELS: envOverrides.PROXY_PROTECT_MODELS || "false",
     },
     stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
+  if (normalizedFlag === "true") {
+    await waitForUrlOk(`http://127.0.0.1:${PORT}/readyz`);
+  }
   return { PORT, child };
 }
 

@@ -26,8 +26,10 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
-      // Use the deterministic proto shim for tests to avoid external dependency
-      CODEX_BIN: process.env.CODEX_BIN || "scripts/fake-codex-proto.js",
+      // Use the deterministic app-server JSON-RPC shim for tests to avoid external dependency
+      CODEX_BIN: process.env.CODEX_BIN || "scripts/fake-codex-jsonrpc.js",
+      PROXY_USE_APP_SERVER: "true",
+      CODEX_WORKER_SUPERVISED: "true",
       // Keep models public in tests
       PROXY_PROTECT_MODELS: "false",
       // Allow higher parallel SSE to avoid spurious 429s in CI/local

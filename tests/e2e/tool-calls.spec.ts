@@ -9,10 +9,16 @@ const streamRequestBody = {
   messages: [{ role: "user", content: "call lookup_user" }],
 };
 
+const APP_SERVER_ENV = {
+  CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+  PROXY_USE_APP_SERVER: "true",
+  CODEX_WORKER_SUPERVISED: "true",
+};
+
 test.describe("chat tool-call parity", () => {
   test("obsidian streaming emits <use_tool> chunk and canonical finish", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "tool_call",
       PROXY_SSE_KEEPALIVE_MS: "0",
       PROXY_SANITIZE_METADATA: "false",
@@ -56,7 +62,7 @@ test.describe("chat tool-call parity", () => {
 
   test("openai-json streaming suppresses XML but streams tool_calls deltas", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "tool_call",
       PROXY_SSE_KEEPALIVE_MS: "0",
       PROXY_SANITIZE_METADATA: "false",
@@ -109,7 +115,7 @@ test.describe("chat tool-call parity", () => {
 
   test("non-stream textual fallback forwards literal <use_tool> block", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
@@ -143,7 +149,7 @@ test.describe("chat tool-call parity", () => {
 
   test("obsidian streaming emits a single chunk even when XML arrives fragmented", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
@@ -177,7 +183,7 @@ test.describe("chat tool-call parity", () => {
 
   test("obsidian streaming flushes partial buffers when backend disconnects mid-block", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      ...APP_SERVER_ENV,
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
