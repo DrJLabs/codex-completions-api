@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolve, dirname } from "node:path";
@@ -44,7 +45,7 @@ interface LineReader {
   close(): void;
 }
 
-function createLineReader(stream: NodeJS.ReadableStream): LineReader {
+function createLineReader(stream: Readable): LineReader {
   const rl = createInterface({ input: stream });
   const queue: string[] = [];
   const waiters: Array<(line: string) => void> = [];
@@ -89,7 +90,6 @@ async function waitForPayload<T>(
   { timeoutMs = 5000 }: { timeoutMs?: number } = {}
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {

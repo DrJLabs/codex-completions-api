@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { extractUseToolBlocks as toolCallBlockParser } from "./lib/tool-call-aggregator.js";
+import { applyLogSchema } from "./services/logging/schema.js";
 
 export const extractUseToolBlocks = toolCallBlockParser;
 
@@ -114,20 +115,67 @@ export const __whenAppendIdle = (filePath) => {
 };
 
 export const appendUsage = (obj = {}) => {
-  const payload = {
-    ts: Date.now(),
-    phase: "usage_summary",
-    ...obj,
-  };
-  if (!Object.prototype.hasOwnProperty.call(payload, "req_id")) {
-    payload.req_id = null;
-  }
+  const ts = Date.now();
+  const payload = applyLogSchema(
+    {
+      phase: "usage_summary",
+      ...obj,
+      ts,
+    },
+    {
+      component: "usage",
+      event: obj.event || "usage_summary",
+      level: obj.level || "info",
+      req_id: obj.req_id ?? null,
+      route: obj.route || obj.path || null,
+      model: obj.model || null,
+      latency_ms: obj.latency_ms || obj.dur_ms || obj.duration_ms || null,
+      tokens_prompt:
+        obj.prompt_tokens_est ||
+        obj.prompt_tokens ||
+        obj.tokens_prompt ||
+        obj.request_tokens ||
+        null,
+      tokens_response:
+        obj.completion_tokens_est ||
+        obj.completion_tokens ||
+        obj.tokens_response ||
+        obj.response_tokens ||
+        null,
+      maintenance_mode: obj.maintenance_mode,
+      error_code: obj.error_code,
+      retryable: obj.retryable,
+      ts_ms: ts,
+    }
+  );
   appendJsonLine(TOKEN_LOG_PATH, payload);
 };
 
 export const appendProtoEvent = (obj = {}) => {
   if (!LOG_PROTO) return;
-  appendJsonLine(PROTO_LOG_PATH, obj);
+  const ts = Date.now();
+  const payload = applyLogSchema(
+    {
+      ...obj,
+      ts,
+    },
+    {
+      component: "trace",
+      event: obj.event || obj.phase || "proto_event",
+      level: obj.level || "info",
+      req_id: obj.req_id || obj.request_id || null,
+      route: obj.route || null,
+      model: obj.model || null,
+      latency_ms: obj.latency_ms || null,
+      tokens_prompt: obj.tokens_prompt ?? obj.prompt_tokens ?? null,
+      tokens_response: obj.tokens_response ?? obj.completion_tokens ?? null,
+      maintenance_mode: obj.maintenance_mode,
+      error_code: obj.error_code,
+      retryable: obj.retryable,
+      ts_ms: ts,
+    }
+  );
+  appendJsonLine(PROTO_LOG_PATH, payload);
 };
 
 const sanitizerState = {
@@ -145,13 +193,17 @@ export const logSanitizerToggle = ({
   if (sanitizerState.lastEnabled === normalized) return;
   sanitizerState.lastEnabled = normalized;
   appendJsonLine(SANITIZER_LOG_PATH, {
-    ts: Date.now(),
-    kind: "proxy_sanitize_metadata",
-    enabled: normalized,
-    trigger,
-    route,
-    mode,
-    req_id: reqId || null,
+    ...applyLogSchema(
+      {
+        kind: "proxy_sanitize_metadata",
+        enabled: normalized,
+        trigger,
+        route,
+        mode,
+        req_id: reqId || null,
+      },
+      { component: "trace", event: "sanitizer_toggle", level: "info" }
+    ),
   });
 };
 
@@ -164,17 +216,22 @@ export const logSanitizerSummary = ({
   keys = [],
   sources = [],
 } = {}) => {
-  appendJsonLine(SANITIZER_LOG_PATH, {
-    ts: Date.now(),
-    kind: "metadata_sanitizer_summary",
-    enabled: Boolean(enabled),
-    route,
-    mode,
-    req_id: reqId || null,
-    sanitized_count: count,
-    sanitized_keys: Array.from(new Set(keys || [])),
-    sanitized_sources: Array.from(new Set(sources || [])),
-  });
+  appendJsonLine(
+    SANITIZER_LOG_PATH,
+    applyLogSchema(
+      {
+        kind: "metadata_sanitizer_summary",
+        enabled: Boolean(enabled),
+        route,
+        mode,
+        req_id: reqId || null,
+        sanitized_count: count,
+        sanitized_keys: Array.from(new Set(keys || [])),
+        sanitized_sources: Array.from(new Set(sources || [])),
+      },
+      { component: "trace", event: "sanitizer_summary", level: "info" }
+    )
+  );
 };
 
 export const __resetSanitizerTelemetryStateForTests = () => {

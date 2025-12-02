@@ -55,7 +55,7 @@ let PORT; let child;
 beforeAll(async () => {
   PORT = await getPort();
   child = spawn("node", ["server.js"], {
-    env: { ...process.env, PORT: String(PORT), PROXY_API_KEY: "test-sk-ci", CODEX_BIN: "scripts/fake-codex-proto.js", PROXY_PROTECT_MODELS: "false" },
+    env: { ...process.env, PORT: String(PORT), PROXY_API_KEY: "test-sk-ci", CODEX_BIN: "scripts/fake-codex-jsonrpc.js", PROXY_USE_APP_SERVER: "true", CODEX_WORKER_SUPERVISED: "true", PROXY_PROTECT_MODELS: "false" },
     stdio: "ignore",
   });
   const start = Date.now();
@@ -94,4 +94,3 @@ else
 fi
 
 echo "[setup] done"
-

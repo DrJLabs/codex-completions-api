@@ -1,8 +1,8 @@
 ---
 title: Codex Completions API — Architecture
 status: active
-version: v2.4
-updated: 2025-10-26
+version: v2.5
+updated: 2025-11-22
 ---
 
 # Introduction
@@ -17,9 +17,10 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 ## Current Project State
 
-- **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes.
-- **Current Tech Stack:** Node.js ≥ 22, Express 4.19, Vitest, Playwright, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
-- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) spawning short-lived Codex child processes per request.
+- **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes. Dev/test stacks now default to the app-server JSON-RPC shim for determinism; production still shells out to the packaged CLI.
+- **Proto mode status:** Proto mode is deprecated. All dev/test/CI stacks must run with `PROXY_USE_APP_SERVER=true` and the JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`) or real app-server binary. Do not flip to proto, regenerate proto fixtures, or add proto-only tests.
+- **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4.0.x, Playwright 1.56.x, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
+- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating JSON-RPC app-server child processes (dev/test default) or packaged Codex CLI (prod) per request.
 - **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
 
 ## Available Documentation
@@ -34,7 +35,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 - Traefik ForwardAuth must continue to target `http://127.0.0.1:18080/verify`; do not switch to container hostname unless Traefik is containerized.
 - `.codex-api/` must remain writable in prod; enforcing read-only breaks Codex session persistence and streaming state.
-- Containers bake the Codex CLI (`@openai/codex`) into the image at build time (`/usr/local/lib/codex-cli`); `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Dev stacks can still override `CODEX_BIN` to point at `scripts/fake-codex-proto.js` when shimming the provider.
+- Containers bake the Codex CLI (`@openai/codex`) into the image at build time (`/usr/local/lib/codex-cli`); `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Dev/test stacks override `CODEX_BIN` to `scripts/fake-codex-jsonrpc.js` with `PROXY_USE_APP_SERVER=true` for deterministic regression runs; proto shims are retired for Story 2.10+.
 - `PROXY_SSE_MAX_CONCURRENCY` governs active SSE streams per replica; ensure `ulimit -n` and resource sizing satisfy the concurrency envelope.
 - Dev edge relies on `PROXY_DEV_TRUNCATE_AFTER_MS` safeguards; maintain default zero in prod to avoid truncating real traffic.
 
@@ -42,6 +43,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 
 | Change                                   | Date       | Version | Description                                                                                                                                     | Author            |
 | ---------------------------------------- | ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| App-server shim defaults for tests       | 2025-11-22 | v2.5    | Documented app-server JSON-RPC shim as the default for dev/test (Playwright/Vitest) and removal of proto fixtures in tool-call regression scope. | Architect (codex) |
 | Responses parity & golden transcripts    | 2025-10-26 | v2.4    | Delivered `/v1/responses` router/handlers, shared streaming adapter, and transcript tooling aligned to `docs/openai-endpoint-golden-parity.md`. | Architect (codex) |
 | Response sanitization requirement        | 2025-09-26 | v2.3    | Captured metadata filtering guard in chat handlers, feature toggle rollout plan, and monitoring expectations.                                   | PM (codex)        |
 | Parallel tools + CLI packaging           | 2025-09-26 | v2.2    | Documented dev parallel tool passthrough, baked Codex CLI into the image, refreshed testing/observability references, updated ops guidance      | Architect (codex) |
@@ -87,7 +89,7 @@ Recent work centers on brownfield stabilization: enforcing streaming parity, add
 | Web Framework    | Express                                 | 4.19.x           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
 | Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
 | Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                           |
-| Testing          | Vitest, Playwright                      | 3.2.4 / 1.55.0   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
+| Testing          | Vitest, Playwright                      | 4.0.3 / 1.56.1   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
 | Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM         | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                                                                                |
 | Containerization | Docker Compose                          | v2               | Prod/dev stacks, attaches to external `traefik` network.                     | Compose file is source of truth for routing labels.                                                     |
 
@@ -274,3 +276,10 @@ None — stabilization leveraged the existing stack and toggles.
 - `docs/bmad/architecture/source-tree.md` — directory-level breakdown.
 - `docs/bmad/stories/epic-stability-ci-hardening-sep-2025.md` — stability epic outcomes driving current architecture.
 - `docs/runbooks/operational.md` — incident response and smoke guidance.
+
+## Tracing (dev/app-server)
+
+- Enable `LOG_PROTO=true` (and optionally `PROXY_TRACE_REQUIRED=true`) in dev/test to capture request/response/notification/tool events across ingress, backend, and egress.
+- Event sources: `src/middleware/access-log.js` (req_id), `src/dev-trace/http.js` (ingress), `src/services/backend-mode.js` + `src/services/codex-runner.js` (backend submission/lifecycle), `src/dev-logging.js` (JSON-RPC responses/notifications/tool blocks), `src/services/sse.js` (stream egress), `/v1/usage` summaries.
+- Stitch logs with `scripts/dev/trace-by-req-id.js --req-id <id> [--access-log <file>] [--proto-log <file>] [--usage-log <file>]`. Defaults read `PROTO_LOG_PATH` and `TOKEN_LOG_PATH`.
+- See `docs/bmad/architecture/end-to-end-tracing-app-server.md` for the full operator workflow and sanitization rules.

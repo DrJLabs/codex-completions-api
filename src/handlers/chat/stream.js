@@ -591,10 +591,14 @@ export async function postChatStream(req, res) {
       console.log("[proxy] child error:", error?.message || String(error));
     } catch {}
     if (responded) return;
-    responded = true;
     try {
       clearTimeout(timeout);
     } catch {}
+    if (hasToolCallEvidence()) {
+      finalizeStream({ reason: "tool_calls", trigger: usageState.trigger || "backend_error" });
+      return;
+    }
+    responded = true;
     const mapped = mapTransportError(error);
     try {
       if (mapped) {

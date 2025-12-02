@@ -70,6 +70,13 @@ jobs:
           PROXY_API_KEY: codex-ci
         run: npm run test:all
 
+      - name: Tool-call smoke (structured/textual/disconnect)
+        if: steps.changes.outputs.code == 'true'
+        env:
+          KEY: codex-ci
+          MODEL: codex-5
+        run: bash scripts/qa/tool-call-smoke-ci.sh
+
       - name: Skip tests (docs-only change)
         if: steps.changes.outputs.code != 'true'
         run: echo "Docs-only change detected; skipping test suite."
