@@ -148,6 +148,11 @@ These directives are mandatory for agents operating in this repository. They pre
 - DEV advertise: `codev-5`, `codev-5-{low,medium,high,minimal}` (to avoid confusion with prod endpoints).
 - Both environments accept either prefix; agents should prefer the environment’s advertised prefix in examples and client setup steps.
 
+11. Endpoint exposure and auth defaults
+
+- `/v1/responses` stays enabled by default; toggle with `PROXY_ENABLE_RESPONSES=false` only for chat-only environments and document the change.
+- `/v1/usage*` and `__test/*` require bearer auth in-app; leave `PROXY_USAGE_ALLOW_UNAUTH=false` and `PROXY_TEST_ENDPOINTS=false` unless running local diagnostics. `PROXY_TEST_ALLOW_REMOTE` should remain false so test routes stay loopback-only by default.
+
 <!-- BEGIN: BMAD-AGENTS -->
 
 # BMAD-METHOD Agents and Tasks

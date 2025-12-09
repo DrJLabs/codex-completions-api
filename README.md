@@ -21,7 +21,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 ## Features
 
-- OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
+- OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`, `/v1/responses` (typed streaming + non-stream).
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
@@ -51,7 +51,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
    ```
 
 2. Seed `.codev/` with your Codex CLI config (`config.toml`, `auth.json`).
-3. Start the proxy (defaults to port `18000`):
+3. Start the proxy (defaults to port `11435` and binds to `127.0.0.1` unless overridden):
 
    ```bash
    PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
@@ -106,8 +106,10 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 ### Authentication
 
-- All `/v1/chat/completions` requests require `Authorization: Bearer $PROXY_API_KEY`.
+- All `/v1/chat/completions` **and `/v1/responses`** requests require `Authorization: Bearer $PROXY_API_KEY`.
 - `/v1/models` is public in dev but can be protected by setting `PROXY_PROTECT_MODELS=true`.
+- Usage telemetry (`/v1/usage`, `/v1/usage/raw`) requires the bearer key unless you explicitly set `PROXY_USAGE_ALLOW_UNAUTH=true` for local diagnostics.
+- Test-only routes (`/__test/*`) are gated by `PROXY_TEST_ENDPOINTS=true`, always require the bearer key, and default to loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`.
 - ForwardAuth (Traefik) also checks the same key to keep edge and origin consistent.
 
 ### Model selection
@@ -122,6 +124,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
 - Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
 - `PROXY_STREAM_MODE=jsonl` outputs raw Codex JSON lines for debugging; default mode emits OpenAI-style SSE envelopes.
+- `/v1/responses` can be disabled for chat-only deployments via `PROXY_ENABLE_RESPONSES=false`; default is on for parity with OpenAI.
 
 ### Streaming controls for tool-heavy clients
 
@@ -335,7 +338,7 @@ Behavior:
 
 ## Documentation
 
-This repository ships with a minimal public documentation stub (`docs/README.md`). Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. See `docs/README.md` for guidance on structuring local-only docs.
+This repository ships with a minimal public documentation stub (`docs/README.md`) — treat it as the canonical index. Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
 
 ## License
 
@@ -358,6 +361,8 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 - Run `npm run verify:all` before opening a PR to execute formatting, linting, unit, integration, and Playwright suites in one step.
 - Env smokes: `npm run smoke:dev` (requires `DEV_DOMAIN`/`KEY`) and `npm run smoke:prod` (requires `DOMAIN`/`KEY`) hit `/v1/models` and both streaming and non-stream chat endpoints against the respective stacks.
+- CI artifacts: the workflow uploads `playwright-report`/`blob-report` plus `.smoke-tool-call.log`. Download artifacts from the run and open the HTML report locally via `npx playwright show-report playwright-report`.
+- CI enforces a clean workspace after tests to catch regenerated fixtures; keep tracked assets updated locally before pushing.
 
 1. Unit (Vitest, fast, watchable)
 

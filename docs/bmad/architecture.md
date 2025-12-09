@@ -86,7 +86,7 @@ Recent work centers on brownfield stabilization: enforcing streaming parity, add
 | Category         | Current Technology                      | Version          | Usage in Enhancement                                                         | Notes                                                                                                   |
 | ---------------- | --------------------------------------- | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Runtime          | Node.js                                 | ≥ 22.x           | Hosts Express server and orchestrates Codex child processes.                 | ESM modules only; supports child process flags for parallel tool experiments.                           |
-| Web Framework    | Express                                 | 4.19.x           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
+| Web Framework    | Express                                 | 4.21.2           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
 | Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
 | Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                           |
 | Testing          | Vitest, Playwright                      | 4.0.3 / 1.56.1   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
@@ -115,7 +115,7 @@ None — stabilization leveraged the existing stack and toggles.
 - `health.js` — `/healthz` liveness.
 - `models.js` — `/v1/models` with optional auth gating.
 - `chat.js` — `/v1/chat/completions` and `/v1/completions` (HEAD + POST) delegating to stream/non-stream handlers.
-- `responses.js` — `/v1/responses` router that mirrors chat auth/CORS behavior and mounts both handlers.
+- `responses.js` — `/v1/responses` router (gated by `PROXY_ENABLE_RESPONSES`, default on) that mirrors chat auth/CORS behavior and mounts both handlers.
 - `usage.js` — `/v1/usage` and `/v1/usage/raw` for telemetry queries.
 
 ## Handlers (`src/handlers/*`)
@@ -140,14 +140,14 @@ None — stabilization leveraged the existing stack and toggles.
 
 ## Config & Utilities
 
-- `src/config/index.js` — Typed env loader for all `PROXY_*`, `CODEX_*`, and sandbox settings.
+- `src/config/index.js` — Typed env loader for all `PROXY_*`, `CODEX_*`, and sandbox settings. Defaults keep `PROXY_SANDBOX_MODE=read-only`, `PROXY_ENABLE_RESPONSES=true`, `PROXY_USAGE_ALLOW_UNAUTH=false`, and `PROXY_TEST_ENDPOINTS=false` (loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`).
 - `src/config/models.js` — Advertised model ID helpers (dev vs prod).
 - `src/utils.js` — Token estimators, usage aggregation, model normalization, CORS helpers.
 - `src/dev-logging.js` — Usage/proto NDJSON appenders and `<use_tool>` block extraction.
 
 ## Auth & Edge Integration
 
-- `auth/server.mjs` — ForwardAuth sidecar validating bearer keys and mirroring CORS handling for Traefik.
+- `auth/server.mjs` — ForwardAuth sidecar validating bearer keys and mirroring CORS handling for Traefik. In-app auth mirrors this: chat/responses always require bearer; usage requires bearer unless explicitly toggled; test routes require bearer + flag and default to loopback-only.
 - `docker-compose.yml` — Defines service labels (`traefik.http.routers.codex-*`) and attaches external `traefik` network.
 
 ## Scripts & Tooling (`scripts/*`)

@@ -1,28 +1,29 @@
 # Documentation Overview
 
-This repository ships with a lightweight public documentation set. Detailed internal runbooks, architecture notes, QA artifacts, and project history remain private by default.
+This file is the canonical index for public documentation. Keep it updated whenever new docs are added or scoped.
 
-## Public docs
+## Primary references
 
-- `README.md` (root) — quick start and operational summary.
-- `docs/README.md` (this file) — how to configure optional local documentation.
-- `docs/private/` (ignored) — optional folder for internal guides.
+- `README.md` — quick start, auth/config defaults (sandbox defaults to `read-only`, test endpoints bearer + loopback), and operational reminders.
+- `docs/bmad/prd.md` — product requirements, endpoint surface, and testing expectations.
+- `docs/bmad/architecture.md` — current architecture stack (Node 22, Express 4.21.2), config expectations, and operational invariants.
+- `docs/openai-endpoint-golden-parity.md` — canonical envelope definitions for `/v1/chat/completions` and `/v1/responses` (typed SSE + non-stream).
+- `docs/responses-endpoint/overview.md` — rollout/operational notes for `/v1/responses`.
+- `docs/app-server-migration/codex-completions-api-migration.md` — app-server migration/runbook context and health probes.
+- `docs/codex-longhorizon/INDEX_TASK_DOCS.md` — survey/task index (source for remediation backlog).
 
-## Working with private docs locally
+## Doc hygiene
 
-If you have access to the original internal documentation, place it under `docs/private/`. The directory is ignored by git so nothing will be committed accidentally. Suggested layout:
+- Run `npm run lint:runbooks` before committing doc changes (prettier check for `docs/app-server-migration/**`).
+- Place private-only guides under `docs/private/` (ignored by git). Suggested layout:
 
-```text
-docs/
-├── README.md
-└── private/
-    ├── architecture/…
-    ├── runbooks/…
-    └── …
-```
+  ```text
+  docs/
+  ├── README.md
+  └── private/
+      ├── architecture/…
+      ├── runbooks/…
+      └── …
+  ```
 
-You can symlink or copy individual files back into tracked locations if you want specific items to be published.
-
-## Updating the README references
-
-The root README no longer links to the internal documents directly. If you add new public documentation, update both the root README and this file accordingly.
+- When adding new public docs, update both `README.md` and this index with links and scope notes.

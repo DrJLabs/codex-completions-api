@@ -98,7 +98,7 @@ Single repository containing the Node/Express proxy, documentation, tests, and o
 
 ## Service Architecture
 
-Monolithic Express server that shells out to Codex CLI (`codex proto`) per request, normalizes results, and runs behind Traefik + Cloudflare. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and bake the Codex CLI package into the image during build so binaries/vendor assets remain aligned without host mounts.
+Monolithic Express server that runs long-lived `codex app-server` workers by default (supervised) and normalizes results behind Traefik + Cloudflare. A deterministic proto shim remains for CI/local compatibility, but production/dev are expected to stay on app-server. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and bake the Codex CLI package into the image during build so binaries/vendor assets remain aligned without host mounts.
 
 ## Testing Requirements
 
@@ -106,7 +106,8 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 
 ## Additional Technical Assumptions and Requests
 
-- Node.js ≥ 22.x, Express 4.19.x, `nanoid` for IDs; ESM modules only.
+- Node.js ≥ 22.x, Express 4.21.2, `nanoid` for IDs; ESM modules only.
+- Defaults: `PROXY_SANDBOX_MODE=read-only`, `PROXY_ENABLE_RESPONSES=true`, `PROXY_USAGE_ALLOW_UNAUTH=false`, `PROXY_TEST_ENDPOINTS=false` (loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`).
 - `src/services/codex-runner.js` respects `CODEX_HOME`, sandbox/workdir envs, and dev overrides such as `PROXY_ENABLE_PARALLEL_TOOL_CALLS`.
 - Traefik ForwardAuth hits `http://127.0.0.1:18080/verify`; forwarding URL must not change unless Traefik shares the container network.
 - Edge smoke scripts depend on `.env`/`.env.dev` (`KEY`/`PROXY_API_KEY`, `DOMAIN`/`DEV_DOMAIN`) to exercise real endpoints.
@@ -123,11 +124,11 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 | `/healthz`                 | `GET`                | None                                          | Returns `{ ok: true, sandbox_mode }` for liveness.                                    |
 | `/v1/models`               | `GET, HEAD, OPTIONS` | Optional (see `PROXY_PROTECT_MODELS`)         | Advertises environment-specific models; HEAD responds 200 with JSON content-type.     |
 | `/v1/chat/completions`     | `POST`               | Bearer required                               | Core Chat Completions route; supports streaming and non-stream with OpenAI envelope.  |
-| `/v1/responses`            | `POST`               | Bearer required                               | Primary Responses endpoint; non-stream and typed SSE events match golden transcripts. |
+| `/v1/responses`            | `POST`               | Bearer required                               | Primary Responses endpoint; non-stream and typed SSE events match golden transcripts. Gated by `PROXY_ENABLE_RESPONSES` (default on). |
 | `/v1/completions`          | `POST`               | Bearer required                               | Legacy shim translating prompt payloads to chat backend.                              |
 | `/v1/usage`                | `GET`                | Bearer required (via ForwardAuth)             | Aggregated usage counts (`parseTime` query filters).                                  |
 | `/v1/usage/raw`            | `GET`                | Bearer required (via ForwardAuth)             | Returns bounded NDJSON events with `limit` (default 200, max 10000).                  |
-| `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only.                                     |
+| `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only; loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`. |
 
 ## Streaming Contract & Tool Controls
 
