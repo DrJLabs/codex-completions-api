@@ -94,6 +94,15 @@ Add newest entries at the top.
 - Commands run: none (documentation/status updates only; last `npm run verify:all` at 04:30 UTC PASS)
 - Results: Backlog reflects Done state; release readiness recorded; no DECISIONS required.
 
+### 2025-12-09 07:42 — PR review fixes
+- Backlog item(s): PR #137 review comments
+- Change summary: Set `PROXY_HOST=0.0.0.0` in docker-compose to keep Traefik reachability while retaining loopback default elsewhere; added early deprecation/exit banner to archived installer; added `jsonrpc:verify` into `verify:all` and CI workflow; normalized long-horizon docs (language-tagged directory listing, removed duplicate `docs/codex-long-horizon` tree).
+- Files touched: docker-compose.yml; docs/_archive/install.sh; package.json; .github/workflows/ci.yml; docs/codex-longhorizon/00-README.md; removed docs/codex-long-horizon/*; README.md
+- Commands run:
+  - `npm run jsonrpc:verify` (PASS)
+  - `npm run test:unit` (PASS)
+- Results: Review issues addressed; verification scripts/CI enforce schema; docs duplication removed; archived installer now self-blocks.
+
 ### 2025-12-09 04:30 — Observability + deployment hygiene
 - Backlog item(s): LH-P2-01, LH-P2-02, LH-P2-03
 - Change summary: Added stream telemetry (TTFB/duration/end counters) and worker restart delta counter to /metrics; optional OTLP tracing via PROXY_ENABLE_OTEL + exporter URL with trace_id surfaced in access logs and backend spans; deprecated systemd installer stubbed/archived with docs declaring compose as canonical path.

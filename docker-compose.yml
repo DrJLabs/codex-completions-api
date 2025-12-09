@@ -6,6 +6,7 @@ services:
     image: codex-completions-api:latest
     environment:
       - PORT=${PORT:-11435}
+      - PROXY_HOST=${PROXY_HOST:-0.0.0.0}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-env}
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - PROXY_SANDBOX_MODE=${PROXY_SANDBOX_MODE:-read-only}

@@ -60,6 +60,9 @@ jobs:
       - name: Lint (JS)
         run: npm run lint
 
+      - name: Verify JSON-RPC schema
+        run: npm run jsonrpc:verify
+
       - name: Install Playwright deps (for tests)
         if: steps.changes.outputs.code == 'true'
         run: npx playwright install --with-deps chromium

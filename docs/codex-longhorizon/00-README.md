@@ -21,7 +21,7 @@ It assumes you will run Codex CLI locally (or on your server) against your check
 
 Recommended in your repo:
 
-```
+```text
 docs/codex-longhorizon/
   01-RUNBOOK.md
   02-AGENTS.md
@@ -63,4 +63,3 @@ codex exec resume --last
 - You stay in control of approvals and sandbox level.
 - Codex should checkpoint frequently (commits + PROGRESS updates).
 - Anything requiring secrets, production credentials, or irreversible actions should stop and ask for human input.
-

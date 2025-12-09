@@ -96,6 +96,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
    curl -s http://127.0.0.1:11435/v1/models | jq .
    ```
 
+> Note: `docker-compose.yml` sets `PROXY_HOST=0.0.0.0` inside the container so Traefik can reach the app over the bridge network. Local Node runs still default to `127.0.0.1` unless you override `PROXY_HOST`.
+
 ### Dev helpers
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
