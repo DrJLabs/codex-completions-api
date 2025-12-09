@@ -10,6 +10,7 @@ local-server.log
 .server.log
 logs/
 logging/
+.smoke-tool-call.log
 # Dependencies
 node_modules/
 bmad-bak/
