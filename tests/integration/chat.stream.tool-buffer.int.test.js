@@ -10,8 +10,12 @@ const requestPayload = {
   messages: [{ role: "user", content: "call lookup_user" }],
 };
 
+const defaultHeaders = { Authorization: "Bearer test-sk-ci" };
+
 const readToolBufferMetrics = async (port) => {
-  const res = await fetch(`http://127.0.0.1:${port}/__test/tool-buffer-metrics`);
+  const res = await fetch(`http://127.0.0.1:${port}/__test/tool-buffer-metrics`, {
+    headers: defaultHeaders,
+  });
   expect(res.ok).toBe(true);
   return res.json();
 };
@@ -19,6 +23,7 @@ const readToolBufferMetrics = async (port) => {
 const resetToolBufferMetrics = async (port) => {
   await fetch(`http://127.0.0.1:${port}/__test/tool-buffer-metrics/reset`, {
     method: "POST",
+    headers: defaultHeaders,
   });
 };
 
@@ -132,7 +137,9 @@ describe("chat stream tool buffering", () => {
         .filter((segment) => typeof segment === "string" && segment.includes("<use_tool"));
       expect(toolChunks).toHaveLength(1);
 
-      const usageRes = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/usage`);
+      const usageRes = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/usage`, {
+        headers: defaultHeaders,
+      });
       expect(usageRes.ok).toBe(true);
       const usagePayload = await usageRes.json();
       expect(usagePayload.tool_buffer_metrics).toBeDefined();

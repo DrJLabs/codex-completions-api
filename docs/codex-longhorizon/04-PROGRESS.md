@@ -12,9 +12,9 @@ Update rules:
 
 - Branch: chore/remediation
 - Session: n/a (local)
-- Active phase: Phase 1
-- Last checkpoint commit: 2afb01b chore(lh): bootstrap backlog + progress tracking
-- Next milestone: Start P0 remediation (LH-P0-01 usage auth) after tooling checkpoint
+- Active phase: Phase 2
+- Last checkpoint commit: 67b4218 chore(tooling): establish verification loop
+- Next milestone: Land P0 security fixes (usage/test auth, responses rate limit, prod fail-fast/host bind)
 
 ---
 
@@ -28,7 +28,7 @@ Update rules:
 ### Full loop (run at milestones / end)
 - Command(s): `npm run verify:all` (format:check + lint + unit + integration + Playwright)
 - Typical runtime: TBD (expect several minutes)
-- Notes: Aligns with CI workflow
+- Notes: Aligns with CI workflow; current integration run partially failing (timeouts), see work log.
 
 ### Repo entrypoints / services
 - How to start the API/service: `npm run start` (defaults to PORT=11435, binds 127.0.0.1)
@@ -84,6 +84,17 @@ Update rules:
 ## Work log (append-only)
 
 Add newest entries at the top.
+
+### 2025-12-09 02:44 — Phase 2 P0 hardening WIP
+- Backlog item(s): LH-P0-01, LH-P0-02, LH-P0-03, LH-P0-04, LH-P0-05
+- Change summary: Added bearer auth and loopback guard for __test and usage routes; extended rate-limit to /v1/responses; added prod fail-fast guard and explicit host binding default; introduced security check helper; added auth middleware + net utilities; updated tests for new auth and added security hardening + rate-limit coverage.
+- Files touched: server.js; src/app.js; src/config/index.js; src/middleware/rate-limit.js; src/middleware/auth.js; src/routes/usage.js; src/lib/net.js; src/services/security-check.js; tests/integration/chat.stream.tool-buffer.int.test.js; tests/integration/rate-limit.int.test.js; tests/integration/responses.kill-on-disconnect.int.test.js; tests/integration/responses.stream.concurrency.int.test.js; tests/integration/server.int.test.js; tests/integration/security-hardening.int.test.js; tests/unit/security-check.spec.js
+- Commands run:
+  - `npm run test:unit` (PASS)
+  - `npm run test:integration` (PASS)
+- Results: Unit + integration suites passing (playwright skipped per default harness).
+- Commit: pending (work in progress)
+- Notes: Auth/rate-limit/fail-fast changes validated by integration suite.
 
 ### 2025-12-09 02:06 — Fast loop discovery
 - Backlog item(s): n/a (Phase 1 tooling)

@@ -99,6 +99,41 @@ test("non-stream second request gets 429 from rate limiter", async () => {
   expect(j?.error?.code).toBe("rate_limited");
 });
 
+test("responses endpoint is rate limited alongside chat/completions", async () => {
+  await startServer({
+    CODEX_BIN: "scripts/fake-codex-proto.js",
+    PROXY_RATE_LIMIT_ENABLED: "true",
+    PROXY_RATE_LIMIT_WINDOW_MS: "100000",
+    PROXY_RATE_LIMIT_MAX: "1",
+  });
+
+  const url = `http://127.0.0.1:${PORT}/v1/responses`;
+  const common = {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer test-sk-ci` },
+  };
+  let r = await fetch(url, {
+    ...common,
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: false,
+      input: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    }),
+  });
+  expect(r.status).toBe(200);
+  r = await fetch(url, {
+    ...common,
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: false,
+      input: [{ role: "user", content: [{ type: "text", text: "hi again" }] }],
+    }),
+  });
+  expect(r.status).toBe(429);
+  const j = await r.json();
+  expect(j?.error?.code).toBe("rate_limited");
+});
+
 test("streaming concurrency guard deterministically rejects surplus streams", async () => {
   await cleanTempFiles();
   await startServer({
@@ -185,7 +220,9 @@ test("streaming concurrency guard deterministically rejects surplus streams", as
 
     const startDrain = Date.now();
     while (Date.now() - startDrain < 2000) {
-      const r = await fetch(`http://127.0.0.1:${PORT}/__test/conc`);
+      const r = await fetch(`http://127.0.0.1:${PORT}/__test/conc`, {
+        headers: { Authorization: "Bearer test-sk-ci" },
+      });
       const j = await r.json();
       if (Number(j.conc || 0) === 0) break;
       await wait(20);
