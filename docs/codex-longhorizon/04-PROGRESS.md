@@ -12,9 +12,9 @@ Update rules:
 
 - Branch: chore/remediation
 - Session: n/a (local)
-- Active phase: Phase 2
-- Last checkpoint commit: 67b4218 chore(tooling): establish verification loop
-- Next milestone: Land P0 security fixes (usage/test auth, responses rate limit, prod fail-fast/host bind)
+- Active phase: Phase 3
+- Last checkpoint commit: 8c38291 fix(security): harden auth and limits (LH-P0-01/02/03/04/05)
+- Next milestone: Complete P1 schema/doc/tooling items (LH-P1-01..04)
 
 ---
 
@@ -28,7 +28,7 @@ Update rules:
 ### Full loop (run at milestones / end)
 - Command(s): `npm run verify:all` (format:check + lint + unit + integration + Playwright)
 - Typical runtime: TBD (expect several minutes)
-- Notes: Aligns with CI workflow; current integration run partially failing (timeouts), see work log.
+- Notes: Aligns with CI workflow; latest integration run PASS (2025-12-09).
 
 ### Repo entrypoints / services
 - How to start the API/service: `npm run start` (defaults to PORT=11435, binds 127.0.0.1)
@@ -58,7 +58,7 @@ Update rules:
 - [x] Identify fast loop commands
 - [x] Identify full loop commands
 - [x] Align with CI (if present)
-- [ ] Checkpoint commit: `chore(tooling): establish verification loop`
+- [x] Checkpoint commit: `chore(tooling): establish verification loop`
 
 ### Phase 2 — P0 remediation
 - [ ] P0 items complete (see BACKLOG.md)
@@ -84,6 +84,17 @@ Update rules:
 ## Work log (append-only)
 
 Add newest entries at the top.
+
+### 2025-12-09 02:53 — Schema workflow canonicalization
+- Backlog item(s): LH-P1-01
+- Change summary: Selected schema.ts as canonical source; removed template generator; kept bundle export idempotent and timestamp-free; added verify script for CI.
+- Files touched: package.json; scripts/jsonrpc/export-json-schema.mjs; docs/app-server-migration/app-server-protocol.schema.json; removed scripts/jsonrpc/render-schema.mjs; scripts/jsonrpc/schema-template.ts; restored src/lib/json-rpc/schema.ts
+- Commands run:
+  - `node scripts/jsonrpc/export-json-schema.mjs`
+  - `npm run test:unit` (PASS)
+- Results: Unit suite PASS; schema bundle regenerates without drift-causing metadata.
+- Commit: pending (LH-P1-01)
+- Notes: `jsonrpc:schema` now a no-op (schema.ts authoritative); `jsonrpc:verify` checks bundle drift.
 
 ### 2025-12-09 02:44 — Phase 2 P0 hardening WIP
 - Backlog item(s): LH-P0-01, LH-P0-02, LH-P0-03, LH-P0-04, LH-P0-05
