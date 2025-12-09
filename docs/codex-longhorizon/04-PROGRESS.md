@@ -85,6 +85,23 @@ Update rules:
 
 Add newest entries at the top.
 
+### 2025-12-09 03:20 — CI artifacts + workspace guard
+- Backlog item(s): LH-P1-03
+- Change summary: CI now uploads Playwright HTML/blob reports and smoke logs; workflow asserts clean git status after tests; Playwright reporter emits HTML/blob in CI; smoke log ignored in git; README documents artifact review.
+- Files touched: .github/workflows/ci.yml; playwright.config.ts; .gitignore; README.md
+- Commands run:
+  - `npm run test:unit` (PASS)
+  - `npm run lint:runbooks` (PASS)
+- Results: Unit suite and doc lint pass; workflow will fail on fixture drift and retain artifacts for PR review.
+
+### 2025-12-09 03:12 — Responses exposure flag + doc sync (partial)
+- Backlog item(s): LH-P1-04, LH-P1-02 (docs portion)
+- Change summary: Added `PROXY_ENABLE_RESPONSES` config (default on) gating router mount; documented env sample; added integration coverage for disabled mode (404 on HEAD/POST); docs refreshed for auth defaults (usage/test bearer + loopback), responses availability, proto/app-server policy, Express 4.21.2 version, and canonical doc index/links.
+- Files touched: src/config/index.js; src/app.js; tests/integration/responses.flag.int.test.js; .env.example; README.md; docs/README.md; docs/bmad/architecture.md; docs/bmad/prd.md; docs/bmad/stories/6.1.responses-endpoint-handlers.md; docs/bmad/stories/epic-responses-endpoint-parity.md; docs/responses-endpoint/overview.md; AGENTS.md
+- Commands run:
+  - `npm run test:integration` (PASS, rerun after initial flake)
+- Results: Responses route can be toggled per-env without changing defaults; documentation aligned with auth/sandbox/proto realities and Express version.
+
 ### 2025-12-09 02:53 — Schema workflow canonicalization
 - Backlog item(s): LH-P1-01
 - Change summary: Selected schema.ts as canonical source; removed template generator; kept bundle export idempotent and timestamp-free; added verify script for CI.

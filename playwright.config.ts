@@ -11,7 +11,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? "list" : [["html", { open: "never" }]],
+  reporter: process.env.CI
+    ? [
+        ["list"],
+        ["html", { outputFolder: "playwright-report", open: "never" }],
+        ["blob", { outputDir: "blob-report" }],
+      ]
+    : [["html", { open: "never" }]],
   use: {
     baseURL: `${BASE_HTTP}`,
     extraHTTPHeaders: {
