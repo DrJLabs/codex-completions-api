@@ -26,6 +26,10 @@ const typeNames = [
   "RemoveConversationListenerParams",
   "SendUserTurnParams",
   "SendUserMessageParams",
+  "AgentMessageDeltaParams",
+  "AgentMessageParams",
+  "TokenCountParams",
+  "RequestTimeoutParams",
   "JsonRpcErrorResponse",
   "JsonRpcSuccessResponse",
 ];
@@ -67,7 +71,6 @@ export function buildSchemaBundle(generator) {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "Codex App Server JSON-RPC Schema Bundle",
     cliVersion: CODEX_CLI_VERSION,
-    generatedAt: new Date().toISOString(),
     definitions,
   };
 }
