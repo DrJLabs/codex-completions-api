@@ -42,6 +42,7 @@ const resolveAppServerDefault = () => {
 
 export const config = {
   PORT: num("PORT", 11435),
+  PROXY_HOST: str("PROXY_HOST", "127.0.0.1"),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
@@ -94,6 +95,8 @@ export const config = {
   PROXY_RATE_LIMIT_MAX: num("PROXY_RATE_LIMIT_MAX", 60),
   PROXY_SSE_MAX_CONCURRENCY: num("PROXY_SSE_MAX_CONCURRENCY", 4),
   PROXY_TEST_ENDPOINTS: bool("PROXY_TEST_ENDPOINTS", "false"),
+  PROXY_TEST_ALLOW_REMOTE: bool("PROXY_TEST_ALLOW_REMOTE", "false"),
+  PROXY_USAGE_ALLOW_UNAUTH: bool("PROXY_USAGE_ALLOW_UNAUTH", "false"),
   // Non-stream guard: allow early finalize to avoid edge timeouts (ms; 0=disabled)
   PROXY_NONSTREAM_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Back-compat alias (deprecated name, maps to the same value)
