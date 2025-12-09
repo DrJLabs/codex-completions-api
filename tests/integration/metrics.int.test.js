@@ -23,6 +23,10 @@ describe("metrics endpoint", () => {
     expect(text).toMatch(/codex_http_requests_total/);
     expect(text).toMatch(/route="\/healthz"/);
     expect(text).toMatch(/codex_streams_active/);
+    expect(text).toMatch(/codex_stream_ttfb_ms/);
+    expect(text).toMatch(/codex_stream_duration_ms/);
+    expect(text).toMatch(/codex_stream_end_total/);
+    expect(text).toMatch(/codex_worker_restarts_(total|inc_total)/);
     expect(text).toMatch(/codex_maintenance_mode/);
     expect(text).not.toMatch(/request_id/);
   });
