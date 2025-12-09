@@ -283,6 +283,44 @@ export function createUserMessageItem(text: string, _metadata?: JsonObject | nul
   };
 }
 
+export function normalizeInputItems(items: unknown, fallbackText?: string): InputItem[] {
+  const result: InputItem[] = [];
+  if (Array.isArray(items)) {
+    for (const raw of items) {
+      if (typeof raw === "string") {
+        result.push(createUserMessageItem(raw));
+        continue;
+      }
+      if (raw && typeof raw === "object") {
+        const candidate = raw as Record<string, unknown>;
+        if (typeof candidate.type === "string") {
+          result.push({ ...candidate } as InputItem);
+          continue;
+        }
+        const dataText =
+          candidate?.data && typeof (candidate as any).data?.text === "string"
+            ? (candidate as any).data.text
+            : undefined;
+        const directText =
+          typeof (candidate as any).text === "string" ? (candidate as any).text : undefined;
+        if (dataText !== undefined) {
+          const data = { ...(candidate as any).data, text: dataText };
+          result.push({ ...(candidate as InputItem), type: "text", data });
+          continue;
+        }
+        if (directText !== undefined) {
+          result.push(createUserMessageItem(directText));
+          continue;
+        }
+      }
+    }
+  }
+  if (result.length === 0 && typeof fallbackText === "string") {
+    result.push(createUserMessageItem(fallbackText));
+  }
+  return result;
+}
+
 export function buildInitializeParams(
   options: BuildInitializeOptions
 ): InitializeParams & JsonObject {
@@ -355,9 +393,7 @@ export function buildNewConversationParams(
 export function buildSendUserTurnParams(
   options: BuildSendUserTurnOptions
 ): SendUserTurnParams & JsonObject {
-  const items: InputItem[] = Array.isArray(options.items)
-    ? options.items.map((item) => ({ ...(item || {}) }) as InputItem)
-    : [];
+  const items: InputItem[] = normalizeInputItems(options.items);
 
   const sandbox = normalizeSandboxPolicy(options.sandboxPolicy);
   const approval = normalizeApprovalPolicy(options.approvalPolicy);
@@ -389,9 +425,7 @@ export function buildSendUserTurnParams(
 export function buildSendUserMessageParams(
   options: BuildSendUserMessageOptions
 ): SendUserMessageParams & JsonObject {
-  const items: InputItem[] = Array.isArray(options.items)
-    ? options.items.map((item) => ({ ...(item || {}) }) as InputItem)
-    : [];
+  const items: InputItem[] = normalizeInputItems(options.items);
 
   const params: SendUserMessageParams & JsonObject = {
     conversationId: String(options.conversationId ?? ""),

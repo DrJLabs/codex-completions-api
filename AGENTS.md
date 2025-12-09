@@ -2,7 +2,7 @@
 
 Goal: provide an OpenAI Chat Completions‑compatible proxy over Codex CLI so existing clients (IDEs, SDKs, curl) can use Codex with minimal changes. The proxy exposes `/v1/models` and `/v1/chat/completions`, streams via SSE (role‑first delta, `[DONE]`), and keeps shaping conservative.
 
-Branch: `main-p` (stateless: one Codex proto process per request). Feature branches (`feat/playwright-tests`, `feat/prompt-cache-resume`, `feat/proto-continuous-sessions`) exist but are idle and not merged.
+Branch: `main` (stateless: one Codex proto process per request). Feature branches (`feat/playwright-tests`, `feat/prompt-cache-resume`, `feat/proto-continuous-sessions`) exist but are idle and not merged.
 
 ## Project Structure & Module Organization
 
@@ -5952,3 +5952,84 @@ REPEAT by Asking the user if they would like to perform another Reflective, Elic
 ```
 
 <!-- END: BMAD-AGENTS -->
+
+# Long-Horizon Codex Execution (codex/long-horizon branch)
+
+These rules apply when Codex CLI is running a long-horizon remediation session (e.g., using `gpt-5.1-codex-max` with the launch prompt in `docs/codex-longhorizon/05-LAUNCH-PROMPT.md`).
+
+## Branch & safety rules
+
+1. Never work directly on `main` / `master`.
+   - If the current branch is main/master, Codex must STOP and instruct the user to create a feature branch (e.g., `codex/long-horizon`) before proceeding.
+
+2. Treat sandbox as:
+   - Default: `workspace-write` (no network) for code + docs changes.
+   - Only enable network when explicitly needed (e.g., to install dependencies) and document the reason in `docs/codex-longhorizon/04-PROGRESS.md`.
+
+3. Never add secrets or production credentials to the repo.
+   - `.env`, `.env.dev`, `.codex-api/` and `.codev/` must remain uncommitted.
+   - If a task needs credentials, write a note in `docs/codex-longhorizon/DECISIONS.md` and stop.
+
+## Execution plan integration
+
+When running the long-horizon session, Codex must:
+
+1. Read the long-horizon files:
+   - `docs/codex-longhorizon/03-MASTER-EXECUTION-PLAN.md`
+   - `docs/codex-longhorizon/04-PROGRESS.md`
+
+2. Bootstrap:
+   - Create `docs/codex-longhorizon/INDEX_TASK_DOCS.md` by indexing all survey/task markdown files.
+   - Create `docs/codex-longhorizon/BACKLOG.md` with IDs (LH-P0-##, LH-P1-##, LH-P2-##), scope tags, acceptance criteria, and verification commands.
+   - Record this in `04-PROGRESS.md` and commit with:
+     - `chore(lh): bootstrap backlog + progress tracking`.
+
+3. Verification discipline:
+   - Discover and document “fast loop” commands (lint/unit) and “full loop” commands (integration/E2E) in `04-PROGRESS.md`.
+   - Run the fast loop after each meaningful change.
+   - Run the full loop at milestones and at the end.
+
+4. Backlog execution:
+   - Execute BACKLOG items in priority order (P0 → P1 → P2).
+   - For each item:
+     - Update `04-PROGRESS.md` with:
+       - item id,
+       - what changed,
+       - commands run and results.
+     - Implement the minimal change to satisfy acceptance criteria.
+     - Add or adjust tests as appropriate.
+     - Commit with Conventional Commit style, including backlog id:
+       - e.g., `fix(api): close auth gap (LH-P0-03)`.
+
+5. Doc updates:
+   - Whenever behavior/APIs/config change, update:
+     - README snippets/examples,
+     - relevant architecture/PRD/docs under `docs/`,
+     - any runbooks that are affected.
+
+## Interaction with BMAD agents
+
+- BMAD agents defined above (dev, pm, po, qa, bmad-master, etc.) remain available and authoritative for their domains.
+- The long-horizon workflow does **not** invalidate BMAD:
+  - For story-level work, the `dev` and `qa` agent rules still apply.
+  - If Codex needs PRD/architecture/story context, it should follow BMAD tasks (`create-next-story`, `review-story`, etc.) as appropriate.
+- If any conflict arises between this section and BMAD-specific sections:
+  - BMAD agent-specific **safety/permission** rules remain in force,
+  - but long-horizon **branch/sandbox/progress** rules still apply (no secrets, small commits, PROGRESS updates).
+
+## Stop conditions
+
+The long-horizon Codex session must stop and return control if:
+
+- A human decision is required that cannot be safely inferred (e.g., breaking API vs keeping behavior).
+- Repo environment is broken (tests cannot run due to missing dependencies or services).
+- Codex reaches usage or time limits.
+- It detects that further progress would require secrets or access outside this repo.
+
+When stopping, Codex should:
+
+- Update `docs/codex-longhorizon/04-PROGRESS.md` with:
+  - reason for stopping,
+  - last successful checkpoint commit,
+  - which backlog items are done / remaining.
+- Optionally update `docs/codex-longhorizon/DECISIONS.md` with specific questions for the human.
