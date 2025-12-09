@@ -12,29 +12,29 @@ Update rules:
 
 - Branch: chore/remediation
 - Session: n/a (local)
-- Active phase: Phase 0
-- Last checkpoint commit: 1537b34 fix: normalize legacy input items
-- Next milestone: Finish Phase 0 checkpoint commit with backlog + progress files
+- Active phase: Phase 1
+- Last checkpoint commit: 2afb01b chore(lh): bootstrap backlog + progress tracking
+- Next milestone: Start P0 remediation (LH-P0-01 usage auth) after tooling checkpoint
 
 ---
 
 ## Tooling (discovered)
 
 ### Fast loop (run after most commits)
-- Command(s): TBD in Phase 1
-- Typical runtime: TBD
-- Notes: Pending tooling discovery
+- Command(s): `npm run test:unit`
+- Typical runtime: ~1–2s (local)
+- Notes: Vitest unit layer only
 
 ### Full loop (run at milestones / end)
-- Command(s): TBD in Phase 1
-- Typical runtime: TBD
-- Notes: Pending tooling discovery
+- Command(s): `npm run verify:all` (format:check + lint + unit + integration + Playwright)
+- Typical runtime: TBD (expect several minutes)
+- Notes: Aligns with CI workflow
 
 ### Repo entrypoints / services
-- How to start the API/service: TBD (Phase 1)
-- Env vars: TBD (Phase 1)
-- Ports: TBD (Phase 1)
-- Notes: Pending verification loop discovery
+- How to start the API/service: `npm run start` (defaults to PORT=11435, binds 127.0.0.1)
+- Env vars: `PORT` (default 11435), `PROXY_API_KEY`, `PROXY_USE_APP_SERVER` etc. per README
+- Ports: 11435 (default local)
+- Notes: Dev shim via `npm run dev`/`npm run dev:shim`; dev stack via `npm run dev:stack:up`
 
 ---
 
@@ -52,12 +52,12 @@ Update rules:
 - [x] Create `docs/codex-longhorizon/INDEX_TASK_DOCS.md`
 - [x] Create `docs/codex-longhorizon/BACKLOG.md`
 - [x] Ensure this file is committed and being updated
-- [ ] Checkpoint commit: `chore(lh): bootstrap backlog + progress tracking`
+- [x] Checkpoint commit: `chore(lh): bootstrap backlog + progress tracking`
 
 ### Phase 1 — Tooling / verification harness
-- [ ] Identify fast loop commands
-- [ ] Identify full loop commands
-- [ ] Align with CI (if present)
+- [x] Identify fast loop commands
+- [x] Identify full loop commands
+- [x] Align with CI (if present)
 - [ ] Checkpoint commit: `chore(tooling): establish verification loop`
 
 ### Phase 2 — P0 remediation
@@ -84,6 +84,16 @@ Update rules:
 ## Work log (append-only)
 
 Add newest entries at the top.
+
+### 2025-12-09 02:06 — Fast loop discovery
+- Backlog item(s): n/a (Phase 1 tooling)
+- Change summary: Selected fast/full verification commands and ran unit fast loop.
+- Files touched: none (documentation updates pending)
+- Commands run:
+  - `npm run test:unit`
+- Results: PASS (Vitest unit suite); runtime ~1.15s
+- Commit: pending (tooling checkpoint)
+- Notes: Warnings in logs expected from test fixtures (transport teardown); no failures.
 
 ### 2025-12-09 01:32 — Phase 0 bootstrap setup
 - Backlog item(s): n/a (phase setup)
