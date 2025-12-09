@@ -139,6 +139,11 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - The proxy logs estimated prompt/completion token usage for each request and exposes the aggregates via `/v1/usage`.
 - Metrics are approximate because Codex CLI does not expose raw token counts for every release; treat them as guidance rather than billable totals.
 
+### Observability
+
+- `/metrics` (enable via `PROXY_ENABLE_METRICS=true`) exposes Prometheus series including stream TTFB/duration/end (`codex_stream_ttfb_ms`, `codex_stream_duration_ms`, `codex_stream_end_total`) and worker readiness/restart gauges/counter; loopback/bearer gating applies.
+- Optional OTLP tracing: set `PROXY_ENABLE_OTEL=true` plus `PROXY_OTEL_EXPORTER_URL` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) to emit `http.server` and backend spans; defaults keep tracing off.
+
 ## Project Structure (high‑level)
 
 ```
@@ -454,6 +459,7 @@ Environment variables:
 - `CODEX_BIN` (default: `codex`) — override to `/app/scripts/fake-codex-proto.js` only when you explicitly need the legacy proto shim (CI/offline tests).
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
+- `PROXY_ENABLE_RESPONSES` (default: `true`) — disable to hide `/v1/responses` in chat-only environments.
 - Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls. Sections that describe tool-tail streaming (e.g., stop-after-tools) are therefore inactive unless you explicitly re-enable tools for a workflow.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -469,6 +475,9 @@ Environment variables:
 - `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
 - `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).
 - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
+- `PROXY_ENABLE_OTEL` (default: `false`) — when true and an exporter URL is provided, emit OTLP HTTP spans for HTTP ingress and backend invocation.
+- `PROXY_OTEL_EXPORTER_URL` (optional) — OTLP/HTTP traces endpoint; falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` if set.
+- `PROXY_OTEL_SERVICE_NAME` (optional) — override service name for emitted spans.
 
 ## Roo Code configuration
 
@@ -669,6 +678,7 @@ Files in this repo
 - Compose stack: [docker-compose.yml](docker-compose.yml)
 - ForwardAuth microservice: [auth/server.js](auth/server.js)
 - Main API server: [server.js](server.js)
+- Legacy systemd installer was archived to `docs/_archive/install.sh` and `scripts/install.sh` now exits early; compose is the canonical deployment path.
 
 Edge authentication model
 

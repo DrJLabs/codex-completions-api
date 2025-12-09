@@ -57,6 +57,8 @@ import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./re
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
+import { createStreamObserver } from "../../services/metrics/index.js";
+import { startSpan, endSpan } from "../../services/tracing.js";
 import { toolBufferMetrics } from "../../services/metrics/chat.js";
 import {
   createToolBufferTracker,
@@ -166,7 +168,9 @@ const normalizeChoiceCount = (raw) => {
 
 // POST /v1/chat/completions with stream=true
 export async function postChatStream(req, res) {
-  setHttpContext(res, { route: "/v1/chat/completions", mode: "chat_stream" });
+  const route = res.locals?.routeOverride || "/v1/chat/completions";
+  const mode = res.locals?.modeOverride || "chat_stream";
+  setHttpContext(res, { route, mode });
   const reqId = ensureReqId(res);
   const started = Date.now();
   let responded = false;
@@ -401,6 +405,13 @@ export async function postChatStream(req, res) {
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
+  const streamObserver = createStreamObserver({ route, model: effectiveModel });
+  let streamOutcomeRecorded = false;
+  const recordStreamOutcome = (outcome) => {
+    if (streamOutcomeRecorded) return;
+    streamOutcomeRecorded = true;
+    streamObserver.end(outcome);
+  };
   try {
     console.log(
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
@@ -585,6 +596,20 @@ export async function postChatStream(req, res) {
         route: traceContext.route,
         mode: traceContext.mode,
       });
+  const backendSpan = startSpan("backend.invoke", {
+    "proxy.route": route,
+    "proxy.backend_mode": backendMode,
+    "proxy.model.effective": effectiveModel,
+  });
+  let backendSpanEnded = false;
+  const endBackendSpan = (outcome) => {
+    if (!backendSpan || backendSpanEnded) return;
+    backendSpanEnded = true;
+    try {
+      backendSpan.setAttribute("proxy.backend.outcome", outcome || "unknown");
+    } catch {}
+    endSpan(backendSpan);
+  };
 
   const onChildError = (error) => {
     try {
@@ -601,10 +626,11 @@ export async function postChatStream(req, res) {
     responded = true;
     const mapped = mapTransportError(error);
     try {
+      streamObserver.markFirst();
       if (mapped) {
-        sendSSEUtil(res, mapped.body);
+        sendSSE(mapped.body);
       } else {
-        sendSSEUtil(res, sseErrorBody(error));
+        sendSSE(sseErrorBody(error));
       }
     } catch {}
     logUsageFailure({
@@ -626,6 +652,9 @@ export async function postChatStream(req, res) {
     try {
       releaseGuard("error");
     } catch {}
+    const outcome = mapped?.body?.error?.code || "backend_error";
+    recordStreamOutcome(outcome);
+    endBackendSpan(outcome);
   };
   child.on("error", onChildError);
   const timeout = setTimeout(() => {
@@ -641,6 +670,7 @@ export async function postChatStream(req, res) {
   const sendSSE = (payload) => {
     try {
       if (!responseWritable) return;
+      streamObserver.markFirst();
       sendSSEUtil(res, payload);
     } catch {}
   };
@@ -785,6 +815,10 @@ export async function postChatStream(req, res) {
     try {
       if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
     } catch {}
+    if (!streamOutcomeRecorded && !finalized) {
+      recordStreamOutcome("client_abort");
+    }
+    if (!backendSpanEnded) endBackendSpan("client_abort");
     releaseGuard();
   };
   if (keepaliveMs > 0)
@@ -1601,6 +1635,9 @@ export async function postChatStream(req, res) {
         sanitized_sources: sanitizedMetadataSources,
       });
     }
+    const outcome = resolvedFinish.reason || "ok";
+    recordStreamOutcome(outcome);
+    endBackendSpan(outcome);
     try {
       finishSSE();
     } catch {}

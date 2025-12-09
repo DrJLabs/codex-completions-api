@@ -12,6 +12,8 @@ export async function postResponsesStream(req, res) {
   delete chatBody.previous_response_id;
 
   res.locals = res.locals || {};
+  res.locals.routeOverride = "/v1/responses";
+  res.locals.modeOverride = "responses_stream";
   res.locals.streamAdapter = createResponsesStreamAdapter(res, originalBody);
 
   try {

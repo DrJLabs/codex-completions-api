@@ -15,11 +15,13 @@ import { toolBufferMetrics } from "./services/metrics/chat.js";
 import { logStructured } from "./services/logging/schema.js";
 import metricsMiddleware from "./middleware/metrics.js";
 import { requireTestAuth } from "./middleware/auth.js";
+import tracingMiddleware from "./middleware/tracing.js";
 
 export default function createApp() {
   const app = express();
   app.use(express.json({ limit: "16mb" }));
   app.use(metricsMiddleware());
+  app.use(tracingMiddleware());
 
   // Global CORS
   const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";

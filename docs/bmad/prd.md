@@ -99,6 +99,7 @@ Single repository containing the Node/Express proxy, documentation, tests, and o
 ## Service Architecture
 
 Monolithic Express server that runs long-lived `codex app-server` workers by default (supervised) and normalizes results behind Traefik + Cloudflare. A deterministic proto shim remains for CI/local compatibility, but production/dev are expected to stay on app-server. Containers default `CODEX_BIN` to `/usr/local/lib/codex-cli/bin/codex.js` and bake the Codex CLI package into the image during build so binaries/vendor assets remain aligned without host mounts.
+Compose + Traefik is the canonical deployment path; the legacy systemd installer (`scripts/install.sh`) now exits and is archived under `docs/_archive/install.sh` for reference only.
 
 ## Testing Requirements
 
@@ -198,10 +199,12 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 
 - Structured JSON access log (`src/middleware/access-log.js`) plus console text log.
 - Usage NDJSON logs aggregated by `GET /v1/usage`; raw events accessible via `GET /v1/usage/raw`.
+- Prometheus metrics include HTTP histograms and stream telemetry (`codex_stream_ttfb_ms`, `codex_stream_duration_ms`, `codex_stream_end_total`) plus worker gauges/counters; `/metrics` gated by bearer/loopback controls.
 - Sanitizer telemetry: `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`) captures `proxy_sanitize_metadata` toggle events and `metadata_sanitizer_summary` rows; monitoring should alert if sanitized counts fall to zero unexpectedly while the flag is enabled.
 - Concurrency guard snapshot via `guardSnapshot()` and optional `/__test/conc` endpoints when enabled.
 - Streaming benchmark script (`scripts/benchmarks/stream-multi-choice.mjs`) now samples CPU/RSS via `ps` so developers can capture metrics without `pidusage`.
 - Runbooks: `docs/runbooks/operational.md`, `docs/dev-to-prod-playbook.md`, streaming parity notes in `docs/openai-chat-completions-parity.md`.
+- Optional OTLP tracing: set `PROXY_ENABLE_OTEL=true` and `PROXY_OTEL_EXPORTER_URL` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) to emit `http.server` + backend spans; defaults keep tracing off for local dev/CI.
 
 # Success Metrics & KPIs
 

@@ -85,6 +85,16 @@ Update rules:
 
 Add newest entries at the top.
 
+### 2025-12-09 04:30 — Observability + deployment hygiene
+- Backlog item(s): LH-P2-01, LH-P2-02, LH-P2-03
+- Change summary: Added stream telemetry (TTFB/duration/end counters) and worker restart delta counter to /metrics; optional OTLP tracing via PROXY_ENABLE_OTEL + exporter URL with trace_id surfaced in access logs and backend spans; deprecated systemd installer stubbed/archived with docs declaring compose as canonical path.
+- Files touched: src/services/metrics/index.js; src/routes/metrics.js; src/handlers/chat/stream.js; src/handlers/responses/stream.js; src/services/tracing.js; src/middleware/tracing.js; src/middleware/access-log.js; src/app.js; tests/integration/metrics.int.test.js; README.md; docs/bmad/architecture.md; docs/bmad/prd.md; .env.example; scripts/install.sh; docs/_archive/install.sh; package.json; package-lock.json
+- Commands run:
+  - `npm install`
+  - `npm run test:unit` (PASS)
+  - `npm run test:integration` (PASS)
+- Results: New metrics exposed with bounded labels; tracing off by default with OTLP opt-in; integration + unit suites passing; legacy installer blocked and archived.
+
 ### 2025-12-09 03:20 — CI artifacts + workspace guard
 - Backlog item(s): LH-P1-03
 - Change summary: CI now uploads Playwright HTML/blob reports and smoke logs; workflow asserts clean git status after tests; Playwright reporter emits HTML/blob in CI; smoke log ignored in git; README documents artifact review.
