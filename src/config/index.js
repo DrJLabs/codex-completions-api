@@ -52,6 +52,7 @@ export const config = {
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),
   PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
   PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", resolveAppServerDefault()),
+  PROXY_ENABLE_RESPONSES: bool("PROXY_ENABLE_RESPONSES", "true"),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
   PROXY_SSE_KEEPALIVE_MS: num("PROXY_SSE_KEEPALIVE_MS", 15000),

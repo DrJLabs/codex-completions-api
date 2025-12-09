@@ -104,7 +104,9 @@ export default function createApp() {
   app.use(healthRouter());
   app.use(modelsRouter());
   app.use(chatRouter());
-  app.use(responsesRouter());
+  if (CFG.PROXY_ENABLE_RESPONSES) {
+    app.use(responsesRouter());
+  }
   app.use(usageRouter());
 
   return app;
