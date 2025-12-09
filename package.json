@@ -40,7 +40,7 @@
     "test:parity": "vitest run tests/parity --reporter=default",
     "test:all": "npm run test:unit && npm run test:integration && npm test",
     "transcripts:generate": "node scripts/generate-chat-transcripts.mjs",
-    "verify:all": "npm run format:check && npm run lint && npm run test:all",
+    "verify:all": "npm run format:check && npm run lint && npm run jsonrpc:verify && npm run test:all",
     "test:live": "bash scripts/test-live.sh",
     "test:live:dev": "DEV_DOMAIN=${DEV_DOMAIN:-codex-dev.onemainarmy.com} LIVE_BASE_URL=https://${DEV_DOMAIN:-codex-dev.onemainarmy.com} bash scripts/test-live.sh",
     "coverage:unit": "vitest run tests/unit --coverage",

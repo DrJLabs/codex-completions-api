@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cat >&2 <<EOF
+====================================================================
+DEPRECATED: This installer is archived and unsupported.
+Please use Docker Compose deployment instead.
+See: https://github.com/DrJLabs/codex-completions-api#deployment-traefik--cloudflare-docker-compose
+====================================================================
+EOF
+exit 1
+
 # One-shot installer for Codex OpenAI-compatible proxy with systemd user service.
 # Prereqs: Node >=22, npm, curl. Installs Codex CLI if missing.
 
