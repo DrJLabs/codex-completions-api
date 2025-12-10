@@ -1,3 +1,5 @@
+// Canonical Traefik ForwardAuth entrypoint (ESM). The legacy CJS variant
+// in auth/server.js is deprecated and disabled by default.
 import http from "node:http";
 
 const PORT = Number(process.env.PORT || 8080);

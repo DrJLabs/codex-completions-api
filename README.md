@@ -345,7 +345,7 @@ Behavior:
 
 ## Documentation
 
-This repository ships with a minimal public documentation stub (`docs/README.md`) — treat it as the canonical index. Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
+This repository ships with a minimal public documentation stub (`docs/README.md`) — treat it as the canonical index. Configuration by deployment mode plus ForwardAuth/infra notes live in `docs/reference/config-matrix.md`. Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
 
 ## License
 
@@ -678,13 +678,13 @@ Files in this repo
 
 - Build image: [Dockerfile](Dockerfile)
 - Compose stack: [docker-compose.yml](docker-compose.yml)
-- ForwardAuth microservice: [auth/server.js](auth/server.js)
+- ForwardAuth microservice: [auth/server.mjs](auth/server.mjs)
 - Main API server: [server.js](server.js)
 - Legacy systemd installer was archived to `docs/_archive/install.sh` and `scripts/install.sh` now exits early; compose is the canonical deployment path.
 
 Edge authentication model
 
-- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (implemented by [auth/server.js](auth/server.js:1)).
+- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (canonical entrypoint: [auth/server.mjs](auth/server.mjs:1)). The legacy CJS file `auth/server.js` is retained only for archival purposes and exits unless `ALLOW_LEGACY_AUTH=true` is set.
 - The auth service validates the `Authorization: Bearer &lt;token&gt;` header equals the shared secret `PROXY_API_KEY`. On mismatch it returns 401 with a `WWW-Authenticate: Bearer realm=api` header.
 - On success, Traefik forwards the request to the app container service port 11435, preserving the original `Authorization` header so the in-app check still applies (defense in depth).
 
