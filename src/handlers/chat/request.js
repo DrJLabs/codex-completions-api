@@ -175,6 +175,48 @@ const validateTools = (tools) => {
   return definitions.length ? definitions : undefined;
 };
 
+const normalizeLegacyFunctions = (functions) => {
+  if (functions === undefined || functions === null) return undefined;
+  if (!Array.isArray(functions)) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("functions", "functions must be an array of function definitions")
+    );
+  }
+  return functions.map((fn, idx) => {
+    if (!fn || typeof fn !== "object") {
+      throw new ChatJsonRpcNormalizationError(
+        invalidRequestBody(
+          `functions[${idx}]`,
+          "function definitions must be objects with name/parameters"
+        )
+      );
+    }
+    const name = typeof fn.name === "string" ? fn.name.trim() : "";
+    if (!name) {
+      throw new ChatJsonRpcNormalizationError(
+        invalidRequestBody(
+          `functions[${idx}].name`,
+          'function definitions must include a non-empty "name"'
+        )
+      );
+    }
+    const wrappedFn = { ...fn, name };
+    return { type: "function", function: wrappedFn };
+  });
+};
+
+const normalizeLegacyFunctionCall = (rawChoice) => {
+  if (!rawChoice || typeof rawChoice !== "object") return rawChoice;
+  if (rawChoice.function || rawChoice.fn) return rawChoice;
+  const type = rawChoice.type ? String(rawChoice.type).toLowerCase() : "";
+  const name = typeof rawChoice.name === "string" ? rawChoice.name.trim() : "";
+  if (!name) return rawChoice;
+  if (!type || type === "function") {
+    return { type: "function", function: { name } };
+  }
+  return rawChoice;
+};
+
 const buildToolsPayload = ({ definitions, toolChoice, parallelToolCalls }) => {
   const payload = {};
   if (definitions) payload.definitions = definitions;
@@ -382,13 +424,18 @@ export const normalizeChatJsonRpcRequest = ({
     );
   }
 
-  const definitions = validateTools(body.tools);
-  const toolChoice = normalizeToolChoice(body.tool_choice ?? body.toolChoice, definitions);
-  const parallelToolCalls = normalizeParallelToolCalls(body.parallel_tool_calls);
+  const rawTools = body.tools ?? body.functions;
+  const normalizedTools = body.tools === undefined ? normalizeLegacyFunctions(rawTools) : rawTools;
+  const definitions = validateTools(normalizedTools);
+  const rawToolChoice =
+    body.tool_choice ?? body.toolChoice ?? body.function_call ?? body.functionCall;
+  const toolChoice = normalizeToolChoice(normalizeLegacyFunctionCall(rawToolChoice), definitions);
+  const rawParallelToolCalls = body.parallel_tool_calls ?? body.parallelToolCalls;
+  const parallelToolCalls = normalizeParallelToolCalls(rawParallelToolCalls);
   if (
-    body.parallel_tool_calls !== undefined &&
+    rawParallelToolCalls !== undefined &&
     parallelToolCalls === undefined &&
-    body.parallel_tool_calls !== null
+    rawParallelToolCalls !== null
   ) {
     throw new ChatJsonRpcNormalizationError(
       invalidRequestBody(
