@@ -7,11 +7,12 @@
 - Worker metrics improved (restart delta/backoff/ready gauges) and exposed via `/metrics`; long-horizon docs/backlog added under `docs/codex-longhorizon/`.
 
 ## Gaps
-- `PROXY_USE_APP_SERVER` default remains “magic” and is not pinned in manifests; backend-mode expectations are not documented per environment.
-- ForwardAuth duplication is unresolved and deployment matrix (Compose vs systemd/edge controls) is still implicit; CORS/rate-limit layering between edge and app remains duplicated.
-- CODEX_HOME/WORKDIR ownership/rotation guidance and restart/backoff alerting are not documented.
+- `PROXY_USE_APP_SERVER` still has a “magic” fallback default in `src/config/index.js`, but dev/prod compose and `.env*` templates now pin it to `true`. Remaining work is to decide whether to keep the fallback for shim/dev convenience or replace it with an explicit log/assert when env is absent.
+- Deployment matrix and ForwardAuth canonicalization are now documented in `docs/reference/config-matrix.md`, and supported manifests reference `auth/server.mjs`. Remaining work is keeping the matrix current and adding doc/link lint if desired.
+- CORS/rate‑limit layering between edge and app remains duplicated; policy for “edge‑only vs defense‑in‑depth” is not consolidated in a single runbook section.
+- CODEX_HOME/WORKDIR ownership/rotation guidance and worker restart/backoff alerting are only lightly covered; a fuller ops runbook/checklist is still needed.
 
 ## Plan / Acceptance Criteria & Tests
-- AC1: Pin backend mode per manifest (dev/prod) and document fallback logic; add a startup log/assert for unexpected defaults. Test: integration asserting default mode for compose and shim mode when CODEX_BIN ends with proto shim.
-- AC2: Publish a deployment matrix (edge auth, rate limits, CORS, metrics auth) and mark non-canonical paths as legacy; resolve ForwardAuth canonical file. Test: doc lint plus CI check that non-canonical files are not referenced in manifests.
-- AC3: Add ops guidance for CODEX_HOME/WORKDIR (perms, rotation) and worker restart/backoff alerting. Test: runbook lint + metrics alert examples; optional integration verifying worker metrics populate after synthetic restart.
+- AC1: Decide on the long‑term stance for the `PROXY_USE_APP_SERVER` fallback default and add a startup log/assert when env is absent. Test: integration asserting default mode for compose (env pinned) and shim mode when `CODEX_BIN` ends with a proto shim and env is intentionally unset.
+- AC2: Maintain the deployment matrix + ForwardAuth canonicalization, and add doc/link lint if drift becomes an issue. Test: doc lint plus CI check that non‑canonical files are not referenced in manifests.
+- AC3: Expand ops guidance for CODEX_HOME/WORKDIR (perms, rotation) and worker restart/backoff alerting. Test: runbook lint + metrics alert examples; optional integration verifying worker metrics populate after synthetic restart.
