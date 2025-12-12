@@ -94,7 +94,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   const writeEvent = (event, payload) => {
     if (res.writableEnded) return;
     try {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+      const data = event === "done" && payload === "[DONE]" ? "[DONE]" : JSON.stringify(payload);
+      res.write(`event: ${event}\ndata: ${data}\n\n`);
       recordEvent(event);
     } catch (error) {
       console.error("[proxy][responses.stream-adapter] failed to write SSE event", error);
