@@ -48,7 +48,8 @@ const summarizeTurnParamsForLog = (params) => {
     keys: Object.keys(params).sort(),
   };
   if (Array.isArray(params.items)) {
-    summary.items = params.items.map((item) => {
+    const capped = params.items.slice(0, 10);
+    summary.items = capped.map((item) => {
       if (!item || typeof item !== "object") {
         return { kind: typeof item };
       }
@@ -63,9 +64,23 @@ const summarizeTurnParamsForLog = (params) => {
         dataKeys,
       };
     });
+    summary.items_truncated = params.items.length > capped.length;
   }
   if (params.sandboxPolicy && typeof params.sandboxPolicy === "object") {
-    summary.sandboxPolicy = params.sandboxPolicy;
+    const policy = params.sandboxPolicy;
+    const type =
+      typeof policy.type === "string"
+        ? policy.type
+        : typeof policy.mode === "string"
+          ? policy.mode
+          : undefined;
+    summary.sandboxPolicy = {
+      type,
+      network_access: policy.network_access,
+      exclude_tmpdir_env_var: policy.exclude_tmpdir_env_var,
+      exclude_slash_tmp: policy.exclude_slash_tmp,
+      writable_roots_count: Array.isArray(policy.writable_roots) ? policy.writable_roots.length : 0,
+    };
   }
   return summary;
 };

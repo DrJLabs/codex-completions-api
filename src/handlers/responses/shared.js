@@ -87,6 +87,35 @@ export const coerceInputToChatMessages = (body = {}) => {
   return messages;
 };
 
+export const applyDefaultProxyOutputModeHeader = (req, desiredOutputMode) => {
+  const desired =
+    desiredOutputMode === undefined || desiredOutputMode === null
+      ? ""
+      : String(desiredOutputMode).trim();
+  if (!desired) return () => {};
+
+  const headers = req && typeof req === "object" ? req.headers : null;
+  if (!headers || typeof headers !== "object") return () => {};
+
+  const original = headers["x-proxy-output-mode"];
+  if (original !== undefined && String(original).trim()) {
+    return () => {};
+  }
+
+  headers["x-proxy-output-mode"] = desired;
+
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    if (original === undefined) {
+      delete headers["x-proxy-output-mode"];
+    } else {
+      headers["x-proxy-output-mode"] = original;
+    }
+  };
+};
+
 const appendTextContent = (collector, text) => {
   if (typeof text !== "string") return;
   const normalized = text;
