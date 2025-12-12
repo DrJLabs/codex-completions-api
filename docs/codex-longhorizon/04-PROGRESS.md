@@ -10,11 +10,11 @@ Update rules:
 
 ## Current status
 
-- Branch: chore/remediation
+- Branch: main
 - Session: n/a (local)
-- Active phase: Phase 5 (release readiness)
-- Last checkpoint commit: chore(release): long-horizon pass complete (this commit)
-- Next milestone: Release sign-off / final hand-off
+- Active phase: Complete (post‑merge cleanup)
+- Last checkpoint commit: Merge pull request #138 (gpt‑5.2 aliases, Task‑03 parity, Codex 0.71)
+- Next milestone: Execute remaining Task 04/07/08/09/11/13 gaps
 
 ---
 
@@ -93,6 +93,13 @@ Add newest entries at the top.
 - Files touched: docs/codex-longhorizon/BACKLOG.md; docs/codex-longhorizon/04-PROGRESS.md
 - Commands run: none (documentation/status updates only; last `npm run verify:all` at 04:30 UTC PASS)
 - Results: Backlog reflects Done state; release readiness recorded; no DECISIONS required.
+
+### 2025-12-12 — Post‑merge cleanup
+- Backlog item(s): n/a (housekeeping)
+- Change summary: Synced local `main` after PR #138 merge, pruned merged feature branches, and updated task index/progress to reflect completion state and remaining gaps.
+- Files touched: docs/codex-longhorizon/INDEX_TASK_DOCS.md; docs/codex-longhorizon/04-PROGRESS.md
+- Commands run: `git checkout main && git pull --ff-only origin main`; `git fetch --prune`; local/remote branch cleanup.
+- Results: Local checkout clean; progress/index aligned with repository state.
 
 ### 2025-12-09 07:42 — PR review fixes
 - Backlog item(s): PR #137 review comments

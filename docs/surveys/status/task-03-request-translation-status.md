@@ -9,6 +9,7 @@
 - AC1 implemented: multi‑turn clients can send full message history; the normalizer emits a single text turn containing prior roles with `[role]` tags when needed.
 - AC2 implemented: strict validators for tools/tool_choice/parallel_tool_calls/response_format/reasoning; legacy OpenAI aliases (`functions`, `function_call`, `parallelToolCalls`) normalize into the canonical tool contract; app-server optional param gate now allows `json_object`.
 - AC3 implemented: chat handlers no longer pass unused fields into the normalizer; invariants are documented and unit tests assert duplicated turn/message fields stay aligned.
+- Forwarded `choiceCount` from OpenAI `n` into `turn.choiceCount` so app‑server multi‑choice requests preserve per‑choice behavior and usage accounting.
 
 ## Gaps
 - Role/history support is **lossy**: assistant/tool turns are serialized into a single text transcript, and tool call metadata is not re‑encoded for the app‑server protocol. This is sufficient for Obsidian Copilot loops but may diverge from true chat‑state semantics.
