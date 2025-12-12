@@ -99,10 +99,10 @@ export interface TokenUsage {
 }
 
 export type SandboxPolicy =
-  | { mode: "danger-full-access" }
-  | { mode: "read-only" }
+  | { type: "danger-full-access" }
+  | { type: "read-only" }
   | {
-      mode: "workspace-write";
+      type: "workspace-write";
       writable_roots?: string[];
       network_access?: boolean;
       exclude_tmpdir_env_var?: boolean;
@@ -212,7 +212,7 @@ export type JsonValue = unknown;
 const APPROVAL_FALLBACK: AskForApproval = "on-request";
 const SUMMARY_FALLBACK: ReasoningSummary = "auto";
 
-const SANDBOX_FALLBACK: SandboxPolicy = { mode: "read-only" };
+const SANDBOX_FALLBACK: SandboxPolicy = { type: "read-only" };
 
 export interface BuildInitializeOptions {
   clientInfo: ClientInfo;
@@ -239,7 +239,7 @@ export interface BuildSendUserTurnOptions {
   items?: InputItem[] | null;
   cwd?: string;
   approvalPolicy?: AskForApproval | string | null;
-  sandboxPolicy?: SandboxPolicy | { mode?: string; [key: string]: unknown } | null;
+  sandboxPolicy?: SandboxPolicy | { type?: string; mode?: string; [key: string]: unknown } | null;
   model?: string;
   choiceCount?: number | string | null;
   choice_count?: number | string | null;
@@ -839,8 +839,14 @@ function normalizeReasoningEffort(
 }
 
 function normalizeSandboxPolicy(value: BuildSendUserTurnOptions["sandboxPolicy"]): SandboxPolicy {
-  if (value && typeof value === "object" && "mode" in value) {
-    const mode = String(value.mode || "")
+  if (value && typeof value === "object") {
+    const raw =
+      typeof (value as any).type === "string"
+        ? (value as any).type
+        : typeof (value as any).mode === "string"
+          ? (value as any).mode
+          : "";
+    const mode = String(raw || "")
       .trim()
       .toLowerCase();
     if (!VALID_SANDBOX_MODES.has(mode)) {
@@ -848,7 +854,7 @@ function normalizeSandboxPolicy(value: BuildSendUserTurnOptions["sandboxPolicy"]
     }
     if (mode === "workspace-write") {
       const policy: SandboxPolicy = {
-        mode: "workspace-write",
+        type: "workspace-write",
       };
       if (Array.isArray((value as any).writable_roots)) {
         policy.writable_roots = [...((value as any).writable_roots as string[])];
@@ -865,21 +871,21 @@ function normalizeSandboxPolicy(value: BuildSendUserTurnOptions["sandboxPolicy"]
       return policy;
     }
     if (mode === "read-only") {
-      return { mode: "read-only" };
+      return { type: "read-only" };
     }
-    return { mode: "danger-full-access" };
+    return { type: "danger-full-access" };
   }
 
   if (typeof value === "string") {
     const normalized = (value as string).trim().toLowerCase();
     if (VALID_SANDBOX_MODES.has(normalized)) {
       if (normalized === "workspace-write") {
-        return { mode: "workspace-write" };
+        return { type: "workspace-write" };
       }
       if (normalized === "read-only") {
-        return { mode: "read-only" };
+        return { type: "read-only" };
       }
-      return { mode: "danger-full-access" };
+      return { type: "danger-full-access" };
     }
   }
 
@@ -921,8 +927,14 @@ function normalizeSandboxModeOption(
     }
     return undefined;
   }
-  if (value && typeof value === "object" && "mode" in value) {
-    const mode = String((value as JsonObject).mode || "")
+  if (value && typeof value === "object") {
+    const raw =
+      typeof (value as any).mode === "string"
+        ? (value as any).mode
+        : typeof (value as any).type === "string"
+          ? (value as any).type
+          : "";
+    const mode = String(raw || "")
       .trim()
       .toLowerCase();
     if (VALID_SANDBOX_MODES.has(mode)) {

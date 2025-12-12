@@ -485,7 +485,7 @@ export const normalizeChatJsonRpcRequest = ({
     items: turnItems,
     cwd: codexWorkdir,
     approvalPolicy: approvalMode,
-    sandboxPolicy: sandboxMode ? { mode: sandboxMode } : undefined,
+    sandboxPolicy: sandboxMode ? { type: sandboxMode } : undefined,
     effort: turnEffort,
     summary: "auto",
     stream: !!stream,

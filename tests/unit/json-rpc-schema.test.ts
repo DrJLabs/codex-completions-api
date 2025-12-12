@@ -438,7 +438,7 @@ describe("json-rpc schema bindings", () => {
         profile: "",
         cwd: "/tmp/codex-work",
         approvalPolicy: "On-Request",
-        sandbox: { mode: "workspace-write", writable_roots: ["/tmp"] },
+        sandbox: { type: "workspace-write", writable_roots: ["/tmp"] },
         baseInstructions: "  base ",
         developerInstructions: null,
         includeApplyPatchTool: true,
@@ -460,7 +460,7 @@ describe("json-rpc schema bindings", () => {
         conversationId: "conv-1",
         cwd: "/tmp/work",
         approvalPolicy: "NEVER",
-        sandboxPolicy: { mode: "workspace-write", writable_roots: ["/tmp"] },
+        sandboxPolicy: { type: "workspace-write", writable_roots: ["/tmp"] },
         model: "gpt-5",
         summary: "concise",
         effort: "high",
@@ -469,7 +469,7 @@ describe("json-rpc schema bindings", () => {
       expect(params.cwd).toBe("/tmp/work");
       expect(params.approvalPolicy).toBe("never");
       expect(params.sandboxPolicy).toMatchObject({
-        mode: "workspace-write",
+        type: "workspace-write",
         writable_roots: ["/tmp"],
       });
       expect(params.summary).toBe("concise");
