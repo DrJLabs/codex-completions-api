@@ -42,6 +42,49 @@ const normalizeNotificationMethod = (method) => {
   return value.replace(/^codex\/event\//i, "");
 };
 
+const summarizeTurnParamsForLog = (params) => {
+  if (!params || typeof params !== "object") return { kind: typeof params };
+  const summary = {
+    keys: Object.keys(params).sort(),
+  };
+  if (Array.isArray(params.items)) {
+    const capped = params.items.slice(0, 10);
+    summary.items = capped.map((item) => {
+      if (!item || typeof item !== "object") {
+        return { kind: typeof item };
+      }
+      const hasType = Object.prototype.hasOwnProperty.call(item, "type");
+      const hasData = Object.prototype.hasOwnProperty.call(item, "data");
+      const dataKeys =
+        item.data && typeof item.data === "object" ? Object.keys(item.data).sort() : [];
+      return {
+        hasType,
+        type: item.type,
+        hasData,
+        dataKeys,
+      };
+    });
+    summary.items_truncated = params.items.length > capped.length;
+  }
+  if (params.sandboxPolicy && typeof params.sandboxPolicy === "object") {
+    const policy = params.sandboxPolicy;
+    const type =
+      typeof policy.type === "string"
+        ? policy.type
+        : typeof policy.mode === "string"
+          ? policy.mode
+          : undefined;
+    summary.sandboxPolicy = {
+      type,
+      network_access: policy.network_access,
+      exclude_tmpdir_env_var: policy.exclude_tmpdir_env_var,
+      exclude_slash_tmp: policy.exclude_slash_tmp,
+      writable_roots_count: Array.isArray(policy.writable_roots) ? policy.writable_roots.length : 0,
+    };
+  }
+  return summary;
+};
+
 class TransportError extends Error {
   constructor(message, { code = "transport_error", retryable = false } = {}) {
     super(message);
@@ -671,6 +714,7 @@ class JsonRpcTransport {
       type: "sendUserTurn",
       context,
       timeout,
+      requestSummary: null,
       resolve: (result) => {
         clearTimeout(timeout);
         this.pending.delete(turnRpcId);
@@ -710,6 +754,10 @@ class JsonRpcTransport {
         conversationId: context.conversationId ?? context.clientConversationId,
         requestId: context.clientConversationId,
       });
+      const pending = this.pending.get(turnRpcId);
+      if (pending) {
+        pending.requestSummary = summarizeTurnParamsForLog(params);
+      }
       if (context.trace) {
         this.rpcTraceById.set(turnRpcId, context.trace);
         logBackendSubmission(context.trace, {
@@ -845,6 +893,15 @@ class JsonRpcTransport {
         code: message.error?.code || "worker_error",
         retryable: true,
       });
+      if (pending.type === "sendUserTurn" && pending.requestSummary) {
+        try {
+          console.warn(
+            `${LOG_PREFIX} sendUserTurn rejected; request summary: ${JSON.stringify(pending.requestSummary)}`
+          );
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} sendUserTurn rejected; unable to log request summary`, err);
+        }
+      }
       if (trace) {
         logBackendResponse(trace, {
           rpcId: message.id,

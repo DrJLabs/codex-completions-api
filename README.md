@@ -462,6 +462,8 @@ Environment variables:
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
 - `PROXY_ENABLE_RESPONSES` (default: `true`) — disable to hide `/v1/responses` in chat-only environments.
+- `PROXY_OUTPUT_MODE` (default: `obsidian-xml`) — default output envelope (`obsidian-xml` emits `<use_tool>` blocks as text; `openai-json` emits structured tool calls). Override per request via `x-proxy-output-mode`.
+- `PROXY_RESPONSES_OUTPUT_MODE` (default: `openai-json`) — default output mode applied for `/v1/responses` when no `x-proxy-output-mode` header is present.
 - Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls. Sections that describe tool-tail streaming (e.g., stop-after-tools) are therefore inactive unless you explicitly re-enable tools for a workflow.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -474,7 +476,7 @@ Environment variables:
 - `PROXY_PROTO_IDLE_MS` (default: `120000`) — non‑stream aggregation idle guard for the legacy proto mode/shim.
 - `PROXY_MAX_PROMPT_TOKENS` (default: `0`) — when >0, rejects overlong prompts with `403 tokens_exceeded_error` based on the proxy’s rough token estimator (≈1 token per 4 chars).
 - `PROXY_KILL_ON_DISCONNECT` (default: `false`) — if true, terminate Codex when client disconnects.
-- `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
+- `PROXY_SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
 - `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).
 - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
 - `PROXY_ENABLE_OTEL` (default: `false`) — when true and an exporter URL is provided, emit OTLP HTTP spans for HTTP ingress and backend invocation.
@@ -505,7 +507,7 @@ An example file is in `config/roo-openai-compatible.json`.
 - A supervisor launches one or more `codex app-server` workers with `--config sandbox_mode=<...>`, `--config project_doc_max_bytes=0`, `--config tools.web_search=false`, and the normalized effective model (`gpt-5` unless overridden).
 - On boot the worker completes `initialize` against the exported schema bundle (`docs/app-server-migration/*`). Health endpoints stay unhealthy until this handshake succeeds.
 - Each `/v1/chat/completions` request acquires a worker channel, builds a JSON-RPC payload for `sendUserTurn`, and injects the OpenAI-style transcript (system → `system_prompt`, rest → `messages`). Optional `reasoning.effort` becomes both JSON metadata and `--config model_reasoning_effort`.
-- Streaming requests attach an event listener that forwards `agent_message_delta` notifications as SSE chunks (role-first, then deltas, then `[DONE]`). Keepalives (`: keepalive`) go out every `SSE_KEEPALIVE_MS`.
+- Streaming requests attach an event listener that forwards `agent_message_delta` notifications as SSE chunks (role-first, then deltas, then `[DONE]`). Keepalives (`: keepalive`) go out every `PROXY_SSE_KEEPALIVE_MS`.
 - Non-stream requests buffer deltas until `task_complete` arrives, then respond with a single OpenAI-compatible JSON body.
 - Disconnects or idle timers trigger `cancelTask` and optionally `PROXY_KILL_ON_DISCONNECT`, ensuring app-server state does not leak across clients.
 

@@ -1,6 +1,7 @@
 import { postChatStream } from "../chat/stream.js";
-import { coerceInputToChatMessages } from "./shared.js";
+import { applyDefaultProxyOutputModeHeader, coerceInputToChatMessages } from "./shared.js";
 import { createResponsesStreamAdapter } from "./stream-adapter.js";
+import { config as CFG } from "../../config/index.js";
 
 export async function postResponsesStream(req, res) {
   const originalBody = req.body || {};
@@ -16,11 +17,14 @@ export async function postResponsesStream(req, res) {
   res.locals.modeOverride = "responses_stream";
   res.locals.streamAdapter = createResponsesStreamAdapter(res, originalBody);
 
+  const restoreOutputMode = applyDefaultProxyOutputModeHeader(req, CFG.PROXY_RESPONSES_OUTPUT_MODE);
+
   try {
     req.body = chatBody;
     await postChatStream(req, res);
   } finally {
     req.body = originalBody;
     if (res.locals) delete res.locals.streamAdapter;
+    restoreOutputMode();
   }
 }

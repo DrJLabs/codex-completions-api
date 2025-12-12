@@ -17,6 +17,20 @@ describe("metrics endpoint", () => {
     }));
 
     await fetch(`http://127.0.0.1:${PORT}/healthz`);
+    const responsesStream = await fetch(`http://127.0.0.1:${PORT}/v1/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-sk-ci",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "codex-5",
+        stream: true,
+        messages: [{ role: "user", content: "metrics smoke" }],
+      }),
+    });
+    expect(responsesStream.ok).toBeTruthy();
+    await responsesStream.text();
     const res = await fetch(`http://127.0.0.1:${PORT}/metrics`);
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -26,6 +40,8 @@ describe("metrics endpoint", () => {
     expect(text).toMatch(/codex_stream_ttfb_ms/);
     expect(text).toMatch(/codex_stream_duration_ms/);
     expect(text).toMatch(/codex_stream_end_total/);
+    expect(text).toMatch(/codex_responses_sse_event_total/);
+    expect(text).toContain('codex_responses_sse_event_total{route="/v1/responses"');
     expect(text).toMatch(/codex_worker_restarts_(total|inc_total)/);
     expect(text).toMatch(/codex_maintenance_mode/);
     expect(text).not.toMatch(/request_id/);

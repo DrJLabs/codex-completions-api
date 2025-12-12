@@ -339,7 +339,9 @@ const respondWithJson = (res, statusCode, payload) => {
 
 // POST /v1/chat/completions with stream=false
 export async function postChatNonStream(req, res) {
-  setHttpContext(res, { route: "/v1/chat/completions", mode: "chat_nonstream" });
+  const route = res.locals?.routeOverride || "/v1/chat/completions";
+  const mode = res.locals?.modeOverride || "chat_nonstream";
+  setHttpContext(res, { route, mode });
   const reqId = ensureReqId(res);
   installJsonLogger(res);
   const started = Date.now();
@@ -545,8 +547,8 @@ export async function postChatNonStream(req, res) {
   logHttpRequest({
     req,
     res,
-    route: "/v1/chat/completions",
-    mode: "chat_nonstream",
+    route,
+    mode,
     body,
   });
 

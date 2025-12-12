@@ -1,128 +1,80 @@
-# `/v1/responses` Implementation Overview
+# `/v1/responses` — Implementation Overview (Current)
 
-This note sketches the phases required to add a fully compatible `/v1/responses` endpoint to the Codex OpenAI proxy. Each phase lists the core objectives, primary deliverables, and key dependencies so we can schedule the work and spot cross-cutting impacts early. The route is gated by `PROXY_ENABLE_RESPONSES` (default on) for environments that intentionally run chat-only.
+This repo implements `POST /v1/responses` (non-stream + typed SSE streaming) by reusing the existing `/v1/chat/completions` handlers and applying a small translation layer:
 
-## Goals & Constraints
+- **Non-stream:** build a chat request, then transform the final chat JSON into a Responses JSON envelope.
+- **Stream:** run the chat SSE pipeline, but **suppress** chat chunks and emit **typed Responses SSE** events instead.
 
-- Match the OpenAI Responses API contract: request schema (instructions, input, response_format, metadata), streaming and non-stream shapes, tool output handling, and usage fields.
-- Reuse existing infrastructure (`worker supervisor`, JSON-RPC transport, SSE helpers) without regressing `/v1/chat/completions` or `/v1/models`.
-- Preserve current security/observability toggles (CORS, rate limits, dev tracing) and extend them only where necessary.
-- Ship comprehensive tests (unit, integration, SSE/E2E) and documentation so clients can migrate without guesswork.
+The route is gated by `PROXY_ENABLE_RESPONSES` (default: `true`).
 
-## Phase 1 – Discovery & Contract Alignment
+## Key files
 
-**Objectives**
+- Routing: `src/routes/responses.js`
+- Non-stream handler: `src/handlers/responses/nonstream.js`
+- Stream handler: `src/handlers/responses/stream.js`
+- Typed SSE adapter: `src/handlers/responses/stream-adapter.js`
+- Conversion helpers: `src/handlers/responses/shared.js`
 
-1. Compare the OpenAI Responses spec with our chat proxy to enumerate missing parameters (`instructions`, `input`, `response_format`, `metadata`, `tool_choice`, `max_output_tokens`, etc.).
-2. Document required event ordering for streaming (`response.created`, `response.output_text.delta`, `tool_output.created`, `response.completed`, `response.error`).
-3. Audit Codex CLI 0.58 JSON-RPC capabilities to ensure we can emit the same signals; flag any CLI gaps early.
-4. Decide whether responses logic should reuse existing helpers (validation, metadata, tool aggregation) or live in dedicated modules.
+## Request normalization (Responses → Chat)
 
-**Deliverables**
+The Responses handlers normalize to a chat-shaped request:
 
-- Gap-analysis table mapping every Responses request/response field to current proxy behavior with disposition (reuse/extend/new work).
-- Updated JSON-RPC schema references or CLI configuration notes documenting dependencies (e.g., need `apply_patch_freeform`).
-- Decision note on module organization and any CLI follow-up tasks.
+- `instructions` / `input` are coerced into `messages[]` via `coerceInputToChatMessages()`.
+- `previous_response_id` is currently ignored in the compatibility layer.
 
-**Dependencies**: OpenAI Responses API docs, Codex CLI schema, existing chat handler docs (`docs/chat-completions-request-flow.md`).
+This keeps a single backend transport path while providing a stable Responses surface for clients.
 
-## Phase 2 – Request Normalization & Validation
+## Non-stream response shaping (Chat JSON → Responses JSON)
 
-**Objectives**
+`src/handlers/responses/nonstream.js` delegates to `postChatNonStream()` while installing `res.locals.responseTransform`.
 
-1. Implement dedicated schema validation for Responses requests (instructions, `input`, `response_format`, `metadata`, `modalities`, `max_output_tokens`, optional audio/image settings).
-2. Extend shared utilities (`normalizeModel`, metadata sanitizer, `impliedEffortForModel`) to support any responses-only aliases or reasoning overrides.
-3. Define canonical error responses (`invalid_response_format`, `unsupported_modality`, `tool_choice_conflict`).
-4. Ensure request context includes every field the transport layer needs (route/mode identifiers, sandbox/workdir, approval policy, tool flags).
+The transform calls `convertChatResponseToResponses()` to produce a Responses-style payload:
 
-**Deliverables**
+- Response IDs are normalized (`chatcmpl-*` → `resp_*`).
+- Chat `choices[]` become Responses `output[]` items.
+- Chat usage is mapped to Responses usage (`prompt_tokens → input_tokens`, `completion_tokens → output_tokens`).
 
-- `src/handlers/responses/validation.js` (or similar) with exhaustive unit coverage.
-- Updates to `src/lib/errors.js` and `src/config/models.js` documenting new IDs/codes.
-- Notes capturing which helper modules are now shared between chat and responses.
+## Streaming (Chat SSE → typed Responses SSE)
 
-**Dependencies**: Phase 1 decisions, `src/utils.js`, metadata sanitizers, error helpers.
+`src/handlers/responses/stream.js` delegates to `postChatStream()` while installing `res.locals.streamAdapter`.
 
-## Phase 3 – Handler & Routing Layer
+The adapter (`src/handlers/responses/stream-adapter.js`) is responsible for:
 
-**Objectives**
+- Emitting typed SSE events (`event:` + `data:` JSON) such as:
+  - `response.created`
+  - `response.output_text.delta` / `response.output_text.done`
+  - tool events: `response.output_item.added`, `response.function_call_arguments.delta/done`, `response.output_item.done`
+  - `response.completed` (contains the final Responses JSON envelope)
+  - `response.failed` (on adapter failure)
+- Terminating the stream with `event: done` and `data: [DONE]`
+- Suppressing default chat SSE output by returning `true` from `onChunk()`/`onDone()`
 
-1. Add `/v1/responses` routing (GET/HEAD/OPTIONS) and POST handlers for both non-stream and stream flows.
-2. Mirror chat handler structure while emitting the Responses payload shape (top-level `response`, `output`, `usage`, `metadata`).
-3. Wire up existing middleware (authorization, rate limiting, worker-ready guard, CORS, SSE concurrency guard) and logging so `/v1/responses` shows up uniformly in metrics.
+## Output mode and tool-call parity
 
-**Deliverables**
+Tool calling behavior in this proxy depends on the *output mode*:
 
-- `src/routes/responses.js` plus `src/handlers/responses/{nonstream,stream}.js` leveraging Phase 2 validators.
-- Updates to `buildBackendArgs`, optional parameter resolvers, and request-context helpers.
+- `obsidian-xml`: `<use_tool>...</use_tool>` blocks are emitted as assistant text.
+- `openai-json`: OpenAI-style tool call structures are emitted (chat: `tool_calls[]`; responses: typed tool events).
 
-**Dependencies**: Phase 2 validation layer, middleware contracts.
+For `/v1/responses`, the proxy defaults to `openai-json` (configurable via `PROXY_RESPONSES_OUTPUT_MODE`) unless the client explicitly overrides with `x-proxy-output-mode`.
 
-## Phase 4 – Transport & Backend Integration
+Rationale: This avoids “double tool intent” where a client could receive both:
 
-**Objectives**
+- tool events (`response.*function_call*`) and
+- the same `<use_tool>` blocks embedded inside `response.output_text.delta`.
 
-1. Teach `JsonRpcChildAdapter` to map Responses instructions/input arrays to Codex JSON-RPC calls (`newConversation`, `sendUserTurn`, `sendUserMessage`) and to parse new notification types.
-2. Extend SSE helpers/dev tracing so we emit OpenAI-style Responses events (with appropriate phases and metadata) and keep concurrency guards accurate.
-3. Update usage logging so `/v1/responses` requests roll into `/v1/usage` and dev trace NDJSON consistently.
+## Observability
 
-**Deliverables**
+- Streams also record shared stream metrics (TTFB/duration/outcome) via the common chat streaming pipeline.
+- The typed SSE adapter increments `codex_responses_sse_event_total{route,model,event}` and emits a one-line structured summary log (debug level) at completion/failure.
 
-- Transport adapter updates with focused unit tests and JSON fixtures.
-- SSE/helper changes (new event names, egress logging) plus documentation updates for proto traces.
-- Usage/trace instrumentation updates referencing the new route.
+## Tests
 
-**Dependencies**: Phases 1–3 outputs, Codex CLI JSON-RPC capabilities.
+- Typed SSE contract: `tests/e2e/responses-contract.spec.js` (golden transcript-based)
+- Metrics presence: `tests/integration/metrics.int.test.js` (scrapes `/metrics` when enabled)
 
-## Phase 5 – Tool Output & Response Assembly
+If you change typed SSE semantics, regenerate transcripts with:
 
-**Objectives**
-
-1. Build/extend an aggregator that produces Responses `output` arrays (text chunks, tool outputs, code interpreter blocks) and `output_text` convenience values.
-2. Enforce `response_format` directives (`text`, `json_schema`), `tool_choice` behavior, and `max_output_tokens` truncation.
-3. Capture tool execution metadata (name, arguments, output) deterministically so clients can process them in order.
-
-**Deliverables**
-
-- Enhanced `src/lib/tool-call-aggregator.js` (or responses-specific builder) plus sanitizer updates for tool payloads.
-- New unit fixtures covering mixed tool/text flows, json_schema outputs, and truncation cases.
-
-**Dependencies**: Phase 4 transport plumbing, Codex CLI tool output behavior.
-
-## Phase 6 – Testing & Observability
-
-**Objectives**
-
-1. Expand unit coverage for validators, normalization utilities, transport, tool aggregation, and SSE logging.
-2. Add integration tests for both sync and streaming responses (with and without tools) verifying HTTP bodies, SSE order, and usage totals.
-3. Extend Playwright E2E suite to exercise `/v1/responses` against the dev stack (smoke + streaming scenarios).
-4. Update dev tracing/usage endpoints and docs to highlight `/v1/responses` data paths.
-
-**Deliverables**
-
-- Vitest specs under `tests/unit/**/responses.*` and `tests/integration/responses.*`.
-- Playwright scenarios with golden traces.
-- Test evidence noted in `docs/test-design-epic-2.md` or equivalent runbooks.
-
-**Dependencies**: Phases 2–5 implementation.
-
-## Phase 7 – Documentation, Configuration & Rollout
-
-**Objectives**
-
-1. Document `/v1/responses` usage (curl snippets, SSE walkthroughs, tool output interpretation) across README, AGENTS, and new `docs/responses-endpoint` materials.
-2. Introduce configuration toggles/feature flags if we need a phased rollout (`PROXY_ENABLE_RESPONSES` etc.).
-3. Provide migration guidance for clients (Obsidian Copilot, IDE integrations) that expect Responses semantics.
-4. Update deployment runbooks (dev stack smoke, prod smoke, live tests) so `/v1/responses` is exercised before release.
-
-**Deliverables**
-
-- Updated documentation + runbooks, including troubleshooting and migration guidance.
-- Optional feature flag wiring and docs if needed.
-- Deployment checklist entries referencing new smoke/E2E coverage.
-
-**Dependencies**: Phases 1–6 completion, launch plan.
-
----
-
-This overview is intentionally high-level; each phase should get its own task brief before work begins so we can size, schedule, and staff appropriately.
+```bash
+node scripts/generate-responses-transcripts.mjs
+```

@@ -9,6 +9,7 @@ const TOOL_BUFFER_LABELS = ["output_mode", "reason"];
 const STREAM_LABELS = ["route", "model", "outcome"];
 const STREAM_TTFB_LABELS = ["route", "model"];
 const STREAM_DURATION_BUCKETS_MS = [100, 250, 500, 1000, 2000, 5000, 15000, 60000, 180000];
+const RESPONSES_SSE_EVENT_LABELS = ["route", "model", "event"];
 
 const httpRequestsTotal = new Counter({
   name: "codex_http_requests_total",
@@ -60,6 +61,13 @@ const streamEnds = new Counter({
   name: "codex_stream_end_total",
   help: "Stream termination counts by outcome",
   labelNames: STREAM_LABELS,
+  registers: [registry],
+});
+
+const responsesSseEvents = new Counter({
+  name: "codex_responses_sse_event_total",
+  help: "Typed SSE events emitted by the /v1/responses stream adapter",
+  labelNames: RESPONSES_SSE_EVENT_LABELS,
   registers: [registry],
 });
 
@@ -155,6 +163,11 @@ const normalizeModel = (model) => {
   return value.length > 64 ? value.slice(0, 64) : value;
 };
 
+const normalizeEvent = (event) => {
+  const value = emptyIfWhitespace(event, "unknown");
+  return value.length > 64 ? value.slice(0, 64) : value;
+};
+
 const normalizeOutcome = (outcome) => {
   if (!outcome) return "unknown";
   const normalized = String(outcome).trim().toLowerCase();
@@ -171,6 +184,12 @@ const normalizeStreamLabels = ({ route, model, outcome }) => ({
 const normalizeStreamTtfbLabels = ({ route, model }) => ({
   route: normalizeRoute(route),
   model: normalizeModel(model),
+});
+
+const normalizeResponsesSseEventLabels = ({ route, model, event }) => ({
+  route: normalizeRoute(route),
+  model: normalizeModel(model),
+  event: normalizeEvent(event),
 });
 
 const normalizeHttpLabels = ({ route, method, statusCode, model }) => ({
@@ -209,6 +228,15 @@ export function recordToolBufferEvent(kind, labels = {}) {
       toolBufferAnomaly.set(0);
       toolBufferAnomalyReset = undefined;
     }, 120000);
+  }
+}
+
+export function recordResponsesSseEvent({ route, model, event }) {
+  try {
+    const labels = normalizeResponsesSseEventLabels({ route, model, event });
+    responsesSseEvents.inc(labels);
+  } catch {
+    // Metrics failures are non-critical; swallow to avoid impacting callers.
   }
 }
 
