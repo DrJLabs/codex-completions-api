@@ -1,5 +1,10 @@
 import { postChatNonStream } from "../chat/nonstream.js";
-import { coerceInputToChatMessages, convertChatResponseToResponses } from "./shared.js";
+import {
+  applyDefaultProxyOutputModeHeader,
+  coerceInputToChatMessages,
+  convertChatResponseToResponses,
+} from "./shared.js";
+import { config as CFG } from "../../config/index.js";
 
 export async function postResponsesNonStream(req, res) {
   const originalBody = req.body || {};
@@ -12,12 +17,16 @@ export async function postResponsesNonStream(req, res) {
 
   res.locals = res.locals || {};
   const locals = res.locals;
+  locals.routeOverride = "/v1/responses";
+  locals.modeOverride = "responses_nonstream";
   const transform = (payload, statusCode) => {
     if (statusCode >= 400 || payload === undefined || payload === null) {
       return payload;
     }
     return convertChatResponseToResponses(payload, originalBody);
   };
+
+  const restoreOutputMode = applyDefaultProxyOutputModeHeader(req, CFG.PROXY_RESPONSES_OUTPUT_MODE);
 
   let cleanedUp = false;
   const cleanup = () => {
@@ -26,6 +35,8 @@ export async function postResponsesNonStream(req, res) {
     if (locals.responseTransform === transform) {
       delete locals.responseTransform;
     }
+    if (locals.routeOverride === "/v1/responses") delete locals.routeOverride;
+    if (locals.modeOverride === "responses_nonstream") delete locals.modeOverride;
     if (typeof res.off === "function") {
       res.off("finish", cleanup);
       res.off("close", cleanup);
@@ -47,5 +58,6 @@ export async function postResponsesNonStream(req, res) {
     throw error;
   } finally {
     req.body = originalBody;
+    restoreOutputMode();
   }
 }

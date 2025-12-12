@@ -57,7 +57,7 @@ const startServer = async (extraEnv = {}) => {
       STREAM_RELEASE_FILE: RELEASE_PATH,
       ...extraEnv,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForHealth();
 };

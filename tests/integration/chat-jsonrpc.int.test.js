@@ -191,7 +191,7 @@ describe("chat JSON-RPC normalization", () => {
     expect(turnParams.cwd).toBe(CFG.PROXY_CODEX_WORKDIR);
     expect(turnParams.summary).toBe("auto");
     expect(turnParams.effort).toBe("medium");
-    expect(turnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    expect(turnParams.sandboxPolicy).toMatchObject({ type: CFG.PROXY_SANDBOX_MODE });
     expect(turnParams.metadata).toBeUndefined();
     expect(turnParams.tools).toMatchObject({
       definitions: expect.any(Array),
@@ -247,7 +247,7 @@ describe("chat JSON-RPC normalization", () => {
     expect(turnCapture).toBeDefined();
     const streamingTurnParams = turnCapture?.payload?.params ?? {};
     expect(streamingTurnParams.model).toBe(CFG.CODEX_MODEL);
-    expect(streamingTurnParams.sandboxPolicy).toMatchObject({ mode: CFG.PROXY_SANDBOX_MODE });
+    expect(streamingTurnParams.sandboxPolicy).toMatchObject({ type: CFG.PROXY_SANDBOX_MODE });
     expect(streamingTurnParams.items?.[0]?.data?.text).toBe("Stream hello");
     const messageCapture = findCapture(server.captures, "sendUserMessage");
     expect(messageCapture).toBeDefined();
