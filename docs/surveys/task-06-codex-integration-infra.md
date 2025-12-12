@@ -28,7 +28,7 @@ Scope: How this proxy integrates with the Codex CLI/runtime and how it is deploy
 - `Dockerfile` (bakes Codex CLI into image; default CODEX_BIN/CODEX_HOME)
 - `docker-compose.yml` (prod-ish stack: app + auth, Traefik labels, host loopback publishes)
 - `compose.dev.stack.yml` (dev stack with separate hostnames/ports and volumes)
-- `auth/server.mjs` + `auth/server.js` (ForwardAuth verifier; legacy variant)
+- `auth/server.mjs` (ForwardAuth verifier; canonical; legacy CJS in `auth/server.js` now exits unless `ALLOW_LEGACY_AUTH=true`)
 - `scripts/dev.sh` (local dev launcher; shim switch)
 - `scripts/install.sh` (alternate “standalone installer” that generates a separate proxy + systemd user unit)
 - `scripts/port-dev-to-prod.sh`, `scripts/stack-snapshot.sh`, `scripts/stack-rollback.sh`, `scripts/sync-codex-config.sh` (deployment workflow)
@@ -154,7 +154,7 @@ Operational implications:
 - Always returns `204` for OPTIONS (CORS preflight).
 
 Notes:
-- `auth/server.js` exists as a legacy variant; Compose runs `server.mjs`. This is a cleanup candidate if `server.js` is no longer used anywhere.
+- `auth/server.js` remains for archival/legacy builds but now exits unless `ALLOW_LEGACY_AUTH=true`, making `server.mjs` the enforced default.
 
 ### 4.5 Standalone installer (`scripts/install.sh`) — major divergence
 `scripts/install.sh` generates a **separate** proxy implementation under the user’s home directory and installs a systemd *user* unit. It:
@@ -211,7 +211,7 @@ Medium priority:
 5. Harden CODEX_HOME handling (permissions, read-only mounts, documented structure).
 
 Low priority:
-6. Remove unused legacy files (e.g., `auth/server.js`) after confirming no consumers.
+6. Legacy entrypoints (e.g., `auth/server.js`) are now guarded; remove once consumers are confirmed gone.
 
 ---
 

@@ -4,8 +4,8 @@ Each entry lists the path, a 5–10 line summary, explicit acceptance criteria w
 
 ## Task 01 — Repository Topology & Runtime Surfaces
 - Path: `docs/surveys/2025-12-task-01-topology.md`
-- Summary: Maps top-level files/dirs and runtime entrypoints; flags duplicate ForwardAuth entrypoints (`auth/server.mjs` vs `auth/server.js`), mixed canonical vs archive docs, multiple deployment modalities without a declared primary path, submodule usage without policy, unclear env manifest, and opaque infra artifacts (`rht*`, `web-bundles/`). Highlights risk of drift between `.env*`, README, and actual runtime expectations.
-- Acceptance criteria (PROPOSED): Choose and mark a canonical ForwardAuth impl; declare the official deployment path and move legacy/systemd/worker variants to archive or document as secondary; add an env/config manifest covering required vars per modality; document `external/` update policy and Cloudflare/web-bundles roles.
+- Summary: Maps top-level files/dirs and runtime entrypoints; ForwardAuth now canonicalized to `auth/server.mjs` with the CJS variant guarded; remaining drift risks are unclear env/config manifests per modality, undeclared primary deployment path, and opaque infra artifacts (`rht*`, `web-bundles/`, `external/`). Highlights risk of drift between `.env*`, README, and actual runtime expectations.
+- Acceptance criteria (PROPOSED): Keep `auth/server.mjs` as the canonical ForwardAuth; declare the official deployment path and move legacy/systemd/worker variants to archive or document as secondary; maintain an env/config manifest covering required vars per modality; document `external/` update policy and Cloudflare/web-bundles roles.
 - Priority clues: Medium/High maintainability and security posture (deployment clarity).
 
 ## Task 02 — Critical Request/Response Flows
@@ -29,7 +29,7 @@ Each entry lists the path, a 5–10 line summary, explicit acceptance criteria w
 ## Task 05 — JSON-RPC Transport & Schema
 - Path: `docs/surveys/TASK_05_JSON_RPC_TRANSPORT_AND_SCHEMA.md`
 - Summary: Reviews transport envelopes, schema builders, and call sequence; finds dual schema generation paths (template vs upstream export) creating drift, stale docs/runbooks, camelCase/snakeCase duplication, and fields passed but not represented in builders. Recommends single source of truth with CI guardrails.
-- Acceptance criteria: Pick authoritative schema workflow (local TS or upstream-export) and delete the other; add CI checks `npm run jsonrpc:schema` and `npm run jsonrpc:bundle` with `git diff --exit-code`; align docs on method set/notification names/finalOutputJsonSchema; reconcile ignored knobs (remove or document) and adjust builders/types.
+- Acceptance criteria: Keep `src/lib/json-rpc/schema.ts` canonical; `npm run jsonrpc:schema` stays a no-op to prevent legacy overwrites; regenerate the JSON Schema bundle via `npm run jsonrpc:bundle` and enforce idempotence in CI with `npm run jsonrpc:verify`; align docs on method/notification set and field behaviors; reconcile ignored knobs and document camel/snake back-compat policy.
 - Priority clues: P1 contract stability.
 
 ## Task 06 — Codex Integration & Infrastructure Surfaces

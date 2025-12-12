@@ -4,6 +4,15 @@ const PORT = Number(process.env.PORT || 8080);
 const REALM = process.env.AUTH_REALM || "api";
 const SECRET = process.env.PROXY_API_KEY || "";
 
+// Deprecated: use auth/server.mjs. This file is kept only for legacy builds
+// and will exit unless ALLOW_LEGACY_AUTH=true is explicitly set.
+if (process.env.ALLOW_LEGACY_AUTH !== "true") {
+  console.error(
+    "[auth] auth/server.js is deprecated; use auth/server.mjs instead (set ALLOW_LEGACY_AUTH=true to override)."
+  );
+  process.exit(1);
+}
+
 const sendJSON = (res, status, data, extraHeaders = {}) => {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", ...extraHeaders });
   res.end(JSON.stringify(data));

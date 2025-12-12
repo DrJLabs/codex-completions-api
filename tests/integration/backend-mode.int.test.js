@@ -60,6 +60,7 @@ describe("backend mode feature flag", () => {
   it("defaults to app-server and logs selection when flag is unset", async () => {
     const started = await startServerWithLogs();
     child = started.child;
+    await waitForUrlOk(`http://127.0.0.1:${started.PORT}/readyz`);
     const response = await fetch(`http://127.0.0.1:${started.PORT}/healthz`);
     expect(response.status).toBe(200);
     const payload = await response.json();

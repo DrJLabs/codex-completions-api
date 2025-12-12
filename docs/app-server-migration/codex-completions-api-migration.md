@@ -35,9 +35,10 @@ spawn("codex", [
 ```
 
 - Keep the same `CODEX_BIN` resolution; only subcommand changes.
-- Pin the CLI dependency (`@openai/codex`) to version **0.53.0** so the `app-server` binary ships with the image.
-- After bumping the CLI, run `npm run jsonrpc:schema` to regenerate `src/lib/json-rpc/schema.ts`. Follow up with `npm run jsonrpc:bundle` to refresh `docs/app-server-migration/app-server-protocol.schema.json`. Both scripts derive their output from the installed `@openai/codex` version and fail fast if template placeholders are missing.
-- `npm run test:unit -- json-rpc-schema-bundle.test.js` and `npm run test:integration -- json-rpc-schema-validation.int.test.js` guard against stale bundles or request payload drift. They compare the checked-in schema to a freshly generated bundle and validate `initialize`/`sendUserTurn`/`sendUserMessage` envelopes against the JSON Schema bundle via Ajv.
+- Pin the CLI dependency (`@openai/codex`) in `package.json` so the `app-server` binary ships with the image.
+- `src/lib/json-rpc/schema.ts` is canonical; contributors should not regenerate it from templates. After bumping the CLI, update `schema.ts` only if the runtime contract changes.
+- Refresh and verify the JSON Schema bundle after protocol changes: `npm run jsonrpc:bundle` then `npm run jsonrpc:verify`. See `docs/app-server-migration/jsonrpc-schema-workflow.md`.
+- `npm run test:unit` and `npm run test:integration` guard against stale bundles or request payload drift; schema validation runs in CI via `jsonrpc:verify`.
 
 ---
 
