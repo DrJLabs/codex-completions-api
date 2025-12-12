@@ -39,6 +39,43 @@ describe("normalizeChatJsonRpcRequest", () => {
     expect(prompt).toContain("[tool:lookup_user] result payload");
   });
 
+  it("accepts json_object response_format", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const normalized = normalize({
+      body: { messages, response_format: { type: "json_object" } },
+      messages,
+    });
+
+    expect(normalized.message.responseFormat).toMatchObject({ type: "json_object" });
+    expect(normalized.turn.finalOutputJsonSchema).toBeUndefined();
+  });
+
+  it("accepts legacy functions and function_call aliases", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const functions = [
+      {
+        name: "do_it",
+        description: "does it",
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+      },
+    ];
+
+    const normalized = normalize({
+      body: { messages, functions, function_call: { name: "do_it" } },
+      messages,
+    });
+
+    expect(normalized.turn.tools?.definitions?.[0]).toMatchObject({
+      type: "function",
+      function: { name: "do_it" },
+    });
+    expect(normalized.turn.tools?.choice).toMatchObject({
+      type: "function",
+      function: { name: "do_it" },
+    });
+  });
+
   it("validates tool_choice strings", () => {
     const messages = [{ role: "user", content: "hello" }];
     const tools = [
