@@ -12,6 +12,7 @@ const GPT52_VARIANTS = [
   { suffix: "L", effort: "low" },
   { suffix: "M", effort: "medium" },
   { suffix: "H", effort: "high" },
+  { suffix: "XH", effort: "xhigh" },
 ];
 
 const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
