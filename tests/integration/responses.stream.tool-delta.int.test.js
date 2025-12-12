@@ -64,9 +64,11 @@ test("aggregates streaming tool-call fragments into final response", async () =>
   expect(toolNode.name).toBe("lookup_user");
   expect(toolNode.input).toEqual({ id: "42" });
 
-  // Obsidian XML block should surface as output_text.
+  // `/v1/responses` defaults to openai-json mode (unless overridden), so tool calls should not
+  // be duplicated as literal <use_tool> text inside output_text.
   const textNode = content.find((node) => node.type === "output_text");
-  expect(textNode?.text || "").toContain("<use_tool>");
+  expect(textNode?.text || "").not.toContain("<use_tool>");
+  expect(textNode?.text || "").toBe("");
 
   // Usage should be included when stream_options.include_usage=true.
   expect(completed.usage).toMatchObject({
