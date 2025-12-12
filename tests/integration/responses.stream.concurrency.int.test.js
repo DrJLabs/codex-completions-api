@@ -154,7 +154,9 @@ test("responses streaming enforces concurrency guard", async () => {
 
     const drainStart = Date.now();
     while (Date.now() - drainStart < 2000) {
-      const r = await fetch(`http://127.0.0.1:${PORT}/__test/conc`);
+      const r = await fetch(`http://127.0.0.1:${PORT}/__test/conc`, {
+        headers: { Authorization: "Bearer test-sk-ci" },
+      });
       const j = await r.json();
       if (Number(j.conc || 0) === 0) break;
       await wait(20);

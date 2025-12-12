@@ -11,6 +11,7 @@ services:
       - PROXY_ENABLE_CORS=true
       - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
+      - PROXY_HOST=${PROXY_HOST:-0.0.0.0}
       - CODEX_HOME=/home/node/.codex
       # Early finalize non-stream responses in DEV if backend is slow, to avoid edge 524
       - PROXY_NONSTREAM_TRUNCATE_AFTER_MS=${PROXY_NONSTREAM_TRUNCATE_AFTER_MS:-8000}

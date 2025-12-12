@@ -42,6 +42,7 @@ const resolveAppServerDefault = () => {
 
 export const config = {
   PORT: num("PORT", 11435),
+  PROXY_HOST: str("PROXY_HOST", "127.0.0.1"),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
@@ -51,6 +52,7 @@ export const config = {
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),
   PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
   PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", resolveAppServerDefault()),
+  PROXY_ENABLE_RESPONSES: bool("PROXY_ENABLE_RESPONSES", "true"),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
   PROXY_SSE_KEEPALIVE_MS: num("PROXY_SSE_KEEPALIVE_MS", 15000),
@@ -94,6 +96,8 @@ export const config = {
   PROXY_RATE_LIMIT_MAX: num("PROXY_RATE_LIMIT_MAX", 60),
   PROXY_SSE_MAX_CONCURRENCY: num("PROXY_SSE_MAX_CONCURRENCY", 4),
   PROXY_TEST_ENDPOINTS: bool("PROXY_TEST_ENDPOINTS", "false"),
+  PROXY_TEST_ALLOW_REMOTE: bool("PROXY_TEST_ALLOW_REMOTE", "false"),
+  PROXY_USAGE_ALLOW_UNAUTH: bool("PROXY_USAGE_ALLOW_UNAUTH", "false"),
   // Non-stream guard: allow early finalize to avoid edge timeouts (ms; 0=disabled)
   PROXY_NONSTREAM_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Back-compat alias (deprecated name, maps to the same value)

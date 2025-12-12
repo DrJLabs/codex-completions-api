@@ -6,6 +6,7 @@ import {
   setActiveStreams,
   setMaintenanceState,
   setWorkerMetrics,
+  observeWorkerRestartDelta,
 } from "../services/metrics/index.js";
 import { config as CFG } from "../config/index.js";
 
@@ -40,7 +41,9 @@ export default function metricsRouter() {
       return res.status(403).json({ ok: false, reason: "metrics access denied" });
     }
     setActiveStreams(guardSnapshot());
-    setWorkerMetrics(getWorkerStatus());
+    const workerStatus = getWorkerStatus();
+    observeWorkerRestartDelta(workerStatus);
+    setWorkerMetrics(workerStatus);
     setMaintenanceState(Boolean(CFG.PROXY_MAINTENANCE_MODE));
     const payload = await renderMetrics();
     res.set("Content-Type", "text/plain; charset=utf-8");

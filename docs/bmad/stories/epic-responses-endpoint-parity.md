@@ -16,7 +16,7 @@ Deliver `/v1/responses` with exact OpenAI parity—including typed SSE events an
 **Existing System Context**
 
 - Current relevant functionality: Node/Express proxy exposing `/v1/chat/completions`, `/v1/completions`, model listing, and usage telemetry backed by Codex CLI child processes. (`docs/bmad/architecture.md:20-200`)
-- Technology stack: Node.js ≥ 22, Express 4.19, Codex CLI (`codex proto`), Vitest, Playwright, Docker Compose, Traefik ForwardAuth. (`docs/bmad/architecture.md:82-93`)
+- Technology stack: Node.js ≥ 22, Express 4.21.2, Codex CLI (`codex proto`), Vitest, Playwright, Docker Compose, Traefik ForwardAuth. (`docs/bmad/architecture.md:82-93`)
 - Integration points: Express routers (`chat.js`, `usage.js`), Codex runner service, concurrency guard, metadata sanitizer, test transcript suite (`test-results/chat-completions/*`). (`docs/bmad/architecture.md:111-200`)
 
 **Enhancement Details**

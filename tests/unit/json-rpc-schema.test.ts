@@ -478,6 +478,22 @@ describe("json-rpc schema bindings", () => {
       expect(params.items[0]).not.toBe(item);
     });
 
+    it("normalizes legacy item shapes to typed input items", () => {
+      const params = buildSendUserTurnParams({
+        items: ["hi", { text: "hello" }, { data: { text: "hey" } }],
+        conversationId: "conv-legacy",
+        cwd: "/tmp/work",
+        approvalPolicy: "never",
+        sandboxPolicy: "read-only",
+        model: "gpt-5",
+        summary: "auto",
+      });
+      expect(params.items).toHaveLength(3);
+      expect(params.items[0]).toMatchObject({ type: "text", data: { text: "hi" } });
+      expect(params.items[1]).toMatchObject({ type: "text", data: { text: "hello" } });
+      expect(params.items[2]).toMatchObject({ type: "text", data: { text: "hey" } });
+    });
+
     it("builds sendUserMessage params with normalized items and options", () => {
       const item = createUserMessageItem("payload");
       const params = buildSendUserMessageParams({
@@ -514,6 +530,18 @@ describe("json-rpc schema bindings", () => {
       expect(params.reasoning).toEqual({ effort: "low" });
       expect(params.finalOutputJsonSchema).toEqual({ type: "object" });
       expect(params.final_output_json_schema).toEqual({ type: "object" });
+    });
+
+    it("normalizes legacy item shapes for sendUserMessage params", () => {
+      const params = buildSendUserMessageParams({
+        items: ["hi", { text: "hello" }, { data: { text: "hey" } }],
+        conversationId: "conv-legacy",
+        includeUsage: true,
+      });
+      expect(params.items).toHaveLength(3);
+      expect(params.items[0]).toMatchObject({ type: "text", data: { text: "hi" } });
+      expect(params.items[1]).toMatchObject({ type: "text", data: { text: "hello" } });
+      expect(params.items[2]).toMatchObject({ type: "text", data: { text: "hey" } });
     });
 
     it("builds add/remove conversation listener params", () => {

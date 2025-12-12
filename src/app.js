@@ -14,11 +14,14 @@ import { guardSnapshot } from "./services/concurrency-guard.js";
 import { toolBufferMetrics } from "./services/metrics/chat.js";
 import { logStructured } from "./services/logging/schema.js";
 import metricsMiddleware from "./middleware/metrics.js";
+import { requireTestAuth } from "./middleware/auth.js";
+import tracingMiddleware from "./middleware/tracing.js";
 
 export default function createApp() {
   const app = express();
   app.use(express.json({ limit: "16mb" }));
   app.use(metricsMiddleware());
+  app.use(tracingMiddleware());
 
   // Global CORS
   const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
@@ -66,13 +69,15 @@ export default function createApp() {
   );
   // Test-only endpoints (disabled by default)
   if (CFG.PROXY_TEST_ENDPOINTS) {
+    const testRouter = express.Router();
+    testRouter.use(requireTestAuth);
     // NOTE: Test-only endpoint to expose current SSE concurrency count.
     // Uses globalThis to avoid plumbing state; safe because PROXY_TEST_ENDPOINTS
     // is disabled in production by default and only enabled for CI debugging.
-    app.get("/__test/conc", (_req, res) => {
+    testRouter.get("/conc", (_req, res) => {
       res.json({ conc: guardSnapshot() });
     });
-    app.post("/__test/conc/release", async (_req, res) => {
+    testRouter.post("/conc/release", async (_req, res) => {
       const releasePath = process.env.STREAM_RELEASE_FILE;
       if (!releasePath) {
         return res.status(400).json({ ok: false, reason: "STREAM_RELEASE_FILE not set" });
@@ -86,13 +91,14 @@ export default function createApp() {
         return res.status(500).json({ ok: false, error: error?.message || String(error) });
       }
     });
-    app.get("/__test/tool-buffer-metrics", (_req, res) => {
+    testRouter.get("/tool-buffer-metrics", (_req, res) => {
       res.json({ ok: true, summary: toolBufferMetrics.summary() });
     });
-    app.post("/__test/tool-buffer-metrics/reset", (_req, res) => {
+    testRouter.post("/tool-buffer-metrics/reset", (_req, res) => {
       toolBufferMetrics.reset();
       res.json({ ok: true });
     });
+    app.use("/__test", testRouter);
   }
   if (CFG.PROXY_ENABLE_METRICS) {
     app.use(metricsRouter());
@@ -100,7 +106,9 @@ export default function createApp() {
   app.use(healthRouter());
   app.use(modelsRouter());
   app.use(chatRouter());
-  app.use(responsesRouter());
+  if (CFG.PROXY_ENABLE_RESPONSES) {
+    app.use(responsesRouter());
+  }
   app.use(usageRouter());
 
   return app;

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { getJsonRpcTransport, TransportError } from "./index.js";
-import { createUserMessageItem } from "../../lib/json-rpc/schema.ts";
+import { createUserMessageItem, normalizeInputItems } from "../../lib/json-rpc/schema.ts";
 
 const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 
@@ -60,8 +60,11 @@ export class JsonRpcChildAdapter extends EventEmitter {
     try {
       const normalized = this.normalizedRequest || null;
       const turnPayload = normalized?.turn ? { ...normalized.turn } : undefined;
-      if (turnPayload && (!Array.isArray(turnPayload.items) || turnPayload.items.length === 0)) {
-        turnPayload.items = [createUserMessageItem(prompt)];
+      if (turnPayload) {
+        turnPayload.items = normalizeInputItems(turnPayload.items, prompt);
+        if (!Array.isArray(turnPayload.items) || turnPayload.items.length === 0) {
+          turnPayload.items = [createUserMessageItem(prompt)];
+        }
       }
 
       this.context = await this.transport.createChatRequest({
@@ -83,6 +86,7 @@ export class JsonRpcChildAdapter extends EventEmitter {
       }
       this.#wireContext(this.context);
       const messagePayload = normalized?.message ? { ...normalized.message } : {};
+      messagePayload.items = normalizeInputItems(messagePayload.items, prompt);
       if (!Array.isArray(messagePayload.items) || messagePayload.items.length === 0) {
         messagePayload.items = [createUserMessageItem(prompt)];
       }

@@ -114,7 +114,9 @@ test("aborting responses stream kills codex child process", async () => {
   // Ensure concurrency guard released after abort
   const start = Date.now();
   while (Date.now() - start < 2000) {
-    const concRes = await fetch(`http://127.0.0.1:${PORT}/__test/conc`);
+    const concRes = await fetch(`http://127.0.0.1:${PORT}/__test/conc`, {
+      headers: { Authorization: "Bearer test-sk-ci" },
+    });
     const { conc } = await concRes.json();
     if (Number(conc || 0) === 0) return;
     await wait(50);
