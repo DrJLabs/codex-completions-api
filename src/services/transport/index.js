@@ -898,7 +898,9 @@ class JsonRpcTransport {
           console.warn(
             `${LOG_PREFIX} sendUserTurn rejected; request summary: ${JSON.stringify(pending.requestSummary)}`
           );
-        } catch {}
+        } catch (err) {
+          console.warn(`${LOG_PREFIX} sendUserTurn rejected; unable to log request summary`, err);
+        }
       }
       if (trace) {
         logBackendResponse(trace, {
