@@ -29,7 +29,7 @@ Each entry lists the path, a 5–10 line summary, explicit acceptance criteria w
 ## Task 05 — JSON-RPC Transport & Schema
 - Path: `docs/surveys/TASK_05_JSON_RPC_TRANSPORT_AND_SCHEMA.md`
 - Summary: Reviews transport envelopes, schema builders, and call sequence; finds dual schema generation paths (template vs upstream export) creating drift, stale docs/runbooks, camelCase/snakeCase duplication, and fields passed but not represented in builders. Recommends single source of truth with CI guardrails.
-- Acceptance criteria: Pick authoritative schema workflow (local TS or upstream-export) and delete the other; add CI checks `npm run jsonrpc:schema` and `npm run jsonrpc:bundle` with `git diff --exit-code`; align docs on method set/notification names/finalOutputJsonSchema; reconcile ignored knobs (remove or document) and adjust builders/types.
+- Acceptance criteria: Keep `src/lib/json-rpc/schema.ts` canonical; `npm run jsonrpc:schema` stays a no-op to prevent legacy overwrites; regenerate the JSON Schema bundle via `npm run jsonrpc:bundle` and enforce idempotence in CI with `npm run jsonrpc:verify`; align docs on method/notification set and field behaviors; reconcile ignored knobs and document camel/snake back-compat policy.
 - Priority clues: P1 contract stability.
 
 ## Task 06 — Codex Integration & Infrastructure Surfaces
