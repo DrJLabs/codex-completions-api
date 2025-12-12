@@ -9,7 +9,7 @@
 /* eslint-disable */
 
 export const JSONRPC_VERSION = "2.0" as const;
-export const CODEX_CLI_VERSION = "0.56.0" as const;
+export const CODEX_CLI_VERSION = "0.71.0" as const;
 
 export type JsonRpcId = number | string;
 
