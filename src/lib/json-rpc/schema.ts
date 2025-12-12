@@ -79,7 +79,7 @@ export type SandboxMode = "danger-full-access" | "read-only" | "workspace-write"
 
 export type AskForApproval = "untrusted" | "on-failure" | "on-request" | "never";
 
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 
@@ -268,7 +268,7 @@ const VALID_APPROVAL_POLICIES: Set<string> = new Set([
 
 const VALID_REASONING_SUMMARIES: Set<string> = new Set(["auto", "concise", "detailed", "none"]);
 
-const VALID_REASONING_EFFORTS: Set<string> = new Set(["minimal", "low", "medium", "high"]);
+const VALID_REASONING_EFFORTS: Set<string> = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 
 const VALID_SANDBOX_MODES: Set<string> = new Set([
   "danger-full-access",

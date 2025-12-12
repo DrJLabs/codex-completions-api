@@ -690,7 +690,7 @@ export async function postChatNonStream(req, res) {
   )
     .toString()
     .toLowerCase();
-  const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+  const allowEffort = new Set(["low", "medium", "high", "xhigh", "minimal"]);
   if (!reasoningEffort) {
     const implied = impliedEffortForModel(requestedModel);
     if (implied) reasoningEffort = implied;
@@ -1428,7 +1428,7 @@ export async function postCompletionsNonStream(req, res) {
   )
     .toString()
     .toLowerCase();
-  const allowEffort = new Set(["low", "medium", "high", "minimal"]);
+  const allowEffort = new Set(["low", "medium", "high", "xhigh", "minimal"]);
   if (!reasoningEffort) {
     const implied = impliedEffortForModel(requestedModel);
     if (implied) reasoningEffort = implied;

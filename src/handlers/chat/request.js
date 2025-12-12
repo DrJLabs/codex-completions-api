@@ -19,7 +19,7 @@ const ALLOWED_MESSAGE_ROLES = new Set([
   "function",
 ]);
 const ALLOWED_TOOL_CHOICES = new Set(["auto", "none", "required"]);
-const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
+const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 
 const toFiniteNumber = (value) => {
   if (value === undefined || value === null || value === "") return undefined;
