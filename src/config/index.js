@@ -64,6 +64,7 @@ export const config = {
   PROXY_TOOL_BLOCK_DEDUP: bool("PROXY_TOOL_BLOCK_DEDUP", "false"),
   PROXY_TOOL_BLOCK_DELIMITER: resolveToolBlockDelimiter(),
   PROXY_OUTPUT_MODE: str("PROXY_OUTPUT_MODE", "obsidian-xml").toLowerCase(),
+  PROXY_RESPONSES_OUTPUT_MODE: str("PROXY_RESPONSES_OUTPUT_MODE", "openai-json").toLowerCase(),
   // Timeouts
   PROXY_TIMEOUT_MS: num("PROXY_TIMEOUT_MS", 300000),
   PROXY_IDLE_TIMEOUT_MS: num("PROXY_IDLE_TIMEOUT_MS", 15000),

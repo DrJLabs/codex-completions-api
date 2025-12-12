@@ -18,6 +18,7 @@ beforeAll(async () => {
       CODEX_BIN: "scripts/fake-codex-proto-tools.js",
       PROXY_STOP_AFTER_TOOLS: "true",
       PROXY_STOP_AFTER_TOOLS_MODE: "first",
+      PROXY_RESPONSES_OUTPUT_MODE: "obsidian-xml",
       PROXY_SSE_KEEPALIVE_MS: "0",
     },
     stdio: ["ignore", "pipe", "pipe"],

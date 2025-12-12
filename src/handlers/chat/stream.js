@@ -202,8 +202,8 @@ export async function postChatStream(req, res) {
   logHttpRequest({
     req,
     res,
-    route: "/v1/chat/completions",
-    mode: "chat_stream",
+    route,
+    mode,
     body,
   });
 

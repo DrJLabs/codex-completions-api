@@ -1,9 +1,12 @@
 import { nanoid } from "nanoid";
 import { normalizeResponseId, convertChatResponseToResponses } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import { recordResponsesSseEvent } from "../../services/metrics/index.js";
+import { logStructured } from "../../services/logging/schema.js";
 
 const DEFAULT_ROLE = "assistant";
 const OUTPUT_DELTA_EVENT = "response.output_text.delta";
+const RESPONSES_ROUTE = "/v1/responses";
 
 const mapFinishStatus = (reasons) => {
   const normalized = new Set(
@@ -43,6 +46,7 @@ const normalizeToolType = (value) => {
 export function createResponsesStreamAdapter(res, requestBody = {}) {
   const toolCallAggregator = createToolCallAggregator();
   const choiceStates = new Map();
+  const eventCounts = new Map();
   const state = {
     responseId: null,
     chatCompletionId: null,
@@ -54,10 +58,44 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     finished: false,
   };
 
+  const recordEvent = (event) => {
+    eventCounts.set(event, (eventCounts.get(event) || 0) + 1);
+    recordResponsesSseEvent({
+      route: res.locals?.routeOverride || RESPONSES_ROUTE,
+      model: state.model || requestBody?.model,
+      event,
+    });
+  };
+
+  const logEventSummary = (outcome, extra = {}) => {
+    try {
+      const events = Object.fromEntries(
+        Array.from(eventCounts.entries()).sort(([a], [b]) => a.localeCompare(b))
+      );
+      logStructured(
+        {
+          component: "responses",
+          event: "sse_summary",
+          level: outcome === "failed" ? "error" : "debug",
+          req_id: res.locals?.req_id,
+          trace_id: res.locals?.trace_id,
+          route: res.locals?.routeOverride || RESPONSES_ROUTE,
+          model: state.model || requestBody?.model,
+          response_id: state.responseId,
+          status: state.status,
+        },
+        { outcome, events, ...extra }
+      );
+    } catch {
+      // Logging failures are non-critical; swallow to avoid impacting callers.
+    }
+  };
+
   const writeEvent = (event, payload) => {
     if (res.writableEnded) return;
     try {
       res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+      recordEvent(event);
     } catch (error) {
       console.error("[proxy][responses.stream-adapter] failed to write SSE event", error);
     }
@@ -323,6 +361,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       },
     });
     writeEvent("done", "[DONE]");
+    logEventSummary("failed", { message });
     endStream();
     return false;
   };
@@ -473,6 +512,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
         response: responsePayload,
       });
       writeEvent("done", "[DONE]");
+      logEventSummary("completed", { finish_reasons: Array.from(state.finishReasons) });
       endStream();
       return true;
     } catch (error) {
