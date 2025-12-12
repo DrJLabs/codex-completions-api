@@ -380,6 +380,7 @@ export const normalizeChatJsonRpcRequest = ({
   messages = [],
   prompt = "",
   effectiveModel,
+  choiceCount,
   stream = false,
   reasoningEffort = "",
   sandboxMode = "",
@@ -490,6 +491,10 @@ export const normalizeChatJsonRpcRequest = ({
     stream: !!stream,
     includeApplyPatchTool: true,
   };
+
+  if (Number.isInteger(choiceCount) && choiceCount > 0) {
+    turn.choiceCount = choiceCount;
+  }
 
   if (baseInstructions) {
     turn.baseInstructions = baseInstructions;

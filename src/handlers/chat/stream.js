@@ -548,6 +548,7 @@ export async function postChatStream(req, res) {
         messages,
         prompt,
         effectiveModel,
+        choiceCount,
         stream: true,
         reasoningEffort,
         sandboxMode: SANDBOX_MODE,

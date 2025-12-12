@@ -1,7 +1,7 @@
 /**
  * Codex App Server JSON-RPC bindings for chat.
  *
- * Generated with codex-cli/codex-rs/app-server-protocol export tooling (v0.56.0)
+ * Generated with codex-cli/codex-rs/app-server-protocol export tooling (v0.71.0)
  * and then trimmed to the subset needed by the proxy. Regenerate when the
  * upstream protocol changes.
  */
@@ -155,6 +155,8 @@ export interface SendUserTurnParams {
   approvalPolicy: AskForApproval;
   sandboxPolicy: SandboxPolicy;
   model: string;
+  choiceCount?: number;
+  choice_count?: number;
   effort?: ReasoningEffort | null;
   summary: ReasoningSummary;
   metadata?: Record<string, unknown> | null;
@@ -239,6 +241,8 @@ export interface BuildSendUserTurnOptions {
   approvalPolicy?: AskForApproval | string | null;
   sandboxPolicy?: SandboxPolicy | { mode?: string; [key: string]: unknown } | null;
   model?: string;
+  choiceCount?: number | string | null;
+  choice_count?: number | string | null;
   effort?: ReasoningEffort | string | null;
   summary?: ReasoningSummary | string | null;
   tools?: JsonValue;
@@ -409,6 +413,21 @@ export function buildSendUserTurnParams(
     model: String(options.model ?? ""),
     summary,
   };
+
+  const rawChoiceCount = options.choiceCount ?? (options as any).choice_count;
+  if (rawChoiceCount !== undefined && rawChoiceCount !== null) {
+    let parsed;
+    if (typeof rawChoiceCount === "number") {
+      parsed = rawChoiceCount;
+    } else if (typeof rawChoiceCount === "string" && rawChoiceCount.trim() !== "") {
+      const numeric = Number(rawChoiceCount);
+      if (Number.isFinite(numeric)) parsed = numeric;
+    }
+    if (parsed !== undefined && Number.isInteger(parsed) && parsed > 0) {
+      params.choiceCount = parsed;
+      params.choice_count = parsed;
+    }
+  }
 
   if (effort !== undefined) {
     params.effort = effort;

@@ -153,4 +153,16 @@ describe("normalizeChatJsonRpcRequest", () => {
     expect(normalized.message.reasoning).toMatchObject({ effort: "low" });
     expect(normalized.turn.choiceCount).toBeUndefined();
   });
+
+  it("includes choiceCount on the turn when provided", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const normalized = normalize({
+      body: { messages },
+      messages,
+      choiceCount: 2,
+    });
+
+    expect(normalized.turn.choiceCount).toBe(2);
+  });
 });
