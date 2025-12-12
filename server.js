@@ -3,8 +3,11 @@ import { selectBackendMode, isAppServerMode } from "./src/services/backend-mode.
 import createApp from "./src/app.js";
 import { ensureWorkerSupervisor } from "./src/services/worker/supervisor.js";
 import { getJsonRpcTransport } from "./src/services/transport/index.js";
+import { assertSecureConfig } from "./src/services/security-check.js";
+import { normalizeIp } from "./src/lib/net.js";
 
 // Thin bootstrap only. All routing and business logic reside under src/.
+assertSecureConfig(CFG, process.env);
 selectBackendMode();
 const SUPERVISOR_ENABLED = isAppServerMode();
 const supervisor = SUPERVISOR_ENABLED ? ensureWorkerSupervisor() : null;
@@ -23,9 +26,13 @@ if (SUPERVISOR_ENABLED) {
 }
 const app = createApp();
 const PORT = CFG.PORT;
+const HOST = CFG.PROXY_HOST || "127.0.0.1";
 
-const server = app.listen(PORT, () => {
-  console.log(`codex-openai-proxy listening on http://127.0.0.1:${PORT}/v1`);
+const server = app.listen(PORT, HOST, () => {
+  const address = server.address();
+  const hostForLog =
+    typeof address === "string" ? address : `${normalizeIp(address.address)}:${address.port}`;
+  console.log(`codex-openai-proxy listening on http://${hostForLog}/v1`);
 });
 
 // Graceful shutdown on SIGTERM/SIGINT

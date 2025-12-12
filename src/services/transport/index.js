@@ -15,6 +15,7 @@ import {
   buildAddConversationListenerParams,
   buildRemoveConversationListenerParams,
   createUserMessageItem,
+  normalizeInputItems,
   buildSendUserMessageParams,
   buildSendUserTurnParams,
 } from "../../lib/json-rpc/schema.ts";
@@ -581,8 +582,10 @@ class JsonRpcTransport {
     });
 
     const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
+    const fallbackText = typeof basePayload.text === "string" ? basePayload.text : undefined;
+    basePayload.items = normalizeInputItems(basePayload.items, fallbackText);
     if (!Array.isArray(basePayload.items) || basePayload.items.length === 0) {
-      basePayload.items = [createUserMessageItem(basePayload.text ?? "")];
+      basePayload.items = [createUserMessageItem(fallbackText ?? "")];
     }
     if (basePayload.text !== undefined) {
       delete basePayload.text;
@@ -694,6 +697,14 @@ class JsonRpcTransport {
 
     try {
       const basePayload = payload && typeof payload === "object" ? { ...(payload || {}) } : {};
+      const fallbackText = typeof basePayload.text === "string" ? basePayload.text : undefined;
+      basePayload.items = normalizeInputItems(basePayload.items, fallbackText);
+      if (!Array.isArray(basePayload.items) || basePayload.items.length === 0) {
+        basePayload.items = fallbackText !== undefined ? [createUserMessageItem(fallbackText)] : [];
+      }
+      if (basePayload.text !== undefined) {
+        delete basePayload.text;
+      }
       const params = buildSendUserTurnParams({
         ...basePayload,
         conversationId: context.conversationId ?? context.clientConversationId,

@@ -27,7 +27,13 @@ export default function rateLimit(options = {}) {
     if (!enabled) return next();
     if (req.method !== "POST") return next();
     const path = req.path || req.originalUrl || "";
-    if (path !== "/v1/chat/completions" && path !== "/v1/completions") return next();
+    const guardedPaths = new Set([
+      "/v1/chat/completions",
+      "/v1/completions",
+      "/v1/responses",
+      "/v1/responses/",
+    ]);
+    if (!guardedPaths.has(path)) return next();
 
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";

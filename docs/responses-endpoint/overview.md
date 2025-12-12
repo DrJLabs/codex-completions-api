@@ -1,6 +1,6 @@
 # `/v1/responses` Implementation Overview
 
-This note sketches the phases required to add a fully compatible `/v1/responses` endpoint to the Codex OpenAI proxy. Each phase lists the core objectives, primary deliverables, and key dependencies so we can schedule the work and spot cross-cutting impacts early.
+This note sketches the phases required to add a fully compatible `/v1/responses` endpoint to the Codex OpenAI proxy. Each phase lists the core objectives, primary deliverables, and key dependencies so we can schedule the work and spot cross-cutting impacts early. The route is gated by `PROXY_ENABLE_RESPONSES` (default on) for environments that intentionally run chat-only.
 
 ## Goals & Constraints
 

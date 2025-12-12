@@ -177,10 +177,14 @@ test("usage endpoints produce aggregates", async () => {
   }
   // Give a brief moment for async file append
   await wait(200);
-  const agg = await fetch(`${BASE}/usage?group=hour`).then((r) => r.json());
+  const agg = await fetch(`${BASE}/usage?group=hour`, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  }).then((r) => r.json());
   expect(agg).toHaveProperty("total_requests");
   expect(agg).toHaveProperty("prompt_tokens_est");
-  const raw = await fetch(`${BASE}/usage/raw?limit=5`).then((r) => r.json());
+  const raw = await fetch(`${BASE}/usage/raw?limit=5`, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  }).then((r) => r.json());
   expect(raw).toHaveProperty("count");
   expect(Array.isArray(raw.events)).toBe(true);
 });
@@ -201,7 +205,9 @@ test("usage raw entries expose tracing metadata", async () => {
   await response.json();
 
   await wait(200);
-  const raw = await fetch(`${BASE}/usage/raw?limit=10`).then((r) => r.json());
+  const raw = await fetch(`${BASE}/usage/raw?limit=10`, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  }).then((r) => r.json());
   const entry = raw.events.find((event) => event.req_id === reqId);
   expect(entry).toBeTruthy();
   expect(entry.phase).toBe("usage_summary");

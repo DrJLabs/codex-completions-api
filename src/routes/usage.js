@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import { TOKEN_LOG_PATH } from "../dev-logging.js";
 import { aggregateUsage, parseTime } from "../utils.js";
 import { toolBufferMetrics } from "../services/metrics/chat.js";
+import { requireApiKey } from "../middleware/auth.js";
 
 async function loadUsageEvents() {
   try {
@@ -28,6 +29,7 @@ async function loadUsageEvents() {
 
 export default function usageRouter() {
   const r = Router();
+  r.use(requireApiKey);
 
   const attachToolBufferMetrics = (payload = {}) => ({
     ...payload,

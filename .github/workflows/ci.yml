@@ -60,6 +60,9 @@ jobs:
       - name: Lint (JS)
         run: npm run lint
 
+      - name: Verify JSON-RPC schema
+        run: npm run jsonrpc:verify
+
       - name: Install Playwright deps (for tests)
         if: steps.changes.outputs.code == 'true'
         run: npx playwright install --with-deps chromium
@@ -76,6 +79,32 @@ jobs:
           KEY: codex-ci
           MODEL: codex-5
         run: bash scripts/qa/tool-call-smoke-ci.sh
+
+      - name: Upload Playwright artifacts
+        if: steps.changes.outputs.code == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          if-no-files-found: ignore
+          path: |
+            playwright-report
+            blob-report
+            test-results
+
+      - name: Upload smoke log
+        if: steps.changes.outputs.code == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log
+          if-no-files-found: ignore
+          path: .smoke-tool-call.log
+
+      - name: Ensure workspace clean (no regenerated fixtures)
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          git status --porcelain
+          test -z "$(git ls-files --others --exclude-standard)"
+          git diff --exit-code
 
       - name: Skip tests (docs-only change)
         if: steps.changes.outputs.code != 'true'

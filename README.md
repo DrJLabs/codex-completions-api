@@ -21,7 +21,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 ## Features
 
-- OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`.
+- OpenAI-compatible routes: `/v1/models`, `/v1/chat/completions`, `/v1/responses` (typed streaming + non-stream).
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
@@ -51,7 +51,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
    ```
 
 2. Seed `.codev/` with your Codex CLI config (`config.toml`, `auth.json`).
-3. Start the proxy (defaults to port `18000`):
+3. Start the proxy (defaults to port `11435` and binds to `127.0.0.1` unless overridden):
 
    ```bash
    PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
@@ -96,6 +96,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
    curl -s http://127.0.0.1:11435/v1/models | jq .
    ```
 
+> Note: `docker-compose.yml` sets `PROXY_HOST=0.0.0.0` inside the container so Traefik can reach the app over the bridge network. Local Node runs still default to `127.0.0.1` unless you override `PROXY_HOST`.
+
 ### Dev helpers
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
@@ -106,8 +108,10 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 ### Authentication
 
-- All `/v1/chat/completions` requests require `Authorization: Bearer $PROXY_API_KEY`.
+- All `/v1/chat/completions` **and `/v1/responses`** requests require `Authorization: Bearer $PROXY_API_KEY`.
 - `/v1/models` is public in dev but can be protected by setting `PROXY_PROTECT_MODELS=true`.
+- Usage telemetry (`/v1/usage`, `/v1/usage/raw`) requires the bearer key unless you explicitly set `PROXY_USAGE_ALLOW_UNAUTH=true` for local diagnostics.
+- Test-only routes (`/__test/*`) are gated by `PROXY_TEST_ENDPOINTS=true`, always require the bearer key, and default to loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`.
 - ForwardAuth (Traefik) also checks the same key to keep edge and origin consistent.
 
 ### Model selection
@@ -122,6 +126,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
 - Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
 - `PROXY_STREAM_MODE=jsonl` outputs raw Codex JSON lines for debugging; default mode emits OpenAI-style SSE envelopes.
+- `/v1/responses` can be disabled for chat-only deployments via `PROXY_ENABLE_RESPONSES=false`; default is on for parity with OpenAI.
 
 ### Streaming controls for tool-heavy clients
 
@@ -135,6 +140,11 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - The proxy logs estimated prompt/completion token usage for each request and exposes the aggregates via `/v1/usage`.
 - Metrics are approximate because Codex CLI does not expose raw token counts for every release; treat them as guidance rather than billable totals.
+
+### Observability
+
+- `/metrics` (enable via `PROXY_ENABLE_METRICS=true`) exposes Prometheus series including stream TTFB/duration/end (`codex_stream_ttfb_ms`, `codex_stream_duration_ms`, `codex_stream_end_total`) and worker readiness/restart gauges/counter; loopback/bearer gating applies.
+- Optional OTLP tracing: set `PROXY_ENABLE_OTEL=true` plus `PROXY_OTEL_EXPORTER_URL` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) to emit `http.server` and backend spans; defaults keep tracing off.
 
 ## Project Structure (high‑level)
 
@@ -335,7 +345,7 @@ Behavior:
 
 ## Documentation
 
-This repository ships with a minimal public documentation stub (`docs/README.md`). Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. See `docs/README.md` for guidance on structuring local-only docs.
+This repository ships with a minimal public documentation stub (`docs/README.md`) — treat it as the canonical index. Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
 
 ## License
 
@@ -358,6 +368,8 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 - Run `npm run verify:all` before opening a PR to execute formatting, linting, unit, integration, and Playwright suites in one step.
 - Env smokes: `npm run smoke:dev` (requires `DEV_DOMAIN`/`KEY`) and `npm run smoke:prod` (requires `DOMAIN`/`KEY`) hit `/v1/models` and both streaming and non-stream chat endpoints against the respective stacks.
+- CI artifacts: the workflow uploads `playwright-report`/`blob-report` plus `.smoke-tool-call.log`. Download artifacts from the run and open the HTML report locally via `npx playwright show-report playwright-report`.
+- CI enforces a clean workspace after tests to catch regenerated fixtures; keep tracked assets updated locally before pushing.
 
 1. Unit (Vitest, fast, watchable)
 
@@ -449,6 +461,7 @@ Environment variables:
 - `CODEX_BIN` (default: `codex`) — override to `/app/scripts/fake-codex-proto.js` only when you explicitly need the legacy proto shim (CI/offline tests).
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
+- `PROXY_ENABLE_RESPONSES` (default: `true`) — disable to hide `/v1/responses` in chat-only environments.
 - Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls. Sections that describe tool-tail streaming (e.g., stop-after-tools) are therefore inactive unless you explicitly re-enable tools for a workflow.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -464,6 +477,9 @@ Environment variables:
 - `SSE_KEEPALIVE_MS` (default: `15000`) — periodic `: keepalive` comment cadence for intermediaries.
 - `TOKEN_LOG_PATH` (default: OS tmpdir `codex-usage.ndjson`) — where usage events are appended (NDJSON).
 - `RATE_LIMIT_AVG` / `RATE_LIMIT_BURST` — Traefik rate limit average/burst (defaults: 200/400).
+- `PROXY_ENABLE_OTEL` (default: `false`) — when true and an exporter URL is provided, emit OTLP HTTP spans for HTTP ingress and backend invocation.
+- `PROXY_OTEL_EXPORTER_URL` (optional) — OTLP/HTTP traces endpoint; falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` if set.
+- `PROXY_OTEL_SERVICE_NAME` (optional) — override service name for emitted spans.
 
 ## Roo Code configuration
 
@@ -664,6 +680,7 @@ Files in this repo
 - Compose stack: [docker-compose.yml](docker-compose.yml)
 - ForwardAuth microservice: [auth/server.js](auth/server.js)
 - Main API server: [server.js](server.js)
+- Legacy systemd installer was archived to `docs/_archive/install.sh` and `scripts/install.sh` now exits early; compose is the canonical deployment path.
 
 Edge authentication model
 

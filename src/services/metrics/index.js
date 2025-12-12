@@ -6,6 +6,9 @@ collectDefaultMetrics({ register: registry });
 const LATENCY_BUCKETS_MS = [50, 100, 200, 400, 800, 1200, 2000, 5000, 10000];
 const HTTP_LABELS = ["route", "method", "status_family", "model"];
 const TOOL_BUFFER_LABELS = ["output_mode", "reason"];
+const STREAM_LABELS = ["route", "model", "outcome"];
+const STREAM_TTFB_LABELS = ["route", "model"];
+const STREAM_DURATION_BUCKETS_MS = [100, 250, 500, 1000, 2000, 5000, 15000, 60000, 180000];
 
 const httpRequestsTotal = new Counter({
   name: "codex_http_requests_total",
@@ -37,9 +40,38 @@ const httpLatencySummary = new Summary({
   registers: [registry],
 });
 
+const streamTtfb = new Histogram({
+  name: "codex_stream_ttfb_ms",
+  help: "Time to first byte for streaming responses",
+  buckets: LATENCY_BUCKETS_MS,
+  labelNames: STREAM_TTFB_LABELS,
+  registers: [registry],
+});
+
+const streamDuration = new Histogram({
+  name: "codex_stream_duration_ms",
+  help: "Total stream duration by outcome",
+  buckets: STREAM_DURATION_BUCKETS_MS,
+  labelNames: STREAM_LABELS,
+  registers: [registry],
+});
+
+const streamEnds = new Counter({
+  name: "codex_stream_end_total",
+  help: "Stream termination counts by outcome",
+  labelNames: STREAM_LABELS,
+  registers: [registry],
+});
+
 const workerRestarts = new Gauge({
   name: "codex_worker_restarts_total",
   help: "Codex worker restart count",
+  registers: [registry],
+});
+
+const workerRestartsCounter = new Counter({
+  name: "codex_worker_restarts_inc_total",
+  help: "Codex worker restarts (incrementing)",
   registers: [registry],
 });
 
@@ -123,6 +155,24 @@ const normalizeModel = (model) => {
   return value.length > 64 ? value.slice(0, 64) : value;
 };
 
+const normalizeOutcome = (outcome) => {
+  if (!outcome) return "unknown";
+  const normalized = String(outcome).trim().toLowerCase();
+  if (!normalized) return "unknown";
+  return normalized.length > 48 ? normalized.slice(0, 48) : normalized;
+};
+
+const normalizeStreamLabels = ({ route, model, outcome }) => ({
+  route: normalizeRoute(route),
+  model: normalizeModel(model),
+  outcome: normalizeOutcome(outcome),
+});
+
+const normalizeStreamTtfbLabels = ({ route, model }) => ({
+  route: normalizeRoute(route),
+  model: normalizeModel(model),
+});
+
 const normalizeHttpLabels = ({ route, method, statusCode, model }) => ({
   route: normalizeRoute(route),
   method: normalizeMethod(method),
@@ -174,6 +224,42 @@ export function setWorkerMetrics(status) {
   if (Number.isFinite(backoff)) workerBackoffMs.set(backoff);
   const ready = status?.ready ? 1 : 0;
   workerReady.set(ready);
+}
+
+let lastWorkerRestartCount = 0;
+export function observeWorkerRestartDelta(status) {
+  const restarts = Number(status?.metrics?.codex_worker_restarts_total ?? status?.restarts_total);
+  if (!Number.isFinite(restarts)) return;
+  const delta = restarts - lastWorkerRestartCount;
+  if (delta > 0) {
+    workerRestartsCounter.inc(delta);
+    lastWorkerRestartCount = restarts;
+  }
+}
+
+export function createStreamObserver({ route, model }) {
+  const startedAt = Date.now();
+  const ttfbLabels = normalizeStreamTtfbLabels({ route, model });
+  const durationLabelsBase = { route: ttfbLabels.route, model: ttfbLabels.model };
+  let firstSeen = false;
+  let ended = false;
+
+  const markFirst = () => {
+    if (firstSeen) return;
+    firstSeen = true;
+    streamTtfb.observe(ttfbLabels, Math.max(Date.now() - startedAt, 0));
+  };
+
+  const end = (outcome = "ok") => {
+    if (ended) return;
+    ended = true;
+    const labels = normalizeStreamLabels({ ...durationLabelsBase, outcome });
+    if (!firstSeen) markFirst();
+    streamDuration.observe(labels, Math.max(Date.now() - startedAt, 0));
+    streamEnds.inc(labels);
+  };
+
+  return { markFirst, end };
 }
 
 export function setMaintenanceState(enabled) {

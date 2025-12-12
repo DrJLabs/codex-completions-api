@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Codex App Server JSON-RPC Schema Bundle",
   "cliVersion": "0.56.0",
-  "generatedAt": "2025-11-19T22:40:09.602Z",
   "definitions": {
     "InitializeParams": {
       "type": "object",
@@ -453,6 +452,571 @@
         "conversationId",
         "items"
       ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "AgentMessageDeltaParams": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "delta": {
+          "$ref": "#/definitions/AgentMessageDelta"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "conversation_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "request_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "delta"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "AgentMessageDelta": {
+      "anyOf": [
+        {
+          "allOf": [
+            {
+              "type": "object",
+              "additionalProperties": {},
+              "properties": {
+                "role": {
+                  "type": "string"
+                },
+                "content": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/AgentContentPayload"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/AgentContentPayload"
+                      }
+                    },
+                    {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
+                    }
+                  ]
+                },
+                "text": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "metadata": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Record<string,unknown>"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tool_calls": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/ToolCallDelta"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "toolCalls": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/ToolCallDelta"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parallel_tool_calls": {
+                  "type": "boolean"
+                },
+                "parallelToolCalls": {
+                  "type": "boolean"
+                }
+              }
+            },
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            }
+          ]
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "AgentContentPayload": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "ToolCallDelta": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "index": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "function": {
+          "$ref": "#/definitions/ToolCallFunctionDelta"
+        },
+        "parallel_tool_calls": {
+          "type": "boolean"
+        },
+        "parallelToolCalls": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ToolCallFunctionDelta": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "string"
+        },
+        "arguments_chunk": {
+          "type": "string"
+        },
+        "argumentsChunk": {
+          "type": "string"
+        }
+      }
+    },
+    "AgentMessageParams": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "message": {
+          "$ref": "#/definitions/AssistantMessage"
+        },
+        "parallel_tool_calls": {
+          "type": "boolean"
+        },
+        "parallelToolCalls": {
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "conversation_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "request_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "AssistantMessage": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentContentPayload"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AgentContentPayload"
+              }
+            },
+            {
+              "type": [
+                "null",
+                "string"
+              ]
+            }
+          ]
+        },
+        "tool_calls": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ToolCall"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ToolCall"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "function_call": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FunctionCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "functionCall": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FunctionCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Record<string,unknown>"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "role"
+      ]
+    },
+    "ToolCall": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "index": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "function": {
+          "$ref": "#/definitions/ToolCallFunction"
+        }
+      }
+    },
+    "ToolCallFunction": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "string"
+        }
+      }
+    },
+    "FunctionCall": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "string"
+        }
+      }
+    },
+    "TokenCountParams": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "prompt_tokens": {
+          "type": "number"
+        },
+        "completion_tokens": {
+          "type": "number"
+        },
+        "total_tokens": {
+          "type": "number"
+        },
+        "finish_reason": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "token_limit_reached": {
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "conversation_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "request_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "RequestTimeoutParams": {
+      "type": "object",
+      "additionalProperties": {},
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "conversation_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "request_id": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "JsonRpcErrorResponse": {

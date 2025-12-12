@@ -8,6 +8,7 @@ export default function accessLog() {
     res.setHeader?.("X-Request-Id", req_id);
     res.locals = res.locals || {};
     res.locals.req_id = req_id;
+    const trace_id = res.locals.trace_id;
     res.on("finish", () => {
       try {
         const dur_ms = Date.now() - started;
@@ -18,6 +19,7 @@ export default function accessLog() {
             component: "http",
             event: "access_log",
             req_id,
+            trace_id,
             route: req.originalUrl,
             level: "info",
             latency_ms: dur_ms,
