@@ -351,31 +351,31 @@
         {
           "type": "object",
           "properties": {
-            "mode": {
+            "type": {
               "type": "string",
               "const": "danger-full-access"
             }
           },
           "required": [
-            "mode"
+            "type"
           ]
         },
         {
           "type": "object",
           "properties": {
-            "mode": {
+            "type": {
               "type": "string",
               "const": "read-only"
             }
           },
           "required": [
-            "mode"
+            "type"
           ]
         },
         {
           "type": "object",
           "properties": {
-            "mode": {
+            "type": {
               "type": "string",
               "const": "workspace-write"
             },
@@ -396,7 +396,7 @@
             }
           },
           "required": [
-            "mode"
+            "type"
           ]
         }
       ]

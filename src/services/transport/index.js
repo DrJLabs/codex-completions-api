@@ -42,6 +42,34 @@ const normalizeNotificationMethod = (method) => {
   return value.replace(/^codex\/event\//i, "");
 };
 
+const summarizeTurnParamsForLog = (params) => {
+  if (!params || typeof params !== "object") return { kind: typeof params };
+  const summary = {
+    keys: Object.keys(params).sort(),
+  };
+  if (Array.isArray(params.items)) {
+    summary.items = params.items.map((item) => {
+      if (!item || typeof item !== "object") {
+        return { kind: typeof item };
+      }
+      const hasType = Object.prototype.hasOwnProperty.call(item, "type");
+      const hasData = Object.prototype.hasOwnProperty.call(item, "data");
+      const dataKeys =
+        item.data && typeof item.data === "object" ? Object.keys(item.data).sort() : [];
+      return {
+        hasType,
+        type: item.type,
+        hasData,
+        dataKeys,
+      };
+    });
+  }
+  if (params.sandboxPolicy && typeof params.sandboxPolicy === "object") {
+    summary.sandboxPolicy = params.sandboxPolicy;
+  }
+  return summary;
+};
+
 class TransportError extends Error {
   constructor(message, { code = "transport_error", retryable = false } = {}) {
     super(message);
@@ -671,6 +699,7 @@ class JsonRpcTransport {
       type: "sendUserTurn",
       context,
       timeout,
+      requestSummary: null,
       resolve: (result) => {
         clearTimeout(timeout);
         this.pending.delete(turnRpcId);
@@ -710,6 +739,10 @@ class JsonRpcTransport {
         conversationId: context.conversationId ?? context.clientConversationId,
         requestId: context.clientConversationId,
       });
+      const pending = this.pending.get(turnRpcId);
+      if (pending) {
+        pending.requestSummary = summarizeTurnParamsForLog(params);
+      }
       if (context.trace) {
         this.rpcTraceById.set(turnRpcId, context.trace);
         logBackendSubmission(context.trace, {
@@ -845,6 +878,13 @@ class JsonRpcTransport {
         code: message.error?.code || "worker_error",
         retryable: true,
       });
+      if (pending.type === "sendUserTurn" && pending.requestSummary) {
+        try {
+          console.warn(
+            `${LOG_PREFIX} sendUserTurn rejected; request summary: ${JSON.stringify(pending.requestSummary)}`
+          );
+        } catch {}
+      }
       if (trace) {
         logBackendResponse(trace, {
           rpcId: message.id,
