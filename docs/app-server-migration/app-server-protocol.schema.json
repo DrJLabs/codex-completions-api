@@ -203,6 +203,12 @@
         "model": {
           "type": "string"
         },
+        "choiceCount": {
+          "type": "number"
+        },
+        "choice_count": {
+          "type": "number"
+        },
         "effort": {
           "anyOf": [
             {
