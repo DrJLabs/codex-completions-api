@@ -929,10 +929,10 @@ function normalizeSandboxModeOption(
   }
   if (value && typeof value === "object") {
     const raw =
-      typeof (value as any).mode === "string"
-        ? (value as any).mode
-        : typeof (value as any).type === "string"
-          ? (value as any).type
+      typeof (value as any).type === "string"
+        ? (value as any).type
+        : typeof (value as any).mode === "string"
+          ? (value as any).mode
           : "";
     const mode = String(raw || "")
       .trim()

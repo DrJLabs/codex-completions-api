@@ -1,5 +1,9 @@
 import { postChatNonStream } from "../chat/nonstream.js";
-import { coerceInputToChatMessages, convertChatResponseToResponses } from "./shared.js";
+import {
+  applyDefaultProxyOutputModeHeader,
+  coerceInputToChatMessages,
+  convertChatResponseToResponses,
+} from "./shared.js";
 import { config as CFG } from "../../config/index.js";
 
 export async function postResponsesNonStream(req, res) {
@@ -22,10 +26,7 @@ export async function postResponsesNonStream(req, res) {
     return convertChatResponseToResponses(payload, originalBody);
   };
 
-  const desiredOutputMode = String(CFG.PROXY_RESPONSES_OUTPUT_MODE || "").trim();
-  const originalOutputHeader = req.headers?.["x-proxy-output-mode"];
-  const shouldOverrideOutputMode =
-    (!originalOutputHeader || !String(originalOutputHeader).trim()) && desiredOutputMode;
+  const restoreOutputMode = applyDefaultProxyOutputModeHeader(req, CFG.PROXY_RESPONSES_OUTPUT_MODE);
 
   let cleanedUp = false;
   const cleanup = () => {
@@ -51,21 +52,12 @@ export async function postResponsesNonStream(req, res) {
 
   try {
     req.body = chatBody;
-    if (shouldOverrideOutputMode) {
-      req.headers["x-proxy-output-mode"] = desiredOutputMode;
-    }
     await postChatNonStream(req, res);
   } catch (error) {
     cleanup();
     throw error;
   } finally {
     req.body = originalBody;
-    if (shouldOverrideOutputMode) {
-      if (originalOutputHeader === undefined) {
-        delete req.headers["x-proxy-output-mode"];
-      } else {
-        req.headers["x-proxy-output-mode"] = originalOutputHeader;
-      }
-    }
+    restoreOutputMode();
   }
 }
