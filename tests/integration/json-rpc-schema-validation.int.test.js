@@ -101,6 +101,8 @@ describe("json-rpc payload schema", () => {
       conversationId: "conv-validator",
       requestId: "req-validator",
     });
+    expect(turnParams.choiceCount).toBe(1);
+    expect(turnParams.choice_count).toBe(1);
     const messageParams = buildSendUserMessageParams({
       ...normalized.message,
       conversationId: "conv-validator",

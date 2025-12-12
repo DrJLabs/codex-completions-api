@@ -385,11 +385,20 @@ export function validateOptionalChatParams(body = {}, { allowJsonSchema = false 
 
   if (response_format !== undefined && response_format !== null) {
     const makeError = () =>
-      invalidRequestBody("response_format", 'response_format.type must be "text" when provided');
+      invalidRequestBody(
+        "response_format",
+        allowJsonSchema
+          ? 'response_format.type must be "text", "json_object", or "json_schema" when provided'
+          : 'response_format.type must be "text" when provided'
+      );
 
     if (typeof response_format === "string") {
       const normalized = response_format.toLowerCase();
       if (normalized === "json_schema") {
+        if (!allowJsonSchema) {
+          return { ok: false, error: makeError() };
+        }
+      } else if (normalized === "json_object") {
         if (!allowJsonSchema) {
           return { ok: false, error: makeError() };
         }
@@ -411,6 +420,10 @@ export function validateOptionalChatParams(body = {}, { allowJsonSchema = false 
               "json_schema must be an object or null when provided"
             ),
           };
+        }
+      } else if (type === "json_object") {
+        if (!allowJsonSchema) {
+          return { ok: false, error: makeError() };
         }
       } else if (type !== "text") {
         return { ok: false, error: makeError() };

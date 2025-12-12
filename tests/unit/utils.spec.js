@@ -27,6 +27,16 @@ describe("model utils", () => {
     expect(r).toEqual({ requested: "codev-5.1-l", effective: "gpt-5.1" });
     expect(impliedEffortForModel("codev-5.1-L")).toBe("low");
   });
+  it("normalizes codev-5.2-L to gpt-5.2 with low effort", () => {
+    const r = normalizeModel("codev-5.2-L", "gpt-5");
+    expect(r).toEqual({ requested: "codev-5.2-l", effective: "gpt-5.2" });
+    expect(impliedEffortForModel("codev-5.2-L")).toBe("low");
+  });
+  it("normalizes codev-5.2-XH to gpt-5.2 with xhigh effort", () => {
+    const r = normalizeModel("codev-5.2-XH", "gpt-5");
+    expect(r).toEqual({ requested: "codev-5.2-xh", effective: "gpt-5.2" });
+    expect(impliedEffortForModel("codev-5.2-XH")).toBe("xhigh");
+  });
   it("accepts uppercase ids inside the provided publicIds list", () => {
     const r = normalizeModel("codev-5.1-H", "gpt-5", ["codev-5.1-H"]);
     expect(r).toEqual({ requested: "codev-5.1-h", effective: "gpt-5.1" });

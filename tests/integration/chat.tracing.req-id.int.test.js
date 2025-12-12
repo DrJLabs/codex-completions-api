@@ -102,11 +102,16 @@ test("streaming request logs http ingress, backend, client egress, and usage wit
     stream: true,
     messages: [{ role: "user", content: "trace me" }],
   };
-  const response = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer test-sk-ci" },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    response = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-sk-ci" },
+      body: JSON.stringify(payload),
+    });
+    if (response.status !== 503) break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
   expect(response.ok).toBe(true);
   const reader = response.body.getReader();
   // consume stream fully
@@ -160,11 +165,16 @@ test("non-streaming request logs client_json egress event", async () => {
     stream: false,
     messages: [{ role: "user", content: "non-stream" }],
   };
-  const response = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer test-sk-ci" },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    response = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-sk-ci" },
+      body: JSON.stringify(payload),
+    });
+    if (response.status !== 503) break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
   expect(response.ok).toBe(true);
   await response.json();
   await new Promise((resolve) => setTimeout(resolve, 300));

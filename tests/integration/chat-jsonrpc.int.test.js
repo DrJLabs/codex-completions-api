@@ -221,6 +221,8 @@ describe("chat JSON-RPC normalization", () => {
       type: "text",
       data: { text: payload.messages.find((msg) => msg.role === "user")?.content },
     });
+    expect(params.tools).toEqual(turnParams.tools);
+    expect(params.items).toEqual(turnParams.items);
   }, 20000);
 
   it("flags streaming requests and include_usage in JSON-RPC payload", async () => {
@@ -407,6 +409,31 @@ describe("chat JSON-RPC normalization", () => {
     const body = await response.json();
     expect(body.error?.type).toBe("invalid_request_error");
     expect(body.error?.param).toBe("tools[0].function.name");
+  }, 20000);
+
+  it("accepts assistant history and forwards it as flattened prompt", async () => {
+    server = await startServerWithCapture({ PROXY_API_KEY: "test-sk-ci" });
+
+    const payload = {
+      model: "codex-5",
+      messages: [
+        { role: "system", content: "Keep concise" },
+        { role: "assistant", content: "previous reply" },
+        { role: "user", content: "continue" },
+      ],
+    };
+
+    const response = await postChatCompletions(server.PORT, payload);
+
+    expect(response.status).toBe(200);
+    await response.json();
+
+    await waitForCapture(server.captures, (entry) => entry?.payload?.method === "sendUserTurn");
+    const turnCapture = findCapture(server.captures, "sendUserTurn");
+    expect(turnCapture).toBeDefined();
+    const promptText = turnCapture.payload?.params?.items?.[0]?.data?.text || "";
+    expect(promptText).toContain("[assistant] previous reply");
+    expect(promptText).toContain("[user] continue");
   }, 20000);
 });
 

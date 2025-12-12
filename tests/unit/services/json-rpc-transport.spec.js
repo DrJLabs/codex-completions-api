@@ -163,6 +163,30 @@ describe("mapTransportError", () => {
     });
     expect(mapped.body.error).not.toHaveProperty("retryable");
   });
+
+  it.each([
+    ["handshake_timeout", 503, "backend_unavailable", true],
+    ["handshake_failed", 503, "backend_unavailable", true],
+    ["worker_unavailable", 503, "backend_unavailable", true],
+    ["worker_not_ready", 503, "backend_unavailable", true],
+    ["worker_exited", 503, "backend_unavailable", true],
+    ["worker_busy", 429, "rate_limit_error", true],
+    ["transport_destroyed", 503, "backend_unavailable", true],
+    ["request_aborted", 499, "request_cancelled", false],
+  ])("maps %s transport errors", (code, statusCode, type, retryable) => {
+    const err = new TransportError("boom", { code, retryable });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped.statusCode).toBe(statusCode);
+    expect(mapped.body.error.code).toBe(code);
+    expect(mapped.body.error.type).toBe(type);
+    if (retryable) {
+      expect(mapped.body.error.retryable).toBe(true);
+    } else {
+      expect(mapped.body.error).not.toHaveProperty("retryable");
+    }
+  });
 });
 
 afterEach(() => {
