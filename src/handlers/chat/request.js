@@ -10,6 +10,17 @@ class ChatJsonRpcNormalizationError extends Error {
   }
 }
 
+const ALLOWED_MESSAGE_ROLES = new Set([
+  "system",
+  "developer",
+  "user",
+  "assistant",
+  "tool",
+  "function",
+]);
+const ALLOWED_TOOL_CHOICES = new Set(["auto", "none", "required"]);
+const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
+
 const toFiniteNumber = (value) => {
   if (value === undefined || value === null || value === "") return undefined;
   const num = Number(value);
@@ -58,15 +69,61 @@ const flattenMessageContent = (content) => {
   return String(content);
 };
 
-const normalizeToolChoice = (rawChoice) => {
+const normalizeToolChoice = (rawChoice, definitions) => {
   if (rawChoice === undefined || rawChoice === null) return undefined;
   if (typeof rawChoice === "string") {
-    const trimmed = rawChoice.trim();
+    const trimmed = rawChoice.trim().toLowerCase();
     if (!trimmed) return undefined;
+    if (!ALLOWED_TOOL_CHOICES.has(trimmed)) {
+      throw new ChatJsonRpcNormalizationError(
+        invalidRequestBody(
+          "tool_choice",
+          'tool_choice must be "auto", "none", "required", or a function selector'
+        )
+      );
+    }
     return trimmed;
   }
-  if (typeof rawChoice === "object") return rawChoice;
-  return undefined;
+  if (typeof rawChoice !== "object") {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "tool_choice",
+        'tool_choice must be a string ("auto" | "none" | "required") or { type: "function", function: { name } }'
+      )
+    );
+  }
+  const type = String(rawChoice.type || "function").toLowerCase();
+  if (type && type !== "function") {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("tool_choice.type", 'tool_choice.type must be "function"')
+    );
+  }
+  const fn = rawChoice.function || rawChoice.fn;
+  if (!fn || typeof fn !== "object" || !fn.name || !String(fn.name).trim()) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("tool_choice.function.name", "tool_choice.function.name is required")
+    );
+  }
+  const fnName = String(fn.name).trim();
+  if (!definitions || !definitions.length) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("tool_choice", "tool_choice requires tools definitions")
+    );
+  }
+  const matchesDefinition = definitions.some((definition) => {
+    if (!definition || typeof definition !== "object") return false;
+    const candidate = definition.function || definition.fn;
+    return typeof candidate?.name === "string" && candidate.name.trim() === fnName;
+  });
+  if (!matchesDefinition) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "tool_choice.function.name",
+        "tool_choice.function.name must reference a declared tool"
+      )
+    );
+  }
+  return { ...rawChoice, type: "function", function: { ...fn, name: fnName } };
 };
 
 const normalizeParallelToolCalls = (value) => {
@@ -118,21 +175,6 @@ const validateTools = (tools) => {
   return definitions.length ? definitions : undefined;
 };
 
-const resolveFinalOutputJsonSchema = (responseFormat) => {
-  if (!responseFormat || typeof responseFormat !== "object") return undefined;
-  const type = String(responseFormat.type || "").toLowerCase();
-  if (type !== "json_schema") return undefined;
-  const schemaObject = responseFormat.json_schema ?? responseFormat.schema;
-  if (schemaObject === null) return null;
-  if (schemaObject && typeof schemaObject === "object") {
-    if (schemaObject.schema && typeof schemaObject.schema === "object") {
-      return schemaObject.schema;
-    }
-    return schemaObject;
-  }
-  return undefined;
-};
-
 const buildToolsPayload = ({ definitions, toolChoice, parallelToolCalls }) => {
   const payload = {};
   if (definitions) payload.definitions = definitions;
@@ -141,14 +183,161 @@ const buildToolsPayload = ({ definitions, toolChoice, parallelToolCalls }) => {
   return Object.keys(payload).length ? payload : undefined;
 };
 
+const assertAllowedMessageRoles = (messages) => {
+  if (!Array.isArray(messages)) return;
+  for (const [idx, msg] of messages.entries()) {
+    const role = (msg?.role || "").toString().toLowerCase();
+    if (!ALLOWED_MESSAGE_ROLES.has(role)) {
+      throw new ChatJsonRpcNormalizationError(
+        invalidRequestBody(
+          `messages[${idx}].role`,
+          `unsupported role "${role}"; supported roles are: ${Array.from(
+            ALLOWED_MESSAGE_ROLES
+          ).join(", ")}`
+        )
+      );
+    }
+  }
+};
+
+const buildTranscriptFromMessages = (messages = []) => {
+  const relevant = (messages || []).filter((msg) => {
+    if (!msg) return false;
+    const role = (msg?.role || "user").toString().toLowerCase();
+    return role !== "system" && role !== "developer";
+  });
+  const roles = relevant.map((msg) => (msg?.role || "user").toString().toLowerCase());
+  const needsRoleLabels = relevant.length > 1 || roles.some((role) => role !== "user");
+
+  const lines = [];
+  for (const msg of relevant) {
+    const role = (msg?.role || "user").toString().toLowerCase();
+    const raw = flattenMessageContent(msg?.content).trim();
+    if (!raw) continue;
+    if (!needsRoleLabels && role === "user") {
+      lines.push(raw);
+      continue;
+    }
+    let label = role;
+    if ((role === "tool" || role === "function") && msg.name) {
+      label = `${role}:${String(msg.name).trim()}`;
+    }
+    lines.push(`[${label}] ${raw}`);
+  }
+  return lines.join("\n");
+};
+
+const normalizeReasoningControls = (reasoningEffort, rawReasoning) => {
+  let normalizedEffort =
+    typeof reasoningEffort === "string" ? reasoningEffort.trim().toLowerCase() : "";
+
+  if (rawReasoning !== undefined) {
+    if (rawReasoning === null) {
+      normalizedEffort = normalizedEffort || "";
+    } else if (typeof rawReasoning !== "object") {
+      throw new ChatJsonRpcNormalizationError(
+        invalidRequestBody("reasoning", "reasoning must be an object when provided")
+      );
+    } else if (!normalizedEffort) {
+      const effortCandidate =
+        typeof rawReasoning.effort === "string" ? rawReasoning.effort.trim().toLowerCase() : "";
+      normalizedEffort = effortCandidate;
+    }
+  }
+
+  if (normalizedEffort && !ALLOWED_REASONING_EFFORTS.has(normalizedEffort)) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "reasoning.effort",
+        `reasoning.effort must be one of: ${Array.from(ALLOWED_REASONING_EFFORTS).join(", ")}`
+      )
+    );
+  }
+
+  let reasoningPayload;
+  if (normalizedEffort) {
+    reasoningPayload = {
+      ...(typeof rawReasoning === "object" ? rawReasoning : {}),
+      effort: normalizedEffort,
+    };
+  }
+
+  return { turnEffort: normalizedEffort || null, reasoningPayload };
+};
+
+const normalizeResponseFormat = (responseFormat) => {
+  if (responseFormat === undefined)
+    return { responseFormat: undefined, finalOutputJsonSchema: undefined };
+  if (responseFormat === null) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("response_format", "response_format must be an object when provided")
+    );
+  }
+  if (typeof responseFormat !== "object") {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody("response_format", "response_format must be an object when provided")
+    );
+  }
+  const type =
+    typeof responseFormat.type === "string" ? responseFormat.type.trim().toLowerCase() : "";
+  if (!type) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "response_format.type",
+        "response_format.type must be provided when response_format is set"
+      )
+    );
+  }
+  if (type === "text" || type === "json_object") {
+    return { responseFormat: { ...responseFormat, type }, finalOutputJsonSchema: undefined };
+  }
+  if (type !== "json_schema") {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "response_format.type",
+        'response_format.type must be "text", "json_object", or "json_schema"'
+      )
+    );
+  }
+
+  const schemaContainer = responseFormat.json_schema ?? responseFormat.schema;
+  if (!schemaContainer || typeof schemaContainer !== "object") {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "response_format.json_schema",
+        "response_format.json_schema.schema must be an object"
+      )
+    );
+  }
+  const schema = schemaContainer.schema ?? schemaContainer;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    throw new ChatJsonRpcNormalizationError(
+      invalidRequestBody(
+        "response_format.json_schema.schema",
+        "response_format.json_schema.schema must be a JSON object"
+      )
+    );
+  }
+  const normalizedSchemaContainer =
+    schemaContainer && typeof schemaContainer === "object" && schemaContainer.schema
+      ? { ...schemaContainer, schema }
+      : { schema };
+
+  return {
+    responseFormat: {
+      ...responseFormat,
+      type: "json_schema",
+      json_schema: normalizedSchemaContainer,
+    },
+    finalOutputJsonSchema: schema,
+  };
+};
+
 export const normalizeChatJsonRpcRequest = ({
   body = {},
   messages = [],
   prompt = "",
-  reqId: _reqId,
-  requestedModel: _requestedModel,
   effectiveModel,
-  choiceCount = 1,
   stream = false,
   reasoningEffort = "",
   sandboxMode = "",
@@ -194,7 +383,7 @@ export const normalizeChatJsonRpcRequest = ({
   }
 
   const definitions = validateTools(body.tools);
-  const toolChoice = normalizeToolChoice(body.tool_choice ?? body.toolChoice);
+  const toolChoice = normalizeToolChoice(body.tool_choice ?? body.toolChoice, definitions);
   const parallelToolCalls = normalizeParallelToolCalls(body.parallel_tool_calls);
   if (
     body.parallel_tool_calls !== undefined &&
@@ -215,28 +404,33 @@ export const normalizeChatJsonRpcRequest = ({
 
   const promptText = typeof prompt === "string" ? prompt : String(prompt ?? "");
 
+  assertAllowedMessageRoles(messages || []);
+
   const systemInstructions = (messages || [])
-    .filter((msg) => (msg?.role || "").toLowerCase() === "system")
+    .filter((msg) => {
+      const role = (msg?.role || "").toLowerCase();
+      return role === "system" || role === "developer";
+    })
     .map((msg) => flattenMessageContent(msg?.content).trim())
     .filter(Boolean);
 
   const baseInstructions = systemInstructions.length ? systemInstructions.join("\n\n") : undefined;
 
-  const userItems = (messages || [])
-    .filter((msg) => (msg?.role || "").toLowerCase() === "user")
-    .map((msg) => flattenMessageContent(msg?.content).trim())
-    .filter(Boolean)
-    .map((text) => createUserMessageItem(text));
-
+  const transcript = buildTranscriptFromMessages(messages || []);
   const fallbackText = flattenMessageContent(promptText).trim() || promptText || "";
-  const turnItems = userItems.length ? userItems : [createUserMessageItem(fallbackText)];
+  const combinedText = transcript || fallbackText;
+  const turnItems = [createUserMessageItem(combinedText)];
   const messageItems = turnItems.map((item) => ({ ...item }));
-  const finalOutputJsonSchema = resolveFinalOutputJsonSchema(body.response_format);
+  const { responseFormat, finalOutputJsonSchema } = normalizeResponseFormat(body.response_format);
   const toolsPayload = buildToolsPayload({
     definitions,
     toolChoice,
     parallelToolCalls,
   });
+  const { turnEffort, reasoningPayload } = normalizeReasoningControls(
+    reasoningEffort,
+    body.reasoning
+  );
 
   const turn = {
     model: effectiveModel,
@@ -244,10 +438,9 @@ export const normalizeChatJsonRpcRequest = ({
     cwd: codexWorkdir,
     approvalPolicy: approvalMode,
     sandboxPolicy: sandboxMode ? { mode: sandboxMode } : undefined,
-    effort: reasoningEffort || null,
+    effort: turnEffort,
     summary: "auto",
     stream: !!stream,
-    choiceCount,
     includeApplyPatchTool: true,
   };
 
@@ -274,11 +467,11 @@ export const normalizeChatJsonRpcRequest = ({
   if (toolsPayload) {
     messagePayload.tools = toolsPayload;
   }
-  if (body.response_format !== undefined) {
-    messagePayload.responseFormat = body.response_format;
+  if (responseFormat !== undefined) {
+    messagePayload.responseFormat = responseFormat;
   }
-  if (reasoningEffort) {
-    messagePayload.reasoning = { effort: reasoningEffort };
+  if (reasoningPayload !== undefined) {
+    messagePayload.reasoning = reasoningPayload;
   }
   if (finalOutputJsonSchema !== undefined) {
     messagePayload.finalOutputJsonSchema = finalOutputJsonSchema;
