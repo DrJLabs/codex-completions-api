@@ -730,9 +730,11 @@ export async function postChatNonStream(req, res) {
   }
 
   if (IS_DEV_ENV) {
+    const endpointMode = res.locals?.endpoint_mode || "chat";
+    const prefix = `[dev][prompt][chat][req_id=${reqId}][endpoint=${endpointMode}]`;
     try {
-      console.log("[dev][prompt][chat] messages=", JSON.stringify(messages));
-      console.log("[dev][prompt][chat] joined=\n" + prompt);
+      console.log(`${prefix} messages=`, JSON.stringify(messages));
+      console.log(`${prefix} joined=\n` + prompt);
       appendProtoEvent({
         ts: Date.now(),
         req_id: reqId,
@@ -742,7 +744,7 @@ export async function postChatNonStream(req, res) {
         payload: { messages, joined: prompt },
       });
     } catch (e) {
-      console.error("[dev][prompt][chat] error:", e);
+      console.error(`${prefix} error:`, e);
     }
   }
 
