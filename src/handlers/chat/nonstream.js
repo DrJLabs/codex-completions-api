@@ -47,6 +47,7 @@ import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./re
 import { mapTransportError } from "../../services/transport/index.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
+import { maybeInjectIngressGuardrail } from "../../lib/ingress-guardrail.js";
 
 const fingerprintToolCall = (record) => {
   if (!record || typeof record !== "object") return null;
@@ -569,7 +570,7 @@ export async function postChatNonStream(req, res) {
     applyCors(null, res);
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
   }
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+  let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     logUsageFailure({
       req,
@@ -591,6 +592,19 @@ export async function postChatNonStream(req, res) {
         code: "invalid_request_error",
       },
     });
+  }
+
+  const guardrailResult = maybeInjectIngressGuardrail({
+    req,
+    res,
+    messages,
+    enabled: CFG.PROXY_INGRESS_GUARDRAIL,
+    route,
+    mode,
+    endpointMode: res.locals?.endpoint_mode || "chat_completions",
+  });
+  if (guardrailResult.injected) {
+    messages = guardrailResult.messages;
   }
 
   const {

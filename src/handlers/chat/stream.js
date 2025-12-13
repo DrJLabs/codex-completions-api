@@ -60,6 +60,7 @@ import { logHttpRequest } from "../../dev-trace/http.js";
 import { createStreamObserver } from "../../services/metrics/index.js";
 import { startSpan, endSpan } from "../../services/tracing.js";
 import { toolBufferMetrics } from "../../services/metrics/chat.js";
+import { maybeInjectIngressGuardrail } from "../../lib/ingress-guardrail.js";
 import {
   createToolBufferTracker,
   trackToolBufferOpen,
@@ -226,7 +227,7 @@ export async function postChatStream(req, res) {
   }
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+  let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     logUsageFailure({
       req,
@@ -248,6 +249,19 @@ export async function postChatStream(req, res) {
         code: "invalid_request_error",
       },
     });
+  }
+
+  const guardrailResult = maybeInjectIngressGuardrail({
+    req,
+    res,
+    messages,
+    enabled: CFG.PROXY_INGRESS_GUARDRAIL,
+    route,
+    mode,
+    endpointMode: res.locals?.endpoint_mode || "chat_completions",
+  });
+  if (guardrailResult.injected) {
+    messages = guardrailResult.messages;
   }
 
   const {
