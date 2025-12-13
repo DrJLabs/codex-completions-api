@@ -12,12 +12,7 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
-import {
-  authErrorBody,
-  modelNotFoundBody,
-  invalidRequestBody,
-  tokensExceededBody,
-} from "../../lib/errors.js";
+import { modelNotFoundBody, invalidRequestBody, tokensExceededBody } from "../../lib/errors.js";
 import {
   appendUsage,
   appendProtoEvent,
@@ -189,7 +184,6 @@ export const buildAssistantMessage = ({
   return { message, hasToolCalls, toolCallsTruncated, toolCallCount: toolCallRecords.length };
 };
 
-const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
 const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
@@ -553,23 +547,6 @@ export async function postChatNonStream(req, res) {
     body,
   });
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_nonstream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
   let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     logUsageFailure({
@@ -1370,25 +1347,6 @@ export async function postCompletionsNonStream(req, res) {
     mode: "completions_nonstream",
     body,
   });
-
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_nonstream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-      stream: false,
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
 
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
 

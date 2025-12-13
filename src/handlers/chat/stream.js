@@ -19,7 +19,6 @@ import {
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
 import {
-  authErrorBody,
   modelNotFoundBody,
   invalidRequestBody,
   tokensExceededBody,
@@ -71,7 +70,6 @@ import {
   shouldSkipBlock,
 } from "./tool-buffer.js";
 
-const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
 const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
@@ -207,24 +205,6 @@ export async function postChatStream(req, res) {
     mode,
     body,
   });
-
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_stream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -2072,24 +2052,6 @@ export async function postCompletionsStream(req, res) {
     mode: "completions_stream",
     body,
   });
-
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
 
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;

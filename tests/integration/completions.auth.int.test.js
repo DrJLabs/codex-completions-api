@@ -69,6 +69,20 @@ describe("legacy /v1/completions auth and rate limits", () => {
     expect(body?.error?.type).toBe("authentication_error");
   });
 
+  test("accepts lowercase bearer scheme", async () => {
+    await startServer();
+
+    const res = await fetch(`http://127.0.0.1:${PORT}/v1/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "bearer test-sk-ci",
+      },
+      body: JSON.stringify({ model: "codex-5", prompt: "hi", stream: false }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   test("enforces rate limit the same as chat", async () => {
     await startServer({
       PROXY_RATE_LIMIT_ENABLED: "true",

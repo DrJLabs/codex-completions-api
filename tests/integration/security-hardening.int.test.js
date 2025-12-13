@@ -20,6 +20,31 @@ describe("security hardening", () => {
     }
   });
 
+  test("PROXY_USAGE_ALLOW_UNAUTH only bypasses /v1/usage", async () => {
+    const ctx = await startServer({
+      PROXY_TEST_ENDPOINTS: "false",
+      PROXY_USAGE_ALLOW_UNAUTH: "true",
+    });
+    const base = `http://127.0.0.1:${ctx.PORT}`;
+    try {
+      const chatUnauth = await fetch(`${base}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "codex-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+      expect(chatUnauth.status).toBe(401);
+
+      const usageUnauth = await fetch(`${base}/v1/usage`);
+      expect(usageUnauth.status).toBe(200);
+    } finally {
+      await stopServer(ctx.child);
+    }
+  });
+
   test("__test endpoints enforce bearer when enabled", async () => {
     const ctx = await startServer({
       PROXY_TEST_ENDPOINTS: "true",

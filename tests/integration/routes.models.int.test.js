@@ -98,4 +98,12 @@ describe("/v1/models with PROXY_PROTECT_MODELS=true", () => {
     });
     expect(r.status).toBe(200);
   });
+
+  test("GET with lowercase bearer returns 200", async () => {
+    const { PORT } = ctx;
+    const r = await fetch(`http://127.0.0.1:${PORT}/v1/models`, {
+      headers: { Authorization: "bearer test-sk-ci" },
+    });
+    expect(r.status).toBe(200);
+  });
 });

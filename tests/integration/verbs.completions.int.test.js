@@ -45,7 +45,10 @@ afterAll(async () => {
 });
 
 test("HEAD /v1/completions responds 200 with JSON content-type", async () => {
-  const r = await fetch(`http://127.0.0.1:${PORT}/v1/completions`, { method: "HEAD" });
+  const r = await fetch(`http://127.0.0.1:${PORT}/v1/completions`, {
+    method: "HEAD",
+    headers: { Authorization: "Bearer test-sk-ci" },
+  });
   expect(r.status).toBe(200);
   const ct = r.headers.get("content-type") || "";
   expect(ct.toLowerCase()).toContain("application/json");
