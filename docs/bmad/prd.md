@@ -15,7 +15,7 @@ updated: 2025-10-26
 
 ## Background Context
 
-The Codex Completions API fronts the Codex CLI with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The default backend is **Codex app-server (JSON-RPC)** (`PROXY_USE_APP_SERVER=true`); legacy `codex proto` remains a compatibility fallback and is still exercised by parts of the deterministic test suite. The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-26.
+The Codex Completions API fronts the Codex CLI with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The default backend is **Codex app-server (JSON-RPC)** (`PROXY_USE_APP_SERVER=true`); legacy `codex proto` is **deprecated upstream** and is retained only as a compatibility/testing fallback (still exercised by parts of the deterministic test suite). The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-26.
 
 ## Change Log
 

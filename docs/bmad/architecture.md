@@ -18,7 +18,7 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 ## Current Project State
 
 - **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes. Dev/test stacks now default to the app-server JSON-RPC shim for determinism; production still shells out to the packaged CLI.
-- **Proto mode status:** Proto mode is a legacy fallback. Production should keep `PROXY_USE_APP_SERVER=true`; tests may exercise both backends via deterministic shims. Avoid adding new behavior that only works in proto mode.
+- **Proto mode status:** Proto mode is **deprecated upstream** and should not be used for real deployments. Keep `PROXY_USE_APP_SERVER=true` everywhere. Legacy proto shims remain only for compatibility/testing (for example `scripts/fake-codex-proto.js`); do not add new proto-only behavior or fixtures.
 - **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4.0.x, Playwright 1.56.x, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
 - **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating either a supervised JSON-RPC worker (app-server mode) or per-request child processes (proto mode/shims).
 - **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
