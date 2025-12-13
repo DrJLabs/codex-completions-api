@@ -58,7 +58,13 @@ To avoid relying on huge prompt dumps, the proxy now logs (shape-only):
 
 ## Optional mitigation ideas (proxy-side)
 
-If we want to prevent this class of bleed-through without changing the client:
+To prevent this class of bleed-through without changing the client, the proxy now supports an ingress guardrail injection:
+
+- When the incoming prompt contains `<recent_conversations>` and/or tool transcript markers, the proxy prepends a `system` guardrail message before sending to Codex.
+- Toggle: `PROXY_INGRESS_GUARDRAIL=true|false`
+- Log: `event:"ingress_guardrail_injected"` (shape-only; no content)
+
+Additional mitigation ideas (optional):
 
 1. Strip or down-rank `<recent_conversations>` blocks for “new chat” requests (heuristic-based).
 2. Add a system-level guardrail message instructing the model to *never* execute actions based solely on `<recent_conversations>` summaries.
