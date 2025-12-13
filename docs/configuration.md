@@ -1,0 +1,69 @@
+# Configuration
+
+This proxy is configured via environment variables. Defaults live in `src/config/index.js` (source of truth).
+
+## Where config is loaded from
+
+- Local Node dev (`npm run dev` / `npm run dev:shim`) loads `.env` via `scripts/dev.sh`.
+- Dev stack (`compose.dev.stack.yml`) loads `.env.dev`.
+- Prod compose (`docker-compose.yml`) loads `.env` on the host.
+
+## Core settings
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PROXY_API_KEY` | `codex-local-secret` | Bearer token for protected routes |
+| `PORT` | `11435` | Listen port |
+| `PROXY_HOST` | `127.0.0.1` | Listen host |
+| `PROXY_ENV` | *(empty)* | Model advertising mode (`dev` → `codev-5*`) |
+
+## Backend selection
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PROXY_USE_APP_SERVER` | auto | `true` uses app-server JSON-RPC; `false` uses legacy proto |
+| `CODEX_BIN` | `codex` | Codex CLI binary (or shim path) |
+| `CODEX_HOME` | `$PROJECT/.codex-api` | Codex home/config directory |
+| `CODEX_MODEL` | `gpt-5` | Default effective model (proxy also accepts `codex-5*` / `codev-5*`) |
+| `CODEX_FORCE_PROVIDER` | *(empty)* | Force Codex provider (e.g., `chatgpt`) |
+
+### `CODEX_HOME` and `AGENTS.md`
+
+Codex CLI reads `config.toml` and `AGENTS.md` from `CODEX_HOME`.
+
+- Dev workflows commonly use `.codev/` as `CODEX_HOME`.
+- In this repo, `.codev/AGENTS.md` is the Obsidian Copilot prompt/instructions used by the Codex backend for tool-call output; it is intentionally not repository contributor guidance.
+
+## Sandbox and workdir
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PROXY_SANDBOX_MODE` | `read-only` | Sandbox policy passed to Codex (`read-only`, `workspace-write`, `danger-full-access`) |
+| `PROXY_CODEX_WORKDIR` | `/tmp/codex-work` | Child working directory (ephemeral writes) |
+
+## Endpoint toggles and auth gates
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PROXY_ENABLE_RESPONSES` | `true` | Enable `/v1/responses` |
+| `PROXY_PROTECT_MODELS` | `false` | Require bearer for `/v1/models` |
+| `PROXY_USAGE_ALLOW_UNAUTH` | `false` | Allow unauthenticated access to `/v1/usage*` |
+| `PROXY_TEST_ENDPOINTS` | `false` | Enable `__test/*` endpoints (dev/CI only) |
+| `PROXY_TEST_ALLOW_REMOTE` | `false` | Allow `__test/*` from non-loopback |
+
+## CORS
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PROXY_ENABLE_CORS` | `true` | Enable app-level CORS headers |
+| `PROXY_CORS_ALLOWED_ORIGINS` | `*` | Allowed origins (comma-separated) |
+
+## Metrics and tracing
+
+- Metrics: set `PROXY_ENABLE_METRICS=true` to expose `/metrics` (access is restricted by default; see `src/routes/metrics.js`).
+- Tracing: set `PROXY_ENABLE_OTEL=true` and `PROXY_OTEL_EXPORTER_URL` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) to emit spans (see `src/services/tracing.js`).
+
+## Further reference
+
+- Config/mount matrix by environment: `reference/config-matrix.md`
+- API contract: `openai-endpoint-golden-parity.md`

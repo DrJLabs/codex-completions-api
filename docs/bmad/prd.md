@@ -15,7 +15,7 @@ updated: 2025-10-26
 
 ## Background Context
 
-The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-26.
+The Codex Completions API fronts the Codex CLI with a lightweight Node/Express service so clients can keep using the OpenAI Chat Completions contract. The default backend is **Codex app-server (JSON-RPC)** (`PROXY_USE_APP_SERVER=true`); legacy `codex proto` is **deprecated upstream** and is retained only as a compatibility/testing fallback (still exercised by parts of the deterministic test suite). The system matured through the server modularization refactor, OpenAI parity epic, and the September 2025 stability campaign, adding structured logging, rate limiting, streaming refinements, and contract tests. This document now aligns with BMAD core expectations and reflects the repository as of 2025-09-26.
 
 ## Change Log
 
@@ -37,7 +37,7 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 
 ## Functional Requirements
 
-1. **FR1:** Expose `GET /healthz` returning `{ ok: true, sandbox_mode }` without auth for liveness and sandbox telemetry.
+1. **FR1:** Expose `GET /healthz` without auth for liveness + backend telemetry (includes `ok`, `sandbox_mode`, and worker health snapshots).
 2. **FR2:** Expose `GET|HEAD|OPTIONS /v1/models` to advertise environment-specific models (`codev-5*` in dev, `codex-5*` in prod) while respecting `PROXY_PROTECT_MODELS` bearer-gating.
 3. **FR3:** Support `POST /v1/chat/completions` (non-stream) with OpenAI-compatible response body, including stable `id`, `object:"chat.completion"`, `created`, normalized `model`, `choices`, `usage`, and `finish_reason` semantics (`stop`, `length`, etc.) exactly as documented in `docs/openai-endpoint-golden-parity.md`.
 4. **FR4:** When `stream:true`, emit SSE chunks with role-first delta, deterministic `created`/`id`/`model`, optional usage chunk when `stream_options.include_usage:true`, keepalive comments, and final `[DONE]` line, matching the golden transcripts in `docs/openai-endpoint-golden-parity.md`. Honor tool-tail controls and concurrency guard outcomes.
@@ -57,7 +57,7 @@ The Codex Completions API fronts the Codex CLI (`codex proto`) with a lightweigh
 2. **NFR2:** Maintain OpenAI envelope compatibility (error shape `{ error: { message, type, param?, code? } }`, normalized model IDs, optional `system_fingerprint`). Unknown parameters are ignored gracefully.
 3. **NFR3:** Provide structured JSON access logs with `req_id`, latency, auth presence, and route plus a text log line for existing observers; record usage events to `TOKEN_LOG_PATH` NDJSON for analytics.
 4. **NFR4:** Achieve 99.9% monthly availability, non-stream p95 ≤ 5 s, stream TTFC p95 ≤ 2 s, and 5xx error rate < 1% (auth errors excluded). Keep SSE connections alive with configurable `PROXY_SSE_KEEPALIVE_MS`.
-5. **NFR5:** Service remains stateless; `.codex-api/` must stay writable in prod for Codex sessions. Sandbox defaults to `danger-full-access`; `PROXY_CODEX_WORKDIR` isolates Codex runtime files (default `/tmp/codex-work`).
+5. **NFR5:** Service remains stateless; `.codex-api/` must stay writable in prod for Codex sessions. Sandbox defaults to `read-only`; only override to `danger-full-access` when a workflow explicitly needs write-capable tool calls and the risk is understood/documented. `PROXY_CODEX_WORKDIR` isolates child working files (default `/tmp/codex-work`).
 6. **NFR6:** Protect streaming stability with `PROXY_SSE_MAX_CONCURRENCY`, optional `PROXY_KILL_ON_DISCONNECT`, and dev-only truncate guard (`PROXY_DEV_TRUNCATE_AFTER_MS`) without regressing contract order.
 7. **NFR7:** Respect Test Selection Policy — touching `server.js`, handlers, or streaming code mandates `npm run test:integration` and `npm test`; broader changes run `npm run verify:all`.
 8. **NFR8:** Maintain observability for the sanitizer rollout: monitoring must alert on unexpected drops of metadata events and capture toggle state changes in deployment logs.
@@ -122,13 +122,13 @@ Maintain the full testing pyramid: unit (Vitest), integration (Express handlers 
 
 | Endpoint                   | Methods              | Auth                                          | Notes                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `/healthz`                 | `GET`                | None                                          | Returns `{ ok: true, sandbox_mode }` for liveness.                                    |
+| `/healthz`                 | `GET`                | None                                          | Returns `ok`, `sandbox_mode`, and worker health snapshots for liveness/debugging.     |
 | `/v1/models`               | `GET, HEAD, OPTIONS` | Optional (see `PROXY_PROTECT_MODELS`)         | Advertises environment-specific models; HEAD responds 200 with JSON content-type.     |
 | `/v1/chat/completions`     | `POST`               | Bearer required                               | Core Chat Completions route; supports streaming and non-stream with OpenAI envelope.  |
 | `/v1/responses`            | `POST`               | Bearer required                               | Primary Responses endpoint; non-stream and typed SSE events match golden transcripts. Gated by `PROXY_ENABLE_RESPONSES` (default on). |
 | `/v1/completions`          | `POST`               | Bearer required                               | Legacy shim translating prompt payloads to chat backend.                              |
-| `/v1/usage`                | `GET`                | Bearer required (via ForwardAuth)             | Aggregated usage counts (`parseTime` query filters).                                  |
-| `/v1/usage/raw`            | `GET`                | Bearer required (via ForwardAuth)             | Returns bounded NDJSON events with `limit` (default 200, max 10000).                  |
+| `/v1/usage`                | `GET`                | Bearer required (unless `PROXY_USAGE_ALLOW_UNAUTH=true`) | Aggregated usage counts (`parseTime` query filters).                                  |
+| `/v1/usage/raw`            | `GET`                | Bearer required (unless `PROXY_USAGE_ALLOW_UNAUTH=true`) | Returns bounded NDJSON events with `limit` (default 200, max 10000).                  |
 | `/__test/conc*` (dev only) | `GET`, `POST`        | Bearer required + `PROXY_TEST_ENDPOINTS=true` | Observability hooks for SSE guard in CI/dev only; loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`. |
 
 ## Streaming Contract & Tool Controls
