@@ -121,12 +121,60 @@ const safeByteLength = (value) => {
   }
 };
 
+const scanTextForMarkers = (text, state) => {
+  if (!isNonEmptyString(text)) return;
+  const lower = text.toLowerCase();
+  if (!state.hasRecentConversationsTag && lower.includes("<recent_conversations")) {
+    state.hasRecentConversationsTag = true;
+  }
+  if (!state.hasUseToolTag && lower.includes("<use_tool")) {
+    state.hasUseToolTag = true;
+  }
+  if (!state.hasToolResultMarker && lower.includes("tool '") && lower.includes(" result:")) {
+    state.hasToolResultMarker = true;
+  }
+};
+
+const scanValueForMarkers = (value, state, depth = 0) => {
+  if (!value) return;
+  if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+    return;
+  }
+  if (depth > 6) return;
+
+  if (typeof value === "string") {
+    scanTextForMarkers(value, state);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      scanValueForMarkers(entry, state, depth + 1);
+      if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+        return;
+      }
+    }
+    return;
+  }
+
+  if (!isPlainObject(value)) return;
+
+  if (typeof value.text === "string") scanTextForMarkers(value.text, state);
+  if (typeof value.content === "string") scanTextForMarkers(value.content, state);
+  if (value.content) scanValueForMarkers(value.content, state, depth + 1);
+};
+
 export function summarizeResponsesIngress(body = {}, req = null) {
   const input = body?.input;
   const inputItems = resolveInputItems(body);
   const itemTypes = new Set();
   const messageRoles = new Set();
   const inputMetadataKeys = new Set();
+  const markerState = {
+    hasRecentConversationsTag: false,
+    hasUseToolTag: false,
+    hasToolResultMarker: false,
+  };
   let hasToolOutputItems = false;
   let hasInputItemMetadata = false;
   let toolOutputBytesTotal = 0;
@@ -146,6 +194,9 @@ export function summarizeResponsesIngress(body = {}, req = null) {
             messageRoles.add(item.role.trim().toLowerCase());
           }
         }
+        if (item.content !== undefined) scanValueForMarkers(item.content, markerState);
+        if (item.text !== undefined) scanValueForMarkers(item.text, markerState);
+        if (item.message !== undefined) scanValueForMarkers(item.message, markerState);
         if (isPlainObject(item.metadata)) {
           hasInputItemMetadata = true;
           for (const key of Object.keys(item.metadata)) {
@@ -176,6 +227,9 @@ export function summarizeResponsesIngress(body = {}, req = null) {
     input_item_types: Array.from(itemTypes),
     input_message_count: inputMessageCount,
     input_message_roles: Array.from(messageRoles).slice(0, 10),
+    has_recent_conversations_tag: markerState.hasRecentConversationsTag,
+    has_use_tool_tag: markerState.hasUseToolTag,
+    has_tool_result_marker: markerState.hasToolResultMarker,
     has_input_item_metadata: hasInputItemMetadata,
     input_item_metadata_keys: inputMetadataKeyList.slice(0, 25),
     input_item_metadata_keys_truncated: inputMetadataKeyList.length > 25,

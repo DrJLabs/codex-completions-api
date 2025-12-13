@@ -24,12 +24,13 @@ This document tracks remaining observability gaps from **HTTP ingress → app-se
 - Where: `src/dev-trace/http.js` (called by chat/completions handlers)
 - Emits (via `appendProtoEvent` → `PROTO_LOG_PATH`): `phase:"http_ingress", kind:"client_request"`
 - Safety: request `headers` + `body` are sanitized by `src/dev-trace/sanitize.js`, but then stored under keys that are redacted by `src/services/logging/schema.js` (`payload/body/headers/...`).
+- Note: in dev, chat handlers also print prompt dumps to stdout (`[dev][prompt][chat][req_id=…] …`); treat as sensitive and consider gating (tracked in `GAP-DEV-LEAKAGE`).
 
 ### 3) Responses raw ingress (structured stdout, pre-rewrite)
 
 - Where: `src/handlers/responses/stream.js`, `src/handlers/responses/nonstream.js`
 - Emits: `event:"responses_ingress_raw"` (shape-only; no content)
-- Captures: `output_mode_requested/effective`, `has_tool_output_items`, model presence, etc.
+- Captures: `output_mode_requested/effective`, `has_tool_output_items`, model presence, plus derived context-contamination signals (`has_recent_conversations_tag`, `has_use_tool_tag`, `has_tool_result_marker`).
 
 ### 4) Backend submission + IO (NDJSON, dev-only)
 
@@ -53,6 +54,7 @@ This document tracks remaining observability gaps from **HTTP ingress → app-se
 - Emits:
   - Dev trace: `phase:"responses_sse_out"` per typed SSE event with `stream_event_seq` (gated by `PROXY_LOG_PROTO`)
   - Dev trace: `phase:"tool_call_arguments_done"` with args byte counts + JSON validity (no args content)
+  - Structured stdout: `event:"tool_call_arguments_done"` (shape-only; includes hashes/lengths, not args content)
   - Structured stdout: `event:"sse_summary"` enriched with usage + `previous_response_id_hash`
 
 ## Gap tracker (what’s missing)
@@ -150,4 +152,3 @@ This document tracks remaining observability gaps from **HTTP ingress → app-se
 - End-to-end dev trace linkage: `tests/integration/chat.tracing.req-id.int.test.js`
 - Worker supervisor logging hygiene: `tests/integration/worker-supervisor.int.test.js`
 - Responses SSE / non-stream contracts: `tests/e2e/responses-contract.spec.js`, `tests/integration/responses.*.int.test.js`
-
