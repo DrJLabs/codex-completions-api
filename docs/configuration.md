@@ -27,6 +27,13 @@ This proxy is configured via environment variables. Defaults live in `src/config
 | `CODEX_MODEL` | `gpt-5` | Default effective model (proxy also accepts `codex-5*` / `codev-5*`) |
 | `CODEX_FORCE_PROVIDER` | *(empty)* | Force Codex provider (e.g., `chatgpt`) |
 
+### `CODEX_HOME` and `AGENTS.md`
+
+Codex CLI reads `config.toml` and `AGENTS.md` from `CODEX_HOME`.
+
+- Dev workflows commonly use `.codev/` as `CODEX_HOME`.
+- In this repo, `.codev/AGENTS.md` is the Obsidian Copilot prompt/instructions used by the Codex backend for tool-call output; it is intentionally not repository contributor guidance.
+
 ## Sandbox and workdir
 
 | Variable | Default | Purpose |
