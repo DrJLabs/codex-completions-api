@@ -82,6 +82,8 @@ export const config = {
   PROXY_KILL_ON_DISCONNECT: str("PROXY_KILL_ON_DISCONNECT", "false"),
   PROXY_DEBUG_PROTO: str("PROXY_DEBUG_PROTO", ""),
   PROXY_SANITIZE_METADATA: bool("PROXY_SANITIZE_METADATA", "false"),
+  // Ingress safety: guardrails for client-provided memory/tool transcripts
+  PROXY_INGRESS_GUARDRAIL: bool("PROXY_INGRESS_GUARDRAIL", "true"),
   // Worker supervisor
   WORKER_BACKOFF_INITIAL_MS: num("WORKER_BACKOFF_INITIAL_MS", 500),
   WORKER_BACKOFF_MAX_MS: num("WORKER_BACKOFF_MAX_MS", 5000),
