@@ -101,4 +101,46 @@ describe("ingress guardrail helpers", () => {
       consoleSpy.mockRestore();
     }
   });
+
+  test("maybeInjectIngressGuardrail continues when guardrail logging fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const prevEnv = process.env.PROXY_ENV;
+    process.env.PROXY_ENV = "dev";
+
+    vi.resetModules();
+    vi.doMock("../../../src/services/logging/schema.js", () => ({
+      logStructured() {
+        throw new Error("boom");
+      },
+    }));
+
+    try {
+      const { maybeInjectIngressGuardrail: inject } = await import(
+        "../../../src/lib/ingress-guardrail.js"
+      );
+      const baseMessages = [
+        { role: "user", content: "<recent_conversations>hi</recent_conversations>\nSay hello." },
+      ];
+      const res = { locals: { req_id: "req_test", routeOverride: "/v1/chat/completions" } };
+      const req = { headers: { "user-agent": "test" } };
+
+      const result = inject({
+        req,
+        res,
+        messages: baseMessages,
+        enabled: true,
+        route: "/v1/chat/completions",
+        mode: "chat_nonstream",
+        endpointMode: "chat_completions",
+      });
+      expect(result.injected).toBe(true);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("../../../src/services/logging/schema.js");
+      process.env.PROXY_ENV = prevEnv;
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
 });
