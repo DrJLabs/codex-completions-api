@@ -52,6 +52,8 @@ Severity levels used:
 
 ### Drift matrix
 
+> Update (2025-12-13): DRIFT-01 was addressed by updating `docs/bmad/prd.md` to match the `read-only` sandbox default. DRIFT-02 and DRIFT-03 were false positives in this snapshot: the codebase enforces bearer auth for `__test/*` and `/v1/usage*` in-app (unless explicitly configured otherwise). DRIFT-04 was addressed by clarifying that `PROXY_STREAM_MODE` is deprecated/unused in the current implementation.
+
 | ID | Severity | What docs say | What code does | Risk | Recommendation |
 |---|---:|---|---|---|---|
 | DRIFT-01 | High | `docs/bmad/prd.md` says sandbox defaults to `danger-full-access`. | Config default is **`read-only`**; README + AGENTS also instruct read-only default. | Unsafe operational guidance if followed; misaligned expectations for tool/write behavior. | Update `docs/bmad/prd.md` to match `src/config/index.js` default, and explicitly document when/why to override to `danger-full-access`. |
@@ -154,4 +156,3 @@ For the final synthesis/remediation plan (Task 12), the high-priority doc-relate
 1. **Auth policy** for `/v1/usage*` and `__test` endpoints (edge-only vs defense-in-depth).
 2. **Single-source-of-truth naming** for PRD/architecture docs to stop duplication.
 3. **Runbook publication stance** (private with public stubs vs committed runbooks).
-
