@@ -32,6 +32,12 @@ This document tracks remaining observability gaps from **HTTP ingress → app-se
 - Emits: `event:"responses_ingress_raw"` (shape-only; no content)
 - Captures: `output_mode_requested/effective`, `has_tool_output_items`, model presence, plus derived context-contamination signals (`has_recent_conversations_tag`, `has_use_tool_tag`, `has_tool_result_marker`).
 
+### 3b) Ingress guardrail injection (structured stdout, conditional)
+
+- Where: `src/lib/ingress-guardrail.js` (called by chat handlers; affects `/v1/chat/completions` and `/v1/responses`)
+- Emits: `event:"ingress_guardrail_injected"` (shape-only; no content)
+- Toggle: `PROXY_INGRESS_GUARDRAIL=true|false` (default: true)
+
 ### 4) Backend submission + IO (NDJSON, dev-only)
 
 - Where: `src/services/transport/index.js` → `src/dev-trace/backend.js`
