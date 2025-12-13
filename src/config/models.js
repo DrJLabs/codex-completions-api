@@ -15,6 +15,7 @@ const GPT52_VARIANTS = [
   { suffix: "XH", effort: "xhigh" },
 ];
 const GPT52_CODEV_LOW_ALIAS = "gpt-5.2-codev-l";
+const GPT52_CODEV_LOW_PUBLIC_ID = "gpt-5.2-codev-L";
 
 const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
 
@@ -26,7 +27,13 @@ const buildGpt52Models = (isDevEnv) =>
 
 export function publicModelIds(isDevEnv) {
   const base = isDevEnv ? DEV_BASE : PROD_BASE;
-  return [...buildBaseModels(base), ...buildGpt51Models(isDevEnv), ...buildGpt52Models(isDevEnv)];
+  const models = [
+    ...buildBaseModels(base),
+    ...buildGpt51Models(isDevEnv),
+    ...buildGpt52Models(isDevEnv),
+  ];
+  if (isDevEnv) models.push(GPT52_CODEV_LOW_PUBLIC_ID);
+  return models;
 }
 
 const buildOverrideMaps = () => {
