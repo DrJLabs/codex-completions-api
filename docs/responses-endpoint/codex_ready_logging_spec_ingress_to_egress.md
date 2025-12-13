@@ -149,7 +149,14 @@ Capture what the client actually sent to `/v1/responses` *before* `req.body` is 
 - `model` (string|null)
 - Shape flags (no content):
   - `has_messages`, `has_instructions`, `has_input`
-  - `input_is_array`, `input_item_types` (set of strings; best-effort)
+  - `input_is_array`, `input_item_count` (int|null)
+  - `input_item_types` (set of strings; best-effort)
+  - `input_message_count` (int), `input_message_roles` (set; best-effort)
+  - `has_input_item_metadata`, `input_item_metadata_keys` (keys-only; capped)
+  - `has_metadata`, `metadata_keys` (keys-only; capped)
+  - `has_session_like_metadata_key` (bool; detects keys like `session_id`, `conversation_id`, etc)
+  - `candidate_id_fields_present` (top-level session-ish ids present; keys-only)
+  - `candidate_header_keys` (headers containing session-ish hints; keys-only)
   - `has_tools`, `has_tool_choice`
   - `has_previous_response_id` (bool)
   - `has_tool_output_items` (bool) **(critical for Copilot tool loops)**
@@ -170,11 +177,12 @@ import { logStructured } from "../../services/logging/schema.js";
 import { ensureReqId } from "../../lib/request-context.js";
 import { ensureCopilotTraceId } from "../../lib/trace-ids.js";
 
-function summarizeResponsesIngress(body) {
+function summarizeResponsesIngress(body, req) {
   const input = body?.input;
   const inputItems = Array.isArray(input) ? input : (input?.content && Array.isArray(input.content) ? input.content : null);
   const itemTypes = new Set();
   let hasToolOutputItems = false;
+  // Optional: collect keys-only session hints from req.headers + body.metadata + input item metadata
 
   if (Array.isArray(inputItems)) {
     for (const it of inputItems) {
@@ -191,6 +199,7 @@ function summarizeResponsesIngress(body) {
     has_input: input !== undefined,
     input_is_array: Array.isArray(input),
     input_item_types: Array.from(itemTypes),
+    // + session-hint fields (keys-only), see src/handlers/responses/ingress-logging.js
     has_tools: Array.isArray(body?.tools) && body.tools.length > 0,
     has_tool_choice: body?.tool_choice !== undefined,
     has_previous_response_id: typeof body?.previous_response_id === "string" && body.previous_response_id.trim() !== "",
@@ -209,7 +218,7 @@ const after = req.headers["x-proxy-output-mode"] ? String(req.headers["x-proxy-o
 
 logStructured(
   { component: "responses", event: "responses_ingress_raw", level: "info", req_id: reqId, trace_id: res.locals?.trace_id, route: "/v1/responses" },
-  { copilot_trace_id: copilotTraceId, stream: !!originalBody?.stream, output_mode_requested: before, output_mode_effective: after, ...summarizeResponsesIngress(originalBody) }
+  { copilot_trace_id: copilotTraceId, stream: !!originalBody?.stream, output_mode_requested: before, output_mode_effective: after, ...summarizeResponsesIngress(originalBody, req) }
 );
 ```
 
