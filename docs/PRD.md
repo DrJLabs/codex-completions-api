@@ -5,6 +5,8 @@
 **Project Level:** 3
 **Target Scale:** Level 3 (Complex integration)
 
+> Note: The canonical BMAD PRD lives at `docs/bmad/prd.md`. This file is retained for historical context and may drift.
+
 ---
 
 ## Goals and Background Context
@@ -18,7 +20,7 @@
 
 ### Background Context
 
-Codex still shells out to the deprecated `codex proto` subcommand, which the October 2025 CLI release will remove. Staying on proto would create immediate downtime for every `/v1/chat/completions` and `/v1/responses` client, introduce avoidable latency from per-request process spawns, and block SOC-compliant observability.
+Earlier versions of this proxy shelled out to the deprecated `codex proto` subcommand. The current default is the Codex app-server (JSON-RPC) worker path (`PROXY_USE_APP_SERVER=true`), with proto retained only as a fallback for compatibility and targeted tests.
 
 Migrating to the Codex App Server lets us run a singleton JSON-RPC worker with deterministic adapters, enabling the proxy to preserve its OpenAI-compatible contract while gaining richer telemetry, lower latency, and a safer rollout path.
 

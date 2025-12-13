@@ -1,34 +1,47 @@
-# Documentation Overview
+# Documentation Index
 
-This file is the canonical index for public documentation. Keep it updated whenever new docs are added or scoped.
+This folder is the canonical index for repository documentation. Update this file whenever docs are added, removed, or renamed.
 
-## Primary references
+## Start here
 
-- `README.md` — quick start, auth/config defaults (sandbox defaults to `read-only`, test endpoints bearer + loopback), and operational reminders.
-- `docs/bmad/prd.md` — product requirements, endpoint surface, and testing expectations.
-- `docs/bmad/architecture.md` — current architecture stack (Node 22, Express 4.21.2), config expectations, and operational invariants.
-- `docs/bmad/architecture/end-to-end-tracing-app-server.md` — how to debug by `req_id` (access log + dev trace + usage).
-- `docs/reference/config-matrix.md` — env/volume manifest by deployment mode plus ForwardAuth canonicalization and infra artifact notes.
-- `docs/openai-endpoint-golden-parity.md` — canonical envelope definitions for `/v1/chat/completions` and `/v1/responses` (typed SSE + non-stream).
-- `docs/logging-gaps/README.md` — progress tracker for remaining ingress→backend→egress observability gaps (ACs + tests).
-- `docs/responses-endpoint/overview.md` — rollout/operational notes for `/v1/responses`.
-- `docs/responses-endpoint/ingress-debug-lnjs-400.md` — troubleshooting note for `/v1/responses` 400 `messages[] required` (common SDK input shape mismatch).
-- `docs/responses-endpoint/codex_ready_logging_spec_ingress_to_egress.md` — logging spec + implementation status for `/v1/responses` ingress/egress observability.
-- `docs/app-server-migration/codex-completions-api-migration.md` — app-server migration/runbook context and health probes.
-- `docs/codex-longhorizon/INDEX_TASK_DOCS.md` — survey/task index (source for remediation backlog).
+- `../README.md` — overview + quickstart
+- `getting-started.md` — first-run walkthrough
+- `configuration.md` — environment variables and defaults (authoritative)
+- `prd.md` — PRD entry point (canonical links)
+- `architecture.md` — architecture entry point (canonical links)
+
+## Development
+
+- `local-development.md` — Node vs shim vs Docker workflows
+- `api/overview.md` — endpoint overview + runnable curl examples
+- `troubleshooting.md` — common errors and fixes
+
+## Deployment and ops
+
+- `deployment/dev-stack.md` — dev stack (`compose.dev.stack.yml`)
+- `deployment/production.md` — production compose (`docker-compose.yml`)
+- `ops/runbooks.md` — snapshot/rollback/backup/smoke workflows
+
+## Observability
+
+- `observability.md` — logs, request IDs, metrics, tracing
+- `bmad/architecture/end-to-end-tracing-app-server.md` — trace by `req_id`
+- `reference/config-matrix.md` — environment/mount matrix + ForwardAuth notes
+
+## API contracts (canonical)
+
+- `openai-endpoint-golden-parity.md` — golden transcript contract for `/v1/chat/completions` and `/v1/responses`
+- `responses-endpoint/overview.md` — `/v1/responses` implementation notes
+
+## Deep dives and backlogs
+
+- `bmad/prd.md` — requirements (BMAD PRD)
+- `bmad/architecture.md` — architecture (BMAD)
+- `app-server-migration/` — JSON-RPC schema exports and migration notes
+- `logging-gaps/README.md` — observability gap tracker
+- `codex-longhorizon/INDEX_TASK_DOCS.md` — internal survey/task index
 
 ## Doc hygiene
 
-- Run `npm run lint:runbooks` before committing doc changes (prettier check for `docs/app-server-migration/**`).
-- Place private-only guides under `docs/private/` (ignored by git). Suggested layout:
-
-  ```text
-  docs/
-  ├── README.md
-  └── private/
-      ├── architecture/…
-      ├── runbooks/…
-      └── …
-  ```
-
-- When adding new public docs, update both `README.md` and this index with links and scope notes.
+- Run `npm run format:check` and `npm run lint:runbooks` before committing doc changes.
+- Use `docs/private/` for local-only notes; it is listed in `.gitignore` so new files won’t be committed.
