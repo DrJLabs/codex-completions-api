@@ -28,6 +28,14 @@ describe("responses shared helpers", () => {
     ]);
   });
 
+  test("coerceInputToChatMessages handles message items with string content", () => {
+    const body = {
+      input: [{ type: "message", role: "user", content: "Say hello." }],
+    };
+    const result = coerceInputToChatMessages(body);
+    expect(result).toEqual([{ role: "user", content: "Say hello." }]);
+  });
+
   test("mapChoiceToOutput converts tool calls into tool_use nodes", () => {
     const choice = {
       message: {
