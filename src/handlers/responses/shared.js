@@ -52,8 +52,16 @@ const extractTextFromInputItems = (items) => {
         parts.push(item.text);
         continue;
       }
+      if (typeof item.content === "string") {
+        parts.push(item.content);
+        continue;
+      }
       if (Array.isArray(item.content)) {
         parts.push(extractTextFromInputItems(item.content));
+        continue;
+      }
+      if (item.content && typeof item.content === "object") {
+        parts.push(extractTextFromInputItems([item.content]));
       }
     }
   }
