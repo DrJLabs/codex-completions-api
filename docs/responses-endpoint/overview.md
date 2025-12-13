@@ -69,6 +69,7 @@ Rationale: This avoids “double tool intent” where a client could receive bot
   - `responses_ingress_raw` (info) captures raw `/v1/responses` request shape (no content), including `output_mode_requested/effective`.
   - `responses_nonstream_summary` (debug) captures final non-stream status + usage + `previous_response_id_hash`.
   - `responses.sse_summary` (debug/error) captures stream outcome + usage + `previous_response_id_hash`.
+- Troubleshooting: `docs/responses-endpoint/ingress-debug-lnjs-400.md` (400 `messages[] required` when `input[]` message items use `content: string`).
 - **Dev trace (NDJSON, `PROTO_LOG_PATH`):**
   - `responses_sse_out` logs *each* typed SSE event with a monotonic `stream_event_seq` (dev-only, gated by `PROXY_LOG_PROTO`).
   - `tool_call_arguments_done` logs tool-call argument byte counts + JSON validity (no args content).
