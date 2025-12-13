@@ -20,7 +20,7 @@ The route is gated by `PROXY_ENABLE_RESPONSES` (default: `true`).
 The Responses handlers normalize to a chat-shaped request:
 
 - `instructions` / `input` are coerced into `messages[]` via `coerceInputToChatMessages()`.
-- `previous_response_id` is currently ignored in the compatibility layer.
+- `previous_response_id` is **not sent upstream** (the proxy stays stateless), but is preserved/echoed in the final Responses JSON envelope.
 
 This keeps a single backend transport path while providing a stable Responses surface for clients.
 
@@ -65,8 +65,15 @@ Rationale: This avoids “double tool intent” where a client could receive bot
 
 ## Observability
 
-- Streams also record shared stream metrics (TTFB/duration/outcome) via the common chat streaming pipeline.
-- The typed SSE adapter increments `codex_responses_sse_event_total{route,model,event}` and emits a one-line structured summary log (debug level) at completion/failure.
+- **Structured logs (stdout):**
+  - `responses_ingress_raw` (info) captures raw `/v1/responses` request shape (no content), including `output_mode_requested/effective`.
+  - `responses_nonstream_summary` (debug) captures final non-stream status + usage + `previous_response_id_hash`.
+  - `responses.sse_summary` (debug/error) captures stream outcome + usage + `previous_response_id_hash`.
+- **Dev trace (NDJSON, `PROTO_LOG_PATH`):**
+  - `responses_sse_out` logs *each* typed SSE event with a monotonic `stream_event_seq` (dev-only, gated by `PROXY_LOG_PROTO`).
+  - `tool_call_arguments_done` logs tool-call argument byte counts + JSON validity (no args content).
+  - Set `PROXY_DEBUG_WIRE=1` to enable small, capped previews for `response.output_text.delta` (and invalid tool args only).
+- Metrics: the adapter increments `codex_responses_sse_event_total{route,model,event}`.
 
 ## Tests
 
