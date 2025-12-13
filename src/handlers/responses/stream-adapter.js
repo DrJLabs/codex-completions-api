@@ -370,17 +370,64 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       }
 
       if (!existing.doneArguments) {
-        if (LOG_PROTO) {
-          const args = argumentsText || "";
-          const argsBytes = Buffer.byteLength(args, "utf8");
-          let jsonValid = false;
-          try {
-            JSON.parse(args);
-            jsonValid = true;
-          } catch {
-            jsonValid = false;
-          }
+        const args = argumentsText || "";
+        const argsBytes = Buffer.byteLength(args, "utf8");
+        let jsonValid = false;
+        let parsedArgs = null;
+        try {
+          parsedArgs = args ? JSON.parse(args) : null;
+          jsonValid = Boolean(parsedArgs) && typeof parsedArgs === "object";
+        } catch {
+          parsedArgs = null;
+          jsonValid = false;
+        }
 
+        try {
+          const toolArgsKeys =
+            parsedArgs && typeof parsedArgs === "object" ? Object.keys(parsedArgs) : [];
+          const queryValue =
+            parsedArgs &&
+            typeof parsedArgs === "object" &&
+            typeof parsedArgs.query === "string" &&
+            parsedArgs.query.trim()
+              ? parsedArgs.query
+              : null;
+          const chatHistoryValue =
+            parsedArgs && typeof parsedArgs === "object" && Array.isArray(parsedArgs.chatHistory)
+              ? parsedArgs.chatHistory
+              : null;
+          logStructured(
+            {
+              component: "responses",
+              event: "tool_call_arguments_done",
+              level: "debug",
+              req_id: res.locals?.req_id || ensureReqId(res),
+              trace_id: res.locals?.trace_id,
+              route: res.locals?.routeOverride || RESPONSES_ROUTE,
+              mode: res.locals?.modeOverride || res.locals?.mode || "responses_stream",
+              model: state.model || requestBody?.model,
+              response_id: state.responseId,
+            },
+            {
+              endpoint_mode: res.locals?.endpoint_mode || "responses",
+              copilot_trace_id: res.locals?.copilot_trace_id || null,
+              tool_call_id: existing.id,
+              tool_name: existing.name,
+              tool_args_bytes: argsBytes,
+              tool_args_json_valid: jsonValid,
+              tool_args_hash: args ? sha256(args) : null,
+              tool_args_key_count: toolArgsKeys.length,
+              tool_args_keys: toolArgsKeys.slice(0, 20).sort(),
+              tool_args_keys_truncated: toolArgsKeys.length > 20,
+              tool_args_query_len: queryValue ? queryValue.length : null,
+              tool_args_query_hash: queryValue ? sha256(queryValue) : null,
+              tool_args_chat_history_len: chatHistoryValue ? chatHistoryValue.length : null,
+              response_shape_version: RESPONSE_SHAPE_VERSION,
+            }
+          );
+        } catch {}
+
+        if (LOG_PROTO) {
           const debugExtras = {};
           if (shouldLogVerbose() && args && !jsonValid) {
             const sample = preview(args, 160);
