@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 const redactKeys = new Set(["payload", "body", "headers", "messages", "response"]);
 
 const sanitize = (entry = {}) => {
@@ -52,4 +54,18 @@ export const logStructured = (canonical = {}, extras = {}) => {
     // Logging is best effort; swallow serialization errors.
   }
   return entry;
+};
+
+export const shouldLogVerbose = () => String(process.env.PROXY_DEBUG_WIRE || "").trim() === "1";
+
+export const sha256 = (value) =>
+  crypto
+    .createHash("sha256")
+    .update(String(value || ""), "utf8")
+    .digest("hex");
+
+export const preview = (value, maxLen = 160) => {
+  const s = String(value || "");
+  if (s.length <= maxLen) return { preview: s, truncated: false };
+  return { preview: s.slice(0, Math.max(0, maxLen - 1)) + "…", truncated: true };
 };

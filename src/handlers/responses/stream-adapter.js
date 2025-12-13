@@ -2,11 +2,14 @@ import { nanoid } from "nanoid";
 import { normalizeResponseId, convertChatResponseToResponses } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import { recordResponsesSseEvent } from "../../services/metrics/index.js";
-import { logStructured } from "../../services/logging/schema.js";
+import { appendProtoEvent, LOG_PROTO } from "../../dev-logging.js";
+import { ensureReqId } from "../../lib/request-context.js";
+import { logStructured, sha256, shouldLogVerbose, preview } from "../../services/logging/schema.js";
 
 const DEFAULT_ROLE = "assistant";
 const OUTPUT_DELTA_EVENT = "response.output_text.delta";
 const RESPONSES_ROUTE = "/v1/responses";
+const RESPONSE_SHAPE_VERSION = "responses_v0_typed_sse_openai_json";
 
 const mapFinishStatus = (reasons) => {
   const normalized = new Set(
@@ -43,6 +46,17 @@ const normalizeToolType = (value) => {
   return "function_call";
 };
 
+const getDeltaBytes = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const delta =
+    typeof payload.delta === "string"
+      ? payload.delta
+      : typeof payload.arguments === "string"
+        ? payload.arguments
+        : null;
+  return delta ? Buffer.byteLength(delta, "utf8") : null;
+};
+
 export function createResponsesStreamAdapter(res, requestBody = {}) {
   const toolCallAggregator = createToolCallAggregator();
   const choiceStates = new Map();
@@ -56,6 +70,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     usage: null,
     createdEmitted: false,
     finished: false,
+    eventSeq: 0,
   };
 
   const recordEvent = (event) => {
@@ -72,6 +87,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       const events = Object.fromEntries(
         Array.from(eventCounts.entries()).sort(([a], [b]) => a.localeCompare(b))
       );
+      const prev = requestBody?.previous_response_id;
+      const usage = state.usage;
       logStructured(
         {
           component: "responses",
@@ -80,11 +97,25 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           req_id: res.locals?.req_id,
           trace_id: res.locals?.trace_id,
           route: res.locals?.routeOverride || RESPONSES_ROUTE,
+          mode: res.locals?.modeOverride || res.locals?.mode,
           model: state.model || requestBody?.model,
           response_id: state.responseId,
           status: state.status,
         },
-        { outcome, events, ...extra }
+        {
+          endpoint_mode: res.locals?.endpoint_mode || "responses",
+          copilot_trace_id: res.locals?.copilot_trace_id || null,
+          outcome,
+          events,
+          finish_reasons: Array.from(state.finishReasons),
+          usage_input_tokens: usage?.prompt_tokens ?? null,
+          usage_output_tokens: usage?.completion_tokens ?? null,
+          usage_total_tokens: usage?.total_tokens ?? null,
+          previous_response_id_hash: prev ? sha256(prev) : null,
+          output_mode_effective: res.locals?.output_mode_effective ?? null,
+          response_shape_version: RESPONSE_SHAPE_VERSION,
+          ...extra,
+        }
       );
     } catch {
       // Logging failures are non-critical; swallow to avoid impacting callers.
@@ -94,7 +125,39 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   const writeEvent = (event, payload) => {
     if (res.writableEnded) return;
     try {
+      state.eventSeq += 1;
       const data = event === "done" && payload === "[DONE]" ? "[DONE]" : JSON.stringify(payload);
+      if (LOG_PROTO) {
+        const reqId = ensureReqId(res);
+        const deltaBytes = getDeltaBytes(payload);
+        const verbose = shouldLogVerbose();
+
+        const debugExtras = {};
+        if (verbose && event === OUTPUT_DELTA_EVENT && typeof payload?.delta === "string") {
+          const sample = preview(payload.delta, 160);
+          debugExtras.delta_preview = sample.preview;
+          debugExtras.content_truncated = sample.truncated;
+          debugExtras.content_preview_len = sample.preview.length;
+        }
+
+        appendProtoEvent({
+          phase: "responses_sse_out",
+          req_id: reqId,
+          route: res.locals?.routeOverride || RESPONSES_ROUTE,
+          mode: res.locals?.modeOverride || res.locals?.mode || "responses_stream",
+          endpoint_mode: res.locals?.endpoint_mode || "responses",
+          copilot_trace_id: res.locals?.copilot_trace_id || null,
+          trace_id: res.locals?.trace_id || null,
+          stream: true,
+          stream_protocol: "sse",
+          stream_event_seq: state.eventSeq,
+          stream_event_type: event,
+          delta_bytes: deltaBytes,
+          event_bytes: Buffer.byteLength(data, "utf8"),
+          response_shape_version: RESPONSE_SHAPE_VERSION,
+          ...debugExtras,
+        });
+      }
       res.write(`event: ${event}\ndata: ${data}\n\n`);
       recordEvent(event);
     } catch (error) {
@@ -307,6 +370,42 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       }
 
       if (!existing.doneArguments) {
+        if (LOG_PROTO) {
+          const args = argumentsText || "";
+          const argsBytes = Buffer.byteLength(args, "utf8");
+          let jsonValid = false;
+          try {
+            JSON.parse(args);
+            jsonValid = true;
+          } catch {
+            jsonValid = false;
+          }
+
+          const debugExtras = {};
+          if (shouldLogVerbose() && args && !jsonValid) {
+            const sample = preview(args, 160);
+            debugExtras.args_preview = sample.preview;
+            debugExtras.content_truncated = sample.truncated;
+            debugExtras.content_preview_len = sample.preview.length;
+          }
+
+          appendProtoEvent({
+            phase: "tool_call_arguments_done",
+            endpoint_mode: res.locals?.endpoint_mode || "responses",
+            req_id: res.locals?.req_id || ensureReqId(res),
+            copilot_trace_id: res.locals?.copilot_trace_id || null,
+            trace_id: res.locals?.trace_id || null,
+            route: res.locals?.routeOverride || RESPONSES_ROUTE,
+            mode: res.locals?.modeOverride || res.locals?.mode || "responses_stream",
+            tool_call_id: existing.id,
+            tool_name: existing.name,
+            tool_args_bytes: argsBytes,
+            tool_args_json_valid: jsonValid,
+            response_shape_version: RESPONSE_SHAPE_VERSION,
+            ...debugExtras,
+          });
+        }
+
         writeEvent("response.function_call_arguments.done", {
           type: "response.function_call_arguments.done",
           response_id: responseId,
@@ -349,6 +448,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     if (state.finished) return false;
     state.finished = true;
     ensureCreated();
+    res.locals = res.locals || {};
+    res.locals.adapter_failed_emitted = true;
     const message = error?.message || "stream adapter error";
     writeEvent("response.failed", {
       type: "response.failed",
