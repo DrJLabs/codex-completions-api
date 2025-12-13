@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
 import { beforeAll, afterAll, afterEach, test, expect } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
@@ -8,8 +9,8 @@ let PORT;
 let child;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const READY_PATH = path.join(process.cwd(), ".tmp-responses-stream-ready.txt");
-const RELEASE_PATH = path.join(process.cwd(), ".tmp-responses-stream-release.txt");
+let READY_PATH;
+let RELEASE_PATH;
 
 const killChild = async () => {
   if (!child || child.killed) return;
@@ -64,6 +65,8 @@ const startServer = async (extraEnv = {}) => {
 
 beforeAll(async () => {
   PORT = await getPort();
+  READY_PATH = path.join(process.cwd(), `.tmp-responses-stream-ready-${PORT}.txt`);
+  RELEASE_PATH = path.join(process.cwd(), `.tmp-responses-stream-release-${PORT}.txt`);
 });
 
 afterEach(async () => {
