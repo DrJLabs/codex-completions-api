@@ -2,6 +2,12 @@ Project-local Codex config for development.
 
 This folder is intended to be used as a project-local `CODEX_HOME` for dev workflows.
 
+## About `.codev/AGENTS.md`
+
+The `AGENTS.md` in this folder is intentionally **not** repository contributor guidance. It contains the Obsidian Copilot prompt/instructions that the Codex app-server backend reads from `CODEX_HOME` when emitting tool-call XML (`<use_tool>…</use_tool>`).
+
+Repository contributor/agent guidance lives at the repo root: `AGENTS.md`.
+
 ## Usage (Node dev on port 18000)
 
 ```bash
