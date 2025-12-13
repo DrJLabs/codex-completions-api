@@ -7,7 +7,7 @@ updated: 2025-11-22
 
 # Introduction
 
-Codex Completions API is a Node/Express proxy that fronts the Codex CLI (`codex proto`) with an OpenAI Chat Completions-compatible surface. The service now follows the modular structure introduced during the server refactor and has since been hardened by streaming parity and stability epics. This document captures the current architecture, integration points, and operational invariants required for continued enhancements, updated for the `/v1/responses` parity effort as of 2025-10-26.
+Codex Completions API is a Node/Express proxy that fronts the Codex CLI with an OpenAI Chat Completions-compatible surface. The default backend is **Codex app-server (JSON-RPC)** (`PROXY_USE_APP_SERVER=true`); legacy `codex proto` remains a compatibility fallback and is still used by some deterministic shims/tests. This document captures the current architecture, integration points, and operational invariants required for continued enhancements, updated for the `/v1/responses` parity effort as of 2025-10-26.
 
 ## Starter Template or Existing Project
 
@@ -18,9 +18,9 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 ## Current Project State
 
 - **Primary Purpose:** Provide a drop-in replacement for OpenAI Chat Completions, translating requests to Codex CLI while preserving response envelopes. Dev/test stacks now default to the app-server JSON-RPC shim for determinism; production still shells out to the packaged CLI.
-- **Proto mode status:** Proto mode is deprecated. All dev/test/CI stacks must run with `PROXY_USE_APP_SERVER=true` and the JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`) or real app-server binary. Do not flip to proto, regenerate proto fixtures, or add proto-only tests.
+- **Proto mode status:** Proto mode is a legacy fallback. Production should keep `PROXY_USE_APP_SERVER=true`; tests may exercise both backends via deterministic shims. Avoid adding new behavior that only works in proto mode.
 - **Current Tech Stack:** Node.js ≥ 22, Express 4.21, Vitest 4.0.x, Playwright 1.56.x, Docker Compose, Traefik ForwardAuth, Cloudflare edge.
-- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating JSON-RPC app-server child processes (dev/test default) or packaged Codex CLI (prod) per request.
+- **Architecture Style:** Modular Express application (routers, handlers, services, middleware) orchestrating either a supervised JSON-RPC worker (app-server mode) or per-request child processes (proto mode/shims).
 - **Deployment Method:** Docker Compose in prod, fronted by host-level Traefik attached to an external `traefik` network; `.codex-api/` mounted writable for Codex state.
 
 ## Available Documentation
@@ -28,14 +28,14 @@ Brownfield enhancement of the existing codex-completions-api repository; no exte
 - `docs/bmad/prd.md` — Product requirements, KPIs, smoke tests.
 - `docs/openai-endpoint-golden-parity.md` — Canonical envelope definitions and golden transcripts for `/v1/responses` and `/v1/chat/completions`.
 - `docs/bmad/stories/*` — Epic and story execution details (parity, modularization, stability).
-- `docs/runbooks/operational.md` and `docs/dev-to-prod-playbook.md` — Operational runbooks and deployment guidance.
+- `docs/deployment/production.md` and `docs/ops/runbooks.md` — Deployment guidance and operator runbooks.
 - `docs/bmad/architecture/*` — Deeper breakdowns (source tree, tech stack, modularization references).
 
 ## Identified Constraints
 
 - Traefik ForwardAuth must continue to target `http://127.0.0.1:18080/verify`; do not switch to container hostname unless Traefik is containerized.
 - `.codex-api/` must remain writable in prod; enforcing read-only breaks Codex session persistence and streaming state.
-- Containers bake the Codex CLI (`@openai/codex`) into the image at build time (`/usr/local/lib/codex-cli`); `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Dev/test stacks override `CODEX_BIN` to `scripts/fake-codex-jsonrpc.js` with `PROXY_USE_APP_SERVER=true` for deterministic regression runs; proto shims are retired for Story 2.10+.
+- Containers bake the Codex CLI (`@openai/codex`) into the image at build time (`/usr/local/lib/codex-cli`); `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. Dev/test runs can override `CODEX_BIN` to deterministic shims (`scripts/fake-codex-jsonrpc.js` or `scripts/fake-codex-proto.js`) depending on which backend path is under test.
 - `PROXY_SSE_MAX_CONCURRENCY` governs active SSE streams per replica; ensure `ulimit -n` and resource sizing satisfy the concurrency envelope.
 - Dev edge relies on `PROXY_DEV_TRUNCATE_AFTER_MS` safeguards; maintain default zero in prod to avoid truncating real traffic.
 
@@ -87,7 +87,7 @@ Recent work centers on brownfield stabilization: enforcing streaming parity, add
 | ---------------- | --------------------------------------- | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Runtime          | Node.js                                 | ≥ 22.x           | Hosts Express server and orchestrates Codex child processes.                 | ESM modules only; supports child process flags for parallel tool experiments.                           |
 | Web Framework    | Express                                 | 4.21.2           | Router/middleware composition for API surface.                               | JSON body parsing, OPTIONS handling, CORS.                                                              |
-| Child Process    | Codex CLI (`codex proto`)               | 2025-09-24 build | Generates completions for each request.                                      | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
+| Child Process    | Codex CLI (`codex app-server` / `codex proto`) | 2025-09-24 build | Generates completions via JSON-RPC worker (default) or legacy per-request proto. | Baked into `/usr/local/lib/codex-cli`; `CODEX_BIN` defaults to `/usr/local/lib/codex-cli/bin/codex.js`. |
 | Logging          | Custom JSON + console loggers           | n/a              | Structured access log, concurrency guard telemetry, NDJSON usage/proto logs. | Outputs consumed by runbooks and `/v1/usage`.                                                           |
 | Testing          | Vitest, Playwright                      | 4.0.3 / 1.56.1   | Unit & integration tests; E2E SSE contract checks.                           | Driven by `npm run verify:all`.                                                                         |
 | Auth             | ForwardAuth service (`auth/server.mjs`) | Node ESM         | Validates bearer keys before proxy routes in prod.                           | Traefik label invariant.                                                                                |
@@ -100,7 +100,7 @@ None — stabilization leveraged the existing stack and toggles.
 # Data Models and Telemetry Records
 
 - **UsageLogEvent** (NDJSON in `TOKEN_LOG_PATH`): `{ ts, prompt_tokens_est, completion_tokens_est, total_tokens_est, model, req_id, route }`. Consumed by `src/routes/usage.js` and aggregated via `aggregateUsage` in `src/utils.js`.
-- **ProtoEvent** (optional NDJSON in `PROTO_LOG_PATH`): recordings of Codex proto stdout/stderr and tool blocks when dev logging is enabled.
+- **ProtoEvent** (optional NDJSON in `PROTO_LOG_PATH`): recordings of backend IO events (historically “proto”), including stdout/stderr and tool-block-ish notifications when dev logging is enabled.
 
 ## Schema Integration Strategy
 
@@ -120,7 +120,7 @@ None — stabilization leveraged the existing stack and toggles.
 
 ## Handlers (`src/handlers/*`)
 
-- `chat/nonstream.js` — Validates payloads, normalizes models, interacts with Codex proto, aggregates content/usage, enforces dev truncate guard, and now leans on shared transcript shaping utilities.
+- `chat/nonstream.js` — Validates payloads, normalizes models, invokes the selected backend (app-server JSON-RPC or legacy proto), aggregates content/usage, enforces dev truncate guard, and shapes transcripts.
 - `chat/stream.js` — Streams SSE chunks, manages concurrency guard, keepalives, tool suppression, usage chunk emission, and final cleanup for chat-format envelopes.
 - `responses/nonstream.js` — Maps Responses payloads (`input`, `instructions`, `previous_response_id`) into Codex invocations and assembles `output[]` segments and status per the OpenAI spec.
 - `responses/stream.js` — Reuses the chat streaming pipeline by installing a typed SSE adapter into `res.locals.streamAdapter` before invoking `postChatStream`.
@@ -129,7 +129,7 @@ None — stabilization leveraged the existing stack and toggles.
 
 ## Services (`src/services/*`)
 
-- `codex-runner.js` — Spawns `codex proto`, manages environment variables, handles stdout/stderr piping, ensures sandbox/workdir compliance, and honors the dev-only `enableParallelTools` flag to pass `--config parallel_tool_calls=true`.
+- `codex-runner.js` — Spawns Codex CLI child processes (proto mode requests and app-server worker lifecycle), managing env vars, stdout/stderr wiring, and sandbox/workdir compliance.
 - `sse.js` — Applies SSE headers, schedules keepalives, finalizes stream events.
 - `concurrency-guard.js` — Global semaphore controlling concurrent SSE streams, exposing `setupStreamGuard`, `guardSnapshot`, and logging helpers.
 
@@ -161,7 +161,7 @@ None — stabilization leveraged the existing stack and toggles.
 
 ## GET /healthz
 
-1. Express router responds immediately with `{ ok: true, sandbox_mode }` derived from `config.PROXY_SANDBOX_MODE`.
+1. Express router responds immediately with `ok`, `sandbox_mode`, and worker health snapshots derived from runtime config and supervisor state.
 2. No auth required; used by edge health checks and compose health probes.
 
 ## GET /v1/models
@@ -173,7 +173,9 @@ None — stabilization leveraged the existing stack and toggles.
 
 1. Request validated (`nonstream.validatePayload`); Bearer required (`Authorization` header).
 2. Model normalized via `normalizeModel`; tool-tail toggles and dev-only `enableParallelTools` inspected.
-3. `codex-runner` spawns `codex proto` with sandbox/workdir and optional provider/effort overrides (`CODEX_FORCE_PROVIDER`, `PROXY_STOP_AFTER_TOOLS*`, plus `parallel_tool_calls=true` when permitted).
+3. Backend invocation depends on mode:
+   - App-server: handler talks to the JSON-RPC transport and the long-lived worker (gated by readiness).
+   - Proto: `codex-runner` spawns `codex proto` per request with sandbox/workdir and optional provider/effort overrides.
 4. Handler accumulates stdout events, tracks `<use_tool>` blocks (via `extractUseToolBlocks`), enforces idle/overall timeouts, and captures metadata-only events.
 5. `PROXY_SANITIZE_METADATA` toggle controls whether metadata redaction runs; when enabled, payloads (for example `rollout_path`, `session_id`) are logged for debugging but redacted from assistant-visible content before finalization.
 6. Deterministic finalize path returns JSON with aggregated content, `finish_reason`, and usage estimates; dev truncate guard returns `finish_reason:"length"` when configured.

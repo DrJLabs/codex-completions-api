@@ -102,7 +102,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
 - `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount. Traefik now sources the `codex-dev` routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml` (file provider) instead of Docker labels, so make sure that file exists on the host when bringing the stack up.
-- `npm run dev:shim` — starts the proxy against the deterministic legacy proto shim (no Codex install required). This is only for CI/offline testing; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x).
+- `npm run dev:shim` — starts the proxy against the deterministic app-server JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`), so you can run without installing Codex CLI.
 
 ## Usage
 
@@ -125,7 +125,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
 - Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
-- `PROXY_STREAM_MODE=jsonl` outputs raw Codex JSON lines for debugging; default mode emits OpenAI-style SSE envelopes.
+- Note: `PROXY_STREAM_MODE` is deprecated/unused in the current implementation; streaming behavior is not controlled by that variable.
 - `/v1/responses` can be disabled for chat-only deployments via `PROXY_ENABLE_RESPONSES=false`; default is on for parity with OpenAI.
 
 ### Streaming controls for tool-heavy clients
@@ -156,7 +156,7 @@ src/utils.js                    # Utilities (tokens, join/normalize, CORS helper
 auth/server.mjs                 # Traefik ForwardAuth microservice
 tests/                          # Unit, integration, Playwright E2E
 vitest.config.ts                # Unit test config + coverage thresholds (V8)
-playwright.config.ts            # E2E config (spawns server with the legacy proto shim for CI)
+playwright.config.ts            # E2E config (spawns server with the deterministic JSON-RPC shim for CI)
 scripts/                        # Dev + CI helpers (dev.sh, prod-smoke.sh)
 scripts/setup-testing-ci.sh     # Idempotent test/CI scaffolder (useful for forks)
 .codev/                         # Project‑local Codex HOME for dev (config.toml, AGENTS.md)
@@ -168,7 +168,7 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 
 ## Environments: PROD vs DEV
 
-See docs/README.md for documentation pointers. Internal runbooks (Dev → Prod, architecture diagrams, etc.) live in `docs/private/` locally and are not committed.
+See docs/README.md for documentation pointers. Use `docs/private/` for local-only notes (gitignored) and keep public docs under `docs/`.
 
 ### Production
 
@@ -216,6 +216,7 @@ Notes:
 - The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
   - For this project the source of truth is `~/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
 - Detailed Dev → Prod procedures are available in the private documentation bundle (`docs/private/`).
+  - Public deployment/runbooks live under `docs/deployment/` and `docs/ops/`.
 
 ### Release & Backup shortcuts
 
@@ -326,8 +327,10 @@ Build context hygiene:
 ### Legacy proto mode (Codex CLI ≤ 0.44.x)
 
 - `PROXY_USE_APP_SERVER=false` reverts to the historical proto workflow (one `codex proto` process per request) and only works with Codex CLI 0.44.x or older.
-- Keep references to this path minimal; it exists solely for compatibility testing and to support the deterministic shim used in CI.
-- Commands such as `npm run dev:shim`, `npm run test:integration`, and `npm test` launch `scripts/fake-codex-proto.js` so suites can run without a Codex install. Treat the shim as a stand-in for this legacy mode.
+- Keep references to this path minimal; it exists for compatibility testing and legacy fixtures.
+- Deterministic shims:
+  - App-server JSON-RPC: `scripts/fake-codex-jsonrpc.js` (used by `npm run dev:shim` and Playwright E2E by default)
+  - Legacy proto: `scripts/fake-codex-proto.js` (used by parts of the integration suite and targeted compatibility checks)
 - Because proto mode lacks long-lived workers, features like streaming clean-up and usage logging can diverge slightly; always validate changes against the app-server path before shipping.
 
 ## Production Smoke
@@ -345,7 +348,7 @@ Behavior:
 
 ## Documentation
 
-This repository ships with a minimal public documentation stub (`docs/README.md`) — treat it as the canonical index. Configuration by deployment mode plus ForwardAuth/infra notes live in `docs/reference/config-matrix.md`. Any internal guides, architecture diagrams, or historical notes should live under `docs/private/`, which is ignored by Git so nothing confidential is committed. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
+Treat `docs/README.md` as the canonical documentation index. Start with `docs/getting-started.md` (first run), then `docs/configuration.md` (env vars) and `docs/api/overview.md` (runnable curl examples). Configuration/mount matrices live in `docs/reference/config-matrix.md`. Use `docs/private/` for local-only notes (gitignored) and keep public runbooks under `docs/deployment/` and `docs/ops/`. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
 
 ## License
 
@@ -353,14 +356,7 @@ This project is released under the [MIT License](LICENSE).
 
 ## Contributing
 
-- Start every task from a clean checkout and create a work branch using the `feat/<kebab>`, `fix/<kebab>`, or `chore/<kebab>` pattern before editing files.
-- Use Conventional Commit subjects (≤ 72 chars). Keep review follow-ups in separate commits instead of amending history.
-- Follow the test selection policy:
-  - `src/utils.js` only → `npm run test:unit`
-  - `server.js` or streaming changes → `npm run test:integration` then `npm test`
-  - Docker/Traefik changes → rebuild + `npm run smoke:prod`
-- Before opening a PR, run `npm run verify:all` (formatting, lint, unit, integration, Playwright) unless the task explicitly calls for a different subset.
-- Align code style with the repo defaults: ESM Node.js, 2-space indentation, double quotes, and Prettier/ESLint configs already checked in.
+See `CONTRIBUTING.md` for local setup, workflows, and the test selection policy.
 
 ## Testing
 
@@ -381,8 +377,8 @@ This repo uses a three-layer testing setup optimized for fast inner-loop feedbac
 
 2. Integration (Vitest, real server, no external deps)
 
-- Scope: Express endpoints exercised against the deterministic legacy proto shim; auth, error codes, non‑stream chat, usage endpoints, and CORS preflight for `/v1/chat/completions`.
-- Notes: spawns `node server.js` on a random port and sets `CODEX_BIN=scripts/fake-codex-proto.js`, so no Codex installation is required.
+- Scope: Express endpoints exercised against deterministic shims (app-server JSON-RPC and legacy proto paths) so suites can run without a Codex install.
+- Notes: spawns `node server.js` on a random port and sets `CODEX_BIN`/`PROXY_USE_APP_SERVER` per test.
 - Command: `npm run test:integration`
 
 3. End‑to‑End API/SSE (Playwright Test)
@@ -458,7 +454,7 @@ Environment variables:
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
 - `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
-- `CODEX_BIN` (default: `codex`) — override to `/app/scripts/fake-codex-proto.js` only when you explicitly need the legacy proto shim (CI/offline tests).
+- `CODEX_BIN` (default: `codex`) — override to `scripts/fake-codex-jsonrpc.js` for the deterministic app-server shim, or `/app/scripts/fake-codex-proto.js` only when you explicitly need legacy proto mode/shims.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
 - `PROXY_ENABLE_RESPONSES` (default: `true`) — disable to hide `/v1/responses` in chat-only environments.
@@ -498,7 +494,7 @@ An example file is in `config/roo-openai-compatible.json`.
 
 - `model`: normalized to the effective Codex model before invoking the JSON-RPC transport. Aliases such as `codex/gpt-5` are accepted but rewritten to the underlying `gpt-5` call.
 - `messages[]`: transformed into the Codex schema (`system_prompt`, `messages`, `metadata`) and passed to `sendUserTurn`. System and assistant messages remain in the transcript; tool calls are flattened into text so existing Codex releases can parse them.
-- `stream: true`: emits SSE with a role-first chunk, incremental content deltas, and `[DONE]`. When running the legacy proto shim, `PROXY_STREAM_MODE=jsonl` causes the proxy to forward raw JSON lines for debugging; app-server ignores this flag.
+- `stream: true`: emits SSE with a role-first chunk, incremental content deltas, and `[DONE]`.
 - `reasoning.effort ∈ {low,medium,high,minimal}`: forwarded via `--config model_reasoning_effort=...` (and the older `--config reasoning.effort=...` for backwards compatibility) in addition to the JSON payload.
 - Sampling knobs (`temperature`, `top_p`, penalties, `max_tokens`) are ignored because Codex CLI does not expose them for app-server mode.
 
@@ -541,7 +537,7 @@ Behavior:
 
 ## Behavior summary
 
-- `GET /healthz` returns `{ ok: true }`.
+- `GET /healthz` returns `{ ok, sandbox_mode, backend_mode, ... }` (health snapshots included).
 - `GET /v1/models` lists only `codex-5` (no slashes) so clients like Cursor won’t confuse it with OpenAI built-ins. Requests that specify `gpt-5` directly still work.
 - `POST /v1/chat/completions` with `stream:true` yields SSE with a role-first chunk and a `[DONE]` terminator (content chunk may arrive aggregated before `[DONE]`).
 - App-server workers launch via `codex app-server` with flags such as `--config sandbox_mode=read-only`, `--config project_doc_max_bytes=0`, `--config tools.web_search=false`, and `--config model_reasoning_effort="<level>"`. Additional JSON payloads supply transcripts and metadata per request.
@@ -554,7 +550,7 @@ For an isolated dev setup that doesn’t touch your global Codex state, this rep
 PROXY_API_KEY=<your-dev-key> npm run start:codev
 ```
 
-If you don’t have the Codex CLI installed, you can use the built-in legacy proto shim to mimic streaming behavior (see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x)):
+If you don’t have the Codex CLI installed, you can use the built-in deterministic JSON-RPC shim (no Codex install required):
 
 ```
 PROXY_API_KEY=<your-dev-key> npm run start:codev:shim
@@ -587,7 +583,7 @@ npm run dev
 Options:
 
 - `npm run dev -- -p 19000` — change port
-- `npm run dev:shim` — run without Codex CLI, using the deterministic legacy proto shim (see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x))
+- `npm run dev:shim` — run without Codex CLI, using the deterministic app-server JSON-RPC shim
 
 The launcher never prints secrets and prefers project-local `.codev` config via `CODEX_HOME=.codev`.
 
@@ -661,7 +657,7 @@ Expect an initial role delta, one or more `data: {"..."}` chunks, then `data: [D
 - Any OpenAI‑style Chat Completions client can talk to this proxy by setting the base URL and API key. Example: `https://your-public-host/v1` (must be reachable by Cursor’s cloud; `http://127.0.0.1` will not work).
 - API Key: same value as `PROXY_API_KEY`.
 - Model: select `codex-5` (proxy normalizes to effective `gpt-5`).
-- Streaming: supported (role-first delta + `[DONE]`). For more granular deltas set `PROXY_STREAM_MODE=jsonl`.
+- Streaming: supported (role-first delta + `[DONE]`). See `docs/openai-endpoint-golden-parity.md` for the canonical contract.
 - Optional: set `PROXY_PROTECT_MODELS=true` to force auth on `/v1/models` during verification.
 - Hangs: if Codex is missing or stalls, responses will fail fast per `PROXY_TIMEOUT_MS` instead of hanging.
 
