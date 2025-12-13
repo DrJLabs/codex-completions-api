@@ -160,8 +160,11 @@ const scanValueForMarkers = (value, state, depth = 0) => {
   if (!isPlainObject(value)) return;
 
   if (typeof value.text === "string") scanTextForMarkers(value.text, state);
-  if (typeof value.content === "string") scanTextForMarkers(value.content, state);
-  if (value.content) scanValueForMarkers(value.content, state, depth + 1);
+  if (typeof value.content === "string") {
+    scanTextForMarkers(value.content, state);
+  } else if (value.content) {
+    scanValueForMarkers(value.content, state, depth + 1);
+  }
 };
 
 export function summarizeResponsesIngress(body = {}, req = null) {
