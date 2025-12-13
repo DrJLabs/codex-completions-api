@@ -166,10 +166,11 @@ export function maybeInjectIngressGuardrail({
     );
   } catch (error) {
     // Logging is best effort; guardrail injection must not block a request.
-    if (String(process.env.PROXY_ENV || "").trim() === "dev") {
-      try {
-        console.warn("[proxy][guardrail] logStructured failed", error);
-      } catch {}
+    if (
+      String(process.env.PROXY_ENV || "").trim() === "dev" &&
+      typeof console?.warn === "function"
+    ) {
+      console.warn("[proxy][guardrail] logStructured failed", error);
     }
   }
 
