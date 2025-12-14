@@ -45,4 +45,20 @@ describe("assertSecureConfig", () => {
       )
     ).not.toThrow();
   });
+
+  it("throws when PROXY_ENV is missing and NODE_ENV=production", () => {
+    const cfg = { ...baseCfg };
+    delete cfg.PROXY_ENV;
+    expect(() =>
+      assertSecureConfig({ ...cfg, API_KEY: "codex-local-secret" }, { NODE_ENV: "production" })
+    ).toThrow(/API_KEY/);
+  });
+
+  it("does not throw when PROXY_ENV is missing and NODE_ENV=development", () => {
+    const cfg = { ...baseCfg };
+    delete cfg.PROXY_ENV;
+    expect(() =>
+      assertSecureConfig({ ...cfg, API_KEY: "codex-local-secret" }, { NODE_ENV: "development" })
+    ).not.toThrow();
+  });
 });
