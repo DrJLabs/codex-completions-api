@@ -246,7 +246,7 @@ describe("API key auth enforcement", () => {
     expect(res.status).not.toBe(401);
 
     // If your unit setup fully mocks upstream, tighten this to expect 200.
-    expect([200, 201, 400, 422]).toContain(res.status);
+    expect([200, 400, 422]).toContain(res.status);
   });
 
   it("rejects /v1/responses without Authorization (401 + WWW-Authenticate)", async () => {
@@ -273,7 +273,7 @@ describe("API key auth enforcement", () => {
       });
 
     expect(res.status).not.toBe(401);
-    expect([200, 201, 400, 422]).toContain(res.status);
+    expect([200, 400, 422]).toContain(res.status);
   });
 
   it("keeps /healthz open", async () => {
@@ -374,4 +374,3 @@ Confirm:
   - **200** unauth always
 - Usage/test routes unchanged except their flags
 - Entire test suite passes
-

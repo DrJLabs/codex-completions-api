@@ -10,6 +10,8 @@ This report proposes a focused, low-overhead implementation that:
 - Ensures **invalid JSON** never yields an HTML error page (still **400**, but JSON body)
 - Catches Codex CLI exceptions and returns **clean JSON 500** (or passes through upstream OpenAI-shaped errors if the CLI provides them)
 
+> Note: Code snippets below are illustrative/pseudocode. This repo is ESM (`type: "module"`) and uses Vitest + `node-fetch` integration tests that spawn `server.js`; adapt paths/imports accordingly.
+
 ---
 
 ## Patch

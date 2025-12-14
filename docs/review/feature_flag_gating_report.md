@@ -10,6 +10,8 @@ Review all configuration flags related to feature gating in the proxy, ensure th
 - rate limiting
 - test-only endpoints
 
+> Note: Some code snippets below use CommonJS-style `require()` and supertest-style patterns for illustration. This repo is ESM (`type: "module"`) and the test harnesses primarily use Vitest + `node-fetch` integration tests under `tests/integration`; adapt paths/imports accordingly.
+
 ---
 
 ## Reasoning
@@ -403,9 +405,17 @@ Then `PROXY_ENABLE_METRICS=false` becomes truthy and **silently enables the feat
 If you see failures consistent with this, standardize boolean parsing:
 
 ```js
-function parseBool(value, defaultValue = false) {
+const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
+const boolishFalse = (value) => /^(0|false|no|off)$/i.test(String(value ?? "").trim());
+
+function parseBoolish(value, defaultValue = false) {
   if (value === undefined) return defaultValue;
-  return !['0', 'false', 'no', 'off'].includes(String(value).toLowerCase());
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return false;
+  if (boolishFalse(trimmed)) return false;
+  if (boolishTrue(trimmed)) return true;
+  // Fail closed by default to avoid silently enabling features on typos.
+  return defaultValue;
 }
 ```
 
@@ -470,4 +480,3 @@ Include:
 
 ## Optional: stricter “200 OK” assertions
 If `/v1/usage` and `/v1/responses` require specific query params or upstream calls, you can tighten the tests to expect `200` by adding a stable mock layer (e.g., `nock`) that intercepts outbound requests and returns deterministic fixtures. The suite above focuses on gating behavior and secure defaults.
-
