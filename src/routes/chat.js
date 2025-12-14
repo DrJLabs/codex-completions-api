@@ -16,13 +16,13 @@ export default function chatRouter() {
 
   // POST routes for chat and legacy completions
   r.post("/v1/chat/completions", requireStrictAuth, requireWorkerReady, (req, res) => {
-    const stream = !!(req?.body && req.body.stream);
+    const stream = req?.body ? req.body.stream !== false : true;
     if (stream) return postChatStream(req, res);
     return postChatNonStream(req, res);
   });
 
   r.post("/v1/completions", requireStrictAuth, requireWorkerReady, (req, res) => {
-    const stream = !!(req?.body && req.body.stream);
+    const stream = req?.body ? req.body.stream !== false : true;
     if (stream) return postCompletionsStream(req, res);
     return postCompletionsNonStream(req, res);
   });
