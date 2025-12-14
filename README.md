@@ -110,9 +110,10 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - All `/v1/chat/completions` **and `/v1/responses`** requests require `Authorization: Bearer $PROXY_API_KEY`.
 - `/v1/models` is public in dev but can be protected by setting `PROXY_PROTECT_MODELS=true`.
-- Usage telemetry (`/v1/usage`, `/v1/usage/raw`) requires the bearer key unless you explicitly set `PROXY_USAGE_ALLOW_UNAUTH=true` for local diagnostics.
+- Usage telemetry (`/v1/usage`, `/v1/usage/raw`) requires the bearer key unless you explicitly set `PROXY_USAGE_ALLOW_UNAUTH=true` for local diagnostics (usage-only; does not affect other endpoints).
 - Test-only routes (`/__test/*`) are gated by `PROXY_TEST_ENDPOINTS=true`, always require the bearer key, and default to loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`.
 - ForwardAuth (Traefik) also checks the same key to keep edge and origin consistent.
+- Boolean flags accept `1|true|yes|on` (and `0|false|no|off`) case-insensitively, e.g. `PROXY_ENABLE_RESPONSES=1`.
 
 ### Model selection
 

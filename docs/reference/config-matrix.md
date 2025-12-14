@@ -19,6 +19,7 @@ Canonicalizes the ForwardAuth entrypoint, environment layout, and infra artifact
 
 - Required everywhere: `PROXY_API_KEY` (shared between ForwardAuth and the app).
 - Auth surface toggles: `PROXY_PROTECT_MODELS`, `PROXY_USAGE_ALLOW_UNAUTH`, `PROXY_TEST_ENDPOINTS`, `PROXY_TEST_ALLOW_REMOTE` (defaults keep models public, usage/test protected and loopback-only).
+- Boolean flags accept `1|true|yes|on` (and `0|false|no|off`) case-insensitively (example: `PROXY_TEST_ENDPOINTS=1`).
 - Sandbox and workdir: `PROXY_SANDBOX_MODE=read-only` by default; `PROXY_CODEX_WORKDIR` defaults to `/tmp/codex-work` and should stay writable in containers.
 - Bind addresses: local Node defaults to `127.0.0.1`; containers set `PROXY_HOST=0.0.0.0` for Traefik while Traefik itself calls the app over the external `traefik` network.
 
