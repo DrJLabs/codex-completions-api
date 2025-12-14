@@ -183,7 +183,7 @@ dataEntries.forEach((entry) =>
     if (choice?.finish_reason) finishReasons.push(choice.finish_reason);
   })
 );
-if (!finishReasons.includes("tool_calls")) {
+if (!disconnectAfterFirstTool && !finishReasons.includes("tool_calls")) {
   console.error("Missing finish_reason: tool_calls in stream.");
   process.exit(1);
 }
@@ -207,26 +207,28 @@ if (toolDeltaIndex !== -1 && toolDeltaIndex < roleFirstIndex) {
   process.exit(1);
 }
 
-// Finish ordering: exactly one finish chunk per choice, and no deltas after finish.
-const finishIndexByChoice = new Map();
-dataEntries.forEach((entry, idx) => {
-  entry.data?.choices?.forEach((choice) => {
-    if (choice?.finish_reason) finishIndexByChoice.set(choice.index ?? 0, idx);
+if (!disconnectAfterFirstTool) {
+  // Finish ordering: exactly one finish chunk per choice, and no deltas after finish.
+  const finishIndexByChoice = new Map();
+  dataEntries.forEach((entry, idx) => {
+    entry.data?.choices?.forEach((choice) => {
+      if (choice?.finish_reason) finishIndexByChoice.set(choice.index ?? 0, idx);
+    });
   });
-});
-for (const entry of dataEntries) {
-  entry.data?.choices?.forEach((choice) => {
-    const finishIdx = finishIndexByChoice.get(choice.index ?? 0);
-    if (finishIdx === undefined) return;
-    if (
-      dataEntries.indexOf(entry) > finishIdx &&
-      (typeof choice?.delta?.content === "string" ||
-        (Array.isArray(choice?.delta?.tool_calls) && choice.delta.tool_calls.length > 0))
-    ) {
-      console.error("Found deltas after finish chunk for choice", choice.index ?? 0);
-      process.exit(1);
-    }
-  });
+  for (const entry of dataEntries) {
+    entry.data?.choices?.forEach((choice) => {
+      const finishIdx = finishIndexByChoice.get(choice.index ?? 0);
+      if (finishIdx === undefined) return;
+      if (
+        dataEntries.indexOf(entry) > finishIdx &&
+        (typeof choice?.delta?.content === "string" ||
+          (Array.isArray(choice?.delta?.tool_calls) && choice.delta.tool_calls.length > 0))
+      ) {
+        console.error("Found deltas after finish chunk for choice", choice.index ?? 0);
+        process.exit(1);
+      }
+    });
+  }
 }
 
 if (expectXml) {
