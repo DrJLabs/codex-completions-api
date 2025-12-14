@@ -72,7 +72,11 @@ describe("responses readiness guard (app-server backend)", () => {
   });
 
   test("returns 503 backend_unavailable when worker is not ready", async () => {
-    await startServer({ FAKE_CODEX_SKIP_READY: "true" });
+    await startServer({
+      FAKE_CODEX_SKIP_READY: "true",
+      FAKE_CODEX_HANDSHAKE_MODE: "timeout",
+      WORKER_HANDSHAKE_TIMEOUT_MS: "200",
+    });
 
     const res = await fetch(`http://127.0.0.1:${PORT}/v1/responses`, {
       method: "POST",

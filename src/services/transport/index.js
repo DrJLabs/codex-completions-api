@@ -256,25 +256,19 @@ class JsonRpcTransport {
   async ensureHandshake() {
     if (this.handshakeCompleted && this.handshakeData) return this.handshakeData;
     if (this.handshakePromise) return this.handshakePromise;
-    try {
-      await this.supervisor.waitForReady(CFG.WORKER_STARTUP_TIMEOUT_MS);
-    } catch (err) {
-      const child = getWorkerChildProcess();
-      if (!child || !child.pid) {
-        if (err instanceof TransportError) throw err;
-        const message =
-          err instanceof Error && err.message ? err.message : "worker did not become ready";
-        const wrapped = new TransportError(message, {
-          code: "worker_not_ready",
-          retryable: true,
-        });
-        if (err !== wrapped) wrapped.cause = err;
-        throw wrapped;
-      }
-      console.warn(
-        `${LOG_PREFIX} readiness wait failed (pid=${child.pid}): ${err instanceof Error ? err.message : err}`
-      );
+
+    const child = this.child || getWorkerChildProcess();
+    if (!child || !child.stdin) {
+      throw new TransportError("worker not available", {
+        code: "worker_not_ready",
+        retryable: true,
+      });
     }
+
+    if (child !== this.child) {
+      this.#attachChild(child);
+    }
+
     this.handshakePromise = new Promise((resolve, reject) => {
       const rpcId = this.#nextRpcId();
       const timeout = setTimeout(() => {
@@ -830,6 +824,17 @@ class JsonRpcTransport {
 
   #onSpawn(child) {
     this.#attachChild(child);
+    if (this.destroyed) return;
+    this.ensureHandshake().catch((err) => {
+      const handler = this.supervisor?.recordHandshakeFailure;
+      if (typeof handler === "function") {
+        try {
+          handler.call(this.supervisor, err);
+        } catch (failureErr) {
+          console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
+        }
+      }
+    });
   }
 
   #onExit(info) {
