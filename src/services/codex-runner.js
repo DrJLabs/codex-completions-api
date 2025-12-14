@@ -35,6 +35,8 @@ export function spawnCodex(args = [], options = {}) {
   delete safeSpawnOptions.stdio;
   delete safeSpawnOptions.cwd;
   delete safeSpawnOptions.shell;
+  delete safeSpawnOptions.detached;
+  delete safeSpawnOptions.windowsHide;
   try {
     // Ensure working directory exists before spawning child process
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- codexWorkdir from config, not request
@@ -50,6 +52,8 @@ export function spawnCodex(args = [], options = {}) {
     cwd: childCwd,
     ...safeSpawnOptions,
     shell: false,
+    detached: false,
+    windowsHide: true,
   });
   const lifecycleBase = {
     req_id: reqId || null,

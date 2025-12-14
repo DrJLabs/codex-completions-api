@@ -44,6 +44,8 @@ describe("spawnCodex", () => {
     spawnCodex(["--version"], {
       env: { EXTRA: "1" },
       shell: true,
+      detached: true,
+      windowsHide: false,
       stdio: "inherit",
     });
 
@@ -51,6 +53,8 @@ describe("spawnCodex", () => {
     const call = spawnSpy.mock.calls[0];
     const options = call[2];
     expect(options.shell).toBe(false);
+    expect(options.detached).toBe(false);
+    expect(options.windowsHide).toBe(true);
     expect(options.stdio).toEqual(["pipe", "pipe", "pipe"]);
     expect(options.env.PROXY_API_KEY).toBeUndefined();
     expect(options.env.PROXY_METRICS_TOKEN).toBeUndefined();
