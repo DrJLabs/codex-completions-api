@@ -114,13 +114,46 @@ export default function createApp() {
   }
   app.use(usageRouter());
 
-  // Error handler: ensure invalid JSON parse errors return an OpenAI-style JSON error.
+  // Error handler: ensure body-parser errors return OpenAI-style JSON instead of HTML.
   // Must be registered after express.json().
   app.use((err, _req, res, next) => {
-    const isParseFailed = err && err.type === "entity.parse.failed";
-    if (!isParseFailed) return next(err);
     if (res.headersSent) return next(err);
-    return res.status(400).json(invalidRequestBody(null, "Invalid JSON"));
+    const status = Number.isInteger(err?.status)
+      ? err.status
+      : Number.isInteger(err?.statusCode)
+        ? err.statusCode
+        : 0;
+    const type = typeof err?.type === "string" ? err.type : "";
+    const isBodyParserError =
+      status >= 400 &&
+      status < 500 &&
+      (type.startsWith("entity.") ||
+        type.startsWith("request.") ||
+        type.startsWith("charset.") ||
+        type.startsWith("encoding."));
+    if (!isBodyParserError) return next(err);
+
+    let message = "Invalid request body";
+    let code = "invalid_request_error";
+    if (type === "entity.parse.failed") {
+      message = "Invalid JSON";
+      code = "invalid_json";
+    } else if (type === "entity.too.large" || status === 413) {
+      message = "Request body too large";
+      code = "request_entity_too_large";
+    } else if (
+      type === "encoding.unsupported" ||
+      type === "charset.unsupported" ||
+      status === 415
+    ) {
+      message = "Unsupported encoding";
+      code = "unsupported_encoding";
+    } else if (type === "request.aborted") {
+      message = "Request aborted";
+      code = "request_aborted";
+    }
+
+    return res.status(status || 400).json(invalidRequestBody(null, message, code));
   });
 
   return app;
