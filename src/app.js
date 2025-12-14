@@ -16,10 +16,10 @@ import { logStructured } from "./services/logging/schema.js";
 import metricsMiddleware from "./middleware/metrics.js";
 import { requireTestAuth } from "./middleware/auth.js";
 import tracingMiddleware from "./middleware/tracing.js";
+import { invalidRequestBody } from "./lib/errors.js";
 
 export default function createApp() {
   const app = express();
-  app.use(express.json({ limit: "16mb" }));
   app.use(metricsMiddleware());
   app.use(tracingMiddleware());
 
@@ -58,6 +58,9 @@ export default function createApp() {
 
   // Structured JSON access log
   app.use(accessLog());
+
+  // JSON body parsing (after tracing/metrics/CORS/access logging so parse errors still get those headers)
+  app.use(express.json({ limit: "16mb" }));
 
   // Mount routers
   app.use(
@@ -110,6 +113,15 @@ export default function createApp() {
     app.use(responsesRouter());
   }
   app.use(usageRouter());
+
+  // Error handler: ensure invalid JSON parse errors return an OpenAI-style JSON error.
+  // Must be registered after express.json().
+  app.use((err, _req, res, next) => {
+    const isParseFailed = err && err.type === "entity.parse.failed";
+    if (!isParseFailed) return next(err);
+    if (res.headersSent) return next(err);
+    return res.status(400).json(invalidRequestBody(null, "Invalid JSON"));
+  });
 
   return app;
 }
