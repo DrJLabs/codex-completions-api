@@ -53,17 +53,18 @@ Ensure `docs/configuration.md` (or equivalent) lists:
 ### `test/helpers/loadFreshApp.js`
 ```js
 // test/helpers/loadFreshApp.js
-'use strict';
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { vi } from "vitest";
 
-const path = require('path');
-
-const SRC_ROOT = path.resolve(__dirname, '../../src');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SRC_ROOT = path.resolve(__dirname, "../../src");
 
 /**
  * Apply env overrides for the duration of a test and return a restore function.
  * Passing `undefined` deletes the env var (forces default behavior).
  */
-function applyEnv(overrides) {
+export function applyEnv(overrides) {
   const previous = {};
   for (const [key, value] of Object.entries(overrides || {})) {
     previous[key] = process.env[key];
@@ -83,26 +84,14 @@ function applyEnv(overrides) {
 }
 
 /**
- * Purge Node's require cache for everything under src/.
- * This forces config + app to be re-evaluated with the new env vars.
- */
-function purgeSrcRequireCache() {
-  const prefix = SRC_ROOT + path.sep;
-  for (const modulePath of Object.keys(require.cache)) {
-    if (modulePath.startsWith(prefix)) {
-      delete require.cache[modulePath];
-    }
-  }
-}
-
-/**
  * Load the Express app fresh.
  * Supports either `module.exports = app` or `{ app }` or `default`.
  */
-function loadFreshApp() {
-  purgeSrcRequireCache();
+export async function loadFreshApp() {
+  // With ESM, prefer Vitest's module reset helpers instead of require.cache.
+  vi.resetModules();
 
-  const mod = require(path.join(SRC_ROOT, 'app.js'));
+  const mod = await import(pathToFileURL(path.join(SRC_ROOT, "app.js")).href);
   const app = (mod && (mod.app || mod.default)) || mod;
 
   if (!app || typeof app.use !== 'function') {
@@ -112,22 +101,16 @@ function loadFreshApp() {
   }
   return app;
 }
-
-module.exports = {
-  applyEnv,
-  loadFreshApp,
-};
 ```
 
 ### `test/configToggles.spec.js`
 ```js
 // test/configToggles.spec.js
-'use strict';
+import os from "node:os";
+import request from "supertest";
+import { afterEach, describe, expect, test } from "vitest";
 
-const request = require('supertest');
-const os = require('os');
-
-const { applyEnv, loadFreshApp } = require('./helpers/loadFreshApp');
+import { applyEnv, loadFreshApp } from "./helpers/loadFreshApp.js";
 
 function getNonLoopbackIPv4() {
   const nets = os.networkInterfaces();
@@ -162,7 +145,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
       restoreEnv = applyEnv({
         PROXY_ENABLE_RESPONSES: undefined, // force default
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).post('/v1/responses').send({});
 
@@ -174,7 +157,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
       restoreEnv = applyEnv({
         PROXY_ENABLE_RESPONSES: 'false',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       // Verify no partial behavior: multiple methods and subpaths should 404.
       const res1 = await request(app).post('/v1/responses').send({});
@@ -192,7 +175,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
       restoreEnv = applyEnv({
         PROXY_ENABLE_METRICS: undefined,
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).get('/metrics');
       expect(res.status).toBe(404);
@@ -203,7 +186,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_ENABLE_METRICS: 'true',
         PROXY_METRICS_TOKEN: 'metrics-test-token',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).get('/metrics');
       expect([401, 403]).toContain(res.status);
@@ -214,7 +197,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_ENABLE_METRICS: 'true',
         PROXY_METRICS_TOKEN: 'metrics-test-token',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app)
         .get('/metrics')
@@ -231,7 +214,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_METRICS_TOKEN: undefined, // no token → should fall back to loopback-only
         // Leave ALLOW_LOOPBACK/ALLOW_UNAUTH unset to validate defaults.
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       // Loopback (supertest in-process) should be allowed by default.
       const loopbackRes = await request(app).get('/metrics');
@@ -264,7 +247,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_API_KEY: 'sk-proxy-test',
         PROXY_API_KEYS: 'sk-proxy-test', // harmless if unused
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).get('/v1/usage');
       expect(res.status).toBe(401);
@@ -276,7 +259,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_API_KEY: 'sk-proxy-test',
         PROXY_API_KEYS: 'sk-proxy-test',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).get('/v1/usage');
 
@@ -293,7 +276,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_RATE_LIMIT_MAX: '2',
         PROXY_RATE_LIMIT_WINDOW_MS: '1000',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       // Use a path that does not require knowledge of upstream functionality.
       // If your rate limiter is global middleware, it will apply even to 404 routes.
@@ -314,7 +297,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_RATE_LIMIT_MAX: '2',
         PROXY_RATE_LIMIT_WINDOW_MS: '1000',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const path = '/__rate_limit_probe__';
 
@@ -333,7 +316,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
       restoreEnv = applyEnv({
         PROXY_TEST_ENDPOINTS: undefined, // default false
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app).get('/__test/conc');
       expect(res.status).toBe(404);
@@ -346,7 +329,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_API_KEY: 'sk-proxy-test',
         PROXY_API_KEYS: 'sk-proxy-test',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const res = await request(app)
         .get('/__test/conc')
@@ -364,7 +347,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
         PROXY_API_KEY: 'sk-proxy-test',
         PROXY_API_KEYS: 'sk-proxy-test',
       });
-      const app = loadFreshApp();
+      const app = await loadFreshApp();
 
       const ip = getNonLoopbackIPv4();
       if (!ip) return;
