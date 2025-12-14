@@ -39,6 +39,7 @@ import {
 } from "../../lib/metadata-sanitizer.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
+import { requireModel } from "./require-model.js";
 import { mapTransportError } from "../../services/transport/index.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
@@ -547,26 +548,19 @@ export async function postChatNonStream(req, res) {
     body,
   });
 
-  const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!model) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_nonstream",
-      statusCode: 400,
-      reason: "invalid_request",
-      errorCode: "model_required",
-    });
-    applyCors(req, res);
-    return respondWithJson(
-      res,
-      400,
-      invalidRequestBody("model", "model is required", "model_required")
-    );
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/chat/completions",
+    mode: "chat_nonstream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => respondWithJson(res, statusCode, payload),
+  });
+  if (!model) return;
 
   let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
@@ -1369,27 +1363,20 @@ export async function postCompletionsNonStream(req, res) {
     body,
   });
 
-  const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!model) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_nonstream",
-      statusCode: 400,
-      reason: "invalid_request",
-      errorCode: "model_required",
-      stream: false,
-    });
-    applyCors(req, res);
-    return respondWithJson(
-      res,
-      400,
-      invalidRequestBody("model", "model is required", "model_required")
-    );
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/completions",
+    mode: "completions_nonstream",
+    stream: false,
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => respondWithJson(res, statusCode, payload),
+  });
+  if (!model) return;
 
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
 

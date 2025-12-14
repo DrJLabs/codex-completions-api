@@ -53,6 +53,7 @@ import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mo
 import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
+import { requireModel } from "./require-model.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
@@ -205,22 +206,19 @@ export async function postChatStream(req, res) {
     mode,
     body,
   });
-  const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!model) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_stream",
-      statusCode: 400,
-      reason: "invalid_request",
-      errorCode: "model_required",
-    });
-    applyCors(req, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required", "model_required"));
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => res.status(statusCode).json(payload),
+  });
+  if (!model) return;
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -2070,22 +2068,19 @@ export async function postCompletionsStream(req, res) {
     body,
   });
 
-  const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!model) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: 400,
-      reason: "invalid_request",
-      errorCode: "model_required",
-    });
-    applyCors(req, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required", "model_required"));
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/completions",
+    mode: "completions_stream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => res.status(statusCode).json(payload),
+  });
+  if (!model) return;
 
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
