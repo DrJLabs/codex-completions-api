@@ -16,7 +16,7 @@ import { logStructured } from "./services/logging/schema.js";
 import metricsMiddleware from "./middleware/metrics.js";
 import { requireTestAuth } from "./middleware/auth.js";
 import tracingMiddleware from "./middleware/tracing.js";
-import { invalidRequestBody } from "./lib/errors.js";
+import { invalidRequestBody, serverErrorBody } from "./lib/errors.js";
 
 export default function createApp() {
   const app = express();
@@ -154,6 +154,23 @@ export default function createApp() {
     }
 
     return res.status(status || 400).json(invalidRequestBody(null, message, code));
+  });
+
+  // Final error handler: ensure unexpected errors remain JSON (not Express HTML).
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    applyCors(req, res);
+    const status = Number.isInteger(err?.status)
+      ? err.status
+      : Number.isInteger(err?.statusCode)
+        ? err.statusCode
+        : 500;
+    const statusCode = status >= 400 && status < 600 ? status : 500;
+    const payload =
+      statusCode >= 500
+        ? serverErrorBody()
+        : invalidRequestBody(null, err?.message || "invalid request");
+    return res.status(statusCode).json(payload);
   });
 
   return app;
