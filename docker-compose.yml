@@ -109,6 +109,13 @@ services:
       - traefik.http.routers.codex-health.tls=true
       - traefik.http.routers.codex-health.service=codex-api
       - traefik.http.routers.codex-health.middlewares=codex-headers
+
+      # Public readiness/liveness router (no auth)
+      - traefik.http.routers.codex-readyz.rule=Host(`codex-api.onemainarmy.com`) && (Path(`/readyz`) || Path(`/livez`))
+      - traefik.http.routers.codex-readyz.entrypoints=websecure
+      - traefik.http.routers.codex-readyz.tls=true
+      - traefik.http.routers.codex-readyz.service=codex-api
+      - traefik.http.routers.codex-readyz.middlewares=codex-headers
     restart: unless-stopped
 
   auth:

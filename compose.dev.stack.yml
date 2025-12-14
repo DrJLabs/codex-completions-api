@@ -10,6 +10,10 @@ services:
       # Enable origin-level CORS while Cloudflare dev rule is disabled
       - PROXY_ENABLE_CORS=true
       - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-dev.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost}
+      - PROXY_ENABLE_METRICS=${PROXY_ENABLE_METRICS:-}
+      - PROXY_METRICS_ALLOW_UNAUTH=${PROXY_METRICS_ALLOW_UNAUTH:-}
+      - PROXY_METRICS_ALLOW_LOOPBACK=${PROXY_METRICS_ALLOW_LOOPBACK:-}
+      - PROXY_METRICS_TOKEN=${PROXY_METRICS_TOKEN:-}
       - PROXY_API_KEY=${PROXY_API_KEY?set-in-.env.dev}
       - PROXY_HOST=${PROXY_HOST:-0.0.0.0}
       - CODEX_HOME=/home/node/.codex
@@ -111,6 +115,13 @@ services:
       - traefik.http.routers.codex-dev-health.tls=true
       - traefik.http.routers.codex-dev-health.service=codex-dev-api
       - traefik.http.routers.codex-dev-health.middlewares=codex-dev-headers
+
+      # Public readiness/liveness router (no auth)
+      - traefik.http.routers.codex-dev-readyz.rule=Host(`codex-dev.onemainarmy.com`) && (Path(`/readyz`) || Path(`/livez`))
+      - traefik.http.routers.codex-dev-readyz.entrypoints=websecure
+      - traefik.http.routers.codex-dev-readyz.tls=true
+      - traefik.http.routers.codex-dev-readyz.service=codex-dev-api
+      - traefik.http.routers.codex-dev-readyz.middlewares=codex-dev-headers
 
   auth-dev:
     image: node:22-alpine

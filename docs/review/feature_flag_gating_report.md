@@ -3,7 +3,7 @@
 ## Goal
 Review all configuration flags related to feature gating in the proxy, ensure they work as intended, and improve test coverage for them. The objective is to be confident that enabling or disabling features via env vars is effective and that defaults are secure.
 
-**Focus areas**
+### Focus areas
 - `/v1/responses` endpoint toggle
 - metrics exposure
 - usage auth bypass
@@ -29,7 +29,7 @@ This suite should:
 - start the app with different env permutations
 - assert **route registration** (404 vs non‑404)
 - assert **auth/loopback protections** (403/401 vs 200)
-- assert **rate limiting triggers** (429)
+- assert **rate-limiting triggers** (429)
 
 ### 2) Test helper to reload the app with isolated env
 Feature flags are often read at module-import time (e.g., config built once). To avoid cross-test contamination, use a helper that:
@@ -368,7 +368,7 @@ describe('Feature flag gating (route mount + security defaults)', () => {
 });
 ```
 
-**Why these tests**
+## Why these tests
 - The gating condition you care about is deterministically testable: “route mounted or not,” and “protected or not.”
 - For remote-vs-loopback checks, using a real listener + non-loopback interface avoids reliance on `X-Forwarded-For` behavior (which can vary with `trust proxy`).
 

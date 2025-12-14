@@ -13,12 +13,13 @@ if [[ -f "$ROOT_DIR/.env.dev" ]]; then . "$ROOT_DIR/.env.dev"; fi
 
 DOMAIN="${DEV_DOMAIN:-${DOMAIN:-}}"; [[ -n "$DOMAIN" ]] || { echo "ERROR: DEV_DOMAIN or DOMAIN is required" >&2; exit 2; }
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
+DEV_PORT="${DEV_PORT:-18010}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env.dev or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
 REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
 STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
-METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:11435/metrics}"
+METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:${DEV_PORT}/metrics}"
 METRICS_TOKEN="${METRICS_TOKEN:-${PROXY_METRICS_TOKEN:-}}"
 METRICS_PAYLOAD=""
 METRICS_ENABLED="$(printf "%s" "${PROXY_ENABLE_METRICS:-}" | tr '[:upper:]' '[:lower:]')"
