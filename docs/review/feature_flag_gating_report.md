@@ -10,7 +10,7 @@ Review all configuration flags related to feature gating in the proxy, ensure th
 - rate limiting
 - test-only endpoints
 
-> Note: Some code snippets below use CommonJS-style `require()` and supertest-style patterns for illustration. This repo is ESM (`type: "module"`) and the test harnesses primarily use Vitest + `node-fetch` integration tests under `tests/integration`; adapt paths/imports accordingly.
+> Note: Code snippets below are illustrative. This repo is ESM (`type: "module"`) and the test harnesses primarily use Vitest + `node-fetch` integration tests under `tests/integration`; adapt paths/imports accordingly.
 
 ---
 
@@ -85,7 +85,7 @@ export function applyEnv(overrides) {
 
 /**
  * Load the Express app fresh.
- * Supports either `module.exports = app` or `{ app }` or `default`.
+ * Supports either a named `app` export or a default export.
  */
 export async function loadFreshApp() {
   // With ESM, prefer Vitest's module reset helpers instead of require.cache.
@@ -94,9 +94,9 @@ export async function loadFreshApp() {
   const mod = await import(pathToFileURL(path.join(SRC_ROOT, "app.js")).href);
   const app = (mod && (mod.app || mod.default)) || mod;
 
-  if (!app || typeof app.use !== 'function') {
+  if (!app || typeof app.use !== "function") {
     throw new Error(
-      'Expected src/app.js to export an Express app (or { app } / default export).'
+      "Expected src/app.js to export an Express app (or { app } / default export)."
     );
   }
   return app;
