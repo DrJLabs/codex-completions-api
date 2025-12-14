@@ -1,13 +1,7 @@
 import { config as CFG } from "../config/index.js";
 import { authErrorBody } from "../lib/errors.js";
 import { isLoopbackRequest } from "../lib/net.js";
-
-const bearerToken = (req) => {
-  const auth = req.headers.authorization || "";
-  if (typeof auth !== "string") return "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-};
+import { bearerToken } from "../lib/bearer.js";
 
 const hasValidApiKey = (req) => {
   const token = bearerToken(req);

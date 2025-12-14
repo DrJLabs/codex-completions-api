@@ -1,6 +1,8 @@
 // Simple in-memory token-bucket rate limiter keyed by API key (fallback IP).
 // Not distributed; intended as defense-in-depth in front of edge rate limiting.
 
+import { bearerToken } from "../lib/bearer.js";
+
 const buckets = new Map();
 
 export default function rateLimit(options = {}) {
@@ -35,8 +37,7 @@ export default function rateLimit(options = {}) {
     ]);
     if (!guardedPaths.has(path)) return next();
 
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = bearerToken(req);
     const key = token || req.ip || req.connection?.remoteAddress || "unknown";
     const now = Date.now();
     let b = buckets.get(key);

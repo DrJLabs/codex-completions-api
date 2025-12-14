@@ -9,6 +9,7 @@ import {
   observeWorkerRestartDelta,
 } from "../services/metrics/index.js";
 import { config as CFG } from "../config/index.js";
+import { bearerToken } from "../lib/bearer.js";
 
 const isLoopback = (ip = "") => {
   if (!ip) return false;
@@ -19,9 +20,7 @@ const isLoopback = (ip = "") => {
 const hasMetricsBearer = (req) => {
   const token = (CFG.PROXY_METRICS_TOKEN || "").trim();
   if (!token) return false;
-  const value = String(req.headers?.authorization ?? "");
-  if (!value.toLowerCase().startsWith("bearer ")) return false;
-  return value.slice(7).trim() === token;
+  return bearerToken(req) === token;
 };
 
 const isMetricsAuthorized = (req) => {

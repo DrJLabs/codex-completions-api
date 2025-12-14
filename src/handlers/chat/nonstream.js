@@ -560,8 +560,12 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: "model_required",
     });
-    applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required"));
+    applyCors(req, res);
+    return respondWithJson(
+      res,
+      400,
+      invalidRequestBody("model", "model is required", "model_required")
+    );
   }
 
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -577,8 +581,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: "messages_required",
     });
-    applyCors(null, res);
-    return res.status(400).json({
+    applyCors(req, res);
+    return respondWithJson(res, 400, {
       error: {
         message: "messages[] required",
         type: "invalid_request_error",
@@ -618,8 +622,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: choiceError?.error?.code || "invalid_choice",
     });
-    applyCors(null, res);
-    return res.status(400).json(choiceError);
+    applyCors(req, res);
+    return respondWithJson(res, 400, choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
     logUsageFailure({
@@ -633,8 +637,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: "invalid_choice_range",
     });
-    applyCors(null, res);
-    return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
+    applyCors(req, res);
+    return respondWithJson(res, 400, buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
   const outputMode = resolveOutputMode({
@@ -661,8 +665,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_optional_params",
       errorCode: optionalValidation.error?.error?.code,
     });
-    applyCors(null, res);
-    return res.status(400).json(optionalValidation.error);
+    applyCors(req, res);
+    return respondWithJson(res, 400, optionalValidation.error);
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
@@ -688,8 +692,8 @@ export async function postChatNonStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
-    return res.status(404).json(modelNotFoundBody(requestedModel));
+    applyCors(req, res);
+    return respondWithJson(res, 404, modelNotFoundBody(requestedModel));
   }
 
   let reasoningEffort = (
@@ -733,8 +737,8 @@ export async function postChatNonStream(req, res) {
       effectiveModel,
       errorCode: "prompt_too_large",
     });
-    applyCors(null, res);
-    return res.status(403).json(tokensExceededBody("messages"));
+    applyCors(req, res);
+    return respondWithJson(res, 403, tokensExceededBody("messages"));
   }
 
   if (IS_DEV_ENV) {
@@ -788,8 +792,8 @@ export async function postChatNonStream(req, res) {
           requestedModel,
           effectiveModel,
         });
-        applyCors(null, res);
-        return res.status(err.statusCode).json(err.body);
+        applyCors(req, res);
+        return respondWithJson(res, err.statusCode, err.body);
       }
       throw err;
     }
@@ -828,7 +832,7 @@ export async function postChatNonStream(req, res) {
     try {
       child.kill("SIGKILL");
     } catch {}
-    applyCors(null, res);
+    applyCors(req, res);
     logUsageFailure({
       req,
       res,
@@ -842,7 +846,7 @@ export async function postChatNonStream(req, res) {
       requestedModel,
       effectiveModel,
     });
-    res.status(504).json({
+    respondWithJson(res, 504, {
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
   }, REQ_TIMEOUT_MS);
@@ -1082,7 +1086,7 @@ export async function postChatNonStream(req, res) {
       }
     }
 
-    applyCors(null, res);
+    applyCors(req, res);
 
     if (statusCode !== 200 && errorBody) {
       const emissionTrigger = resolveEmissionTrigger(reasonTrail);
@@ -1379,8 +1383,12 @@ export async function postCompletionsNonStream(req, res) {
       errorCode: "model_required",
       stream: false,
     });
-    applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required"));
+    applyCors(req, res);
+    return respondWithJson(
+      res,
+      400,
+      invalidRequestBody("model", "model is required", "model_required")
+    );
   }
 
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
@@ -1398,8 +1406,8 @@ export async function postCompletionsNonStream(req, res) {
       errorCode: "prompt_required",
       stream: false,
     });
-    applyCors(null, res);
-    return res.status(400).json({
+    applyCors(req, res);
+    return respondWithJson(res, 400, {
       error: {
         message: "prompt required",
         type: "invalid_request_error",
@@ -1428,8 +1436,8 @@ export async function postCompletionsNonStream(req, res) {
       requestedModel,
       stream: false,
     });
-    applyCors(null, res);
-    return res.status(404).json(modelNotFoundBody(requestedModel));
+    applyCors(req, res);
+    return respondWithJson(res, 404, modelNotFoundBody(requestedModel));
   }
 
   let reasoningEffort = (
@@ -1477,7 +1485,7 @@ export async function postCompletionsNonStream(req, res) {
     try {
       child.kill("SIGKILL");
     } catch {}
-    applyCors(null, res);
+    applyCors(req, res);
     logUsageFailure({
       req,
       res,
@@ -1492,7 +1500,7 @@ export async function postCompletionsNonStream(req, res) {
       effectiveModel,
       stream: false,
     });
-    res.status(504).json({
+    respondWithJson(res, 504, {
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
   }, REQ_TIMEOUT_MS);
@@ -1560,7 +1568,7 @@ export async function postCompletionsNonStream(req, res) {
     clearTimeout(timeout);
     const textOut =
       content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
-    applyCors(null, res);
+    applyCors(req, res);
     const pt = prompt_tokens || promptTokensEst;
     const ct = completion_tokens || estTokens(textOut);
     if (LOG_PROTO) {

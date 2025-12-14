@@ -218,8 +218,8 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: "model_required",
     });
-    applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required"));
+    applyCors(req, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required", "model_required"));
   }
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
@@ -236,7 +236,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: "messages_required",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json({
       error: {
         message: "messages[] required",
@@ -277,7 +277,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: choiceError?.error?.code || "invalid_choice",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
@@ -292,7 +292,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: "invalid_choice_range",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
@@ -406,7 +406,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_optional_params",
       errorCode: optionalValidation.error?.error?.code,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(optionalValidation.error);
   }
 
@@ -415,13 +415,6 @@ export async function postChatStream(req, res) {
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
-  const streamObserver = createStreamObserver({ route, model: effectiveModel });
-  let streamOutcomeRecorded = false;
-  const recordStreamOutcome = (outcome) => {
-    if (streamOutcomeRecorded) return;
-    streamOutcomeRecorded = true;
-    streamObserver.end(outcome);
-  };
   try {
     console.log(
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
@@ -440,9 +433,17 @@ export async function postChatStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
+
+  const streamObserver = createStreamObserver({ route, model: effectiveModel });
+  let streamOutcomeRecorded = false;
+  const recordStreamOutcome = (outcome) => {
+    if (streamOutcomeRecorded) return;
+    streamOutcomeRecorded = true;
+    streamObserver.end(outcome);
+  };
   let reasoningEffort = (
     body.reasoning?.effort ||
     body.reasoning_effort ||
@@ -484,7 +485,7 @@ export async function postChatStream(req, res) {
       effectiveModel,
       errorCode: "prompt_too_large",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(403).json(tokensExceededBody("messages"));
   }
 
@@ -495,7 +496,7 @@ export async function postChatStream(req, res) {
     maxConc: MAX_CONC,
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
-      applyCors(null, res);
+      applyCors(req, res);
       logUsageFailure({
         req,
         res,
@@ -586,7 +587,7 @@ export async function postChatStream(req, res) {
           requestedModel,
           effectiveModel,
         });
-        applyCors(null, res);
+        applyCors(req, res);
         return res.status(err.statusCode).json(err.body);
       }
       throw err;
@@ -2082,8 +2083,8 @@ export async function postCompletionsStream(req, res) {
       reason: "invalid_request",
       errorCode: "model_required",
     });
-    applyCors(null, res);
-    return res.status(400).json(invalidRequestBody("model", "model is required"));
+    applyCors(req, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required", "model_required"));
   }
 
   // Concurrency guard for legacy completions stream as well
@@ -2117,7 +2118,7 @@ export async function postCompletionsStream(req, res) {
       reason: "invalid_request",
       errorCode: "prompt_required",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json({
       error: {
         message: "prompt required",
@@ -2151,7 +2152,7 @@ export async function postCompletionsStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
 
@@ -2201,7 +2202,7 @@ export async function postCompletionsStream(req, res) {
     maxConc: MAX_CONC,
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
-      applyCors(null, res);
+      applyCors(req, res);
       logUsageFailure({
         req,
         res,

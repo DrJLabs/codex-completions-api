@@ -1,4 +1,5 @@
 import http from "node:http";
+import { bearerTokenFromAuthHeader } from "../src/lib/bearer.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const REALM = process.env.AUTH_REALM || "api";
@@ -28,8 +29,7 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, 200, { ok: true });
   }
   if (url.startsWith("/verify")) {
-    const auth = headers["authorization"] || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = bearerTokenFromAuthHeader(headers["authorization"] || "");
     if (!SECRET) return unauthorized(res, "server misconfigured");
     if (!token || token !== SECRET) return unauthorized(res, "invalid token");
     return sendJSON(res, 200, { ok: true });
