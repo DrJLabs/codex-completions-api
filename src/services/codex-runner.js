@@ -30,13 +30,6 @@ export function spawnCodex(args = [], options = {}) {
     cwd: cwdOpt,
     ...spawnOptions
   } = options;
-  const safeSpawnOptions = { ...(spawnOptions || {}) };
-  delete safeSpawnOptions.env;
-  delete safeSpawnOptions.stdio;
-  delete safeSpawnOptions.cwd;
-  delete safeSpawnOptions.shell;
-  delete safeSpawnOptions.detached;
-  delete safeSpawnOptions.windowsHide;
   try {
     // Ensure working directory exists before spawning child process
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- codexWorkdir from config, not request
@@ -47,10 +40,10 @@ export function spawnCodex(args = [], options = {}) {
   const childEnv = sanitizeChildEnv({ ...process.env, ...(envOpt || {}), CODEX_HOME: codexHome });
   const childCwd = cwdOpt || codexWorkdir;
   const child = spawn(resolvedCodexBin, args, {
+    ...spawnOptions,
     stdio: ["pipe", "pipe", "pipe"],
     env: childEnv,
     cwd: childCwd,
-    ...safeSpawnOptions,
     shell: false,
     detached: false,
     windowsHide: true,
