@@ -30,13 +30,11 @@ export function spawnCodex(args = [], options = {}) {
     cwd: cwdOpt,
     ...spawnOptions
   } = options;
-  const {
-    env: _ignoredEnv,
-    stdio: _ignoredStdio,
-    cwd: _ignoredCwd,
-    shell: _ignoredShell,
-    ...safeSpawnOptions
-  } = spawnOptions || {};
+  const safeSpawnOptions = { ...(spawnOptions || {}) };
+  delete safeSpawnOptions.env;
+  delete safeSpawnOptions.stdio;
+  delete safeSpawnOptions.cwd;
+  delete safeSpawnOptions.shell;
   try {
     // Ensure working directory exists before spawning child process
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- codexWorkdir from config, not request
