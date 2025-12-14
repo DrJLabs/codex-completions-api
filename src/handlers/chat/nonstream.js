@@ -1458,11 +1458,58 @@ export async function postCompletionsNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
-  const child = spawnCodex(args, {
-    reqId,
-    route: "/v1/completions",
-    mode: "completions_nonstream",
-  });
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt: toSend,
+        effectiveModel,
+        choiceCount: 1,
+        stream: false,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/completions",
+          mode: "completions_nonstream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+          stream: false,
+        });
+        applyCors(req, res);
+        return respondWithJson(res, err.statusCode, err.body);
+      }
+      throw err;
+    }
+  }
+
+  const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_nonstream" };
+  const child =
+    backendMode === BACKEND_APP_SERVER
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+          trace: completionsTrace,
+        })
+      : spawnCodex(args, {
+          reqId,
+          route: completionsTrace.route,
+          mode: completionsTrace.mode,
+        });
   let out = "",
     err = "";
 
@@ -1527,10 +1574,24 @@ export async function postCompletionsNonStream(req, res) {
           kind: "event",
           event: evt,
         });
-        if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
-        else if (tp === "agent_message")
-          content = String((evt.msg?.message ?? evt.message) || content);
-        else if (tp === "token_count") {
+        if (tp === "agent_message_delta") {
+          const deltaPayload = evt.msg?.delta ?? evt.delta;
+          if (typeof deltaPayload === "string") content += deltaPayload;
+          else if (deltaPayload && typeof deltaPayload === "object") {
+            content += coerceAssistantContent(
+              deltaPayload.content ?? deltaPayload.text ?? deltaPayload.delta ?? ""
+            );
+          }
+        } else if (tp === "agent_message") {
+          const messagePayload = evt.msg?.message ?? evt.message;
+          if (typeof messagePayload === "string") content = messagePayload || content;
+          else if (messagePayload && typeof messagePayload === "object") {
+            const extracted = coerceAssistantContent(
+              messagePayload.content ?? messagePayload.text ?? messagePayload.message ?? ""
+            );
+            if (extracted) content = extracted;
+          }
+        } else if (tp === "token_count") {
           prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens);
           completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens);
         }
@@ -1549,7 +1610,7 @@ export async function postCompletionsNonStream(req, res) {
         chunk: d.toString("utf8"),
       });
   });
-  child.on("close", () => {
+  const finalizeResponse = () => {
     if (responded) return;
     responded = true;
     clearTimeout(timeout);
@@ -1604,7 +1665,12 @@ export async function postCompletionsNonStream(req, res) {
       choices: [{ index: 0, text: textOut, logprobs: null, finish_reason: "stop" }],
       usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
     });
-  });
+  };
+
+  // Respond when the backend exits or stdout ends (adapter emits these; child process does too).
+  child.stdout.on?.("end", finalizeResponse);
+  child.on?.("exit", finalizeResponse);
+  child.on?.("close", finalizeResponse);
 
   try {
     const submission = {

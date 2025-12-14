@@ -2227,9 +2227,54 @@ export async function postCompletionsStream(req, res) {
   applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
   const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_stream" };
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt: toSend,
+        effectiveModel,
+        choiceCount: 1,
+        stream: true,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        if (!responded) {
+          responded = true;
+          releaseGuard("normalization_error");
+        }
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/completions",
+          mode: "completions_stream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+        });
+        applyCors(req, res);
+        return res.status(err.statusCode).json(err.body);
+      }
+      throw err;
+    }
+  }
   const child =
     backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS, trace: completionsTrace })
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+          trace: completionsTrace,
+        })
       : spawnCodex(args, {
           reqId,
           route: completionsTrace.route,
@@ -2452,7 +2497,14 @@ export async function postCompletionsStream(req, res) {
         });
         if (tp === "agent_message_delta") {
           const deltaPayload = messagePayload?.delta ?? messagePayload;
-          const dlt = typeof deltaPayload === "string" ? deltaPayload : "";
+          const dlt =
+            typeof deltaPayload === "string"
+              ? deltaPayload
+              : deltaPayload && typeof deltaPayload === "object"
+                ? coerceAssistantContent(
+                    deltaPayload.content ?? deltaPayload.text ?? deltaPayload.delta ?? ""
+                  )
+                : "";
           if (dlt) {
             sentAny = true;
             emitted += dlt;
@@ -2481,7 +2533,12 @@ export async function postCompletionsStream(req, res) {
           }
         } else if (tp === "agent_message") {
           const messageValue = messagePayload?.message ?? messagePayload;
-          const m = typeof messageValue === "string" ? messageValue : "";
+          const m =
+            typeof messageValue === "string"
+              ? messageValue
+              : messageValue && typeof messageValue === "object"
+                ? coerceAssistantContent(messageValue.content ?? messageValue.text ?? "")
+                : "";
           if (m) {
             let suffix = "";
             if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
@@ -2586,7 +2643,9 @@ export async function postCompletionsStream(req, res) {
         chunk: s,
       });
   });
-  child.on("close", (_code) => {
+  const finalizeOnChildExit = (outcome = "released:child_close") => {
+    if (responded) return;
+    markCompletionsResponded();
     clearTimeout(timeout);
     cancelIdleCompletions();
     // If not completed via task_complete, still finish stream
@@ -2595,6 +2654,9 @@ export async function postCompletionsStream(req, res) {
       sendChunk({ choices: [{ index: 0, text: content }] });
     }
     finishSSE();
-    releaseGuard("released:child_close");
-  });
+    releaseGuard(outcome);
+  };
+  child.on("close", () => finalizeOnChildExit("released:child_close"));
+  child.on?.("exit", () => finalizeOnChildExit("released:child_exit"));
+  child.stdout.on?.("end", () => finalizeOnChildExit("released:stdout_end"));
 }

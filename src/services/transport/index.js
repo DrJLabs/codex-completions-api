@@ -932,9 +932,24 @@ class JsonRpcTransport {
     switch (method) {
       case "agentMessageDelta":
       case "agent_message_delta":
-      case "agent_message_content_delta":
+      case "agent_message_content_delta": {
+        const isContentDelta = method === "agent_message_content_delta";
+        if (isContentDelta) {
+          context.seenContentDelta = true;
+          context.addDelta(payload);
+          break;
+        }
+
+        const deltaCandidate =
+          payload && typeof payload === "object"
+            ? (payload.delta ?? payload.content ?? payload.text)
+            : payload;
+        const isStringDelta = typeof deltaCandidate === "string";
+        if (context.seenContentDelta && isStringDelta) break;
+
         context.addDelta(payload);
         break;
+      }
       case "agentMessage":
       case "agent_message":
         context.setFinalMessage(payload);
@@ -973,6 +988,36 @@ class JsonRpcTransport {
         context.setResult(payload);
         this.#scheduleCompletionCheck(context);
         break;
+      case "item/completed":
+      case "item_completed": {
+        const item =
+          payload && typeof payload === "object" && payload.item && typeof payload.item === "object"
+            ? payload.item
+            : null;
+        const itemType = typeof item?.type === "string" ? item.type.toLowerCase() : "";
+        const isAgentMessage = itemType === "agentmessage" || itemType === "agent_message";
+        if (!isAgentMessage) break;
+
+        if (!context.finalMessage) {
+          let text = "";
+          if (typeof item?.text === "string") text = item.text;
+          else if (Array.isArray(item?.content)) {
+            text = item.content
+              .map((part) => {
+                if (!part || typeof part !== "object") return "";
+                if (typeof part.text === "string") return part.text;
+                return "";
+              })
+              .join("");
+          }
+          if (text) context.setFinalMessage({ message: text });
+        }
+
+        if (!context.finishReason) context.setFinishReason("stop");
+        context.setResult(payload);
+        this.#scheduleCompletionCheck(context);
+        break;
+      }
       default:
         break;
     }
