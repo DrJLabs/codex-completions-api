@@ -1,4 +1,4 @@
-# Codex Execution Checklist — Codex Completions API Hardening Sprint (v2)
+# Codex Execution Checklist — Codex Completions API Hardening Sprint (v3)
 
 ## Title and Scope
 
@@ -62,7 +62,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 0 — Baseline & Source Sync
 
-- [ ] ID: DOCS-01
+- [x] ID: DOCS-01
   Title: Add the four audit reports to `docs/review/` and wire stable links
   Source(s): `enforce_api_key_auth_report.md`; `add-input-validation-completions-requests-report.md`; `feature_flag_gating_report.md`; `codex_cli_integration_audit_report.md` (external inputs)
   Why / Risk:
@@ -89,7 +89,7 @@ These four reports were provided externally and are referenced throughout this c
     - Files added and reviewed for completeness
     - CI passes
 
-- [ ] ID: BASE-01
+- [x] ID: BASE-01
   Title: Run baseline tests and capture current behavior for auth/flags/worker
   Source(s): `docs/review/codex-completions-api_tests_audit.md`; `package.json` scripts
   Why / Risk:
@@ -121,7 +121,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 1 — Authentication Hardening
 
-- [ ] ID: AUTH-01
+- [x] ID: AUTH-01
   Title: Split auth middleware into strict vs usage-aware variants (prevent auth bypass reuse)
   Source(s): [docs/review/enforce_api_key_auth_report.md](docs/review/enforce_api_key_auth_report.md) (UNVERIFIED); peer AI review “Critical Security Fixes”
   Why / Risk:
@@ -156,7 +156,7 @@ These four reports were provided externally and are referenced throughout this c
     - Unit tests added and passing
     - No routes accidentally changed yet (only middleware refactor)
 
-- [ ] ID: AUTH-02
+- [x] ID: AUTH-02
   Title: Enforce strict auth at the chat/responses route layer and remove handler-level bearer checks
   Source(s): [docs/review/enforce_api_key_auth_report.md](docs/review/enforce_api_key_auth_report.md) (UNVERIFIED); peer AI review “Phase 1: API Authentication (Revised)”
   Why / Risk:
@@ -224,7 +224,7 @@ These four reports were provided externally and are referenced throughout this c
     - Handler-level auth checks removed
     - Integration tests pass and include the regression test for `PROXY_USAGE_ALLOW_UNAUTH`
 
-- [ ] ID: AUTH-03
+- [x] ID: AUTH-03
   Title: Refactor `/v1/models` protection to use strict auth middleware (when enabled)
   Source(s): [docs/review/enforce_api_key_auth_report.md](docs/review/enforce_api_key_auth_report.md) (UNVERIFIED)
   Why / Risk:
@@ -254,7 +254,7 @@ These four reports were provided externally and are referenced throughout this c
     - Inline models auth removed
     - Tests remain green
 
-- [ ] ID: AUTH-04
+- [x] ID: AUTH-04
   Title: Make usage auth intent explicit and add tests for `PROXY_USAGE_ALLOW_UNAUTH`
   Source(s): [docs/review/enforce_api_key_auth_report.md](docs/review/enforce_api_key_auth_report.md) (UNVERIFIED); README usage section
   Why / Risk:
@@ -292,7 +292,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 2 — Validation & Error Shaping
 
-- [ ] ID: VALID-01
+- [x] ID: VALID-01
   Title: Ensure invalid JSON bodies return OpenAI-style JSON errors (not HTML) and still get CORS/metrics/tracing
   Source(s): [docs/review/add-input-validation-completions-requests-report.md](docs/review/add-input-validation-completions-requests-report.md) (UNVERIFIED)
   Why / Risk:
@@ -331,7 +331,7 @@ These four reports were provided externally and are referenced throughout this c
     - Integration test added and passing
     - Middleware order change does not break existing integration tests
 
-- [ ] ID: VALID-02
+- [x] ID: VALID-02
   Title: Enforce `model` requiredness and align validation across legacy and chat completions
   Source(s): [docs/review/add-input-validation-completions-requests-report.md](docs/review/add-input-validation-completions-requests-report.md) (UNVERIFIED); peer AI review “Resolved Open Questions”
   Why / Risk:
@@ -378,7 +378,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 3 — Feature Flags & Config Parsing
 
-- [ ] ID: FLAGS-01
+- [x] ID: FLAGS-01
   Title: Standardize boolean parsing to accept common truthy values (`1|true|yes|on`)
   Source(s): [docs/review/feature_flag_gating_report.md](docs/review/feature_flag_gating_report.md) (UNVERIFIED); peer AI review “Boolean Parsing Inconsistency”
   Why / Risk:
@@ -410,7 +410,7 @@ These four reports were provided externally and are referenced throughout this c
     - Integration tests cover at least one “truthy non-true string” per critical flag
     - No regressions in existing test suite
 
-- [ ] ID: FLAGS-02
+- [x] ID: FLAGS-02
   Title: Document flag parsing semantics and update config matrix/examples
   Source(s): [docs/review/feature_flag_gating_report.md](docs/review/feature_flag_gating_report.md) (UNVERIFIED)
   Why / Risk:
@@ -440,7 +440,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 4 — Codex CLI Hardening
 
-- [ ] ID: CLI-01
+- [x] ID: CLI-01
   Title: Prevent secret env var leakage into spawned Codex processes and block unsafe spawn option overrides
   Source(s): [docs/review/codex_cli_integration_audit_report.md](docs/review/codex_cli_integration_audit_report.md) (UNVERIFIED); peer AI review “CLI-03”
   Why / Risk:
@@ -478,7 +478,7 @@ These four reports were provided externally and are referenced throughout this c
     - Unit tests added and passing
     - No secret leakage remains in spawn path
 
-- [ ] ID: CLI-02
+- [x] ID: CLI-02
   Title: Harden supervisor config quoting to safely encode special characters
   Source(s): [docs/review/codex_cli_integration_audit_report.md](docs/review/codex_cli_integration_audit_report.md) (UNVERIFIED); peer AI review “CLI-02”
   Why / Risk:
@@ -504,7 +504,7 @@ These four reports were provided externally and are referenced throughout this c
   Definition of Done:
     - Quote tests added and passing
 
-- [ ] ID: CLI-03
+- [x] ID: CLI-03
   Title: Restart worker on startup readiness timeout (stuck handshake auto-recovery)
   Source(s): [docs/review/codex_cli_integration_audit_report.md](docs/review/codex_cli_integration_audit_report.md) (UNVERIFIED); peer AI review “CLI-06”
   Why / Risk:
@@ -545,7 +545,7 @@ These four reports were provided externally and are referenced throughout this c
 
 ### Phase 5 — Final Verification & Docs
 
-- [ ] ID: FINAL-01
+- [x] ID: FINAL-01
   Title: Run full CI-equivalent suite, update docs, and produce a release-ready change summary
   Source(s): `docs/review/codex-completions-api_release-checklist.md`; `package.json` scripts
   Why / Risk:
@@ -555,12 +555,7 @@ These four reports were provided externally and are referenced throughout this c
     - Existing code: release checklist doc  
       https://github.com/DrJLabs/codex-completions-api/blob/b3e7b3f81ebd8de52492d1aef98ae7cd20218266/docs/review/codex-completions-api_release-checklist.md
     - Change summary:
-      - Run:
-        - `npm run format`
-        - `npm run lint`
-        - `npm run typecheck`
-        - `npm run test:unit`
-        - `npm run test:integration`
+      - Run: `npm run verify:all`
       - Ensure README and config docs reflect new auth semantics and flag parsing behavior.
   Acceptance Criteria:
     - AC1: All checks pass locally and in CI.
@@ -581,12 +576,13 @@ These four reports were provided externally and are referenced throughout this c
 ## Test Matrix
 
 Run commands from `package.json`:
-- `npm test` (alias for `vitest`)
-- `npm run test:unit`
-- `npm run test:integration`
+- `npm run verify:all` (CI-equivalent: format check, lint, schema verify, unit+integration+e2e)
+- `npm run test:unit` (Vitest)
+- `npm run test:integration` (Vitest)
+- `npm test` (Playwright)
 - `npm run lint`
-- `npm run typecheck`
-- `npm run format`
+- `npm run format:check`
+- `npm run jsonrpc:verify`
 
 Coverage map (selected):
 - Auth enforcement:

@@ -23,6 +23,7 @@
 3) **Restart frequency >3 in 10m**
    - Panel: Worker Restarts and Backoff.
    - Collect `engine` logs around exits; confirm `codex_worker_backoff_ms` matches backoff policy (250ms→5s).
+   - Worker startup timeout: on `worker_ready_timeout`, the supervisor terminates the child and schedules a restart; tune with `WORKER_STARTUP_TIMEOUT_MS`.
    - If restarts persist, enable maintenance flag (see below) to drain traffic, then follow escalation ladder.
 
 4) **Tool buffer anomaly (gauge >0 within 2m)**

@@ -743,6 +743,7 @@ Notes
 - The app already sets headers for SSE in [streaming branch](server.js:120) and disables buffering with `X-Accel-Buffering: no`. Traefik streams by default.
 - Do not expose the app’s container port on the host. Traefik connects via the Docker network `traefik`.
 - Keep `PROXY_API_KEY` out of images and source control. Provide via environment or a Docker secret.
+- Spawned Codex child processes do not inherit `PROXY_API_KEY` or `PROXY_METRICS_TOKEN`.
 
 ## Security Hardening
 
