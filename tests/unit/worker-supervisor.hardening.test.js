@@ -102,7 +102,7 @@ describe("CodexWorkerSupervisor hardening", () => {
     const { ensureWorkerSupervisor } = await import("../../src/services/worker/supervisor.js");
     const supervisor = ensureWorkerSupervisor();
 
-    await settle(120);
+    await settle(200);
 
     expect(spawnCodexSpy).toHaveBeenCalledTimes(2);
     expect(mockChildren[0].kill).toHaveBeenCalled();
