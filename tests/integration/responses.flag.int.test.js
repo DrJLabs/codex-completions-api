@@ -56,3 +56,44 @@ test("HEAD responds 404 when responses are disabled", async () => {
   });
   expect(r.status).toBe(404);
 });
+
+test("responses route enables when PROXY_ENABLE_RESPONSES=1", async () => {
+  const port = await getPort();
+  const childLocal = spawn("node", ["server.js"], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      PROXY_API_KEY: "test-sk-ci",
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      PROXY_PROTECT_MODELS: "false",
+      PROXY_ENABLE_RESPONSES: "1",
+    },
+    stdio: "ignore",
+  });
+  try {
+    const start = Date.now();
+    let healthy = false;
+    while (Date.now() - start < 5000) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/healthz`);
+        if (r.ok) {
+          healthy = true;
+          break;
+        }
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(healthy).toBe(true);
+
+    const r = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
+      method: "HEAD",
+      headers: { Authorization: "Bearer test-sk-ci" },
+    });
+    expect(r.status).not.toBe(404);
+    expect(r.status).not.toBe(401);
+  } finally {
+    try {
+      if (childLocal && !childLocal.killed) childLocal.kill("SIGTERM");
+    } catch {}
+  }
+});

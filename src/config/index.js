@@ -22,9 +22,9 @@ const resolveTruncateMs = () => {
 
   return 0;
 };
-const bool = (name, def) => String(process.env[name] ?? def).toLowerCase() === "true";
 const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
 const boolishFalse = (value) => /^(0|false|no|off)$/i.test(String(value ?? "").trim());
+const bool = (name, def) => boolishTrue(process.env[name] ?? def);
 
 const resolveToolBlockDelimiter = () => {
   const raw = process.env.PROXY_TOOL_BLOCK_DELIMITER;

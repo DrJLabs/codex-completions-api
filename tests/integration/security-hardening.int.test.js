@@ -47,7 +47,8 @@ describe("security hardening", () => {
 
   test("__test endpoints enforce bearer when enabled", async () => {
     const ctx = await startServer({
-      PROXY_TEST_ENDPOINTS: "true",
+      PROXY_TEST_ENDPOINTS: "1",
+      PROXY_TEST_ALLOW_REMOTE: "true",
     });
     const base = `http://127.0.0.1:${ctx.PORT}`;
     try {
