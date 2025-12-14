@@ -142,8 +142,8 @@ export const normalizeModel = (
     "gpt-5.2-codev-l",
   ]
 ) => {
-  const raw = String(name || "").trim();
-  if (!raw) return { requested: "codex-5", effective: defaultModel };
+  const raw = String(name ?? "").trim();
+  if (!raw) return { requested: "", effective: "" };
   const lower = raw.toLowerCase();
   const overrideTarget = MODEL_TARGET_OVERRIDES.get(lower);
   const effective = overrideTarget || defaultModel;

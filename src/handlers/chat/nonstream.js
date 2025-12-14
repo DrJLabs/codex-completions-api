@@ -547,6 +547,23 @@ export async function postChatNonStream(req, res) {
     body,
   });
 
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "model_required",
+    });
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required"));
+  }
+
   let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     logUsageFailure({
@@ -649,7 +666,7 @@ export async function postChatNonStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
@@ -658,7 +675,7 @@ export async function postChatNonStream(req, res) {
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -1348,6 +1365,24 @@ export async function postCompletionsNonStream(req, res) {
     body,
   });
 
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_nonstream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "model_required",
+      stream: false,
+    });
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required"));
+  }
+
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
 
   if (!prompt) {
@@ -1375,11 +1410,11 @@ export async function postCompletionsNonStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,

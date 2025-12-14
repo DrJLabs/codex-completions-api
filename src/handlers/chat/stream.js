@@ -205,6 +205,22 @@ export async function postChatStream(req, res) {
     mode,
     body,
   });
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "model_required",
+    });
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required"));
+  }
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -395,7 +411,7 @@ export async function postChatStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
@@ -411,7 +427,7 @@ export async function postChatStream(req, res) {
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -2053,6 +2069,23 @@ export async function postCompletionsStream(req, res) {
     body,
   });
 
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/completions",
+      mode: "completions_stream",
+      statusCode: 400,
+      reason: "invalid_request",
+      errorCode: "model_required",
+    });
+    applyCors(null, res);
+    return res.status(400).json(invalidRequestBody("model", "model is required"));
+  }
+
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
 
@@ -2096,7 +2129,7 @@ export async function postCompletionsStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
@@ -2105,7 +2138,7 @@ export async function postCompletionsStream(req, res) {
       `[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
