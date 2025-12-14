@@ -1,7 +1,13 @@
 // Canonical Traefik ForwardAuth entrypoint (ESM). The legacy CJS variant
 // in auth/server.js is deprecated and disabled by default.
 import http from "node:http";
-import { bearerTokenFromAuthHeader } from "../src/lib/bearer.js";
+
+const bearerTokenFromAuthHeader = (value) => {
+  const auth = typeof value === "string" ? value : "";
+  if (!auth) return "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice(7).trim();
+};
 
 const PORT = Number(process.env.PORT || 8080);
 const REALM = process.env.AUTH_REALM || "api";
