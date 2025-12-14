@@ -37,9 +37,12 @@ describe("assertSecureConfig", () => {
     ).toThrow(/METRICS_AUTH/);
   });
 
-  it("does not throw in dev env", () => {
+  it("does not throw in dev env (even when NODE_ENV=production)", () => {
     expect(() =>
-      assertSecureConfig({ ...baseCfg, API_KEY: "codex-local-secret", PROXY_ENV: "dev" })
+      assertSecureConfig(
+        { ...baseCfg, API_KEY: "codex-local-secret", PROXY_ENV: "dev" },
+        { NODE_ENV: "production" }
+      )
     ).not.toThrow();
   });
 });
