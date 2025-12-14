@@ -211,14 +211,7 @@ class JsonRpcTransport {
       this.handshakeData = null;
       this.handshakePromise = null;
       this.ensureHandshake().catch((err) => {
-        const handler = this.supervisor?.recordHandshakeFailure;
-        if (typeof handler === "function") {
-          try {
-            handler.call(this.supervisor, err);
-          } catch (failureErr) {
-            console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
-          }
-        }
+        console.warn(`${LOG_PREFIX} handshake failed after ready`, err);
       });
     });
 
@@ -231,6 +224,16 @@ class JsonRpcTransport {
   #clearRpcTrace(rpcId) {
     if (rpcId === null || rpcId === undefined) return;
     this.rpcTraceById.delete(rpcId);
+  }
+
+  #recordHandshakeFailure(err) {
+    const handler = this.supervisor?.recordHandshakeFailure;
+    if (typeof handler !== "function") return;
+    try {
+      handler.call(this.supervisor, err);
+    } catch (failureErr) {
+      console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
+    }
   }
 
   destroy() {
@@ -259,10 +262,12 @@ class JsonRpcTransport {
 
     const child = this.child || getWorkerChildProcess();
     if (!child || !child.stdin) {
-      throw new TransportError("worker not available", {
+      const err = new TransportError("worker not available", {
         code: "worker_not_ready",
         retryable: true,
       });
+      this.#recordHandshakeFailure(err);
+      throw err;
     }
 
     if (child !== this.child) {
@@ -275,12 +280,12 @@ class JsonRpcTransport {
         this.pending.delete(rpcId);
         this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
-        reject(
-          new TransportError("JSON-RPC handshake timed out", {
-            code: "handshake_timeout",
-            retryable: true,
-          })
-        );
+        const err = new TransportError("JSON-RPC handshake timed out", {
+          code: "handshake_timeout",
+          retryable: true,
+        });
+        this.#recordHandshakeFailure(err);
+        reject(err);
       }, CFG.WORKER_HANDSHAKE_TIMEOUT_MS);
       this.pending.set(rpcId, {
         type: "initialize",
@@ -310,15 +315,9 @@ class JsonRpcTransport {
           this.pending.delete(rpcId);
           this.#clearRpcTrace(rpcId);
           this.handshakePromise = null;
-          const recorder = this.supervisor?.recordHandshakeFailure;
-          if (typeof recorder === "function") {
-            try {
-              recorder.call(this.supervisor, err);
-            } catch (recordErr) {
-              console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
-            }
-          }
-          reject(err instanceof Error ? err : new TransportError(String(err)));
+          const normalized = err instanceof Error ? err : new TransportError(String(err));
+          this.#recordHandshakeFailure(normalized);
+          reject(normalized);
         },
       });
 
@@ -343,14 +342,7 @@ class JsonRpcTransport {
         this.pending.delete(rpcId);
         this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
-        const recorder = this.supervisor?.recordHandshakeFailure;
-        if (typeof recorder === "function") {
-          try {
-            recorder.call(this.supervisor, err);
-          } catch (recordErr) {
-            console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
-          }
-        }
+        this.#recordHandshakeFailure(err);
         reject(err);
       }
     });
@@ -826,14 +818,7 @@ class JsonRpcTransport {
     if (this.destroyed) return;
     this.#attachChild(child);
     this.ensureHandshake().catch((err) => {
-      const handler = this.supervisor?.recordHandshakeFailure;
-      if (typeof handler === "function") {
-        try {
-          handler.call(this.supervisor, err);
-        } catch (failureErr) {
-          console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
-        }
-      }
+      console.warn(`${LOG_PREFIX} handshake failed after spawn`, err);
     });
   }
 
