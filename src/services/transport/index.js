@@ -823,8 +823,8 @@ class JsonRpcTransport {
   }
 
   #onSpawn(child) {
-    this.#attachChild(child);
     if (this.destroyed) return;
+    this.#attachChild(child);
     this.ensureHandshake().catch((err) => {
       const handler = this.supervisor?.recordHandshakeFailure;
       if (typeof handler === "function") {
