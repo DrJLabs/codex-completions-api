@@ -111,6 +111,7 @@ class RequestContext {
     this.finalMessage = null;
     this.finishReason = null;
     this.deltas = [];
+    this.seenContentDelta = false;
     this.completed = false;
     this.completionTimer = null;
     this.timeout = setTimeout(() => {
@@ -443,7 +444,8 @@ class JsonRpcTransport {
       cwd: basePayload.cwd ?? undefined,
       approvalPolicy: basePayload.approvalPolicy ?? basePayload.approval_policy ?? undefined,
       sandbox: basePayload.sandboxPolicy ?? basePayload.sandbox ?? undefined,
-      developerInstructions: basePayload.baseInstructions ?? undefined,
+      baseInstructions: basePayload.baseInstructions ?? undefined,
+      developerInstructions: basePayload.developerInstructions ?? undefined,
       includeApplyPatchTool:
         basePayload.includeApplyPatchTool ?? basePayload.include_apply_patch_tool ?? undefined,
     });
