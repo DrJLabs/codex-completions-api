@@ -21,6 +21,10 @@ const ALLOWED_MESSAGE_ROLES = new Set([
 const ALLOWED_TOOL_CHOICES = new Set(["auto", "none", "required"]);
 const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 
+const IGNORE_CLIENT_SYSTEM_PROMPT = /^(1|true|yes)$/i.test(
+  String(process.env.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT || "")
+);
+
 const toFiniteNumber = (value) => {
   if (value === undefined || value === null || value === "") return undefined;
   const num = Number(value);
@@ -454,15 +458,20 @@ export const normalizeChatJsonRpcRequest = ({
 
   assertAllowedMessageRoles(messages || []);
 
-  const systemInstructions = (messages || [])
-    .filter((msg) => {
-      const role = (msg?.role || "").toLowerCase();
-      return role === "system" || role === "developer";
-    })
-    .map((msg) => flattenMessageContent(msg?.content).trim())
-    .filter(Boolean);
+  const systemInstructions = IGNORE_CLIENT_SYSTEM_PROMPT
+    ? []
+    : (messages || [])
+        .filter((msg) => {
+          const role = (msg?.role || "").toLowerCase();
+          return role === "system" || role === "developer";
+        })
+        .map((msg) => flattenMessageContent(msg?.content).trim())
+        .filter(Boolean);
 
-  const baseInstructions = systemInstructions.length ? systemInstructions.join("\n\n") : undefined;
+  const baseInstructions =
+    !IGNORE_CLIENT_SYSTEM_PROMPT && systemInstructions.length
+      ? systemInstructions.join("\n\n")
+      : undefined;
 
   const transcript = buildTranscriptFromMessages(messages || []);
   const fallbackText = flattenMessageContent(promptText).trim() || promptText || "";
