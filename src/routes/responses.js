@@ -2,6 +2,8 @@ import { Router } from "express";
 import { postResponsesStream } from "../handlers/responses/stream.js";
 import { postResponsesNonStream } from "../handlers/responses/nonstream.js";
 import { requireWorkerReady } from "../middleware/worker-ready.js";
+import { config as CFG } from "../config/index.js";
+import { maybeHandleTitleIntercept } from "../lib/title-intercept.js";
 
 export default function responsesRouter() {
   const r = Router();
@@ -11,10 +13,25 @@ export default function responsesRouter() {
     res.status(200).end();
   });
 
-  r.post("/v1/responses", requireWorkerReady, (req, res) => {
+  r.post("/v1/responses", (req, res) => {
     const stream = !!(req?.body && req.body.stream);
-    if (stream) return postResponsesStream(req, res);
-    return postResponsesNonStream(req, res);
+    const model = req?.body?.model || CFG.CODEX_MODEL || "gpt-5";
+
+    if (
+      maybeHandleTitleIntercept({
+        body: req?.body || {},
+        model,
+        res,
+        stream,
+      })
+    ) {
+      return;
+    }
+
+    return requireWorkerReady(req, res, () => {
+      if (stream) return postResponsesStream(req, res);
+      return postResponsesNonStream(req, res);
+    });
   });
 
   return r;
