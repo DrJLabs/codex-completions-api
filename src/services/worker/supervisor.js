@@ -7,7 +7,14 @@ import { config as CFG } from "../../config/index.js";
 import { logStructured } from "../logging/schema.js";
 const READY_EVENT_KEYS = new Set(["ready", "listening", "healthy"]);
 
-const quote = (value) => `"${String(value).replaceAll('"', '\\"')}"`;
+const quote = (value) =>
+  `"${String(value ?? "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t")
+    .replaceAll("\0", "")}"`;
 
 const logWorker = (event, level, state, extra = {}) => {
   const worker_state = extra.worker_state
@@ -387,10 +394,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       args: launchArgs.slice(1).join(" "),
     });
     const child = spawnCodex(launchArgs, {
-      env: {
-        ...process.env,
-        CODEX_WORKER_SUPERVISED: "true",
-      },
+      env: { CODEX_WORKER_SUPERVISED: "true" },
     });
     this.state.child = child;
     this.emit("spawn", child);
@@ -451,9 +455,27 @@ class CodexWorkerSupervisor extends EventEmitter {
           });
         }
       } catch (err) {
+        this.recordHandshakeFailure(err);
         logWorker("worker_ready_timeout", "warn", this.state, {
           message: err?.message || String(err),
+          pid: child.pid,
+          timeout_ms: this.cfg.WORKER_STARTUP_TIMEOUT_MS,
+          attempt: this.state.startAttempts,
+          restarts_total: this.state.restarts,
         });
+        if (this.state.shutdownInFlight) return;
+        if (this.state.child !== child) return;
+        try {
+          if (child.exitCode == null && child.signalCode == null) {
+            child.kill("SIGTERM");
+          }
+        } catch {}
+        try {
+          await delay(250);
+          if (child.exitCode == null && child.signalCode == null) {
+            child.kill("SIGKILL");
+          }
+        } catch {}
       }
     };
     readyWatcher();

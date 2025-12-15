@@ -16,10 +16,10 @@ import { logStructured } from "./services/logging/schema.js";
 import metricsMiddleware from "./middleware/metrics.js";
 import { requireTestAuth } from "./middleware/auth.js";
 import tracingMiddleware from "./middleware/tracing.js";
+import { invalidRequestBody, serverErrorBody } from "./lib/errors.js";
 
 export default function createApp() {
   const app = express();
-  app.use(express.json({ limit: "16mb" }));
   app.use(metricsMiddleware());
   app.use(tracingMiddleware());
 
@@ -58,6 +58,9 @@ export default function createApp() {
 
   // Structured JSON access log
   app.use(accessLog());
+
+  // JSON body parsing (after tracing/metrics/CORS/access logging so parse errors still get those headers)
+  app.use(express.json({ limit: "16mb" }));
 
   // Mount routers
   app.use(
@@ -110,6 +113,66 @@ export default function createApp() {
     app.use(responsesRouter());
   }
   app.use(usageRouter());
+
+  // Error handler: ensure body-parser errors return OpenAI-style JSON instead of HTML.
+  // Must be registered after express.json().
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    applyCors(req, res);
+    const status = Number.isInteger(err?.status)
+      ? err.status
+      : Number.isInteger(err?.statusCode)
+        ? err.statusCode
+        : 0;
+    const type = typeof err?.type === "string" ? err.type : "";
+    const isBodyParserError =
+      status >= 400 &&
+      status < 500 &&
+      (type.startsWith("entity.") ||
+        type.startsWith("request.") ||
+        type.startsWith("charset.") ||
+        type.startsWith("encoding."));
+    if (!isBodyParserError) return next(err);
+
+    let message = "Invalid request body";
+    let code = "invalid_request_error";
+    if (type === "entity.parse.failed") {
+      message = "Invalid JSON";
+      code = "invalid_json";
+    } else if (type === "entity.too.large" || status === 413) {
+      message = "Request body too large";
+      code = "request_entity_too_large";
+    } else if (
+      type === "encoding.unsupported" ||
+      type === "charset.unsupported" ||
+      status === 415
+    ) {
+      message = "Unsupported encoding";
+      code = "unsupported_encoding";
+    } else if (type === "request.aborted") {
+      message = "Request aborted";
+      code = "request_aborted";
+    }
+
+    return res.status(status || 400).json(invalidRequestBody(null, message, code));
+  });
+
+  // Final error handler: ensure unexpected errors remain JSON (not Express HTML).
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    applyCors(req, res);
+    const status = Number.isInteger(err?.status)
+      ? err.status
+      : Number.isInteger(err?.statusCode)
+        ? err.statusCode
+        : 500;
+    const statusCode = status >= 400 && status < 600 ? status : 500;
+    const payload =
+      statusCode >= 500
+        ? serverErrorBody()
+        : invalidRequestBody(null, err?.message || "invalid request");
+    return res.status(statusCode).json(payload);
+  });
 
   return app;
 }

@@ -2,6 +2,13 @@
 // in auth/server.js is deprecated and disabled by default.
 import http from "node:http";
 
+const bearerTokenFromAuthHeader = (value) => {
+  const auth = typeof value === "string" ? value : "";
+  if (!auth) return "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice(7).trim();
+};
+
 const PORT = Number(process.env.PORT || 8080);
 const REALM = process.env.AUTH_REALM || "api";
 const SECRET = process.env.PROXY_API_KEY || "";
@@ -42,8 +49,7 @@ const server = http.createServer((req, res) => {
       // Always allow CORS preflight to succeed so Traefik can forward to app
       return sendJSON(req, res, 204, { ok: true });
     }
-    const auth = headers["authorization"] || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = bearerTokenFromAuthHeader(headers["authorization"] || "");
     if (!SECRET) return unauthorized(req, res, "server misconfigured");
     if (!token || token !== SECRET) return unauthorized(req, res, "invalid token");
     return sendJSON(req, res, 200, { ok: true });
