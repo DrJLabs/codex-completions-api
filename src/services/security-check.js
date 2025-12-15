@@ -2,8 +2,7 @@ const DEFAULT_API_KEY = "codex-local-secret";
 
 const isProdLike = (cfg, env = process.env) => {
   const envName = (cfg.PROXY_ENV || "").toLowerCase();
-  if (String(env.NODE_ENV || "").toLowerCase() === "production") return true;
-  if (!envName) return false;
+  if (!envName) return String(env.NODE_ENV || "").toLowerCase() === "production";
   return envName !== "dev" && envName !== "development";
 };
 

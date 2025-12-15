@@ -12,12 +12,7 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
-import {
-  authErrorBody,
-  modelNotFoundBody,
-  invalidRequestBody,
-  tokensExceededBody,
-} from "../../lib/errors.js";
+import { modelNotFoundBody, invalidRequestBody, tokensExceededBody } from "../../lib/errors.js";
 import {
   appendUsage,
   appendProtoEvent,
@@ -44,6 +39,7 @@ import {
 } from "../../lib/metadata-sanitizer.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
+import { requireModel } from "./require-model.js";
 import { mapTransportError } from "../../services/transport/index.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
@@ -189,7 +185,6 @@ export const buildAssistantMessage = ({
   return { message, hasToolCalls, toolCallsTruncated, toolCallCount: toolCallRecords.length };
 };
 
-const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
 const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
@@ -553,23 +548,20 @@ export async function postChatNonStream(req, res) {
     body,
   });
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_nonstream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/chat/completions",
+    mode: "chat_nonstream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => respondWithJson(res, statusCode, payload),
+  });
+  if (!model) return;
+
   let messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) {
     logUsageFailure({
@@ -583,8 +575,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: "messages_required",
     });
-    applyCors(null, res);
-    return res.status(400).json({
+    applyCors(req, res);
+    return respondWithJson(res, 400, {
       error: {
         message: "messages[] required",
         type: "invalid_request_error",
@@ -624,8 +616,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: choiceError?.error?.code || "invalid_choice",
     });
-    applyCors(null, res);
-    return res.status(400).json(choiceError);
+    applyCors(req, res);
+    return respondWithJson(res, 400, choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
     logUsageFailure({
@@ -639,8 +631,8 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_request",
       errorCode: "invalid_choice_range",
     });
-    applyCors(null, res);
-    return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
+    applyCors(req, res);
+    return respondWithJson(res, 400, buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
   const outputMode = resolveOutputMode({
@@ -667,12 +659,12 @@ export async function postChatNonStream(req, res) {
       reason: "invalid_optional_params",
       errorCode: optionalValidation.error?.error?.code,
     });
-    applyCors(null, res);
-    return res.status(400).json(optionalValidation.error);
+    applyCors(req, res);
+    return respondWithJson(res, 400, optionalValidation.error);
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
@@ -681,7 +673,7 @@ export async function postChatNonStream(req, res) {
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -694,8 +686,8 @@ export async function postChatNonStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
-    return res.status(404).json(modelNotFoundBody(requestedModel));
+    applyCors(req, res);
+    return respondWithJson(res, 404, modelNotFoundBody(requestedModel));
   }
 
   let reasoningEffort = (
@@ -739,8 +731,8 @@ export async function postChatNonStream(req, res) {
       effectiveModel,
       errorCode: "prompt_too_large",
     });
-    applyCors(null, res);
-    return res.status(403).json(tokensExceededBody("messages"));
+    applyCors(req, res);
+    return respondWithJson(res, 403, tokensExceededBody("messages"));
   }
 
   if (IS_DEV_ENV) {
@@ -794,8 +786,8 @@ export async function postChatNonStream(req, res) {
           requestedModel,
           effectiveModel,
         });
-        applyCors(null, res);
-        return res.status(err.statusCode).json(err.body);
+        applyCors(req, res);
+        return respondWithJson(res, err.statusCode, err.body);
       }
       throw err;
     }
@@ -834,7 +826,7 @@ export async function postChatNonStream(req, res) {
     try {
       child.kill("SIGKILL");
     } catch {}
-    applyCors(null, res);
+    applyCors(req, res);
     logUsageFailure({
       req,
       res,
@@ -848,7 +840,7 @@ export async function postChatNonStream(req, res) {
       requestedModel,
       effectiveModel,
     });
-    res.status(504).json({
+    respondWithJson(res, 504, {
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
   }, REQ_TIMEOUT_MS);
@@ -1088,7 +1080,7 @@ export async function postChatNonStream(req, res) {
       }
     }
 
-    applyCors(null, res);
+    applyCors(req, res);
 
     if (statusCode !== 200 && errorBody) {
       const emissionTrigger = resolveEmissionTrigger(reasonTrail);
@@ -1371,24 +1363,20 @@ export async function postCompletionsNonStream(req, res) {
     body,
   });
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_nonstream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-      stream: false,
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/completions",
+    mode: "completions_nonstream",
+    stream: false,
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => respondWithJson(res, statusCode, payload),
+  });
+  if (!model) return;
 
   const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
 
@@ -1405,8 +1393,8 @@ export async function postCompletionsNonStream(req, res) {
       errorCode: "prompt_required",
       stream: false,
     });
-    applyCors(null, res);
-    return res.status(400).json({
+    applyCors(req, res);
+    return respondWithJson(res, 400, {
       error: {
         message: "prompt required",
         type: "invalid_request_error",
@@ -1417,11 +1405,11 @@ export async function postCompletionsNonStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -1435,8 +1423,8 @@ export async function postCompletionsNonStream(req, res) {
       requestedModel,
       stream: false,
     });
-    applyCors(null, res);
-    return res.status(404).json(modelNotFoundBody(requestedModel));
+    applyCors(req, res);
+    return respondWithJson(res, 404, modelNotFoundBody(requestedModel));
   }
 
   let reasoningEffort = (
@@ -1470,11 +1458,58 @@ export async function postCompletionsNonStream(req, res) {
 
   console.log(`[proxy] spawning backend=${backendMode}:`, resolvedCodexBin, args.join(" "));
 
-  const child = spawnCodex(args, {
-    reqId,
-    route: "/v1/completions",
-    mode: "completions_nonstream",
-  });
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt: toSend,
+        effectiveModel,
+        choiceCount: 1,
+        stream: false,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/completions",
+          mode: "completions_nonstream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+          stream: false,
+        });
+        applyCors(req, res);
+        return respondWithJson(res, err.statusCode, err.body);
+      }
+      throw err;
+    }
+  }
+
+  const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_nonstream" };
+  const child =
+    backendMode === BACKEND_APP_SERVER
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+          trace: completionsTrace,
+        })
+      : spawnCodex(args, {
+          reqId,
+          route: completionsTrace.route,
+          mode: completionsTrace.mode,
+        });
   let out = "",
     err = "";
 
@@ -1484,7 +1519,7 @@ export async function postCompletionsNonStream(req, res) {
     try {
       child.kill("SIGKILL");
     } catch {}
-    applyCors(null, res);
+    applyCors(req, res);
     logUsageFailure({
       req,
       res,
@@ -1499,7 +1534,7 @@ export async function postCompletionsNonStream(req, res) {
       effectiveModel,
       stream: false,
     });
-    res.status(504).json({
+    respondWithJson(res, 504, {
       error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
     });
   }, REQ_TIMEOUT_MS);
@@ -1539,10 +1574,24 @@ export async function postCompletionsNonStream(req, res) {
           kind: "event",
           event: evt,
         });
-        if (tp === "agent_message_delta") content += String((evt.msg?.delta ?? evt.delta) || "");
-        else if (tp === "agent_message")
-          content = String((evt.msg?.message ?? evt.message) || content);
-        else if (tp === "token_count") {
+        if (tp === "agent_message_delta") {
+          const deltaPayload = evt.msg?.delta ?? evt.delta;
+          if (typeof deltaPayload === "string") content += deltaPayload;
+          else if (deltaPayload && typeof deltaPayload === "object") {
+            content += coerceAssistantContent(
+              deltaPayload.content ?? deltaPayload.text ?? deltaPayload.delta ?? ""
+            );
+          }
+        } else if (tp === "agent_message") {
+          const messagePayload = evt.msg?.message ?? evt.message;
+          if (typeof messagePayload === "string") content = messagePayload || content;
+          else if (messagePayload && typeof messagePayload === "object") {
+            const extracted = coerceAssistantContent(
+              messagePayload.content ?? messagePayload.text ?? messagePayload.message ?? ""
+            );
+            if (extracted) content = extracted;
+          }
+        } else if (tp === "token_count") {
           prompt_tokens = Number(evt.msg?.prompt_tokens || prompt_tokens);
           completion_tokens = Number(evt.msg?.completion_tokens || completion_tokens);
         }
@@ -1561,13 +1610,13 @@ export async function postCompletionsNonStream(req, res) {
         chunk: d.toString("utf8"),
       });
   });
-  child.on("close", () => {
+  const finalizeResponse = () => {
     if (responded) return;
     responded = true;
     clearTimeout(timeout);
     const textOut =
       content || stripAnsi(out).trim() || stripAnsi(err).trim() || "No output from backend.";
-    applyCors(null, res);
+    applyCors(req, res);
     const pt = prompt_tokens || promptTokensEst;
     const ct = completion_tokens || estTokens(textOut);
     if (LOG_PROTO) {
@@ -1616,7 +1665,12 @@ export async function postCompletionsNonStream(req, res) {
       choices: [{ index: 0, text: textOut, logprobs: null, finish_reason: "stop" }],
       usage: { prompt_tokens: pt, completion_tokens: ct, total_tokens: pt + ct },
     });
-  });
+  };
+
+  // Respond when the backend exits or stdout ends (adapter emits these; child process does too).
+  child.stdout.on?.("end", finalizeResponse);
+  child.on?.("exit", finalizeResponse);
+  child.on?.("close", finalizeResponse);
 
   try {
     const submission = {

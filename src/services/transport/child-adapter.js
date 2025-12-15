@@ -131,6 +131,21 @@ export class JsonRpcChildAdapter extends EventEmitter {
     });
     context.emitter.on("notification", (message) => {
       if (!message?.method) return;
+      const method = String(message.method);
+      const normalizedMethod = method.replace(/^codex\/event\//i, "");
+      if (
+        normalizedMethod === "agent_message_delta" ||
+        normalizedMethod === "agent_message_content_delta" ||
+        normalizedMethod === "agent_message" ||
+        normalizedMethod === "token_count" ||
+        normalizedMethod === "task_complete" ||
+        normalizedMethod === "agentMessageDelta" ||
+        normalizedMethod === "agentMessage" ||
+        normalizedMethod === "tokenCount" ||
+        normalizedMethod === "taskComplete"
+      ) {
+        return;
+      }
       this.#emitStdout({ type: message.method, msg: message.params || {} });
     });
     context.emitter.on("error", (err) => this.#handleError(err));
