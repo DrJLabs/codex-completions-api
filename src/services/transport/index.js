@@ -445,7 +445,8 @@ class JsonRpcTransport {
       approvalPolicy: basePayload.approvalPolicy ?? basePayload.approval_policy ?? undefined,
       sandbox: basePayload.sandboxPolicy ?? basePayload.sandbox ?? undefined,
       baseInstructions: basePayload.baseInstructions ?? undefined,
-      developerInstructions: basePayload.developerInstructions ?? undefined,
+      developerInstructions:
+        basePayload.developerInstructions ?? basePayload.baseInstructions ?? undefined,
       includeApplyPatchTool:
         basePayload.includeApplyPatchTool ?? basePayload.include_apply_patch_tool ?? undefined,
     });
