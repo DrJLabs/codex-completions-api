@@ -14,6 +14,13 @@ export const resolvedCodexBin = path.isAbsolute(CODEX_BIN)
 export const codexHome = CFG.CODEX_HOME;
 export const codexWorkdir = CFG.PROXY_CODEX_WORKDIR;
 
+const sanitizeChildEnv = (env = {}) => {
+  const childEnv = { ...(env && typeof env === "object" ? env : {}) };
+  delete childEnv.PROXY_API_KEY;
+  delete childEnv.PROXY_METRICS_TOKEN;
+  return childEnv;
+};
+
 export function spawnCodex(args = [], options = {}) {
   const {
     reqId = null,
@@ -30,13 +37,16 @@ export function spawnCodex(args = [], options = {}) {
   } catch (e) {
     console.error(`[codex-runner] failed to ensure workdir at ${cwdOpt || codexWorkdir}:`, e);
   }
-  const childEnv = { ...process.env, CODEX_HOME: codexHome, ...(envOpt || {}) };
+  const childEnv = sanitizeChildEnv({ ...process.env, ...(envOpt || {}), CODEX_HOME: codexHome });
   const childCwd = cwdOpt || codexWorkdir;
   const child = spawn(resolvedCodexBin, args, {
+    ...spawnOptions,
     stdio: ["pipe", "pipe", "pipe"],
     env: childEnv,
     cwd: childCwd,
-    ...spawnOptions,
+    shell: false,
+    detached: false,
+    windowsHide: true,
   });
   const lifecycleBase = {
     req_id: reqId || null,

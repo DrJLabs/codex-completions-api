@@ -13,6 +13,15 @@ export async function postResponsesNonStream(req, res) {
   const chatBody = { ...originalBody };
   chatBody.messages = coerceInputToChatMessages(originalBody);
   chatBody.stream = false;
+  const fallbackMax = CFG.PROXY_RESPONSES_DEFAULT_MAX_TOKENS || 0;
+  if (
+    fallbackMax > 0 &&
+    chatBody.max_tokens === undefined &&
+    chatBody.max_completion_tokens === undefined &&
+    chatBody.maxOutputTokens === undefined
+  ) {
+    chatBody.max_tokens = fallbackMax;
+  }
   delete chatBody.instructions;
   delete chatBody.input;
   delete chatBody.previous_response_id;

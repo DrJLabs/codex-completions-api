@@ -19,7 +19,6 @@ import {
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
 import {
-  authErrorBody,
   modelNotFoundBody,
   invalidRequestBody,
   tokensExceededBody,
@@ -54,6 +53,7 @@ import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mo
 import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
+import { requireModel } from "./require-model.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
@@ -71,7 +71,6 @@ import {
   shouldSkipBlock,
 } from "./tool-buffer.js";
 
-const API_KEY = CFG.API_KEY;
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
 const CODEX_WORKDIR = CFG.PROXY_CODEX_WORKDIR;
@@ -207,24 +206,19 @@ export async function postChatStream(req, res) {
     mode,
     body,
   });
-
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_stream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => res.status(statusCode).json(payload),
+  });
+  if (!model) return;
   // Global SSE concurrency guard (per-process). Deterministic for tests.
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -240,7 +234,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: "messages_required",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json({
       error: {
         message: "messages[] required",
@@ -281,7 +275,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: choiceError?.error?.code || "invalid_choice",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(choiceError);
   }
   if (requestedChoiceCount < 1 || requestedChoiceCount > MAX_CHAT_CHOICES) {
@@ -296,7 +290,7 @@ export async function postChatStream(req, res) {
       reason: "invalid_request",
       errorCode: "invalid_choice_range",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(buildInvalidChoiceError(requestedChoiceCount));
   }
   const choiceCount = requestedChoiceCount;
@@ -410,28 +404,21 @@ export async function postChatStream(req, res) {
       reason: "invalid_optional_params",
       errorCode: optionalValidation.error?.error?.code,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json(optionalValidation.error);
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
-  const streamObserver = createStreamObserver({ route, model: effectiveModel });
-  let streamOutcomeRecorded = false;
-  const recordStreamOutcome = (outcome) => {
-    if (streamOutcomeRecorded) return;
-    streamOutcomeRecorded = true;
-    streamObserver.end(outcome);
-  };
   try {
     console.log(
       `[proxy] model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -444,9 +431,17 @@ export async function postChatStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
+
+  const streamObserver = createStreamObserver({ route, model: effectiveModel });
+  let streamOutcomeRecorded = false;
+  const recordStreamOutcome = (outcome) => {
+    if (streamOutcomeRecorded) return;
+    streamOutcomeRecorded = true;
+    streamObserver.end(outcome);
+  };
   let reasoningEffort = (
     body.reasoning?.effort ||
     body.reasoning_effort ||
@@ -488,7 +483,7 @@ export async function postChatStream(req, res) {
       effectiveModel,
       errorCode: "prompt_too_large",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(403).json(tokensExceededBody("messages"));
   }
 
@@ -499,7 +494,7 @@ export async function postChatStream(req, res) {
     maxConc: MAX_CONC,
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
-      applyCors(null, res);
+      applyCors(req, res);
       logUsageFailure({
         req,
         res,
@@ -590,7 +585,7 @@ export async function postChatStream(req, res) {
           requestedModel,
           effectiveModel,
         });
-        applyCors(null, res);
+        applyCors(req, res);
         return res.status(err.statusCode).json(err.body);
       }
       throw err;
@@ -2073,23 +2068,19 @@ export async function postCompletionsStream(req, res) {
     body,
   });
 
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== API_KEY) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: 401,
-      reason: "auth_error",
-      errorCode: "unauthorized",
-    });
-    applyCors(null, res);
-    return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());
-  }
+  const model = requireModel({
+    req,
+    res,
+    body,
+    reqId,
+    started,
+    route: "/v1/completions",
+    mode: "completions_stream",
+    logUsageFailure,
+    applyCors,
+    sendJson: (statusCode, payload) => res.status(statusCode).json(payload),
+  });
+  if (!model) return;
 
   // Concurrency guard for legacy completions stream as well
   const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
@@ -2122,7 +2113,7 @@ export async function postCompletionsStream(req, res) {
       reason: "invalid_request",
       errorCode: "prompt_required",
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(400).json({
       error: {
         message: "prompt required",
@@ -2134,7 +2125,7 @@ export async function postCompletionsStream(req, res) {
   }
 
   const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    body.model || DEFAULT_MODEL,
+    model,
     DEFAULT_MODEL,
     Array.from(ACCEPTED_MODEL_IDS)
   );
@@ -2143,7 +2134,7 @@ export async function postCompletionsStream(req, res) {
       `[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
     );
   } catch {}
-  if (body.model && !ACCEPTED_MODEL_IDS.has(requestedModel)) {
+  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
     logUsageFailure({
       req,
       res,
@@ -2156,7 +2147,7 @@ export async function postCompletionsStream(req, res) {
       errorCode: "model_not_found",
       requestedModel,
     });
-    applyCors(null, res);
+    applyCors(req, res);
     return res.status(404).json(modelNotFoundBody(requestedModel));
   }
 
@@ -2206,7 +2197,7 @@ export async function postCompletionsStream(req, res) {
     maxConc: MAX_CONC,
     testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
     send429: () => {
-      applyCors(null, res);
+      applyCors(req, res);
       logUsageFailure({
         req,
         res,
@@ -2236,9 +2227,54 @@ export async function postCompletionsStream(req, res) {
   applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
 
   const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_stream" };
+  let normalizedRequest = null;
+  if (backendMode === BACKEND_APP_SERVER) {
+    try {
+      normalizedRequest = normalizeChatJsonRpcRequest({
+        body,
+        messages,
+        prompt: toSend,
+        effectiveModel,
+        choiceCount: 1,
+        stream: true,
+        reasoningEffort,
+        sandboxMode: SANDBOX_MODE,
+        codexWorkdir: CODEX_WORKDIR,
+        approvalMode: APPROVAL_POLICY,
+      });
+    } catch (err) {
+      if (err instanceof ChatJsonRpcNormalizationError) {
+        if (!responded) {
+          responded = true;
+          releaseGuard("normalization_error");
+        }
+        logUsageFailure({
+          req,
+          res,
+          reqId,
+          started,
+          route: "/v1/completions",
+          mode: "completions_stream",
+          statusCode: err.statusCode || 400,
+          reason: "normalization_error",
+          errorCode: err.body?.error?.code || err.code,
+          requestedModel,
+          effectiveModel,
+        });
+        applyCors(req, res);
+        return res.status(err.statusCode).json(err.body);
+      }
+      throw err;
+    }
+  }
   const child =
     backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({ reqId, timeoutMs: REQ_TIMEOUT_MS, trace: completionsTrace })
+      ? createJsonRpcChildAdapter({
+          reqId,
+          timeoutMs: REQ_TIMEOUT_MS,
+          normalizedRequest,
+          trace: completionsTrace,
+        })
       : spawnCodex(args, {
           reqId,
           route: completionsTrace.route,
@@ -2461,7 +2497,14 @@ export async function postCompletionsStream(req, res) {
         });
         if (tp === "agent_message_delta") {
           const deltaPayload = messagePayload?.delta ?? messagePayload;
-          const dlt = typeof deltaPayload === "string" ? deltaPayload : "";
+          const dlt =
+            typeof deltaPayload === "string"
+              ? deltaPayload
+              : deltaPayload && typeof deltaPayload === "object"
+                ? coerceAssistantContent(
+                    deltaPayload.content ?? deltaPayload.text ?? deltaPayload.delta ?? ""
+                  )
+                : "";
           if (dlt) {
             sentAny = true;
             emitted += dlt;
@@ -2490,7 +2533,12 @@ export async function postCompletionsStream(req, res) {
           }
         } else if (tp === "agent_message") {
           const messageValue = messagePayload?.message ?? messagePayload;
-          const m = typeof messageValue === "string" ? messageValue : "";
+          const m =
+            typeof messageValue === "string"
+              ? messageValue
+              : messageValue && typeof messageValue === "object"
+                ? coerceAssistantContent(messageValue.content ?? messageValue.text ?? "")
+                : "";
           if (m) {
             let suffix = "";
             if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
@@ -2595,7 +2643,9 @@ export async function postCompletionsStream(req, res) {
         chunk: s,
       });
   });
-  child.on("close", (_code) => {
+  const finalizeOnChildExit = (outcome = "released:child_close") => {
+    if (responded) return;
+    markCompletionsResponded();
     clearTimeout(timeout);
     cancelIdleCompletions();
     // If not completed via task_complete, still finish stream
@@ -2604,6 +2654,9 @@ export async function postCompletionsStream(req, res) {
       sendChunk({ choices: [{ index: 0, text: content }] });
     }
     finishSSE();
-    releaseGuard("released:child_close");
-  });
+    releaseGuard(outcome);
+  };
+  child.on("close", () => finalizeOnChildExit("released:child_close"));
+  child.on?.("exit", () => finalizeOnChildExit("released:child_exit"));
+  child.stdout.on?.("end", () => finalizeOnChildExit("released:stdout_end"));
 }
