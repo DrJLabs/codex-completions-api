@@ -4,6 +4,7 @@ import { postChatNonStream, postCompletionsNonStream } from "../handlers/chat/no
 import { config as CFG } from "../config/index.js";
 import { requireStrictAuth } from "../middleware/auth.js";
 import { requireWorkerReady } from "../middleware/worker-ready.js";
+import { maybeHandleTitleIntercept } from "../lib/title-intercept.js";
 
 export default function chatRouter() {
   const r = Router();
@@ -17,22 +18,52 @@ export default function chatRouter() {
   });
 
   // POST routes for chat and legacy completions
-  r.post("/v1/chat/completions", requireStrictAuth, requireWorkerReady, (req, res) => {
+  r.post("/v1/chat/completions", requireStrictAuth, (req, res) => {
     const body = req?.body || {};
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
       : defaultStream;
-    if (stream) return postChatStream(req, res);
-    return postChatNonStream(req, res);
+    const model = body.model || CFG.CODEX_MODEL || "gpt-5";
+
+    if (
+      maybeHandleTitleIntercept({
+        body,
+        model,
+        res,
+        stream,
+      })
+    ) {
+      return;
+    }
+
+    return requireWorkerReady(req, res, () => {
+      if (stream) return postChatStream(req, res);
+      return postChatNonStream(req, res);
+    });
   });
 
-  r.post("/v1/completions", requireStrictAuth, requireWorkerReady, (req, res) => {
+  r.post("/v1/completions", requireStrictAuth, (req, res) => {
     const body = req?.body || {};
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
       : defaultStream;
-    if (stream) return postCompletionsStream(req, res);
-    return postCompletionsNonStream(req, res);
+    const model = body.model || CFG.CODEX_MODEL || "gpt-5";
+
+    if (
+      maybeHandleTitleIntercept({
+        body,
+        model,
+        res,
+        stream,
+      })
+    ) {
+      return;
+    }
+
+    return requireWorkerReady(req, res, () => {
+      if (stream) return postCompletionsStream(req, res);
+      return postCompletionsNonStream(req, res);
+    });
   });
 
   return r;
