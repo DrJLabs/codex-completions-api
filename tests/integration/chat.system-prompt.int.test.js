@@ -11,9 +11,11 @@ describe("Chat System Prompt Integration", () => {
 
   const BASE_URL = "http://localhost:18010";
   console.log("Using BASE_URL:", BASE_URL);
-  const API_KEY =
-    process.env.PROXY_API_KEY ||
-    "sk-2dc76b03f45922e78f88d5524777e0c48e17b2ef68a3fa30dc7cd0ab4dd182fc";
+  const API_KEY = process.env.PROXY_API_KEY;
+
+  if (!API_KEY) {
+    throw new Error("PROXY_API_KEY environment variable is required for integration tests");
+  }
 
   test("should accept system messages without error", { timeout: 30000 }, async () => {
     const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
@@ -32,14 +34,21 @@ describe("Chat System Prompt Integration", () => {
       }),
     });
 
+    let data;
     if (response.status !== 200) {
-      const text = await response.text();
+      const text = await response.clone().text();
       console.error("Request failed:", text);
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+    } else {
+      data = await response.json();
     }
 
     expect(response.status).toBe(200);
 
-    const data = await response.json();
     expect(data).toHaveProperty("choices");
     expect(data.choices.length).toBeGreaterThan(0);
     expect(data.choices[0]).toHaveProperty("message");
