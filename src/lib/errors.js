@@ -15,13 +15,13 @@ export function modelNotFoundBody(model) {
   };
 }
 
-export function invalidRequestBody(param, message) {
+export function invalidRequestBody(param, message, code = "invalid_request_error") {
   return {
     error: {
       message: message || "invalid request",
       type: "invalid_request_error",
       param,
-      code: "invalid_request_error",
+      code: code || "invalid_request_error",
     },
   };
 }

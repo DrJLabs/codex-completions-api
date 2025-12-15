@@ -22,9 +22,9 @@ const resolveTruncateMs = () => {
 
   return 0;
 };
-const bool = (name, def) => String(process.env[name] ?? def).toLowerCase() === "true";
 const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
 const boolishFalse = (value) => /^(0|false|no|off)$/i.test(String(value ?? "").trim());
+const bool = (name, def) => boolishTrue(process.env[name] ?? def);
 
 const resolveToolBlockDelimiter = () => {
   const raw = process.env.PROXY_TOOL_BLOCK_DELIMITER;
@@ -55,6 +55,7 @@ export const config = {
   PROXY_ENABLE_RESPONSES: bool("PROXY_ENABLE_RESPONSES", "true"),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
+  PROXY_DEFAULT_STREAM: bool("PROXY_DEFAULT_STREAM", "false"),
   PROXY_SSE_KEEPALIVE_MS: num("PROXY_SSE_KEEPALIVE_MS", 15000),
   PROXY_ENABLE_PARALLEL_TOOL_CALLS: bool("PROXY_ENABLE_PARALLEL_TOOL_CALLS", "false"),
   PROXY_STOP_AFTER_TOOLS: bool("PROXY_STOP_AFTER_TOOLS", ""),

@@ -211,14 +211,7 @@ class JsonRpcTransport {
       this.handshakeData = null;
       this.handshakePromise = null;
       this.ensureHandshake().catch((err) => {
-        const handler = this.supervisor?.recordHandshakeFailure;
-        if (typeof handler === "function") {
-          try {
-            handler.call(this.supervisor, err);
-          } catch (failureErr) {
-            console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
-          }
-        }
+        console.warn(`${LOG_PREFIX} handshake failed after ready`, err);
       });
     });
 
@@ -231,6 +224,16 @@ class JsonRpcTransport {
   #clearRpcTrace(rpcId) {
     if (rpcId === null || rpcId === undefined) return;
     this.rpcTraceById.delete(rpcId);
+  }
+
+  #recordHandshakeFailure(err) {
+    const handler = this.supervisor?.recordHandshakeFailure;
+    if (typeof handler !== "function") return;
+    try {
+      handler.call(this.supervisor, err);
+    } catch (failureErr) {
+      console.warn(`${LOG_PREFIX} failed to record handshake failure`, failureErr);
+    }
   }
 
   destroy() {
@@ -256,37 +259,33 @@ class JsonRpcTransport {
   async ensureHandshake() {
     if (this.handshakeCompleted && this.handshakeData) return this.handshakeData;
     if (this.handshakePromise) return this.handshakePromise;
-    try {
-      await this.supervisor.waitForReady(CFG.WORKER_STARTUP_TIMEOUT_MS);
-    } catch (err) {
-      const child = getWorkerChildProcess();
-      if (!child || !child.pid) {
-        if (err instanceof TransportError) throw err;
-        const message =
-          err instanceof Error && err.message ? err.message : "worker did not become ready";
-        const wrapped = new TransportError(message, {
-          code: "worker_not_ready",
-          retryable: true,
-        });
-        if (err !== wrapped) wrapped.cause = err;
-        throw wrapped;
-      }
-      console.warn(
-        `${LOG_PREFIX} readiness wait failed (pid=${child.pid}): ${err instanceof Error ? err.message : err}`
-      );
+
+    const child = this.child || getWorkerChildProcess();
+    if (!child || !child.stdin) {
+      const err = new TransportError("worker not available", {
+        code: "worker_not_ready",
+        retryable: true,
+      });
+      this.#recordHandshakeFailure(err);
+      throw err;
     }
+
+    if (child !== this.child) {
+      this.#attachChild(child);
+    }
+
     this.handshakePromise = new Promise((resolve, reject) => {
       const rpcId = this.#nextRpcId();
       const timeout = setTimeout(() => {
         this.pending.delete(rpcId);
         this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
-        reject(
-          new TransportError("JSON-RPC handshake timed out", {
-            code: "handshake_timeout",
-            retryable: true,
-          })
-        );
+        const err = new TransportError("JSON-RPC handshake timed out", {
+          code: "handshake_timeout",
+          retryable: true,
+        });
+        this.#recordHandshakeFailure(err);
+        reject(err);
       }, CFG.WORKER_HANDSHAKE_TIMEOUT_MS);
       this.pending.set(rpcId, {
         type: "initialize",
@@ -316,15 +315,9 @@ class JsonRpcTransport {
           this.pending.delete(rpcId);
           this.#clearRpcTrace(rpcId);
           this.handshakePromise = null;
-          const recorder = this.supervisor?.recordHandshakeFailure;
-          if (typeof recorder === "function") {
-            try {
-              recorder.call(this.supervisor, err);
-            } catch (recordErr) {
-              console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
-            }
-          }
-          reject(err instanceof Error ? err : new TransportError(String(err)));
+          const normalized = err instanceof Error ? err : new TransportError(String(err));
+          this.#recordHandshakeFailure(normalized);
+          reject(normalized);
         },
       });
 
@@ -349,14 +342,7 @@ class JsonRpcTransport {
         this.pending.delete(rpcId);
         this.#clearRpcTrace(rpcId);
         this.handshakePromise = null;
-        const recorder = this.supervisor?.recordHandshakeFailure;
-        if (typeof recorder === "function") {
-          try {
-            recorder.call(this.supervisor, err);
-          } catch (recordErr) {
-            console.warn(`${LOG_PREFIX} failed to record handshake failure`, recordErr);
-          }
-        }
+        this.#recordHandshakeFailure(err);
         reject(err);
       }
     });
@@ -457,7 +443,7 @@ class JsonRpcTransport {
       cwd: basePayload.cwd ?? undefined,
       approvalPolicy: basePayload.approvalPolicy ?? basePayload.approval_policy ?? undefined,
       sandbox: basePayload.sandboxPolicy ?? basePayload.sandbox ?? undefined,
-      baseInstructions: basePayload.baseInstructions ?? undefined,
+      developerInstructions: basePayload.baseInstructions ?? undefined,
       includeApplyPatchTool:
         basePayload.includeApplyPatchTool ?? basePayload.include_apply_patch_tool ?? undefined,
     });
@@ -829,7 +815,11 @@ class JsonRpcTransport {
   }
 
   #onSpawn(child) {
+    if (this.destroyed) return;
     this.#attachChild(child);
+    this.ensureHandshake().catch((err) => {
+      console.warn(`${LOG_PREFIX} handshake failed after spawn`, err);
+    });
   }
 
   #onExit(info) {
@@ -942,9 +932,24 @@ class JsonRpcTransport {
     switch (method) {
       case "agentMessageDelta":
       case "agent_message_delta":
-      case "agent_message_content_delta":
+      case "agent_message_content_delta": {
+        const isContentDelta = method === "agent_message_content_delta";
+        if (isContentDelta) {
+          context.seenContentDelta = true;
+          context.addDelta(payload);
+          break;
+        }
+
+        const deltaCandidate =
+          payload && typeof payload === "object"
+            ? (payload.delta ?? payload.content ?? payload.text)
+            : payload;
+        const isStringDelta = typeof deltaCandidate === "string";
+        if (context.seenContentDelta && isStringDelta) break;
+
         context.addDelta(payload);
         break;
+      }
       case "agentMessage":
       case "agent_message":
         context.setFinalMessage(payload);
@@ -983,6 +988,36 @@ class JsonRpcTransport {
         context.setResult(payload);
         this.#scheduleCompletionCheck(context);
         break;
+      case "item/completed":
+      case "item_completed": {
+        const item =
+          payload && typeof payload === "object" && payload.item && typeof payload.item === "object"
+            ? payload.item
+            : null;
+        const itemType = typeof item?.type === "string" ? item.type.toLowerCase() : "";
+        const isAgentMessage = itemType === "agentmessage" || itemType === "agent_message";
+        if (!isAgentMessage) break;
+
+        if (!context.finalMessage) {
+          let text = "";
+          if (typeof item?.text === "string") text = item.text;
+          else if (Array.isArray(item?.content)) {
+            text = item.content
+              .map((part) => {
+                if (!part || typeof part !== "object") return "";
+                if (typeof part.text === "string") return part.text;
+                return "";
+              })
+              .join("");
+          }
+          if (text) context.setFinalMessage({ message: text });
+        }
+
+        if (!context.finishReason) context.setFinishReason("stop");
+        context.setResult(payload);
+        this.#scheduleCompletionCheck(context);
+        break;
+      }
       default:
         break;
     }
