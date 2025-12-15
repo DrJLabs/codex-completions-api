@@ -1,56 +1,41 @@
-import { describe, test, expect } from "vitest";
+import { beforeAll, afterAll, test, expect } from "vitest";
+import { startServer, stopServer } from "./helpers.js";
 
-// Ensure secure config for tests
-// Config.validateGlibc = false; // This line is commented out as testcontainers is no longer imported
+let PORT;
+let child;
 
-describe("Chat System Prompt Integration", () => {
-  // Check if we are running in an environment where we can spawn the stack or if it is already running
-  // For this regression test, we assume the dev stack is running as per the current context,
-  // but a robust test would spin up the stack.
-  // Given the constraints, I'll write a test that can be run against the running dev stack using fetch.
+beforeAll(async () => {
+  const ctx = await startServer({ PROXY_IGNORE_CLIENT_SYSTEM_PROMPT: "false" });
+  PORT = ctx.PORT;
+  child = ctx.child;
+}, 10_000);
 
-  const BASE_URL = "http://localhost:18010";
-  console.log("Using BASE_URL:", BASE_URL);
-  const API_KEY = process.env.PROXY_API_KEY;
+afterAll(async () => {
+  await stopServer(child);
+});
 
-  if (!API_KEY) {
-    throw new Error("PROXY_API_KEY environment variable is required for integration tests");
-  }
-
-  test("should accept system messages without error", { timeout: 30000 }, async () => {
-    const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-5",
-        stream: false,
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: "Hello" },
-        ],
-      }),
-    });
-
-    let data;
-    if (response.status !== 200) {
-      const text = await response.clone().text();
-      console.error("Request failed:", text);
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { error: text };
-      }
-    } else {
-      data = await response.json();
-    }
-
-    expect(response.status).toBe(200);
-
-    expect(data).toHaveProperty("choices");
-    expect(data.choices.length).toBeGreaterThan(0);
-    expect(data.choices[0]).toHaveProperty("message");
+test("accepts client system messages without error", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-sk-ci",
+    },
+    body: JSON.stringify({
+      model: "codex-5",
+      stream: false,
+      messages: [
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: "Hello" },
+      ],
+    }),
   });
+
+  expect(response.ok).toBe(true);
+  const data = await response.json();
+  expect(data?.object).toBe("chat.completion");
+  expect(Array.isArray(data?.choices)).toBe(true);
+  expect(data.choices.length).toBeGreaterThan(0);
+  expect(data.choices[0]?.message?.role).toBe("assistant");
+  expect(typeof data.choices[0]?.message?.content).toBe("string");
 });
