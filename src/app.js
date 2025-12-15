@@ -116,8 +116,9 @@ export default function createApp() {
 
   // Error handler: ensure body-parser errors return OpenAI-style JSON instead of HTML.
   // Must be registered after express.json().
-  app.use((err, _req, res, next) => {
+  app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
+    applyCors(req, res);
     const status = Number.isInteger(err?.status)
       ? err.status
       : Number.isInteger(err?.statusCode)
