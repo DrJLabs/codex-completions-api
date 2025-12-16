@@ -14,8 +14,16 @@ const GPT52_VARIANTS = [
   { suffix: "H", effort: "high" },
   { suffix: "XH", effort: "xhigh" },
 ];
-const GPT52_CODEV_LOW_ALIAS = "gpt-5.2-codev-l";
-const GPT52_CODEV_LOW_PUBLIC_ID = "gpt-5.2-codev-L";
+
+const GPT52_CODEV_ALIASES = GPT52_VARIANTS.map(({ suffix, effort }) => ({
+  publicId: `gpt-5.2-codev-${suffix}`,
+  alias: `gpt-5.2-codev-${suffix.toLowerCase()}`,
+  effort,
+}));
+const GPT52_ALIASES = GPT52_VARIANTS.map(({ suffix, effort }) => ({
+  alias: `gpt-5.2-${suffix.toLowerCase()}`,
+  effort,
+}));
 
 const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
 
@@ -32,7 +40,7 @@ export function publicModelIds(isDevEnv) {
     ...buildGpt51Models(isDevEnv),
     ...buildGpt52Models(isDevEnv),
   ];
-  if (isDevEnv) models.push(GPT52_CODEV_LOW_PUBLIC_ID);
+  if (isDevEnv) models.push(...GPT52_CODEV_ALIASES.map(({ publicId }) => publicId));
   return models;
 }
 
@@ -49,8 +57,10 @@ const buildOverrideMaps = () => {
     target.set(key, GPT52_TARGET_MODEL);
     reasoning.set(key, effort);
   }
-  target.set(GPT52_CODEV_LOW_ALIAS, GPT52_TARGET_MODEL);
-  reasoning.set(GPT52_CODEV_LOW_ALIAS, "low");
+  for (const { alias, effort } of [...GPT52_CODEV_ALIASES, ...GPT52_ALIASES]) {
+    target.set(alias, GPT52_TARGET_MODEL);
+    reasoning.set(alias, effort);
+  }
   return { target, reasoning };
 };
 
@@ -62,7 +72,12 @@ export function acceptedModelIds(defaultModel = "gpt-5") {
   const dev = publicModelIds(true).map((id) => id.toLowerCase());
   const prod = publicModelIds(false).map((id) => id.toLowerCase());
   const normalizedDefault = String(defaultModel || "").toLowerCase();
-  const values = [...dev, ...prod, GPT52_CODEV_LOW_ALIAS];
+  const values = [
+    ...dev,
+    ...prod,
+    ...GPT52_CODEV_ALIASES.map(({ alias }) => alias),
+    ...GPT52_ALIASES.map(({ alias }) => alias),
+  ];
   if (normalizedDefault) values.push(normalizedDefault);
   return new Set(values);
 }
