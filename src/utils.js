@@ -140,6 +140,13 @@ export const normalizeModel = (
     "codev-5.2-h",
     "codev-5.2-xh",
     "gpt-5.2-codev-l",
+    "gpt-5.2-codev-m",
+    "gpt-5.2-codev-h",
+    "gpt-5.2-codev-xh",
+    "gpt-5.2-l",
+    "gpt-5.2-m",
+    "gpt-5.2-h",
+    "gpt-5.2-xh",
   ]
 ) => {
   const raw = String(name || "").trim();

@@ -42,6 +42,31 @@ describe("model utils", () => {
     expect(r).toEqual({ requested: "gpt-5.2-codev-l", effective: "gpt-5.2" });
     expect(impliedEffortForModel("gpt-5.2-codev-L")).toBe("low");
   });
+  it("normalizes other gpt-5.2-codev aliases to gpt-5.2 with implied effort", () => {
+    const cases = [
+      { id: "gpt-5.2-codev-M", effort: "medium" },
+      { id: "gpt-5.2-codev-H", effort: "high" },
+      { id: "gpt-5.2-codev-XH", effort: "xhigh" },
+    ];
+    for (const { id, effort } of cases) {
+      const r = normalizeModel(id, "gpt-5");
+      expect(r).toEqual({ requested: id.toLowerCase(), effective: "gpt-5.2" });
+      expect(impliedEffortForModel(id)).toBe(effort);
+    }
+  });
+  it("normalizes gpt-5.2-* aliases to gpt-5.2 with implied effort", () => {
+    const cases = [
+      { id: "gpt-5.2-L", effort: "low" },
+      { id: "gpt-5.2-M", effort: "medium" },
+      { id: "gpt-5.2-H", effort: "high" },
+      { id: "gpt-5.2-XH", effort: "xhigh" },
+    ];
+    for (const { id, effort } of cases) {
+      const r = normalizeModel(id, "gpt-5");
+      expect(r).toEqual({ requested: id.toLowerCase(), effective: "gpt-5.2" });
+      expect(impliedEffortForModel(id)).toBe(effort);
+    }
+  });
   it("accepts uppercase ids inside the provided publicIds list", () => {
     const r = normalizeModel("codev-5.1-H", "gpt-5", ["codev-5.1-H"]);
     expect(r).toEqual({ requested: "codev-5.1-h", effective: "gpt-5.1" });
