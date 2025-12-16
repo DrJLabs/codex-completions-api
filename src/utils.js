@@ -1,4 +1,8 @@
-import { MODEL_TARGET_OVERRIDES, MODEL_REASONING_OVERRIDES } from "./config/models.js";
+import {
+  MODEL_TARGET_OVERRIDES,
+  MODEL_REASONING_OVERRIDES,
+  acceptedModelIds,
+} from "./config/models.js";
 
 // Pure utilities extracted from server.js for unit testing
 // ESM module
@@ -121,33 +125,7 @@ export const impliedEffortForModel = (requestedModel) => {
 export const normalizeModel = (
   name,
   defaultModel = "gpt-5",
-  publicIds = [
-    "codex-5",
-    "codex-5-low",
-    "codex-5-medium",
-    "codex-5-high",
-    "codex-5-minimal",
-    "codev-5",
-    "codev-5-low",
-    "codev-5-medium",
-    "codev-5-high",
-    "codev-5-minimal",
-    "codev-5.1-l",
-    "codev-5.1-m",
-    "codev-5.1-h",
-    "codev-5.2-l",
-    "codev-5.2-m",
-    "codev-5.2-h",
-    "codev-5.2-xh",
-    "gpt-5.2-codev-l",
-    "gpt-5.2-codev-m",
-    "gpt-5.2-codev-h",
-    "gpt-5.2-codev-xh",
-    "gpt-5.2-l",
-    "gpt-5.2-m",
-    "gpt-5.2-h",
-    "gpt-5.2-xh",
-  ]
+  publicIds = Array.from(acceptedModelIds(defaultModel))
 ) => {
   const raw = String(name || "").trim();
   if (!raw) return { requested: "codex-5", effective: defaultModel };
