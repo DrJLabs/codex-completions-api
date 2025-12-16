@@ -31,9 +31,10 @@ describe("normalizeChatJsonRpcRequest", () => {
     ];
 
     const normalized = normalize({ body: { messages }, messages });
-    expect(normalized.turn.baseInstructions).toContain("You are a bot");
+    expect(normalized.turn.baseInstructions).toBeUndefined();
     expect(normalized.turn.items).toHaveLength(1);
     const prompt = normalized.turn.items[0]?.data?.text || "";
+    expect(prompt).not.toContain("You are a bot");
     expect(prompt).toContain("[assistant] previous answer");
     expect(prompt).toContain("[user] continue");
     expect(prompt).toContain("[tool:lookup_user] result payload");
