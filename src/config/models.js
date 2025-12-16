@@ -57,11 +57,7 @@ const buildOverrideMaps = () => {
     target.set(key, GPT52_TARGET_MODEL);
     reasoning.set(key, effort);
   }
-  for (const { alias, effort } of GPT52_CODEV_ALIASES) {
-    target.set(alias, GPT52_TARGET_MODEL);
-    reasoning.set(alias, effort);
-  }
-  for (const { alias, effort } of GPT52_ALIASES) {
+  for (const { alias, effort } of [...GPT52_CODEV_ALIASES, ...GPT52_ALIASES]) {
     target.set(alias, GPT52_TARGET_MODEL);
     reasoning.set(alias, effort);
   }
