@@ -22,7 +22,7 @@ const ALLOWED_TOOL_CHOICES = new Set(["auto", "none", "required"]);
 const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 
 const IGNORE_CLIENT_SYSTEM_PROMPT = /^(1|true|yes)$/i.test(
-  String(process.env.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT || "true")
+  String(process.env.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT || "false")
 );
 
 const toFiniteNumber = (value) => {

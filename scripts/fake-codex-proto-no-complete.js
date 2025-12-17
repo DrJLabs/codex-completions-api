@@ -32,7 +32,27 @@ const main = async () => {
   await delay(5);
   const message = "Hello (truncated) from fake-codex.";
   write({ type: "agent_message", msg: { message } });
-  // Do not emit token_count or task_complete; exit shortly after
+  const finishReason = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
+    .trim()
+    .toLowerCase();
+  const tokenCount = {
+    prompt_tokens: 5,
+    completion_tokens: 9,
+    total_tokens: 14,
+  };
+  if (finishReason === "length") {
+    tokenCount.finish_reason = "length";
+    tokenCount.token_limit_reached = true;
+    tokenCount.reason = "length";
+  } else {
+    tokenCount.finish_reason = finishReason || "stop";
+  }
+  // Emit token_count (still omitting task_complete) to simulate early exit.
+  write({
+    type: "token_count",
+    msg: tokenCount,
+  });
+  // Do not emit task_complete; exit shortly after
   await delay(5);
   try {
     process.stdout.end?.();
