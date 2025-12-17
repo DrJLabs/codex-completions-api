@@ -161,7 +161,6 @@ export async function postResponsesNonStream(req, res) {
       });
     }
     cleanup();
-    if (!res.headersSent) throw error;
   } finally {
     req.body = originalBody;
     restoreOutputMode();
