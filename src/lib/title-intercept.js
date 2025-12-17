@@ -29,12 +29,14 @@ const flattenContent = (content) => {
   return "";
 };
 
-const collectUserText = (items = []) =>
-  items
+const collectUserText = (items = []) => {
+  if (!Array.isArray(items)) return "";
+  return items
     .filter((m) => (m?.role || "").toLowerCase() === "user")
     .map((m) => flattenContent(m?.content))
     .join(" ")
     .trim();
+};
 
 const collectInputText = (input = []) =>
   Array.isArray(input)
