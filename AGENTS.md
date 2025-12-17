@@ -44,7 +44,6 @@
 ## Docs usage
 
 - Do not open `docs/` unless requested or the task requires it; keep detailed changes in `docs/` rather than this file.
-- Infra note: Traefik/ForwardAuth dev runbook lives in `docs/traefik-dev.md` (file provider, ports, health checks, common edge failures).
 
 ## Global conventions
 
