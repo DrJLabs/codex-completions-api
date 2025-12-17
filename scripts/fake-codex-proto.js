@@ -445,7 +445,7 @@ const runProto = async () => {
   write({ type: "agent_message", msg: messageEnvelope });
   await delay(5);
 
-  const completionTokensEst = toolCalls || functionCall ? 0 : Math.ceil(messageText.length / 4);
+  const completionTokensEst = toolCalls ? 16 : functionCall ? 0 : Math.ceil(messageText.length / 4);
   const tokenCountMsg = {
     prompt_tokens: 8,
     completion_tokens: completionTokensEst,

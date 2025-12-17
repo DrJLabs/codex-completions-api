@@ -7,6 +7,27 @@ import {
 import { config as CFG } from "../../config/index.js";
 import { logResponsesIngressRaw } from "./ingress-logging.js";
 import { logStructured, sha256 } from "../../services/logging/schema.js";
+import { invalidRequestBody } from "../../lib/errors.js";
+
+const MAX_RESP_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
+const buildInvalidChoiceError = (value) =>
+  invalidRequestBody(
+    "n",
+    `n must be an integer between 1 and ${MAX_RESP_CHOICES}; received ${value}`
+  );
+const normalizeChoiceCount = (raw) => {
+  if (raw === undefined || raw === null) return { ok: true, value: 1 };
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    return { ok: true, value: raw };
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed)) {
+      return { ok: true, value: parsed };
+    }
+  }
+  return { ok: false, error: buildInvalidChoiceError(raw) };
+};
 
 export async function postResponsesNonStream(req, res) {
   const originalBody = req.body || {};
@@ -106,12 +127,40 @@ export async function postResponsesNonStream(req, res) {
   res.once("finish", cleanup);
   res.once("close", cleanup);
 
+  const { ok: nOk, value: nValue = 1, error: nError } = normalizeChoiceCount(originalBody?.n);
+  if (!nOk || nValue < 1 || nValue > MAX_RESP_CHOICES) {
+    const choiceError = nError || buildInvalidChoiceError(originalBody?.n);
+    res.status(400).json(choiceError);
+    cleanup();
+    return;
+  }
+
   try {
+    chatBody.n = nValue;
     req.body = chatBody;
     await postChatNonStream(req, res);
   } catch (error) {
+    // Align with chat handler semantics: propagate the same error status when available,
+    // otherwise return a generic server_error without double-writing.
+    console.error("[responses][nonstream] failed to process request", {
+      message: error?.message,
+      code: error?.code,
+      type: error?.type,
+      status: error?.status || error?.statusCode,
+      stack: error?.stack,
+      request_body_kind: typeof originalBody,
+    });
+    if (!res.headersSent) {
+      const status = error?.statusCode || error?.status || 500;
+      res.status(status).json({
+        error: {
+          message: error?.message || "Internal server error",
+          type: error?.type || "server_error",
+          code: error?.code || "internal_error",
+        },
+      });
+    }
     cleanup();
-    throw error;
   } finally {
     req.body = originalBody;
     restoreOutputMode();
