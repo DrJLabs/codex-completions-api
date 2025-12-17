@@ -114,6 +114,11 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - Test-only routes (`/__test/*`) are gated by `PROXY_TEST_ENDPOINTS=true`, always require the bearer key, and default to loopback-only unless `PROXY_TEST_ALLOW_REMOTE=true`.
 - ForwardAuth (Traefik) also checks the same key to keep edge and origin consistent.
 
+### System prompts → base instructions
+
+- By default (`PROXY_IGNORE_CLIENT_SYSTEM_PROMPT=true`), client-supplied `system` messages are **not** forwarded to the app-server `baseInstructions` field. This avoids malformed/hostile prompts crashing the worker or triggering “Instructions are not valid.”
+- Only set `PROXY_IGNORE_CLIENT_SYSTEM_PROMPT=false` if you explicitly need client system prompts to become `baseInstructions` and you trust the caller. Coordinate with app-server contracts before changing this flag.
+
 ### Model selection
 
 - Production advertises `codex-5{,-low,-medium,-high,-minimal}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
