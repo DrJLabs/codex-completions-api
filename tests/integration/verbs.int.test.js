@@ -40,6 +40,7 @@ afterAll(async () => {
 test("HEAD /v1/chat/completions responds 200", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "HEAD",
+    headers: { Authorization: "Bearer test-sk-ci" },
   });
   expect(r.status).toBe(200);
 });
