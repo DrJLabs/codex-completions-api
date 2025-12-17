@@ -545,7 +545,11 @@ async function runJsonRpcWorker() {
         });
 
         let promptTokens = 8;
-        let completionTokens = toolCalls || functionCall ? 0 : Math.ceil(messageText.length / 4);
+        let completionTokens = toolCalls
+          ? 16
+          : functionCall
+            ? 0
+            : Math.ceil(messageText.length / 4);
         if (scenario === "truncation" && !toolCalls && !functionCall) {
           promptTokens = 5;
           completionTokens = 9;
