@@ -191,7 +191,6 @@ class CodexWorkerSupervisor extends EventEmitter {
         ? payload.advertised_models
         : undefined,
     };
-    this.state.ready = true;
     this.state.consecutiveFailures = 0;
     this.state.lastReadyAt = nowIso();
     this.#updateReadiness({
@@ -243,7 +242,7 @@ class CodexWorkerSupervisor extends EventEmitter {
   }
 
   isReady() {
-    return this.state.ready;
+    return this.state.health.readiness?.ready ?? false;
   }
 
   status() {
@@ -253,10 +252,11 @@ class CodexWorkerSupervisor extends EventEmitter {
     };
     const readiness = this.state.health.readiness ? { ...this.state.health.readiness } : undefined;
     const liveness = this.state.health.liveness ? { ...this.state.health.liveness } : undefined;
+    const readinessReady = readiness?.ready ?? false;
     return {
       enabled: true,
       running: this.state.running,
-      ready: this.state.ready,
+      ready: readinessReady,
       shutdown_in_flight: this.state.shutdownInFlight,
       pid: this.state.child?.pid ?? null,
       restarts_total: this.state.restarts,

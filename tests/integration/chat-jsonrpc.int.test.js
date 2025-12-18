@@ -501,7 +501,7 @@ describe("chat JSON-RPC error handling", () => {
     await firstPromise;
   }, 20000);
 
-  it("surfaces handshake timeout as 503 backend_unavailable with retryable hint", async () => {
+  it("blocks requests when handshake is not ready", async () => {
     server = await startServerWithCapture({
       PROXY_API_KEY: "test-sk-ci",
       WORKER_HANDSHAKE_TIMEOUT_MS: "200",
@@ -519,10 +519,11 @@ describe("chat JSON-RPC error handling", () => {
     expect(response.status).toBe(503);
     const body = await response.json();
     expect(body.error).toMatchObject({
-      code: "handshake_timeout",
+      code: "worker_not_ready",
       type: "backend_unavailable",
       retryable: true,
     });
+    expect(body?.worker_status?.ready).toBe(false);
   }, 20000);
 
   it("surfaces worker request timeout as 504 timeout_error with retryable hint", async () => {
