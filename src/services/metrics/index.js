@@ -250,7 +250,7 @@ export function setWorkerMetrics(status) {
   if (Number.isFinite(restarts)) workerRestarts.set(restarts);
   const backoff = Number(status?.next_restart_delay_ms ?? status?.metrics?.codex_worker_latency_ms);
   if (Number.isFinite(backoff)) workerBackoffMs.set(backoff);
-  const ready = status?.ready ? 1 : 0;
+  const ready = (status?.health?.readiness?.ready ?? status?.ready) ? 1 : 0;
   workerReady.set(ready);
 }
 
