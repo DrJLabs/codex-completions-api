@@ -126,7 +126,10 @@ describe("chat JSON-RPC normalization", () => {
   });
 
   it("maps chat completions request fields into JSON-RPC payloads", async () => {
-    server = await startServerWithCapture({ PROXY_API_KEY: "test-sk-ci" });
+    server = await startServerWithCapture({
+      PROXY_API_KEY: "test-sk-ci",
+      PROXY_IGNORE_CLIENT_SYSTEM_PROMPT: "false",
+    });
 
     const payload = {
       model: "codex-5",
