@@ -81,11 +81,6 @@ releases/*.latest.path
 # Local helper scripts
 scripts/watch-docs-sync.sh
 scripts/sync-docs-to-vault.sh
-bmad-bak/
-.bmad/
-.bmad-core/
-.bmad-infrastructure-devops/
-.bmad-ephemeral/
 .codex/
 docs/bmad/sprint-artifacts/
 docs/bmad/qa/artifacts/streaming-tool-call/*
