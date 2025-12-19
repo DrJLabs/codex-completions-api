@@ -203,11 +203,7 @@ const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
 const TOOL_BLOCK_DEDUP = !!CFG.PROXY_TOOL_BLOCK_DEDUP;
 const TOOL_BLOCK_DELIMITER =
   typeof CFG.PROXY_TOOL_BLOCK_DELIMITER === "string" ? CFG.PROXY_TOOL_BLOCK_DELIMITER : "";
-const APPROVAL_POLICY = (() => {
-  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized || "never";
-})();
+const APPROVAL_POLICY = CFG.PROXY_APPROVAL_POLICY;
 
 const logUsageFailure = ({
   req,
