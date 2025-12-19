@@ -37,6 +37,24 @@ const clearTimers = () => {
   }
 };
 
+const flushStdout = async () => {
+  if (!process.stdout?.writableNeedDrain) return;
+  await Promise.race([
+    new Promise((resolve) => process.stdout.once("drain", resolve)),
+    delay(1000),
+  ]);
+};
+
+const scheduleExit = (code, delayMs = shutdownDelayMs) => {
+  setTimeout(
+    () => {
+      const finishExit = () => process.exit(code);
+      return flushStdout().then(finishExit, finishExit);
+    },
+    Math.max(0, delayMs)
+  );
+};
+
 const write = (payload) => {
   try {
     process.stdout.write(JSON.stringify(payload) + "\n");
@@ -96,7 +114,7 @@ async function runJsonRpcWorker() {
     autoExitTimer = setTimeout(() => {
       clearTimers();
       write({ event: "exit", reason: "auto" });
-      process.exit(exitCode);
+      scheduleExit(exitCode, 0);
     }, autoExitMs);
   }
 
@@ -152,7 +170,7 @@ async function runJsonRpcWorker() {
         if (handshakeMode === "exit") {
           process.nextTick(() => {
             clearTimers();
-            process.exit(1);
+            scheduleExit(1, 0);
           });
           return;
         }
@@ -595,7 +613,7 @@ async function runJsonRpcWorker() {
             },
           });
           clearTimers();
-          setTimeout(() => process.exit(1), Math.max(0, shutdownDelayMs));
+          scheduleExit(1);
           return;
         }
 
@@ -645,7 +663,7 @@ function setupSignalHandlers() {
   const shutdown = (signal) => {
     write({ event: "shutdown", signal });
     clearTimers();
-    setTimeout(() => process.exit(0), Math.max(0, shutdownDelayMs));
+    scheduleExit(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
@@ -661,7 +679,7 @@ if (supervised) {
   main().catch((err) => {
     write({ event: "fatal", message: err?.message || String(err) });
     clearTimers();
-    process.exit(1);
+    scheduleExit(1, 0);
   });
 } else {
   // Fallback: behave similar to proto shim for direct execution
