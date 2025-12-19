@@ -3,7 +3,6 @@ FROM node:22-alpine AS base
 
 ENV NODE_ENV=production \
     PORT=11435 \
-    PROXY_STREAM_MODE=incremental \
     CODEX_MODEL=gpt-5
 
 WORKDIR /app

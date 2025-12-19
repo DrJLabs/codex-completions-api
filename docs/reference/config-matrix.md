@@ -13,7 +13,7 @@ Canonicalizes the ForwardAuth entrypoint, environment layout, and infra artifact
 ## ForwardAuth canonicalization
 
 - Canonical entrypoint: `auth/server.mjs` (ESM). Compose/dev stack already call this file.
-- Legacy CJS file `auth/server.js` is retained only for archival/compatibility and now exits unless `ALLOW_LEGACY_AUTH=true` is set explicitly.
+- Legacy CJS entrypoint removed 2025-12-18 after confirming no manifest references.
 
 ## Environment knobs to keep consistent
 

@@ -6,7 +6,6 @@ After=network.target
 Environment=PORT=11435
 Environment=PROXY_API_KEY=codex-local-secret
 Environment=CODEX_MODEL=gpt-5
-Environment=PROXY_STREAM_MODE=incremental
 Environment=CODEX_BIN=codex
 Environment=HOME=%h
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
@@ -16,4 +15,3 @@ Restart=on-failure
 
 [Install]
 WantedBy=default.target
-

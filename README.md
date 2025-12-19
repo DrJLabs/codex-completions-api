@@ -130,7 +130,6 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
 - Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
-- Note: `PROXY_STREAM_MODE` is deprecated/unused in the current implementation; streaming behavior is not controlled by that variable.
 - `/v1/responses` can be disabled for chat-only deployments via `PROXY_ENABLE_RESPONSES=false`; default is on for parity with OpenAI.
 
 ### Streaming controls for tool-heavy clients
@@ -458,13 +457,13 @@ Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
-- `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
 - `CODEX_BIN` (default: `codex`) — override to `scripts/fake-codex-jsonrpc.js` for the deterministic app-server shim, or `/app/scripts/fake-codex-proto.js` only when you explicitly need legacy proto mode/shims.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
 - `PROXY_ENABLE_RESPONSES` (default: `true`) — disable to hide `/v1/responses` in chat-only environments.
 - `PROXY_OUTPUT_MODE` (default: `obsidian-xml`) — default output envelope (`obsidian-xml` emits `<use_tool>` blocks as text; `openai-json` emits structured tool calls). Override per request via `x-proxy-output-mode`.
 - `PROXY_RESPONSES_OUTPUT_MODE` (default: `openai-json`) — default output mode applied for `/v1/responses` when no `x-proxy-output-mode` header is present.
+- `PROXY_RESPONSES_DEFAULT_MAX_TOKENS` (default: `0`) — fallback `max_tokens` for `/v1/responses` when no max token field is supplied; `0` disables the fallback.
 - Built-in Codex tools (shell, apply_patch, web_search, view_image) are disabled via `.codex-api/config.toml` / `.codev/config.toml`. Assistants must respond in plain text and must not emit `<use_tool>` blocks or request tool calls. Sections that describe tool-tail streaming (e.g., stop-after-tools) are therefore inactive unless you explicitly re-enable tools for a workflow.
 - `PROXY_CODEX_WORKDIR` (default: `/tmp/codex-work`) — working directory for the Codex child process. This isolates any file writes from the app code and remains ephemeral in containers.
 - `CODEX_FORCE_PROVIDER` (optional) — if set (e.g., `chatgpt`), the proxy passes `--config model_provider="<value>"` to Codex to force a provider instead of letting Codex auto-select (which may fall back to OpenAI API otherwise).
@@ -687,7 +686,7 @@ Files in this repo
 
 Edge authentication model
 
-- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (canonical entrypoint: [auth/server.mjs](auth/server.mjs:1)). The legacy CJS file `auth/server.js` is retained only for archival purposes and exits unless `ALLOW_LEGACY_AUTH=true` is set.
+- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (canonical entrypoint: [auth/server.mjs](auth/server.mjs:1)).
 - The auth service validates the `Authorization: Bearer &lt;token&gt;` header equals the shared secret `PROXY_API_KEY`. On mismatch it returns 401 with a `WWW-Authenticate: Bearer realm=api` header.
 - On success, Traefik forwards the request to the app container service port 11435, preserving the original `Authorization` header so the in-app check still applies (defense in depth).
 

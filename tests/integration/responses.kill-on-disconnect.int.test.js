@@ -15,9 +15,9 @@ let releaseFile;
 
 beforeAll(async () => {
   PORT = await getPort();
-  PID_FILE = path.join(process.cwd(), ".tmp-responses-child-pid.txt");
-  readyFile = path.join(process.cwd(), ".tmp-responses-stream-ready.txt");
-  releaseFile = path.join(process.cwd(), ".tmp-responses-stream-release.txt");
+  PID_FILE = path.join(process.cwd(), `.tmp-responses-child-pid-${PORT}.txt`);
+  readyFile = path.join(process.cwd(), `.tmp-responses-stream-ready-${PORT}.txt`);
+  releaseFile = path.join(process.cwd(), `.tmp-responses-stream-release-${PORT}.txt`);
   try {
     if (existsSync(PID_FILE)) unlinkSync(PID_FILE);
   } catch {}

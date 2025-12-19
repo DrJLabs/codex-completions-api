@@ -43,7 +43,7 @@ tags:
 |----------|---------------------------------|-----------|------------------------------------------------|--------------------|-----------------------------------------|-------|
 |          |                                 |           |                                                | current / legacy   |                                         |       |
 | Example  | `server.js`                    | entrypoint| Main process bootstrap, backend selection      | current            | Ties CLI flags + envs directly to app   |       |
-| Example  | `auth/server.js`              | service   | Traefik ForwardAuth handler (legacy build)     | legacy/alt         | Duplicate build target vs `server.mjs`  |       |
+| Example  | `auth/server.mjs`             | service   | Traefik ForwardAuth handler                    | current            | Auth surface depends on bearer parity   |       |
 
 ---
 

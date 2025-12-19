@@ -79,6 +79,7 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(initial.health.readiness.reason).toBe("worker_launching");
     expect(initial.health.liveness.live).toBe(true);
     expect(["worker_starting", "worker_running"]).toContain(initial.health.liveness.reason);
+    expect(initial.ready).toBe(initial.health.readiness.ready);
 
     const child = mockChildren[mockChildren.length - 1];
     child.stdout.write(`${JSON.stringify({ event: "ready", models: ["codex-5"] })}\n`);
@@ -90,6 +91,8 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(afterReady.health.readiness.handshake).toBeNull();
     expect(afterReady.health.liveness.live).toBe(true);
     expect(afterReady.health.liveness.reason).toBe("worker_running");
+    expect(afterReady.ready).toBe(false);
+    expect(afterReady.ready).toBe(afterReady.health.readiness.ready);
 
     currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
     await settle();
@@ -100,6 +103,8 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(afterHandshake.health.readiness.handshake?.models).toEqual(["codex-5"]);
     expect(afterHandshake.health.liveness.live).toBe(true);
     expect(afterHandshake.health.liveness.reason).toBe("worker_running");
+    expect(afterHandshake.ready).toBe(true);
+    expect(afterHandshake.ready).toBe(afterHandshake.health.readiness.ready);
 
     child.exitCode = 0;
     child.signalCode = null;
@@ -112,9 +117,30 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(afterExit.health.readiness.details?.restarts_total).toBeGreaterThanOrEqual(1);
     expect(afterExit.health.liveness.live).toBe(true);
     expect(afterExit.health.liveness.reason).toBe("worker_restarting");
+    expect(afterExit.ready).toBe(false);
+    expect(afterExit.ready).toBe(afterExit.health.readiness.ready);
 
     // Restart should spawn a new child after backoff window passes
     await settle(45);
     expect(spawnCodexSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test("waitForReady resolves once handshake completes", async () => {
+    currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
+    await settle();
+
+    await expect(currentSupervisor.waitForReady(50)).resolves.toBeUndefined();
+  });
+
+  test("readiness flag mirrors handshake without ready event", async () => {
+    expect(currentSupervisor.state.ready).toBe(false);
+
+    currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
+    await settle();
+
+    const afterHandshake = getWorkerStatus();
+    expect(afterHandshake.health.readiness.ready).toBe(true);
+    expect(afterHandshake.ready).toBe(true);
+    expect(currentSupervisor.state.ready).toBe(true);
   });
 });
