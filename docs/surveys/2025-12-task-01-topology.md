@@ -72,7 +72,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Prod Codex HOME mount  | `.codex-api/` | config mount   | Empty mount directory for production Codex HOME (secrets, config at runtime, not in git).             | current        | Misuse as committed config would leak secrets; needs clear ignore patterns and docs.               |       |
 | GitHub workflows       | `.github/`    | ci/config      | CI/CD workflows, issue templates, etc.                                                                | current        | CI config drift vs docs if not reviewed in later CI-focused slice.                                 |       |
 | Git hooks              | `.husky/`     | dev tooling    | Local git hooks (linting/formatting on commit).                                                       | current        | Hooks must stay in sync with lint/format rules; otherwise confusing failures.                      |       |
-| ForwardAuth service    | `auth/`       | microservice   | Traefik ForwardAuth implementation (`server.mjs`; legacy `server.js` guarded by `ALLOW_LEGACY_AUTH`). | canonical now  | Duplicate entrypoints previously suggested drift; CJS path now blocked by default.                |       |
+| ForwardAuth service    | `auth/`       | microservice   | Traefik ForwardAuth implementation (`server.mjs`).                                                   | canonical now  | Legacy CJS entrypoint removed 2025-12-18 after confirming no manifest references.                 |       |
 | Provider configs       | `config/`     | config         | Example upstream provider configs (e.g., `roo-openai-compatible.json`).                               | current        | If treated as canonical without validation, may drift from actual deploy config.                   |       |
 | Documentation          | `docs/`       | docs           | Project docs, BMAD artifacts, architecture maps, migration runbooks, QA checklists, stories.          | current+archive| Contains both current and `_archive` content; ambiguity around which docs are canonical.           |       |
 | Vendored submodule     | `external/`   | dependency     | Git submodule (e.g., upstream Codex client/SDK or related resources).                                 | current        | Submodule versions can drift separately from `package.json` deps; need explicit update policy.     |       |
@@ -119,8 +119,8 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 ## 3. Top Issues (Slice-Level)
 
 1. **[ISSUE-01-01] Duplicate ForwardAuth entrypoints under `auth/`**  
-   - Both `auth/server.mjs` and `auth/server.js` appear to implement the same Traefik ForwardAuth behavior with different module systems/build paths. Without a clear deprecation marker, this invites divergence between the “active” and “legacy” implementations and makes it harder to know which one is in use.
-   - Update: `auth/server.mjs` is the canonical entrypoint; `auth/server.js` remains for archival use only and exits unless `ALLOW_LEGACY_AUTH=true`.
+   - Both `auth/server.mjs` and `auth/server.js` appeared to implement the same Traefik ForwardAuth behavior with different module systems/build paths. Without a clear deprecation marker, this invited divergence between the “active” and “legacy” implementations and made it harder to know which one was in use.
+   - Update (2025-12-18): `auth/server.mjs` is the canonical entrypoint; legacy `auth/server.js` removed after confirming no manifest references.
 
 2. **[ISSUE-01-02] Mixed “current vs archive” documentation under `docs/`**  
    - `docs/` contains both actively used documents and `_archive` content (including a very useful `source-tree` map). This blurs what is canonical, and future contributors or agents may ignore up-to-date but archived-labeled docs or, conversely, trust outdated ones.
@@ -198,9 +198,9 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 
 - **OQ-01-01 – Which ForwardAuth entrypoint is currently used in production?**  
   - Detail:  
-    - Need confirmation from deployment/config (Traefik labels, Docker images, or systemd units) about whether `auth/server.mjs` or `auth/server.js` is referenced anywhere.  
+    - Resolved 2025-12-18: manifests reference `auth/server.mjs` only; legacy `auth/server.js` removed after confirming no consumers.  
   - Dependency on:  
-    - Deployment repo or ops runbooks that specify the ForwardAuth command.
+    - Deployment repo or ops runbooks for future entrypoint changes.
 
 - **OQ-01-02 – Which docs in `docs/` are treated as canonical today?**  
   - Detail:  

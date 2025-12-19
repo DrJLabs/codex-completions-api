@@ -66,7 +66,6 @@ Key responsibilities:
 
 ```
 auth/server.mjs                # /verify and /healthz; CORS; WWW-Authenticate on 401
-auth/server.js                 # (legacy or alt build target)
 auth/package.json
 ```
 
