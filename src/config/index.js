@@ -35,11 +35,11 @@ const resolveApprovalPolicy = () => {
 const resolveStopAfterToolsGraceMs = () => {
   const raw = process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
   if (raw === undefined || raw === null || raw === "") return 300;
-  return Number(raw);
+  const val = Number(raw);
+  return Number.isNaN(val) ? 300 : val;
 };
 
-const resolveIgnoreClientSystemPrompt = () =>
-  String(process.env.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT || "true").toLowerCase() !== "false";
+const resolveIgnoreClientSystemPrompt = () => bool("PROXY_IGNORE_CLIENT_SYSTEM_PROMPT", "true");
 
 const resolveTitleGenIntercept = () =>
   /^(1|true|yes)$/i.test(String(process.env.PROXY_TITLE_GEN_INTERCEPT ?? "true"));
