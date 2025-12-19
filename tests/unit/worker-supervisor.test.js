@@ -124,4 +124,11 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     await settle(45);
     expect(spawnCodexSpy).toHaveBeenCalledTimes(2);
   });
+
+  test("waitForReady resolves once handshake completes", async () => {
+    currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
+    await settle();
+
+    await expect(currentSupervisor.waitForReady(50)).resolves.toBeUndefined();
+  });
 });

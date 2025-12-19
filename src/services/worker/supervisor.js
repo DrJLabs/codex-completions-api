@@ -275,9 +275,10 @@ class CodexWorkerSupervisor extends EventEmitter {
   }
 
   async waitForReady(timeoutMs = this.cfg.WORKER_STARTUP_TIMEOUT_MS) {
-    if (this.state.ready) return;
+    const isReady = () => this.state.health.readiness?.ready ?? false;
+    if (isReady()) return;
     const start = performance.now();
-    while (!this.state.ready) {
+    while (!isReady()) {
       const elapsed = performance.now() - start;
       if (elapsed >= timeoutMs) {
         throw new Error(`worker readiness timeout after ${timeoutMs}ms`);
