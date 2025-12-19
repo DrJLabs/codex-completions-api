@@ -686,7 +686,7 @@ Files in this repo
 
 Edge authentication model
 
-- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (canonical entrypoint: [auth/server.mjs](auth/server.mjs:1)). The legacy CJS file `auth/server.js` is retained only for archival purposes and exits unless `ALLOW_LEGACY_AUTH=true` is set.
+- Traefik calls `http://127.0.0.1:18080/verify` via ForwardAuth (canonical entrypoint: [auth/server.mjs](auth/server.mjs:1)).
 - The auth service validates the `Authorization: Bearer &lt;token&gt;` header equals the shared secret `PROXY_API_KEY`. On mismatch it returns 401 with a `WWW-Authenticate: Bearer realm=api` header.
 - On success, Traefik forwards the request to the app container service port 11435, preserving the original `Authorization` header so the in-app check still applies (defense in depth).
 
