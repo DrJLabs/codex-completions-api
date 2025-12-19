@@ -181,7 +181,7 @@ This sequence front-loads safety and minimizes regression risk.
 - Add OTel instrumentation behind flags.
 
 ### PR N — Dead/obsolete cleanup
-- Remove `PROXY_STREAM_MODE` from compose/Dockerfile (if truly unused).
+- Remove `PROXY_STREAM_MODE` from compose/Dockerfile (done 2025-12-18).
 - Remove duplicate auth entrypoint (keep `server.mjs` only).
 - Archive/remove legacy installer if not supported.
 
@@ -252,4 +252,3 @@ If you want, the next logical artifact is a **PR-by-PR checklist** document that
 - tests to add
 - acceptance criteria
 - rollout plan
-
