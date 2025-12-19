@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { normalizeResponseId, convertChatResponseToResponses } from "./shared.js";
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
 import { recordResponsesSseEvent } from "../../services/metrics/index.js";
+import { writeSseChunk } from "../../services/sse.js";
 import { appendProtoEvent, LOG_PROTO } from "../../dev-logging.js";
 import { ensureReqId } from "../../lib/request-context.js";
 import { logStructured, sha256, shouldLogVerbose, preview } from "../../services/logging/schema.js";
@@ -122,7 +123,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     }
   };
 
-  const writeEvent = (event, payload) => {
+  let writeChain = Promise.resolve();
+  const writeEventInternal = async (event, payload) => {
     if (res.writableEnded) return;
     try {
       state.eventSeq += 1;
@@ -158,11 +160,15 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
           ...debugExtras,
         });
       }
-      res.write(`event: ${event}\ndata: ${data}\n\n`);
+      await writeSseChunk(res, `event: ${event}\ndata: ${data}\n\n`);
       recordEvent(event);
     } catch (error) {
       console.error("[proxy][responses.stream-adapter] failed to write SSE event", error);
     }
+  };
+  const writeEvent = (event, payload) => {
+    writeChain = writeChain.then(() => writeEventInternal(event, payload));
+    return writeChain;
   };
 
   const ensureCreated = () => {
@@ -482,13 +488,16 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   };
 
   const endStream = () => {
-    if (typeof res.end === "function" && !res.writableEnded) {
-      try {
-        res.end();
-      } catch (err) {
-        console.error("[proxy][responses.stream-adapter] failed to end SSE response", err);
-      }
-    }
+    if (typeof res.end !== "function" || res.writableEnded) return;
+    return writeChain
+      .catch(() => {})
+      .finally(() => {
+        try {
+          res.end();
+        } catch (err) {
+          console.error("[proxy][responses.stream-adapter] failed to end SSE response", err);
+        }
+      });
   };
 
   const emitFailure = (error) => {

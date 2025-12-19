@@ -680,7 +680,7 @@ export async function postChatStream(req, res) {
     } catch {}
   };
   const sendSSEKeepalive = () => {
-    res.write(`: keepalive ${Date.now()}\n\n`);
+    sendCommentUtil(res, `keepalive ${Date.now()}`);
   };
   const finishSSE = () => {
     if (invokeAdapter("onDone") === true) return;
@@ -2339,13 +2339,12 @@ export async function postCompletionsStream(req, res) {
         console.log("[proxy] completions idle timeout; terminating child");
       } catch {}
       try {
-        res.write(
-          `data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`
-        );
+        sendSSEUtil(res, {
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       } catch {}
       try {
-        res.write("data: [DONE]\n\n");
-        res.end();
+        finishSSEUtil(res);
       } catch {}
       logUsageFailure({
         req,
