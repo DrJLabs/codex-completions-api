@@ -131,4 +131,16 @@ describe("CodexWorkerSupervisor health snapshots", () => {
 
     await expect(currentSupervisor.waitForReady(50)).resolves.toBeUndefined();
   });
+
+  test("readiness flag mirrors handshake without ready event", async () => {
+    expect(currentSupervisor.state.ready).toBe(false);
+
+    currentSupervisor.recordHandshakeSuccess({ advertised_models: ["codex-5"] });
+    await settle();
+
+    const afterHandshake = getWorkerStatus();
+    expect(afterHandshake.health.readiness.ready).toBe(true);
+    expect(afterHandshake.ready).toBe(true);
+    expect(currentSupervisor.state.ready).toBe(true);
+  });
 });
