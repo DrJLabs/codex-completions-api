@@ -12,6 +12,7 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
+import { resolveChoiceIndexFromPayload } from "./choice-index.js";
 import { modelNotFoundBody, invalidRequestBody, tokensExceededBody } from "../../lib/errors.js";
 import {
   appendUsage,
@@ -193,7 +194,6 @@ const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
 const NONSTREAM_TRUNCATE_MS = CFG.PROXY_NONSTREAM_TRUNCATE_AFTER_MS;
-const PROTO_IDLE_MS = CFG.PROXY_PROTO_IDLE_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
@@ -204,11 +204,7 @@ const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
 const TOOL_BLOCK_DEDUP = !!CFG.PROXY_TOOL_BLOCK_DEDUP;
 const TOOL_BLOCK_DELIMITER =
   typeof CFG.PROXY_TOOL_BLOCK_DELIMITER === "string" ? CFG.PROXY_TOOL_BLOCK_DELIMITER : "";
-const APPROVAL_POLICY = (() => {
-  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized || "never";
-})();
+const APPROVAL_POLICY = CFG.PROXY_APPROVAL_POLICY;
 
 const logUsageFailure = ({
   req,
@@ -356,45 +352,6 @@ export async function postChatNonStream(req, res) {
   let hasToolCalls = false;
   let hasFunctionCall = false;
   const choiceStates = new Map();
-
-  const toChoiceIndex = (value) => {
-    const n = Number(value);
-    return Number.isInteger(n) && n >= 0 ? n : null;
-  };
-
-  const extractChoiceIndex = (candidate, visited = new WeakSet()) => {
-    if (!candidate || typeof candidate !== "object") return null;
-    if (visited.has(candidate)) return null;
-    visited.add(candidate);
-    if (Object.prototype.hasOwnProperty.call(candidate, "choice_index")) {
-      const idx = toChoiceIndex(candidate.choice_index);
-      if (idx !== null) return idx;
-    }
-    if (Object.prototype.hasOwnProperty.call(candidate, "choiceIndex")) {
-      const idx = toChoiceIndex(candidate.choiceIndex);
-      if (idx !== null) return idx;
-    }
-    const nested = [candidate.msg, candidate.message, candidate.delta, candidate.payload];
-    for (const entry of nested) {
-      const resolved = extractChoiceIndex(entry, visited);
-      if (resolved !== null) return resolved;
-    }
-    if (Array.isArray(candidate.choices)) {
-      for (const choice of candidate.choices) {
-        const resolved = extractChoiceIndex(choice, visited);
-        if (resolved !== null) return resolved;
-      }
-    }
-    return null;
-  };
-
-  const resolveChoiceIndexFromPayload = (...candidates) => {
-    for (const candidate of candidates) {
-      const idx = extractChoiceIndex(candidate);
-      if (idx !== null) return idx;
-    }
-    return 0;
-  };
 
   const getChoiceState = (choiceIndex = 0) => {
     const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
@@ -643,6 +600,8 @@ export async function postChatNonStream(req, res) {
   const isObsidianOutput = outputMode === "obsidian-xml";
 
   const backendMode = selectBackendMode();
+  const idleTimeoutMs =
+    backendMode === BACKEND_APP_SERVER ? CFG.PROXY_IDLE_TIMEOUT_MS : CFG.PROXY_PROTO_IDLE_MS;
 
   const optionalValidation = validateOptionalChatParams(body, {
     allowJsonSchema: backendMode === BACKEND_APP_SERVER,
@@ -1153,7 +1112,7 @@ export async function postChatNonStream(req, res) {
           try {
             child.kill("SIGTERM");
           } catch {}
-        }, PROTO_IDLE_MS);
+        }, idleTimeoutMs);
       },
       cancel() {
         if (timer) {

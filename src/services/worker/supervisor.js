@@ -17,9 +17,10 @@ const quote = (value) =>
     .replaceAll("\0", "")}"`;
 
 const logWorker = (event, level, state, extra = {}) => {
+  const healthReady = state?.health?.readiness?.ready ?? false;
   const worker_state = extra.worker_state
     ? extra.worker_state
-    : state?.ready
+    : healthReady
       ? "ready"
       : state?.running
         ? "running"
@@ -131,6 +132,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       handshake: nextHandshake,
       details: nextDetails,
     };
+    this.state.ready = !!ready;
   }
 
   #updateLiveness({ live, reason, details }) {
@@ -191,7 +193,6 @@ class CodexWorkerSupervisor extends EventEmitter {
         ? payload.advertised_models
         : undefined,
     };
-    this.state.ready = true;
     this.state.consecutiveFailures = 0;
     this.state.lastReadyAt = nowIso();
     this.#updateReadiness({
@@ -243,7 +244,7 @@ class CodexWorkerSupervisor extends EventEmitter {
   }
 
   isReady() {
-    return this.state.ready;
+    return this.state.health.readiness?.ready ?? false;
   }
 
   status() {
@@ -253,10 +254,11 @@ class CodexWorkerSupervisor extends EventEmitter {
     };
     const readiness = this.state.health.readiness ? { ...this.state.health.readiness } : undefined;
     const liveness = this.state.health.liveness ? { ...this.state.health.liveness } : undefined;
+    const readinessReady = readiness?.ready ?? false;
     return {
       enabled: true,
       running: this.state.running,
-      ready: this.state.ready,
+      ready: readinessReady,
       shutdown_in_flight: this.state.shutdownInFlight,
       pid: this.state.child?.pid ?? null,
       restarts_total: this.state.restarts,
@@ -275,9 +277,9 @@ class CodexWorkerSupervisor extends EventEmitter {
   }
 
   async waitForReady(timeoutMs = this.cfg.WORKER_STARTUP_TIMEOUT_MS) {
-    if (this.state.ready) return;
+    if (this.isReady()) return;
     const start = performance.now();
-    while (!this.state.ready) {
+    while (!this.isReady()) {
       const elapsed = performance.now() - start;
       if (elapsed >= timeoutMs) {
         throw new Error(`worker readiness timeout after ${timeoutMs}ms`);

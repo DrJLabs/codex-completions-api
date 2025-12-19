@@ -1,5 +1,4 @@
-// Canonical Traefik ForwardAuth entrypoint (ESM). The legacy CJS variant
-// in auth/server.js is deprecated and disabled by default.
+// Canonical Traefik ForwardAuth entrypoint (ESM).
 import http from "node:http";
 
 const bearerTokenFromAuthHeader = (value) => {

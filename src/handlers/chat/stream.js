@@ -18,6 +18,7 @@ import {
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
 import { acceptedModelIds } from "../../config/models.js";
+import { resolveChoiceIndexFromPayload } from "./choice-index.js";
 import {
   modelNotFoundBody,
   invalidRequestBody,
@@ -79,7 +80,7 @@ const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
 const STOP_AFTER_TOOLS = CFG.PROXY_STOP_AFTER_TOOLS;
 const STOP_AFTER_TOOLS_MODE = CFG.PROXY_STOP_AFTER_TOOLS_MODE;
-const STOP_AFTER_TOOLS_GRACE_MS = Number(process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS || 300);
+const STOP_AFTER_TOOLS_GRACE_MS = CFG.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
 const STOP_AFTER_TOOLS_MAX = Number(CFG.PROXY_TOOL_BLOCK_MAX || 0);
 const ENFORCE_STOP_AFTER_TOOLS =
   STOP_AFTER_TOOLS || STOP_AFTER_TOOLS_MAX > 0 || STOP_AFTER_TOOLS_MODE === "first";
@@ -95,11 +96,7 @@ const TEST_ENDPOINTS_ENABLED = CFG.PROXY_TEST_ENDPOINTS;
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
-const APPROVAL_POLICY = (() => {
-  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized || "never";
-})();
+const APPROVAL_POLICY = CFG.PROXY_APPROVAL_POLICY;
 
 const logUsageFailure = ({
   req,
@@ -297,45 +294,6 @@ export async function postChatStream(req, res) {
   const choiceStates = new Map();
   const sanitizedContentStates = new Map();
   let textualToolCount = 0;
-
-  const toChoiceIndex = (value) => {
-    const n = Number(value);
-    return Number.isInteger(n) && n >= 0 ? n : null;
-  };
-
-  const extractChoiceIndex = (candidate, visited = new WeakSet()) => {
-    if (!candidate || typeof candidate !== "object") return null;
-    if (visited.has(candidate)) return null;
-    visited.add(candidate);
-    if (Object.prototype.hasOwnProperty.call(candidate, "choice_index")) {
-      const idx = toChoiceIndex(candidate.choice_index);
-      if (idx !== null) return idx;
-    }
-    if (Object.prototype.hasOwnProperty.call(candidate, "choiceIndex")) {
-      const idx = toChoiceIndex(candidate.choiceIndex);
-      if (idx !== null) return idx;
-    }
-    const nestedSources = [candidate.msg, candidate.message, candidate.delta, candidate.payload];
-    for (const source of nestedSources) {
-      const resolved = extractChoiceIndex(source, visited);
-      if (resolved !== null) return resolved;
-    }
-    if (Array.isArray(candidate.choices)) {
-      for (const choice of candidate.choices) {
-        const resolved = extractChoiceIndex(choice, visited);
-        if (resolved !== null) return resolved;
-      }
-    }
-    return null;
-  };
-
-  const resolveChoiceIndexFromPayload = (...candidates) => {
-    for (const candidate of candidates) {
-      const idx = extractChoiceIndex(candidate);
-      if (idx !== null) return idx;
-    }
-    return 0;
-  };
 
   const ensureChoiceState = (choiceIndex = 0) => {
     const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
@@ -684,7 +642,7 @@ export async function postChatStream(req, res) {
     } catch {}
   };
   const sendSSEKeepalive = () => {
-    res.write(`: keepalive ${Date.now()}\n\n`);
+    sendCommentUtil(res, `keepalive ${Date.now()}`);
   };
   const finishSSE = () => {
     if (invokeAdapter("onDone") === true) return;
@@ -2343,13 +2301,12 @@ export async function postCompletionsStream(req, res) {
         console.log("[proxy] completions idle timeout; terminating child");
       } catch {}
       try {
-        res.write(
-          `data: ${JSON.stringify({ error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" } })}\n\n`
-        );
+        sendSSEUtil(res, {
+          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
+        });
       } catch {}
       try {
-        res.write("data: [DONE]\n\n");
-        res.end();
+        finishSSEUtil(res);
       } catch {}
       logUsageFailure({
         req,

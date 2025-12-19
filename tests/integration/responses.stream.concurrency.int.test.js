@@ -6,10 +6,10 @@ import path from "node:path";
 
 let PORT;
 let child;
+let READY_PATH;
+let RELEASE_PATH;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const READY_PATH = path.join(process.cwd(), ".tmp-responses-stream-ready.txt");
-const RELEASE_PATH = path.join(process.cwd(), ".tmp-responses-stream-release.txt");
 
 const killChild = async () => {
   if (!child || child.killed) return;
@@ -64,6 +64,8 @@ const startServer = async (extraEnv = {}) => {
 
 beforeAll(async () => {
   PORT = await getPort();
+  READY_PATH = path.join(process.cwd(), `.tmp-responses-stream-ready-${PORT}.txt`);
+  RELEASE_PATH = path.join(process.cwd(), `.tmp-responses-stream-release-${PORT}.txt`);
 });
 
 afterEach(async () => {
@@ -149,6 +151,7 @@ test("responses streaming enforces concurrency guard", async () => {
     const json429 = await rejection.json();
     expect(json429?.error?.code).toBe("concurrency_exceeded");
 
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
     await writeFile(RELEASE_PATH, String(Date.now()), "utf8");
     await background;
 
