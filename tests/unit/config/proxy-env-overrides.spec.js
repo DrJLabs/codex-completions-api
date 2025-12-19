@@ -63,4 +63,11 @@ describe("config stop-after-tools grace", () => {
     const { config } = await import("../../../src/config/index.js");
     expect(config.PROXY_STOP_AFTER_TOOLS_GRACE_MS).toBe(750);
   });
+
+  it("falls back to default when override is invalid", async () => {
+    process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS = "abc";
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_STOP_AFTER_TOOLS_GRACE_MS).toBe(300);
+  });
 });
