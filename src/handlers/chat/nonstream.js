@@ -193,7 +193,6 @@ const IS_DEV_ENV = (CFG.PROXY_ENV || "").toLowerCase() === "dev";
 const ACCEPTED_MODEL_IDS = acceptedModelIds(DEFAULT_MODEL);
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
 const NONSTREAM_TRUNCATE_MS = CFG.PROXY_NONSTREAM_TRUNCATE_AFTER_MS;
-const PROTO_IDLE_MS = CFG.PROXY_PROTO_IDLE_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
@@ -643,6 +642,8 @@ export async function postChatNonStream(req, res) {
   const isObsidianOutput = outputMode === "obsidian-xml";
 
   const backendMode = selectBackendMode();
+  const idleTimeoutMs =
+    backendMode === BACKEND_APP_SERVER ? CFG.PROXY_IDLE_TIMEOUT_MS : CFG.PROXY_PROTO_IDLE_MS;
 
   const optionalValidation = validateOptionalChatParams(body, {
     allowJsonSchema: backendMode === BACKEND_APP_SERVER,
@@ -1153,7 +1154,7 @@ export async function postChatNonStream(req, res) {
           try {
             child.kill("SIGTERM");
           } catch {}
-        }, PROTO_IDLE_MS);
+        }, idleTimeoutMs);
       },
       cancel() {
         if (timer) {
