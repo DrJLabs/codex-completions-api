@@ -595,7 +595,7 @@ async function runJsonRpcWorker() {
             },
           });
           clearTimers();
-          process.nextTick(() => process.exit(1));
+          setTimeout(() => process.exit(1), Math.max(0, shutdownDelayMs));
           return;
         }
 
