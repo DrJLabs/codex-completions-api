@@ -17,9 +17,10 @@ const quote = (value) =>
     .replaceAll("\0", "")}"`;
 
 const logWorker = (event, level, state, extra = {}) => {
+  const healthReady = state?.health?.readiness?.ready ?? false;
   const worker_state = extra.worker_state
     ? extra.worker_state
-    : state?.ready
+    : healthReady
       ? "ready"
       : state?.running
         ? "running"
@@ -131,6 +132,7 @@ class CodexWorkerSupervisor extends EventEmitter {
       handshake: nextHandshake,
       details: nextDetails,
     };
+    this.state.ready = !!ready;
   }
 
   #updateLiveness({ live, reason, details }) {
@@ -275,10 +277,9 @@ class CodexWorkerSupervisor extends EventEmitter {
   }
 
   async waitForReady(timeoutMs = this.cfg.WORKER_STARTUP_TIMEOUT_MS) {
-    const isReady = () => this.state.health.readiness?.ready ?? false;
-    if (isReady()) return;
+    if (this.isReady()) return;
     const start = performance.now();
-    while (!isReady()) {
+    while (!this.isReady()) {
       const elapsed = performance.now() - start;
       if (elapsed >= timeoutMs) {
         throw new Error(`worker readiness timeout after ${timeoutMs}ms`);
