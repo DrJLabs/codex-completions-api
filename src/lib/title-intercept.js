@@ -1,8 +1,7 @@
 import { nanoid } from "nanoid";
+import { config as CFG } from "../config/index.js";
 
-const TITLE_INTERCEPT_ENABLED = /^(1|true|yes)$/i.test(
-  String(process.env.PROXY_TITLE_GEN_INTERCEPT ?? "true")
-);
+const TITLE_INTERCEPT_ENABLED = CFG.PROXY_TITLE_GEN_INTERCEPT;
 
 const DEFAULT_TITLE = "New Conversation";
 

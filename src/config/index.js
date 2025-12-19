@@ -26,6 +26,24 @@ const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").tri
 const boolishFalse = (value) => /^(0|false|no|off)$/i.test(String(value ?? "").trim());
 const bool = (name, def) => boolishTrue(process.env[name] ?? def);
 
+const resolveApprovalPolicy = () => {
+  const raw = process.env.PROXY_APPROVAL_POLICY ?? process.env.CODEX_APPROVAL_POLICY ?? "never";
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized || "never";
+};
+
+const resolveStopAfterToolsGraceMs = () => {
+  const raw = process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
+  if (raw === undefined || raw === null || raw === "") return 300;
+  return Number(raw);
+};
+
+const resolveIgnoreClientSystemPrompt = () =>
+  String(process.env.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT || "true").toLowerCase() !== "false";
+
+const resolveTitleGenIntercept = () =>
+  /^(1|true|yes)$/i.test(String(process.env.PROXY_TITLE_GEN_INTERCEPT ?? "true"));
+
 const resolveToolBlockDelimiter = () => {
   const raw = process.env.PROXY_TOOL_BLOCK_DELIMITER;
   if (raw === undefined || raw === null || raw === "") return "";
@@ -60,6 +78,7 @@ export const config = {
   PROXY_ENABLE_PARALLEL_TOOL_CALLS: bool("PROXY_ENABLE_PARALLEL_TOOL_CALLS", "false"),
   PROXY_STOP_AFTER_TOOLS: bool("PROXY_STOP_AFTER_TOOLS", ""),
   PROXY_STOP_AFTER_TOOLS_MODE: str("PROXY_STOP_AFTER_TOOLS_MODE", "burst").toLowerCase(),
+  PROXY_STOP_AFTER_TOOLS_GRACE_MS: resolveStopAfterToolsGraceMs(),
   PROXY_SUPPRESS_TAIL_AFTER_TOOLS: bool("PROXY_SUPPRESS_TAIL_AFTER_TOOLS", ""),
   PROXY_TOOL_BLOCK_MAX: num("PROXY_TOOL_BLOCK_MAX", 0),
   PROXY_TOOL_BLOCK_DEDUP: bool("PROXY_TOOL_BLOCK_DEDUP", "false"),
@@ -67,6 +86,9 @@ export const config = {
   PROXY_OUTPUT_MODE: str("PROXY_OUTPUT_MODE", "obsidian-xml").toLowerCase(),
   PROXY_RESPONSES_OUTPUT_MODE: str("PROXY_RESPONSES_OUTPUT_MODE", "openai-json").toLowerCase(),
   PROXY_RESPONSES_DEFAULT_MAX_TOKENS: num("PROXY_RESPONSES_DEFAULT_MAX_TOKENS", 0),
+  PROXY_APPROVAL_POLICY: resolveApprovalPolicy(),
+  PROXY_IGNORE_CLIENT_SYSTEM_PROMPT: resolveIgnoreClientSystemPrompt(),
+  PROXY_TITLE_GEN_INTERCEPT: resolveTitleGenIntercept(),
   // Timeouts
   PROXY_TIMEOUT_MS: num("PROXY_TIMEOUT_MS", 300000),
   PROXY_IDLE_TIMEOUT_MS: num("PROXY_IDLE_TIMEOUT_MS", 15000),
