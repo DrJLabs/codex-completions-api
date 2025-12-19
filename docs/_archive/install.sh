@@ -71,7 +71,6 @@ const PORT = Number(process.env.PORT || 11435);
 const API_KEY = process.env.PROXY_API_KEY || "codex-local-secret";
 const DEFAULT_MODEL = process.env.CODEX_MODEL || "gpt-5";
 const CODEX_BIN = process.env.CODEX_BIN || "codex";
-const STREAM_MODE = (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase();
 
 const stripAnsi = (s = "") => s.replace(/\x1B\[[0-?]*[ -/]*[@-~]|\r|\u0008/g, "");
 const toStringContent = (c) => {
@@ -142,7 +141,7 @@ app.post("/v1/chat/completions", (req, res) => {
 
   const finishSSE = () => { res.write("data: [DONE]\n\n"); res.end(); };
 
-  if (body.stream && (process.env.PROXY_STREAM_MODE || "incremental").toLowerCase() === "incremental") {
+  if (body.stream) {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -203,7 +202,6 @@ After=network.target
 Environment=PORT=11435
 Environment=PROXY_API_KEY=codex-local-secret
 Environment=CODEX_MODEL=gpt-5
-Environment=PROXY_STREAM_MODE=incremental
 Environment=CODEX_BIN=${CODEX_BIN_PATH}
 Environment=HOME=%h
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin

@@ -26,7 +26,6 @@ services:
       - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
       - CODEX_FORCE_PROVIDER=
-      - PROXY_STREAM_MODE=${PROXY_STREAM_MODE:-incremental}
       # In dev, prefer streaming by default unless the client explicitly sets stream:false.
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}
       - PROXY_USE_APP_SERVER=${PROXY_USE_APP_SERVER:-true}

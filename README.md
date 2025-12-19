@@ -130,7 +130,6 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 - Non-stream requests respond with OpenAI-compatible JSON (see the [Run locally with Node](#run-locally-with-node) example).
 - Streaming uses server-sent events with role-first deltas followed by incremental content chunks and a terminating `[DONE]` marker.
-- Note: `PROXY_STREAM_MODE` is deprecated/unused in the current implementation; streaming behavior is not controlled by that variable.
 - `/v1/responses` can be disabled for chat-only deployments via `PROXY_ENABLE_RESPONSES=false`; default is on for parity with OpenAI.
 
 ### Streaming controls for tool-heavy clients
@@ -458,7 +457,6 @@ Environment variables:
 - `PORT` (default: `11435`)
 - `PROXY_API_KEY` (default: `codex-local-secret`)
 - `CODEX_MODEL` (default: `gpt-5`)
-- `PROXY_STREAM_MODE` (deprecated/no effect) — kept for legacy compatibility; streaming mode is handled per request by the proxy/back end.
 - `CODEX_BIN` (default: `codex`) — override to `scripts/fake-codex-jsonrpc.js` for the deterministic app-server shim, or `/app/scripts/fake-codex-proto.js` only when you explicitly need legacy proto mode/shims.
 - `CODEX_HOME` (default: `$PROJECT/.codex-api`) — path passed to Codex CLI for configuration. The repo uses a project‑local Codex HOME under `.codex-api/` (`config.toml`, `AGENTS.md`, etc.).
 - `PROXY_SANDBOX_MODE` (default: `read-only`) — runtime sandbox passed to the Codex CLI via `--config sandbox_mode=...`. Read-only keeps the app-server from invoking file-writing tools (Codex will stop before `apply_patch` or shell edits). Override to `danger-full-access` only if you explicitly need write-capable tool calls and can tolerate clients that attempt to modify the workspace.
