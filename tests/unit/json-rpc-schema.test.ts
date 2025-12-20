@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   CODEX_CLI_VERSION,
@@ -33,7 +33,7 @@ import {
   type JsonRpcSuccessResponse,
   type SendUserMessageResult,
 } from "../../src/lib/json-rpc/schema.ts";
-import { loadTranscript } from "../shared/transcript-utils.js";
+import { ensureTranscripts, loadTranscript } from "../shared/transcript-utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -166,6 +166,13 @@ afterEach(async () => {
 });
 
 describe("json-rpc schema bindings", () => {
+  beforeAll(
+    () => {
+      ensureTranscripts(["streaming-tool-calls.json"], { backend: "app" });
+    },
+    30000
+  );
+
   it("parses streaming text notifications and token counts", async () => {
     const worker = startWorker();
     try {
