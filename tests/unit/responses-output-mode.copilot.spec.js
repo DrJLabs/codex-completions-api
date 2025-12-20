@@ -15,6 +15,11 @@ describe("responses output mode for Copilot", () => {
     expect(detectCopilotRequest(req)).toBe(true);
   });
 
+  it("detects Copilot via x-trace-id header", () => {
+    const req = { headers: { "x-trace-id": "trace-test" } };
+    expect(detectCopilotRequest(req)).toBe(true);
+  });
+
   it("does not detect generic clients", () => {
     const req = { headers: { "user-agent": "curl/8.0" } };
     expect(detectCopilotRequest(req)).toBe(false);
