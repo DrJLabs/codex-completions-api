@@ -166,12 +166,9 @@ afterEach(async () => {
 });
 
 describe("json-rpc schema bindings", () => {
-  beforeAll(
-    () => {
-      ensureTranscripts(["streaming-tool-calls.json"], { backend: "app" });
-    },
-    30000
-  );
+  beforeAll(() => {
+    ensureTranscripts(["streaming-tool-calls.json"], { backend: "app" });
+  }, 30000);
 
   it("parses streaming text notifications and token counts", async () => {
     const worker = startWorker();
