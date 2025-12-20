@@ -167,6 +167,7 @@
 ## 7. Appendix
 
 ### A) Copilot <-> Proxy mapping (Responses-first)
+
 | Contract item | Copilot source | Proxy source | Notes |
 | --- | --- | --- | --- |
 | GPT-5 uses Responses API | `external/obsidian-copilot/src/LLMProviders/chatModelManager.ts` | `src/routes/responses.js` | `/v1/responses` is primary for GPT-5. |
@@ -175,6 +176,7 @@
 | Streaming truncation to last tool | `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/ThinkBlockStreamer.ts` | `src/handlers/chat/stream.js` | Truncation logic relies on valid XML blocks. |
 | Responses default output mode | -- | `src/config/index.js`, `src/handlers/responses/stream.js` | Default `openai-json` conflicts with XML. |
 | Ingress diagnostics | -- | `src/handlers/responses/ingress-logging.js` | Logs markers for `<use_tool>` and `<recent_conversations>`. |
+
 
 ### B) File index (paths + purpose)
 - `external/obsidian-copilot/src/LLMProviders/chatModelManager.ts` -- sets `useResponsesApi` for GPT-5.
