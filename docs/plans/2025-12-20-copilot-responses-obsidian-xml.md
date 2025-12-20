@@ -20,7 +20,7 @@
 ---
 
 ## Tests to Verify ACs (Checklist)
-- [ ] **T1 (Unit):** Header classifier returns Copilot=true for `User-Agent: Obsidian/...` and for `x-copilot-trace-id`; returns false for generic agents.
+- [ ] **T1 (Unit):** Header classifier returns Copilot=true for `User-Agent: Obsidian/...` and for an edge-injected `x-copilot-trace-id`; returns false for generic agents.
 - [ ] **T2 (Unit):** Output-mode resolver returns `obsidian-xml` for Copilot when header is absent, and preserves explicit `x-proxy-output-mode` values.
 - [ ] **T3 (Integration, non-stream):** `/v1/responses` responds with `x-proxy-output-mode: obsidian-xml` when Copilot headers are set and client did not override.
 - [ ] **T4 (Integration, streaming):** Copilot `/v1/responses` stream includes `<use_tool>` in `response.output_text.delta` for a tool-call fixture.
@@ -61,7 +61,7 @@ describe("responses output mode for Copilot", () => {
     expect(detectCopilotRequest(req)).toBe(true);
   });
 
-  it("detects Copilot via trace header", () => {
+  it("detects Copilot via trace header (edge-injected)", () => {
     const req = { headers: { "x-copilot-trace-id": "copilot-test" } };
     expect(detectCopilotRequest(req)).toBe(true);
   });
