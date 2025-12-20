@@ -15,6 +15,8 @@ describe("copilot trace context", () => {
       header: "x-copilot-trace-id",
     });
     expect(res.locals.copilot_trace_id).toBe("copilot-123");
+    expect(res.locals.copilot_trace_source).toBe("header");
+    expect(res.locals.copilot_trace_header).toBe("x-copilot-trace-id");
   });
 
   test("falls back to x-trace-id then x-request-id", () => {
@@ -25,6 +27,17 @@ describe("copilot trace context", () => {
       id: "trace-1",
       source: "header",
       header: "x-trace-id",
+    });
+  });
+
+  test("falls back to x-request-id when others are absent", () => {
+    const req = makeReq({ "x-request-id": "request-456" });
+    const res = makeRes();
+    const ctx = ensureCopilotTraceContext(req, res);
+    expect(ctx).toMatchObject({
+      id: "request-456",
+      source: "header",
+      header: "x-request-id",
     });
   });
 

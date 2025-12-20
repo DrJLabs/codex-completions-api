@@ -30,7 +30,7 @@ http:
     copilot-trace:
       headers:
         customRequestHeaders:
-          x-copilot-trace-id: "${COPILOT_TRACE_ID:-}"
+          x-copilot-trace-id: "${COPILOT_TRACE_ID:-}" # placeholder; replace with per-request ID from your edge
 ```
 
 ## Deploy
