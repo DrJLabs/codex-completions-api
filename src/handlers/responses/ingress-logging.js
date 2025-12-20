@@ -1,6 +1,6 @@
 import { logStructured } from "../../services/logging/schema.js";
 import { ensureReqId } from "../../lib/request-context.js";
-import { ensureCopilotTraceId } from "../../lib/trace-ids.js";
+import { ensureCopilotTraceContext } from "../../lib/trace-ids.js";
 
 const RESPONSES_ROUTE = "/v1/responses";
 
@@ -265,7 +265,7 @@ export function logResponsesIngressRaw({
   if (!req || !res) return;
   try {
     const reqId = ensureReqId(res);
-    const copilotTraceId = ensureCopilotTraceId(req, res);
+    const { id: copilotTraceId, source, header } = ensureCopilotTraceContext(req, res);
     const route = res.locals?.routeOverride || RESPONSES_ROUTE;
     const mode = res.locals?.modeOverride || res.locals?.mode || null;
     logStructured(
@@ -282,6 +282,8 @@ export function logResponsesIngressRaw({
       {
         endpoint_mode: "responses",
         copilot_trace_id: copilotTraceId,
+        copilot_trace_source: source,
+        copilot_trace_header: header,
         stream: Boolean(body?.stream),
         output_mode_requested: outputModeRequested,
         output_mode_effective: outputModeEffective,
