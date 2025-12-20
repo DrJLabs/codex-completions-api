@@ -95,6 +95,24 @@ export const coerceInputToChatMessages = (body = {}) => {
   return messages;
 };
 
+export const detectCopilotRequest = (req) => {
+  const headers = req?.headers || {};
+  const ua = String(headers["user-agent"] || "").toLowerCase();
+  const hasCopilotTrace = Boolean(headers["x-copilot-trace-id"]);
+  return ua.includes("obsidian/") || hasCopilotTrace;
+};
+
+export const resolveResponsesOutputMode = ({ req, defaultValue, copilotDefault }) => {
+  const explicit = req?.headers?.["x-proxy-output-mode"];
+  if (explicit && String(explicit).trim()) {
+    return { effective: String(explicit).trim(), source: "header" };
+  }
+  if (copilotDefault && detectCopilotRequest(req)) {
+    return { effective: copilotDefault, source: "copilot" };
+  }
+  return { effective: defaultValue, source: "default" };
+};
+
 export const applyDefaultProxyOutputModeHeader = (req, desiredOutputMode) => {
   const desired =
     desiredOutputMode === undefined || desiredOutputMode === null
