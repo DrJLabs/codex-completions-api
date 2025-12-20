@@ -23,7 +23,7 @@
     "format": "prettier -w .",
     "format:check": "prettier -c .",
     "secret-scan": "secretlint .",
-    "prepare": "husky install",
+    "prepare": "npm run husky:enable",
     "husky:enable": "husky install && chmod +x .husky/* || true",
     "husky:fix-perms": "chmod +x .husky/* || true",
     "build:png": "node scripts/svg2png.playwright.mjs",

@@ -69,6 +69,7 @@ Rationale: This avoids “double tool intent” where a client could receive bot
 
 - **Structured logs (stdout):**
   - `responses_ingress_raw` (info) captures raw `/v1/responses` request shape (no content), including `output_mode_requested/effective`.
+  - Copilot traces: `copilot_trace_id` is always present; `copilot_trace_source` and `copilot_trace_header` show whether the ID was header-provided or generated.
   - `responses_nonstream_summary` (debug) captures final non-stream status + usage + `previous_response_id_hash`.
   - `responses.sse_summary` (debug/error) captures stream outcome + usage + `previous_response_id_hash`.
 - Troubleshooting: `docs/responses-endpoint/ingress-debug-lnjs-400.md` (400 `messages[] required` when `input[]` message items use `content: string`).
