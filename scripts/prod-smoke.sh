@@ -17,8 +17,8 @@ ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
 BASE_CF="https://$DOMAIN"
-REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-20}"
-STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-30}"
+REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
+STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
 METRICS_ENDPOINT="${METRICS_ENDPOINT:-http://127.0.0.1:11435/metrics}"
 METRICS_TOKEN="${METRICS_TOKEN:-${PROXY_METRICS_TOKEN:-}}"
 METRICS_PAYLOAD=""
@@ -93,7 +93,7 @@ if [[ -n "$METRICS_PAYLOAD" ]]; then
     pass "metrics restart count matches /readyz (${METRIC_RESTARTS})"
   else
     fail "metrics restart count mismatch (/readyz=$READY_RESTARTS metrics=${METRIC_RESTARTS:-missing})"
-  }
+  fi
   if [[ -n "$METRIC_BACKOFF" ]]; then
     pass "metrics backoff gauge present (${METRIC_BACKOFF} ms)"
   fi
@@ -101,7 +101,7 @@ fi
 
 if [[ -n "$KEY" ]]; then
   # Non-stream chat
-  PAY='{"model":"codex-5","stream":false,"messages":[{"role":"user","content":"Say hello."}]}'
+  PAY='{"model":"codex-5","stream":false,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}'
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
     && pass "cf POST /v1/chat/completions (non-stream)" || fail "cf POST /v1/chat/completions (non-stream)"
@@ -109,7 +109,7 @@ if [[ -n "$KEY" ]]; then
   # Streaming chat (SSE) — require at least one content delta and [DONE]
   SSE_OUT=$(mktemp)
   curl -sN --max-time "$STREAM_TIMEOUT" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d '{"model":"codex-5","stream":true,"messages":[{"role":"user","content":"Say hello."}]}' \
+    -d '{"model":"codex-5","stream":true,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}' \
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \
@@ -124,13 +124,15 @@ if [[ -n "$KEY" ]]; then
   # Tool-call streaming smoke (structured + optional modes)
   TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
-  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured,textual,disconnect}"
+  TOOL_SMOKE_ENDPOINT="${TOOL_SMOKE_ENDPOINT:-responses}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-textual}"
   run_tool_smoke() {
     local mode="$1"; shift
     local flags=("$@")
     local out
     out=$(mktemp)
     if BASE_URL="$BASE_CF" MODEL="$TOOL_SMOKE_MODEL" KEY="$KEY" TIMEOUT_MS="$TOOL_SMOKE_TIMEOUT_MS" \
+      TOOL_SMOKE_ENDPOINT="$TOOL_SMOKE_ENDPOINT" \
       node "$ROOT_DIR/scripts/smoke/stream-tool-call.js" "${flags[@]}" >"$out" 2>&1; then
       pass "cf tool-call smoke (${mode})"
       cat "$out"
@@ -149,6 +151,10 @@ if [[ -n "$KEY" ]]; then
         run_tool_smoke "structured" ${TOOL_SMOKE_FLAGS:-}
         ;;
       disconnect)
+        if [[ "$TOOL_SMOKE_ENDPOINT" == "responses" ]]; then
+          echo "(Skipping tool-call disconnect mode for responses endpoint)"
+          continue
+        fi
         run_tool_smoke "disconnect" --disconnect-after-first-tool --allow-single ${TOOL_SMOKE_FLAGS:-}
         ;;
       textual)

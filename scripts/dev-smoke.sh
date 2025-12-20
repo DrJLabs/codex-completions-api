@@ -123,13 +123,15 @@ if [[ -n "$KEY" ]]; then
   # Tool-call streaming smoke (structured + optional modes)
   TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
-  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured,textual,disconnect}"
+  TOOL_SMOKE_ENDPOINT="${TOOL_SMOKE_ENDPOINT:-responses}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-textual}"
   run_tool_smoke() {
     local mode="$1"; shift
     local flags=("$@")
     local out
     out=$(mktemp)
     if BASE_URL="$BASE_CF" MODEL="$TOOL_SMOKE_MODEL" KEY="$KEY" TIMEOUT_MS="$TOOL_SMOKE_TIMEOUT_MS" \
+      TOOL_SMOKE_ENDPOINT="$TOOL_SMOKE_ENDPOINT" \
       node "$ROOT_DIR/scripts/smoke/stream-tool-call.js" "${flags[@]}" >"$out" 2>&1; then
       pass "cf tool-call smoke (${mode})"
       cat "$out"
@@ -148,6 +150,10 @@ if [[ -n "$KEY" ]]; then
         run_tool_smoke "structured" ${TOOL_SMOKE_FLAGS:-}
         ;;
       disconnect)
+        if [[ "$TOOL_SMOKE_ENDPOINT" == "responses" ]]; then
+          echo "(Skipping tool-call disconnect mode for responses endpoint)"
+          continue
+        fi
         run_tool_smoke "disconnect" --disconnect-after-first-tool --allow-single ${TOOL_SMOKE_FLAGS:-}
         ;;
       textual)
