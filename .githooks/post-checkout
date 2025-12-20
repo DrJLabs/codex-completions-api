@@ -18,10 +18,8 @@ fi
 
 mkdir -p "$target_dir"
 
-if [ -f "${source_dir}/auth.json" ] && [ ! -f "${target_dir}/auth.json" ]; then
-  cp -p "${source_dir}/auth.json" "${target_dir}/auth.json"
-fi
-
-if [ -f "${source_dir}/config.toml" ] && [ ! -f "${target_dir}/config.toml" ]; then
-  cp -p "${source_dir}/config.toml" "${target_dir}/config.toml"
-fi
+for file in auth.json config.toml; do
+  if [ -f "${source_dir}/${file}" ] && [ ! -f "${target_dir}/${file}" ]; then
+    cp -p "${source_dir}/${file}" "${target_dir}/${file}"
+  fi
+done
