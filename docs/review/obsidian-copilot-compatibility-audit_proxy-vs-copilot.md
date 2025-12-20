@@ -3,8 +3,8 @@
 ## 1. Executive Summary
 
 ### Top 10 compatibility improvements (ranked)
-1. **Force `obsidian-xml` output mode for Copilot `/v1/responses` traffic** (or set `x-proxy-output-mode` client-side) so `<use_tool>` blocks survive streaming. Copilot's autonomous agent only parses XML tool blocks; the proxy defaults `/v1/responses` to `openai-json`, which suppresses XML in text deltas. (Sources: `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/xmlParsing.ts`, `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/modelAdapter.ts`, `src/config/index.js`, `src/handlers/responses/stream.js`, `docs/responses-endpoint/overview.md`)
-2. **Add an explicit Copilot identifier header** (e.g., `x-copilot-trace-id`) from the client so the proxy can correlate sessions and optionally select `obsidian-xml` defaults. Copilot code does not set this today. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
+1. **Force `obsidian-xml` output mode for Copilot `/v1/responses` traffic** via proxy-side defaults or detection so `<use_tool>` blocks survive streaming. Copilot's autonomous agent only parses XML tool blocks; the proxy defaults `/v1/responses` to `openai-json`, which suppresses XML in text deltas. (Sources: `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/xmlParsing.ts`, `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/modelAdapter.ts`, `src/config/index.js`, `src/handlers/responses/stream.js`, `docs/responses-endpoint/overview.md`)
+2. **Add proxy-side Copilot trace correlation** (synthetic `copilot_trace_id` + heuristic detection, with optional edge-injected header support) so sessions can be correlated and `obsidian-xml` defaults applied safely. Copilot clients cannot be changed here, so rely on server-side IDs and/or reverse-proxy header injection. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
 3. **Capture real Copilot `/v1/responses` requests** (shape + headers) and pin them as fixtures/tests to remove guesswork around LangChain `useResponsesApi` serialization and SSE handling. (Sources: `external/obsidian-copilot/src/LLMProviders/chatModelManager.ts`, `src/handlers/responses/ingress-logging.js`)
 4. **Document the GPT-5 Responses path as Copilot's primary route** and warn that changes to typed SSE or output-mode behavior will directly impact Copilot. (Sources: `external/obsidian-copilot/src/LLMProviders/chatModelManager.ts`, `src/routes/responses.js`)
 5. **Align docs that still describe function_call deltas** (legacy OpenAI tool-calling) with current Copilot XML behavior to avoid breaking changes. (Sources: `docs/Integrating Codex Proxy with Obsidian Copilot for Tool Calls.md`, `docs/tool-calling-brief.md`, `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/xmlParsing.ts`)
@@ -16,12 +16,12 @@
 
 ### Biggest must-fix parity gaps
 - **Output-mode mismatch for `/v1/responses`:** Copilot's autonomous agent requires XML tool blocks, but the proxy defaults Responses to `openai-json`, which suppresses XML content. (Sources: `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/xmlParsing.ts`, `src/config/index.js`, `src/handlers/responses/stream.js`, `docs/responses-endpoint/overview.md`)
-- **No explicit Copilot trace/header:** The proxy cannot reliably detect Copilot traffic or correlate sessions across logs without a client-sent identifier. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
+- **No reliable Copilot fingerprint:** Without a stable client identifier, the proxy must rely on heuristic detection and server-side trace IDs (or edge-injected headers) to correlate sessions. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
 - **No pinned Copilot Responses fixtures:** We lack verified examples of actual Copilot Responses requests/streams, so changes to typed SSE or request normalization could regress without detection. (Sources: `external/obsidian-copilot/src/LLMProviders/chatModelManager.ts`, `docs/responses-endpoint/overview.md`)
 
 ### Top 3 changes most likely to reduce "mysterious" Copilot failures
-1. **Force `obsidian-xml` on `/v1/responses` for Copilot**, or set `x-proxy-output-mode: obsidian-xml` client-side.
-2. **Add a Copilot trace/header** (and log it) to tie client behavior to proxy logs.
+1. **Force `obsidian-xml` on `/v1/responses` for Copilot** via proxy defaults or detection.
+2. **Add proxy-side Copilot trace IDs** (and log them) to tie client behavior to proxy logs, with optional edge header injection.
 3. **Capture/lock a Copilot Responses transcript** (non-stream + stream) and add it to integration tests.
 
 > Note: Tool calls are currently working, which strongly suggests either (a) Copilot is running in `obsidian-xml` output mode in your deployment, or (b) the GPT-5 Responses path is not using the autonomous agent XML parser for the flows you tested. The audit below treats this as an implicit dependency to verify and formalize.
@@ -76,13 +76,13 @@
 - **Contract expects:** `<use_tool>` blocks appear in assistant text; Copilot parses XML only. (Sources: `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/modelAdapter.ts`, `external/obsidian-copilot/src/LLMProviders/chainRunner/utils/xmlParsing.ts`)
 - **Proxy currently does:** Defaults `/v1/responses` to `openai-json` via `PROXY_RESPONSES_OUTPUT_MODE`, which suppresses XML in text deltas and emits typed tool events instead. (Sources: `src/config/index.js`, `src/handlers/responses/stream.js`, `docs/responses-endpoint/overview.md`)
 - **Impact:** Copilot autonomous agent won't detect tool calls if XML is suppressed, even though tool calls might still be logged/structured.
-- **Recommended fix:** For Copilot deployments, set `PROXY_RESPONSES_OUTPUT_MODE=obsidian-xml` or add `x-proxy-output-mode: obsidian-xml` in Copilot's HTTP client. Optionally auto-select obsidian-xml when `User-Agent` or `x-copilot-trace-id` indicates Copilot.
+- **Recommended fix:** For Copilot deployments, set `PROXY_RESPONSES_OUTPUT_MODE=obsidian-xml` or auto-select obsidian-xml when `User-Agent` or an edge-injected trace header indicates Copilot. Preserve explicit `x-proxy-output-mode` overrides when present.
 
 **[Confirmed] Copilot does not set a trace/header to identify itself.**
 - **Contract expects:** Proxy can correlate Copilot sessions to logs (for debugging tool loops and memory bleed). (Source: `docs/responses-endpoint/ingress-debug-obsidian-cross-chat-weather.md`)
 - **Proxy currently does:** Generates `copilot_trace_id` server-side if no header exists, but cannot link it across client sessions. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
 - **Impact:** "Mysterious" tool loops or cross-chat contamination are harder to diagnose; output-mode overrides can't be made safely per client.
-- **Recommended fix:** Add `x-copilot-trace-id` or `x-request-id` to Copilot requests and log it server-side; optionally reuse it for output-mode routing.
+- **Recommended fix:** Keep server-side `copilot_trace_id` generation and log it; optionally accept an edge-injected header (Traefik/Cloudflare) and reuse it for output-mode routing.
 
 ### Should-fix inconsistencies (high value)
 
@@ -132,7 +132,7 @@
 
 ## 5. Underused Responses/Proxy Features (Adoption Opportunities)
 
-- **Client-set trace IDs:** Copilot does not emit `x-copilot-trace-id` or similar headers; adding one would greatly improve triage. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
+- **Proxy/edge trace IDs:** Copilot does not emit `x-copilot-trace-id`; use server-generated IDs and optionally inject a header at the edge to improve triage. (Sources: `src/lib/trace-ids.js`, `src/handlers/responses/ingress-logging.js`)
 - **`previous_response_id` chaining:** Proxy echoes it but does not forward upstream; if Copilot wants server-side threading, this must be implemented or documented as unsupported. (Sources: `src/handlers/responses/shared.js`, `docs/responses-endpoint/overview.md`)
 - **Response metadata:** Copilot currently appears to rely on content text only; there is no evidence it consumes Responses `output[]` metadata. Validating this would let us safely evolve typed SSE without breaking clients.
 - **Structured tool outputs (`tool_output` items):** Not used by Copilot; could enable future OpenAI-style tool loops if desired.
@@ -145,8 +145,8 @@
 **AC0.1**: Configure Copilot `/v1/responses` traffic to use `obsidian-xml` output mode.  
 **Suggested test:** Manual smoke with Copilot + verify `responses_ingress_raw.output_mode_effective=obsidian-xml` and `<use_tool>` present.
 
-**AC0.2**: Add client-side trace/header and log it server-side.  
-**Suggested test:** Confirm `responses_ingress_raw.candidate_header_keys` contains the trace header; cross-link to access logs.
+**AC0.2**: Add proxy-side trace IDs and log them; optionally accept edge-injected headers for stable correlation.  
+**Suggested test:** Confirm `responses_ingress_raw.candidate_header_keys` contains the injected header when present and always logs `copilot_trace_id`.
 
 ### Phase 1 -- Evidence + regression protection
 **AC1.1**: Capture a real Copilot `/v1/responses` request/response transcript (stream + non-stream).  
