@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+worktree_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [ -z "$common_dir" ] || [ -z "$worktree_root" ]; then
+  exit 0
+fi
+
+common_root="$(cd "${common_dir}/.." && pwd)"
+source_dir="${common_root}/.codev"
+target_dir="${worktree_root}/.codev"
+
+if [ ! -d "$source_dir" ]; then
+  exit 0
+fi
+
+mkdir -p "$target_dir"
+
+if [ -f "${source_dir}/auth.json" ] && [ ! -f "${target_dir}/auth.json" ]; then
+  cp -p "${source_dir}/auth.json" "${target_dir}/auth.json"
+fi
+
+if [ -f "${source_dir}/config.toml" ] && [ ! -f "${target_dir}/config.toml" ]; then
+  cp -p "${source_dir}/config.toml" "${target_dir}/config.toml"
+fi
