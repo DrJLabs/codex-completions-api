@@ -44,7 +44,6 @@ export function ensureCopilotTraceContext(req, res) {
   locals.copilot_trace_id = id;
   locals.copilot_trace_source = source;
   locals.copilot_trace_header = header;
-  res.locals = locals;
   return { id, source, header };
 }
 
