@@ -19,6 +19,8 @@ services:
       - CODEX_HOME=/app/.codex-api
       # Enable app-level CORS so browser clients work without edge overrides
       - PROXY_ENABLE_CORS=true
+      - PROXY_ENABLE_METRICS=${PROXY_ENABLE_METRICS:-true}
+      - PROXY_METRICS_TOKEN=${PROXY_METRICS_TOKEN:-}
       - PROXY_CORS_ALLOWED_ORIGINS=${PROXY_CORS_ALLOWED_ORIGINS:-https://codex-api.onemainarmy.com,https://obsidian.md,app://obsidian.md,capacitor://localhost,http://localhost,https://localhost}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
