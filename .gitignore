@@ -42,6 +42,8 @@ docs/private/
 # But ignore runtime artifacts under .codev
 .codev/sessions/
 .codev/rollouts/
+.codev/docs/
+.codev/log/
 .codev/*.log
 .codev/*.ndjson
 .codev/auth.json
