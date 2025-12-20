@@ -15,6 +15,8 @@ This repository historically kept a detailed dev→prod playbook under `docs/pri
    - `docker compose up -d --build --force-recreate`
 5. Verify:
    - `DOMAIN=<domain> KEY=<key> npm run smoke:prod`
+   - Ensure `PROXY_METRICS_TOKEN` is set (or pass `METRICS_TOKEN=...`) when metrics are enabled, otherwise the smoke check will 403 on `/metrics`.
+   - Tool-call smoke targets `/v1/responses` with textual `<use_tool>` by default; override with `TOOL_SMOKE_ENDPOINT=chat TOOL_SMOKE_MODES=structured` when validating structured tool_calls.
 
 ## References
 
