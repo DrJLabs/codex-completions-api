@@ -58,7 +58,7 @@ Tool calling behavior in this proxy depends on the *output mode*:
 
 For `/v1/responses`, the proxy defaults to `openai-json` (configurable via `PROXY_RESPONSES_OUTPUT_MODE`) unless the client explicitly overrides with `x-proxy-output-mode`.
 
-Copilot auto-detection: if the request looks like Obsidian Copilot (User-Agent contains `obsidian/` or `x-copilot-trace-id` is present) and `x-proxy-output-mode` is **absent**, the proxy forces `obsidian-xml`. Explicit `x-proxy-output-mode` always wins, even for Copilot requests.
+Copilot auto-detection: if the request looks like Obsidian Copilot (User-Agent contains `obsidian/` or an edge-injected `x-copilot-trace-id` is present) and `x-proxy-output-mode` is **absent**, the proxy forces `obsidian-xml`. Explicit `x-proxy-output-mode` always wins, even for Copilot requests.
 
 Rationale: This avoids “double tool intent” where a client could receive both:
 
