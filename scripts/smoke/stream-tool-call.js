@@ -29,7 +29,9 @@ const useResponses =
 const allowSingle = args.has("--allow-single") || disconnectAfterFirstTool || useResponses;
 const baseUrl = process.env.BASE_URL || "http://127.0.0.1:11435";
 const trimmedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-const endpoint = useResponses ? `${trimmedBase}/v1/responses` : `${trimmedBase}/v1/chat/completions`;
+const endpoint = useResponses
+  ? `${trimmedBase}/v1/responses`
+  : `${trimmedBase}/v1/chat/completions`;
 const apiKey = process.env.KEY || process.env.PROXY_API_KEY;
 const toolName = process.env.TOOL_SMOKE_TOOL || "exec_command";
 const toolCmd = process.env.TOOL_SMOKE_CMD || "echo smoke";
@@ -173,7 +175,9 @@ let hasRoleFirst = false;
 
 if (useResponses) {
   if (!expectXml) {
-    const addedEntries = dataEntries.filter((entry) => entry.event === "response.output_item.added");
+    const addedEntries = dataEntries.filter(
+      (entry) => entry.event === "response.output_item.added"
+    );
     uniqueToolIds = new Set(
       addedEntries
         .map((entry) => entry.data?.item?.id)
@@ -308,7 +312,9 @@ if (expectXml) {
   }
   const tail = contentText.slice(closeIdx + "</use_tool>".length).trim();
   if (tail.length > 0) {
-    console.error("Found trailing assistant content after <use_tool> block; tail should be stripped.");
+    console.error(
+      "Found trailing assistant content after <use_tool> block; tail should be stripped."
+    );
     process.exit(1);
   }
 }
