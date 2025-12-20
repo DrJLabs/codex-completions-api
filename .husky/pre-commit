@@ -21,4 +21,14 @@ if ! npx --no-install lint-staged; then
   exit 1
 fi
 
+echo "[husky][pre-commit] running format:check"
+if ! npm run -s format:check; then
+  cat <<'EOF' >&2
+[husky][pre-commit] Prettier check failed.
+Run: npm run format
+Then re-stage and commit again.
+EOF
+  exit 1
+fi
+
 echo "[husky][pre-commit] ok"
