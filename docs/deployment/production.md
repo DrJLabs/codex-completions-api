@@ -15,6 +15,24 @@
    - `config.toml`
    - `auth.json` (and any other Codex credentials needed at runtime)
 
+## Optional: Copilot trace header injection
+
+For better Copilot request correlation, you can inject `x-copilot-trace-id` at the edge (e.g. Traefik middleware)
+when the `User-Agent` indicates Obsidian Copilot. If your edge cannot generate per-request IDs, skip this and rely
+on the proxy-generated `copilot_trace_id` in logs.
+
+Example Traefik snippet:
+
+```yaml
+# /etc/traefik/dynamic/codex-api.yml
+http:
+  middlewares:
+    copilot-trace:
+      headers:
+        customRequestHeaders:
+          x-copilot-trace-id: "${COPILOT_TRACE_ID:-}"
+```
+
 ## Deploy
 
 ```bash
