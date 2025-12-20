@@ -1,16 +1,18 @@
 import { nanoid } from "nanoid";
 import { logStructured } from "../services/logging/schema.js";
-import { ensureCopilotTraceId } from "../lib/trace-ids.js";
+import { ensureCopilotTraceContext } from "../lib/trace-ids.js";
 
 export default function accessLog() {
   return function accessLogMiddleware(req, res, next) {
     const req_id = nanoid();
     const started = Date.now();
-    const copilot_trace_id = ensureCopilotTraceId(req, res);
+    const { id: copilot_trace_id, source, header } = ensureCopilotTraceContext(req, res);
     res.setHeader?.("X-Request-Id", req_id);
     res.locals = res.locals || {};
     res.locals.req_id = req_id;
     res.locals.copilot_trace_id = copilot_trace_id;
+    res.locals.copilot_trace_source = source;
+    res.locals.copilot_trace_header = header;
     const trace_id = res.locals.trace_id;
     res.on("finish", () => {
       try {
@@ -30,6 +32,8 @@ export default function accessLog() {
           },
           {
             copilot_trace_id,
+            copilot_trace_source: source,
+            copilot_trace_header: header,
             method: req.method,
             status: res.statusCode,
             ua,
