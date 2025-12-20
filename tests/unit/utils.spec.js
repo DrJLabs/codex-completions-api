@@ -42,11 +42,28 @@ describe("model utils", () => {
     expect(r).toEqual({ requested: "gpt-5.2-codev-l", effective: "gpt-5.2" });
     expect(impliedEffortForModel("gpt-5.2-codev-L")).toBe("low");
   });
+  it("normalizes gpt-5.2-codex-L to gpt-5.2 with low effort", () => {
+    const r = normalizeModel("gpt-5.2-codex-L", "gpt-5");
+    expect(r).toEqual({ requested: "gpt-5.2-codex-l", effective: "gpt-5.2" });
+    expect(impliedEffortForModel("gpt-5.2-codex-L")).toBe("low");
+  });
   it("normalizes other gpt-5.2-codev aliases to gpt-5.2 with implied effort", () => {
     const cases = [
       { id: "gpt-5.2-codev-M", effort: "medium" },
       { id: "gpt-5.2-codev-H", effort: "high" },
       { id: "gpt-5.2-codev-XH", effort: "xhigh" },
+    ];
+    for (const { id, effort } of cases) {
+      const r = normalizeModel(id, "gpt-5");
+      expect(r).toEqual({ requested: id.toLowerCase(), effective: "gpt-5.2" });
+      expect(impliedEffortForModel(id)).toBe(effort);
+    }
+  });
+  it("normalizes other gpt-5.2-codex aliases to gpt-5.2 with implied effort", () => {
+    const cases = [
+      { id: "gpt-5.2-codex-M", effort: "medium" },
+      { id: "gpt-5.2-codex-H", effort: "high" },
+      { id: "gpt-5.2-codex-XH", effort: "xhigh" },
     ];
     for (const { id, effort } of cases) {
       const r = normalizeModel(id, "gpt-5");

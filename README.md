@@ -25,7 +25,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 - SSE streaming: role-first delta, then deltas or a final message; always ends with `[DONE]`. Periodic `: keepalive` comments prevent intermediary timeouts.
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
-- Dev vs Prod model IDs: dev advertises `codev-5*` plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` (map to `gpt-5.1` / `gpt-5.2` low/medium/high/xhigh); prod advertises `codex-5*`. Both prefixes are accepted everywhere.
+- Dev vs Prod model IDs: dev advertises `codev-5*` plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` (map to `gpt-5.1` / `gpt-5.2` low/medium/high/xhigh); prod advertises `codex-5*` plus `gpt-5.2-codex-{L,M,H,XH}`. Both prefixes are accepted everywhere.
 - Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
@@ -121,8 +121,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 
 ### Model selection
 
-- Production advertises `codex-5{,-low,-medium,-high,-minimal}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
-- Dev also exposes `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which map directly to `gpt-5.1` / `gpt-5.2` with implied low/medium/high/xhigh reasoning effort (uppercase suffix is optional; IDs are case-insensitive).
+- Production advertises `codex-5{,-low,-medium,-high,-minimal}` plus `gpt-5.2-codex-{L,M,H,XH}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
+- Dev also exposes `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which map directly to `gpt-5.1` / `gpt-5.2` with implied low/medium/high/xhigh reasoning effort (uppercase suffix is optional; IDs are case-insensitive). Prod exposes the `gpt-5.2-codex-*` aliases for the same `gpt-5.2` target/effort mapping.
 - Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (`gpt-5`, `gpt-5.1`, or `gpt-5.2` for the new aliases) and applies the implied reasoning effort automatically.
 - Do not override `CODEX_MODEL` unless you are purposely testing unsupported combinations; let the proxy map inputs.
 
@@ -237,7 +237,7 @@ Notes:
 
 #### Model IDs and client compatibility
 
-- Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`.
+- Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`, plus `gpt-5.2-codex-{L,M,H,XH}` which route to `gpt-5.2` automatically.
 - Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which route to `gpt-5.1` / `gpt-5.2` automatically.
 - The server accepts both prefixes everywhere, but many SDKs/tools validate against `GET /v1/models` and will reject an ID that isn’t advertised by that environment. Use the environment‑appropriate prefix, or specify `model: "gpt-5"` and set `reasoning.effort`.
 
@@ -280,9 +280,9 @@ Dev parity stack (public behind Traefik):
 
 Model IDs in dev vs prod:
 
-- Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`.
+- Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`, plus `gpt-5.2-codex-{L,M,H,XH}` which normalize to `gpt-5.2` at low/medium/high/xhigh reasoning effort.
 - Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which normalize to `gpt-5.1` / `gpt-5.2` at low/medium/high/xhigh reasoning effort.
-- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5` for the `codex/codev-5*` aliases, `gpt-5.1` for `codev-5.1-*`, and `gpt-5.2` for `codev-5.2-*`) with the implied reasoning effort.
+- Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5` for the `codex/codev-5*` aliases, `gpt-5.1` for `codev-5.1-*`, and `gpt-5.2` for `codev-5.2-*` / `gpt-5.2-codex-*`) with the implied reasoning effort.
 - Do **not** override `CODEX_MODEL` in dev to force a specific reasoning tier. Leave it unset so the proxy maps
   `codev-5-*` requests to `gpt-5` and `codev-5.1-*` / `codev-5.2-*` requests to `gpt-5.1` / `gpt-5.2` internally; dev API keys cannot call `gpt-5-minimal` directly and will raise
   `400 Unsupported model` otherwise.

@@ -11,4 +11,13 @@ describe("model id advertising", () => {
       expect(prod).not.toContain(`gpt-5.2-codev-${suffix}`);
     });
   });
+
+  it("includes gpt-5.2-codex-* aliases in prod only", () => {
+    const dev = publicModelIds(true);
+    const prod = publicModelIds(false);
+    ["L", "M", "H", "XH"].forEach((suffix) => {
+      expect(prod).toContain(`gpt-5.2-codex-${suffix}`);
+      expect(dev).not.toContain(`gpt-5.2-codex-${suffix}`);
+    });
+  });
 });
