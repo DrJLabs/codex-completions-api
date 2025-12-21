@@ -103,13 +103,23 @@ export const detectCopilotRequest = (req) => {
   return isObsidianClient || hasCopilotTrace;
 };
 
-export const resolveResponsesOutputMode = ({ req, defaultValue, copilotDefault }) => {
+export const resolveResponsesOutputMode = ({
+  req,
+  defaultValue,
+  copilotDefault,
+  copilotDetection,
+}) => {
   const explicit = req?.headers?.["x-proxy-output-mode"];
   if (explicit && String(explicit).trim()) {
     return { effective: String(explicit).trim(), source: "header" };
   }
-  if (copilotDefault && detectCopilotRequest(req)) {
-    return { effective: copilotDefault, source: "copilot" };
+  if (copilotDefault) {
+    const isCopilot = copilotDetection
+      ? copilotDetection.copilot_detect_tier === "high"
+      : detectCopilotRequest(req);
+    if (isCopilot) {
+      return { effective: copilotDefault, source: "copilot" };
+    }
   }
   return { effective: defaultValue, source: "default" };
 };

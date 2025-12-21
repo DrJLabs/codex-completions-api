@@ -29,6 +29,7 @@ import {
   logFinishReasonTelemetry,
   coerceAssistantContent,
   validateOptionalChatParams,
+  resolveChatCopilotDetection,
   resolveOutputMode,
 } from "./shared.js";
 import { createToolCallAggregator, toObsidianXml } from "../../lib/tool-call-aggregator.js";
@@ -580,6 +581,14 @@ export async function postChatNonStream(req, res) {
   if (guardrailResult.injected) {
     messages = guardrailResult.messages;
   }
+  const { copilotDetection } = resolveChatCopilotDetection({
+    headers: req?.headers,
+    messages,
+    markers: guardrailResult.markers,
+  });
+  res.locals.copilot_detected = copilotDetection.copilot_detected;
+  res.locals.copilot_detect_tier = copilotDetection.copilot_detect_tier;
+  res.locals.copilot_detect_reasons = copilotDetection.copilot_detect_reasons;
 
   const {
     ok: choiceOk,
@@ -620,6 +629,8 @@ export async function postChatNonStream(req, res) {
   const outputMode = resolveOutputMode({
     headerValue: req.headers["x-proxy-output-mode"],
     defaultValue: CFG.PROXY_OUTPUT_MODE,
+    copilotDefault: "obsidian-xml",
+    copilotDetection: CFG.PROXY_COPILOT_AUTO_DETECT ? copilotDetection : null,
   });
   res.setHeader("x-proxy-output-mode", outputMode);
   const isObsidianOutput = outputMode === "obsidian-xml";
