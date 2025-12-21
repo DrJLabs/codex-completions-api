@@ -15,6 +15,7 @@ vi.mock("../../../../src/handlers/chat/nonstream.js", () => ({
 
 vi.mock("../../../../src/handlers/responses/ingress-logging.js", () => ({
   logResponsesIngressRaw: (...args) => logResponsesIngressRawMock(...args),
+  summarizeResponsesIngress: () => ({}),
 }));
 
 const originalDefaultMax = process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS;

@@ -29,6 +29,7 @@ services:
       # In dev, prefer streaming by default unless the client explicitly sets stream:false.
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}
       - PROXY_RESPONSES_OUTPUT_MODE=${PROXY_RESPONSES_OUTPUT_MODE:-}
+      - PROXY_COPILOT_AUTO_DETECT=${PROXY_COPILOT_AUTO_DETECT:-}
       - PROXY_USE_APP_SERVER=${PROXY_USE_APP_SERVER:-true}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}

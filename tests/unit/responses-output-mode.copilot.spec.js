@@ -30,7 +30,7 @@ describe("responses output mode for Copilot", () => {
     expect(detectCopilotRequest(req)).toBe(false);
   });
 
-  it("forces obsidian-xml for Copilot when header absent", () => {
+  it("forces obsidian-xml via legacy UA detection when no classifier provided", () => {
     const req = { headers: { "user-agent": "obsidian/1.9.7" } };
     const result = resolveResponsesOutputMode({
       req,
@@ -39,6 +39,38 @@ describe("responses output mode for Copilot", () => {
     });
     expect(result.effective).toBe("obsidian-xml");
     expect(result.source).toBe("copilot");
+  });
+
+  it("forces obsidian-xml for high-confidence classifier", () => {
+    const req = { headers: { "user-agent": "curl/8.0" } };
+    const result = resolveResponsesOutputMode({
+      req,
+      defaultValue: "openai-json",
+      copilotDefault: "obsidian-xml",
+      copilotDetection: {
+        copilot_detected: true,
+        copilot_detect_tier: "high",
+        copilot_detect_reasons: ["marker_recent_conversations"],
+      },
+    });
+    expect(result.effective).toBe("obsidian-xml");
+    expect(result.source).toBe("copilot");
+  });
+
+  it("does not force obsidian-xml for suspected classifier", () => {
+    const req = { headers: { "user-agent": "curl/8.0" } };
+    const result = resolveResponsesOutputMode({
+      req,
+      defaultValue: "openai-json",
+      copilotDefault: "obsidian-xml",
+      copilotDetection: {
+        copilot_detected: true,
+        copilot_detect_tier: "suspected",
+        copilot_detect_reasons: ["ua_obsidian"],
+      },
+    });
+    expect(result.effective).toBe("openai-json");
+    expect(result.source).toBe("default");
   });
 
   it("respects explicit x-proxy-output-mode", () => {

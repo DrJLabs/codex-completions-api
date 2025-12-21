@@ -15,13 +15,14 @@ describe("responses ingress logging summarizer", () => {
           type: "message",
           role: "user",
           content:
-            "<recent_conversations>...</recent_conversations>\n<use_tool>\n<name>webSearch</name>\n</use_tool>\nTool 'webSearch' result: []",
+            "<recent_conversations>...</recent_conversations>\n<saved_memories>...</saved_memories>\n<use_tool>\n<name>webSearch</name>\n</use_tool>\nTool 'webSearch' result: []",
         },
       ],
     };
 
     const summary = summarizeResponsesIngress(body, { headers: {} });
     expect(summary.has_recent_conversations_tag).toBe(true);
+    expect(summary.has_saved_memories_tag).toBe(true);
     expect(summary.has_use_tool_tag).toBe(true);
     expect(summary.has_tool_result_marker).toBe(true);
   });
@@ -77,6 +78,30 @@ describe("responses ingress raw logging", () => {
     expect(extras.copilot_trace_source).toBe("generated");
     expect(extras.copilot_trace_header).toBe(null);
     expect(typeof extras.copilot_trace_id).toBe("string");
+    spy.mockRestore();
+  });
+
+  test("logs copilot detection fields", () => {
+    const spy = vi.spyOn(schema, "logStructured").mockReturnValue({});
+    const req = { method: "POST", headers: { "user-agent": "obsidian/1.9.7" } };
+    const res = { locals: {} };
+    logResponsesIngressRaw({
+      req,
+      res,
+      body: {
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: "<recent_conversations>...</recent_conversations>",
+          },
+        ],
+      },
+    });
+    const [, extras] = spy.mock.calls[0];
+    expect(extras.copilot_detected).toBe(true);
+    expect(extras.copilot_detect_tier).toBe("high");
+    expect(extras.copilot_detect_reasons).toContain("marker_recent_conversations");
     spy.mockRestore();
   });
 });

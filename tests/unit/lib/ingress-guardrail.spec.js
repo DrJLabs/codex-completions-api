@@ -11,11 +11,12 @@ describe("ingress guardrail helpers", () => {
       {
         role: "user",
         content:
-          "<recent_conversations>...</recent_conversations>\n<use_tool>noop</use_tool>\nTool 'webSearch' result: []",
+          "<recent_conversations>...</recent_conversations>\n<saved_memories>...</saved_memories>\n<use_tool>noop</use_tool>\nTool 'webSearch' result: []",
       },
     ]);
     expect(markers).toEqual({
       has_recent_conversations_tag: true,
+      has_saved_memories_tag: true,
       has_use_tool_tag: true,
       has_tool_result_marker: true,
     });
