@@ -1,6 +1,7 @@
 import { logStructured } from "../../services/logging/schema.js";
 import { ensureReqId } from "../../lib/request-context.js";
 import { ensureCopilotTraceContext } from "../../lib/trace-ids.js";
+import { detectCopilotRequest } from "../../lib/copilot-detect.js";
 
 const RESPONSES_ROUTE = "/v1/responses";
 
@@ -127,6 +128,9 @@ const scanTextForMarkers = (text, state) => {
   if (!state.hasRecentConversationsTag && lower.includes("<recent_conversations")) {
     state.hasRecentConversationsTag = true;
   }
+  if (!state.hasSavedMemoriesTag && lower.includes("<saved_memories")) {
+    state.hasSavedMemoriesTag = true;
+  }
   if (!state.hasUseToolTag && lower.includes("<use_tool")) {
     state.hasUseToolTag = true;
   }
@@ -137,7 +141,12 @@ const scanTextForMarkers = (text, state) => {
 
 const scanValueForMarkers = (value, state, depth = 0) => {
   if (!value) return;
-  if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+  if (
+    state.hasRecentConversationsTag &&
+    state.hasSavedMemoriesTag &&
+    state.hasUseToolTag &&
+    state.hasToolResultMarker
+  ) {
     return;
   }
   if (depth > 6) return;
@@ -150,7 +159,12 @@ const scanValueForMarkers = (value, state, depth = 0) => {
   if (Array.isArray(value)) {
     for (const entry of value) {
       scanValueForMarkers(entry, state, depth + 1);
-      if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+      if (
+        state.hasRecentConversationsTag &&
+        state.hasSavedMemoriesTag &&
+        state.hasUseToolTag &&
+        state.hasToolResultMarker
+      ) {
         return;
       }
     }
@@ -175,6 +189,7 @@ export function summarizeResponsesIngress(body = {}, req = null) {
   const inputMetadataKeys = new Set();
   const markerState = {
     hasRecentConversationsTag: false,
+    hasSavedMemoriesTag: false,
     hasUseToolTag: false,
     hasToolResultMarker: false,
   };
@@ -184,6 +199,10 @@ export function summarizeResponsesIngress(body = {}, req = null) {
   let toolOutputBytesKnown = true;
   let inputItemCount = null;
   let inputMessageCount = 0;
+
+  if (isNonEmptyString(input)) {
+    scanValueForMarkers(input, markerState);
+  }
 
   if (Array.isArray(inputItems)) {
     inputItemCount = inputItems.length;
@@ -231,6 +250,7 @@ export function summarizeResponsesIngress(body = {}, req = null) {
     input_message_count: inputMessageCount,
     input_message_roles: Array.from(messageRoles).slice(0, 10),
     has_recent_conversations_tag: markerState.hasRecentConversationsTag,
+    has_saved_memories_tag: markerState.hasSavedMemoriesTag,
     has_use_tool_tag: markerState.hasUseToolTag,
     has_tool_result_marker: markerState.hasToolResultMarker,
     has_input_item_metadata: hasInputItemMetadata,
@@ -261,6 +281,8 @@ export function logResponsesIngressRaw({
   body,
   outputModeRequested = null,
   outputModeEffective = null,
+  ingressSummary = null,
+  copilotDetection = null,
 } = {}) {
   if (!req || !res) return;
   try {
@@ -268,6 +290,16 @@ export function logResponsesIngressRaw({
     const { id: copilotTraceId, source, header } = ensureCopilotTraceContext(req, res);
     const route = res.locals?.routeOverride || RESPONSES_ROUTE;
     const mode = res.locals?.modeOverride || res.locals?.mode || null;
+    const summary = ingressSummary || summarizeResponsesIngress(body, req);
+    const detection =
+      copilotDetection ||
+      detectCopilotRequest({ headers: req?.headers, responsesSummary: summary });
+
+    if (detection) {
+      res.locals.copilot_detected = detection.copilot_detected;
+      res.locals.copilot_detect_tier = detection.copilot_detect_tier;
+      res.locals.copilot_detect_reasons = detection.copilot_detect_reasons;
+    }
     logStructured(
       {
         component: "responses",
@@ -284,10 +316,13 @@ export function logResponsesIngressRaw({
         copilot_trace_id: copilotTraceId,
         copilot_trace_source: source,
         copilot_trace_header: header,
+        copilot_detected: detection?.copilot_detected ?? false,
+        copilot_detect_tier: detection?.copilot_detect_tier ?? null,
+        copilot_detect_reasons: detection?.copilot_detect_reasons ?? [],
         stream: Boolean(body?.stream),
         output_mode_requested: outputModeRequested,
         output_mode_effective: outputModeEffective,
-        ...summarizeResponsesIngress(body, req),
+        ...summary,
       }
     );
   } catch {

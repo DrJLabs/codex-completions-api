@@ -11,11 +11,12 @@ describe("ingress guardrail helpers", () => {
       {
         role: "user",
         content:
-          "<recent_conversations>...</recent_conversations>\n<use_tool>noop</use_tool>\nTool 'webSearch' result: []",
+          "<recent_conversations>...</recent_conversations>\n<saved_memories>...</saved_memories>\n<use_tool>noop</use_tool>\nTool 'webSearch' result: []",
       },
     ]);
     expect(markers).toEqual({
       has_recent_conversations_tag: true,
+      has_saved_memories_tag: true,
       has_use_tool_tag: true,
       has_tool_result_marker: true,
     });
@@ -25,6 +26,7 @@ describe("ingress guardrail helpers", () => {
     const content = buildIngressGuardrailContent({
       markers: {
         has_recent_conversations_tag: true,
+        has_saved_memories_tag: true,
         has_use_tool_tag: false,
         has_tool_result_marker: true,
       },
@@ -32,6 +34,7 @@ describe("ingress guardrail helpers", () => {
     expect(content).toContain("[proxy][ingress_guardrail_v1]");
     expect(content).toContain("Signals detected:");
     expect(content).toContain("recent_conversations");
+    expect(content).toContain("saved_memories");
     expect(content).toContain("tool_result");
   });
 
@@ -68,6 +71,31 @@ describe("ingress guardrail helpers", () => {
       });
       expect(second.injected).toBe(false);
       expect(second.messages).toHaveLength(first.messages.length);
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
+  test("maybeInjectIngressGuardrail injects when saved memories are present", () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const baseMessages = [
+        { role: "user", content: "<saved_memories>hi</saved_memories>\nSay hello." },
+      ];
+      const res = { locals: { req_id: "req_test", routeOverride: "/v1/chat/completions" } };
+      const req = { headers: { "user-agent": "test" } };
+
+      const result = maybeInjectIngressGuardrail({
+        req,
+        res,
+        messages: baseMessages,
+        enabled: true,
+        route: "/v1/chat/completions",
+        mode: "chat_nonstream",
+        endpointMode: "chat_completions",
+      });
+      expect(result.injected).toBe(true);
+      expect(result.messages[0]).toMatchObject({ role: "system" });
     } finally {
       consoleSpy.mockRestore();
     }
