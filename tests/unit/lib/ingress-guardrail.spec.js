@@ -26,6 +26,7 @@ describe("ingress guardrail helpers", () => {
     const content = buildIngressGuardrailContent({
       markers: {
         has_recent_conversations_tag: true,
+        has_saved_memories_tag: true,
         has_use_tool_tag: false,
         has_tool_result_marker: true,
       },
@@ -33,6 +34,7 @@ describe("ingress guardrail helpers", () => {
     expect(content).toContain("[proxy][ingress_guardrail_v1]");
     expect(content).toContain("Signals detected:");
     expect(content).toContain("recent_conversations");
+    expect(content).toContain("saved_memories");
     expect(content).toContain("tool_result");
   });
 

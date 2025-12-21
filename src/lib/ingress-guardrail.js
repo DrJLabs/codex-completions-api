@@ -69,7 +69,12 @@ export function detectIngressMarkers(messages = []) {
   for (const msg of Array.isArray(messages) ? messages : []) {
     if (!msg || typeof msg !== "object") continue;
     scanValueForMarkers(msg.content, state);
-    if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+    if (
+      state.hasRecentConversationsTag &&
+      state.hasSavedMemoriesTag &&
+      state.hasUseToolTag &&
+      state.hasToolResultMarker
+    ) {
       break;
     }
   }
