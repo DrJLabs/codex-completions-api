@@ -54,6 +54,14 @@ describe("responses ingress logging summarizer", () => {
     expect(summary.has_use_tool_tag).toBe(false);
     expect(summary.has_tool_result_marker).toBe(false);
   });
+
+  test("detects markers when input is a plain string", () => {
+    const body = {
+      input: "<recent_conversations>...</recent_conversations>",
+    };
+    const summary = summarizeResponsesIngress(body, { headers: {} });
+    expect(summary.has_recent_conversations_tag).toBe(true);
+  });
 });
 
 describe("responses ingress raw logging", () => {
