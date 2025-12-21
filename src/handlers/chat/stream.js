@@ -1375,11 +1375,13 @@ export async function postChatStream(req, res) {
       state.lastToolEnd,
       limitTail
     );
-    const segment = state.emitted.slice(state.forwardedUpTo, allowUntil);
+    const holdbackStart = findToolPrefixHoldback(state.emitted, state.forwardedUpTo);
+    const finalUntil = holdbackStart >= 0 ? Math.min(allowUntil, holdbackStart) : allowUntil;
+    const segment = state.emitted.slice(state.forwardedUpTo, finalUntil);
     if (segment) {
       sendChoiceDelta(choiceIndex, { content: segment });
       state.sentAny = true;
-      state.forwardedUpTo = allowUntil;
+      state.forwardedUpTo = finalUntil;
     }
     scheduleStopAfterTools(choiceIndex);
   };
@@ -1399,6 +1401,38 @@ export async function postChatStream(req, res) {
     if (source === "textual") state.textualToolContentSeen = true;
     scheduleStopAfterTools(choiceIndex);
     return true;
+  };
+
+  const TOOL_XML_PREFIXES = ["<use_tool", "</use_tool"];
+
+  const hasTextualToolPrefix = (state, textDelta = "") => {
+    if (!isObsidianOutput || !state) return false;
+    if (state.toolBuffer?.active) return true;
+    const emitted = typeof state.emitted === "string" ? state.emitted : "";
+    const combined = `${emitted}${textDelta || ""}`;
+    return combined.includes("<use_tool");
+  };
+
+  const findToolPrefixHoldback = (emitted, forwardedUpTo) => {
+    if (!isObsidianOutput) return -1;
+    const text = typeof emitted === "string" ? emitted : "";
+    if (!text) return -1;
+    const startFloor = Number.isInteger(forwardedUpTo) ? forwardedUpTo : 0;
+    let holdbackStart = -1;
+    for (const prefix of TOOL_XML_PREFIXES) {
+      const maxLen = Math.min(prefix.length, text.length);
+      for (let len = maxLen; len > 0; len -= 1) {
+        const suffix = text.slice(text.length - len);
+        if (prefix.startsWith(suffix)) {
+          const start = text.length - len;
+          if (start >= startFloor) {
+            if (holdbackStart === -1 || start < holdbackStart) holdbackStart = start;
+          }
+          break;
+        }
+      }
+    }
+    return holdbackStart;
   };
 
   const shouldDropFunctionCallOutput = (payload = null) => {
@@ -1773,6 +1807,9 @@ export async function postChatStream(req, res) {
               appendContentSegment(deltaPayload, { choiceIndex });
             }
           } else if (deltaPayload && typeof deltaPayload === "object") {
+            const textDelta = coerceAssistantContent(
+              deltaPayload.content ?? deltaPayload.text ?? ""
+            );
             const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload, {
               choiceIndex,
             });
@@ -1801,13 +1838,10 @@ export async function postChatStream(req, res) {
               }
               if (!isObsidianOutput || state.textualToolContentSeen) {
                 state.forwardedToolCount = snapshot.length;
-              } else {
+              } else if (!hasTextualToolPrefix(state, textDelta)) {
                 emitAggregatorToolContent(choiceIndex, snapshot);
               }
             }
-            const textDelta = coerceAssistantContent(
-              deltaPayload.content ?? deltaPayload.text ?? ""
-            );
             if (SANITIZE_METADATA) {
               enqueueSanitizedSegment(
                 textDelta,
@@ -1898,12 +1932,12 @@ export async function postChatStream(req, res) {
             if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
             const snapshot = toolCallAggregator.snapshot({ choiceIndex });
             state.structuredCount = snapshot.length;
+            const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
             if (!isObsidianOutput || state.textualToolContentSeen) {
               state.forwardedToolCount = snapshot.length;
-            } else {
+            } else if (!hasTextualToolPrefix(state, text)) {
               emitAggregatorToolContent(choiceIndex, snapshot);
             }
-            const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
             let aggregatedInfo = null;
             if (SANITIZE_METADATA) {
               enqueueSanitizedSegment(
