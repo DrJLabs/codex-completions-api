@@ -69,6 +69,46 @@ describe("chat stream tool buffering", () => {
     }
   });
 
+  test("avoids malformed tool XML when tag prefixes are split across chunks", async () => {
+    const ctx = await startServer({
+      CODEX_BIN: "scripts/fake-codex-proto.js",
+      FAKE_CODEX_MODE: "multi_choice_tool_call",
+      FAKE_CODEX_CHOICE_COUNT: "1",
+      FAKE_CODEX_TOOL_CALL_CHOICES: "0",
+      FAKE_CODEX_TOOL_XML_CHUNK_SIZE: "4",
+      PROXY_SSE_KEEPALIVE_MS: "0",
+      PROXY_SANITIZE_METADATA: "false",
+      PROXY_TEST_ENDPOINTS: "true",
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions?stream=true`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-sk-ci",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestPayload),
+      });
+      expect(response.ok).toBe(true);
+      const raw = await response.text();
+      const entries = parseSSE(raw).filter((entry) => entry?.type === "data");
+      const content = entries
+        .map((entry) => entry.data?.choices?.[0]?.delta?.content)
+        .filter((segment) => typeof segment === "string")
+        .join("");
+
+      expect(content).toContain("<use_tool");
+      expect(content).toContain("</use_tool>");
+      expect(content).not.toContain("</use_tool<use_tool>");
+      expect(content).not.toMatch(/<use_tool(?!>)/);
+      expect(content).not.toMatch(/<\/use_tool(?!>)/);
+    } finally {
+      await resetToolBufferMetrics(ctx.PORT);
+      await stopServer(ctx.child);
+    }
+  });
+
   test("flushes partial buffers when backend disconnects mid-block", async () => {
     const ctx = await startServer({
       CODEX_BIN: "scripts/fake-codex-proto.js",
