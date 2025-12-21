@@ -17,14 +17,9 @@
       "has_input": true,
       "input_is_array": true,
       "input_item_count": 4,
-      "input_item_types": [
-        "message"
-      ],
+      "input_item_types": ["message"],
       "input_message_count": 4,
-      "input_message_roles": [
-        "assistant",
-        "user"
-      ],
+      "input_message_roles": ["assistant", "user"],
       "has_recent_conversations_tag": true,
       "has_use_tool_tag": true,
       "has_tool_result_marker": true,

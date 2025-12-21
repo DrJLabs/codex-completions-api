@@ -2,9 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { config as CFG } from "../../config/index.js";
+import { createCaptureSanitizers, sanitizeCaptureId } from "../../lib/capture/sanitize.js";
 import { summarizeResponsesIngress } from "./ingress-logging.js";
-
-const REDACTED = "<redacted>";
 const CAPTURE_ID_HEADER = "x-proxy-capture-id";
 const DEFAULT_CAPTURE_DIR = path.join(process.cwd(), "test-results", "responses-copilot", "raw");
 const DEFAULT_RAW_CAPTURE_DIR = path.join(
@@ -25,120 +24,9 @@ const SAFE_STRING_KEYS = new Set([
   "format",
   "provider",
 ]);
-const SAFE_HEADER_VALUE_KEYS = new Set([
-  "user-agent",
-  "content-type",
-  "accept",
-  "x-proxy-output-mode",
-  "x-proxy-trace-id",
-]);
-const HEADER_ALLOWLIST = new Set([
-  "user-agent",
-  "content-type",
-  "accept",
-  "x-proxy-output-mode",
-  "x-copilot-trace-id",
-  "x-trace-id",
-  "x-request-id",
-  "x-proxy-trace-id",
-  "x-proxy-capture-id",
-]);
-const RAW_SECRET_HEADERS = new Set([
-  "authorization",
-  "proxy-authorization",
-  "x-api-key",
-  "x-proxy-api-key",
-  "x-forwarded-authorization",
-  "cookie",
-  "set-cookie",
-  "x-codex-key",
-]);
-
-const isPlainObject = (value) =>
-  value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
-
-const sanitizeCaptureId = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-const sanitizeString = (value, key) => {
-  if (value === null || value === undefined) return value;
-  if (typeof value !== "string") return value;
-  if (!value) return value;
-  return SAFE_STRING_KEYS.has(key) ? value : REDACTED;
-};
-
-const sanitizeValue = (value, key = "") => {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") return sanitizeString(value, key);
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) return value.map((entry) => sanitizeValue(entry, key));
-  if (!isPlainObject(value)) return value;
-  if (key === "metadata") {
-    const redacted = {};
-    for (const entryKey of Object.keys(value)) {
-      redacted[entryKey] = REDACTED;
-    }
-    return redacted;
-  }
-  const next = {};
-  for (const [entryKey, entryValue] of Object.entries(value)) {
-    next[entryKey] = sanitizeValue(entryValue, entryKey);
-  }
-  return next;
-};
-
-const sanitizeHeaderValue = (key, value) => {
-  const normalized = String(value || "")
-    .replace(/[\r\n]+/g, " ")
-    .trim();
-  if (!normalized) return normalized;
-  if (SAFE_HEADER_VALUE_KEYS.has(key)) return normalized.slice(0, 256);
-  return REDACTED;
-};
-
-const sanitizeHeaders = (headers) => {
-  if (!headers || typeof headers !== "object") return {};
-  const result = {};
-  for (const [rawKey, rawValue] of Object.entries(headers)) {
-    const key = String(rawKey || "")
-      .toLowerCase()
-      .trim();
-    if (!key || !HEADER_ALLOWLIST.has(key)) continue;
-    result[key] = Array.isArray(rawValue)
-      ? rawValue.map((value) => sanitizeHeaderValue(key, value))
-      : sanitizeHeaderValue(key, rawValue);
-  }
-  return result;
-};
-
-const sanitizeRawHeaderValue = (key, value) => {
-  const normalized = String(value || "")
-    .replace(/[\r\n]+/g, " ")
-    .trim();
-  if (!normalized) return normalized;
-  if (RAW_SECRET_HEADERS.has(key)) return REDACTED;
-  return normalized;
-};
-
-const sanitizeHeadersRaw = (headers) => {
-  if (!headers || typeof headers !== "object") return {};
-  const result = {};
-  for (const [rawKey, rawValue] of Object.entries(headers)) {
-    const key = String(rawKey || "")
-      .toLowerCase()
-      .trim();
-    if (!key) continue;
-    result[key] = Array.isArray(rawValue)
-      ? rawValue.map((value) => sanitizeRawHeaderValue(key, value))
-      : sanitizeRawHeaderValue(key, rawValue);
-  }
-  return result;
-};
+const { sanitizeValue, sanitizeHeaders, sanitizeHeadersRaw } = createCaptureSanitizers({
+  safeStringKeys: SAFE_STRING_KEYS,
+});
 
 const buildCaptureMetadata = ({
   req,
@@ -189,6 +77,13 @@ const writeCaptureFile = async (dir, filename, payload) => {
   return target;
 };
 
+const writeCaptureFileSafe = (dir, filename, payload, label) => {
+  writeCaptureFile(dir, filename, payload).catch((err) => {
+    const message = err && typeof err === "object" ? err.message : String(err || "");
+    console.error(`[capture] failed to write ${label} capture ${filename}`, message);
+  });
+};
+
 const shouldCapture = () => Boolean(CFG.PROXY_CAPTURE_RESPONSES_TRANSCRIPTS);
 const shouldCaptureRaw = () => Boolean(CFG.PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS);
 
@@ -219,7 +114,7 @@ export const captureResponsesNonStream = ({
       },
       response: sanitizeValue(responseBody),
     };
-    writeCaptureFile(resolveCaptureDir(), `${captureId}.json`, payload).catch(() => {});
+    writeCaptureFileSafe(resolveCaptureDir(), `${captureId}.json`, payload, "responses nonstream");
   }
   if (shouldCaptureRaw()) {
     const payload = {
@@ -230,7 +125,12 @@ export const captureResponsesNonStream = ({
       },
       response: responseBody ?? null,
     };
-    writeCaptureFile(resolveRawCaptureDir(), `${captureId}.json`, payload).catch(() => {});
+    writeCaptureFileSafe(
+      resolveRawCaptureDir(),
+      `${captureId}.json`,
+      payload,
+      "responses raw nonstream"
+    );
   }
 };
 
@@ -254,15 +154,17 @@ export const createResponsesStreamCapture = ({
   });
 
   const record = (event, payload) => {
+    const ts = Date.now();
     if (event === "done" && payload === "[DONE]") {
-      if (entries) entries.push({ type: "done", event });
-      if (rawEntries) rawEntries.push({ type: "done", event });
+      if (entries) entries.push({ type: "done", event, ts });
+      if (rawEntries) rawEntries.push({ type: "done", event, ts });
       return;
     }
     if (entries) {
       entries.push({
         type: "data",
         event,
+        ts,
         data: sanitizeValue(payload),
       });
     }
@@ -270,6 +172,7 @@ export const createResponsesStreamCapture = ({
       rawEntries.push({
         type: "data",
         event,
+        ts,
         data: payload ?? null,
       });
     }
@@ -286,7 +189,7 @@ export const createResponsesStreamCapture = ({
         },
         stream: entries,
       };
-      writeCaptureFile(resolveCaptureDir(), `${captureId}.json`, payload).catch(() => {});
+      writeCaptureFileSafe(resolveCaptureDir(), `${captureId}.json`, payload, "responses stream");
     }
     if (rawEntries) {
       const payload = {
@@ -297,7 +200,12 @@ export const createResponsesStreamCapture = ({
         },
         stream: rawEntries,
       };
-      writeCaptureFile(resolveRawCaptureDir(), `${captureId}.json`, payload).catch(() => {});
+      writeCaptureFileSafe(
+        resolveRawCaptureDir(),
+        `${captureId}.json`,
+        payload,
+        "responses raw stream"
+      );
     }
   };
 
