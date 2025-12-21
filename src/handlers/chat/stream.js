@@ -1410,7 +1410,18 @@ export async function postChatStream(req, res) {
     if (state.toolBuffer?.active) return true;
     const emitted = typeof state.emitted === "string" ? state.emitted : "";
     const combined = `${emitted}${textDelta || ""}`;
-    return combined.includes("<use_tool");
+    if (!combined) return false;
+    if (combined.includes("<use_tool") || combined.includes("</use_tool")) return true;
+    for (const prefix of TOOL_XML_PREFIXES) {
+      const maxLen = Math.min(prefix.length, combined.length);
+      for (let len = maxLen; len > 0; len -= 1) {
+        const suffix = combined.slice(combined.length - len);
+        if (prefix.startsWith(suffix)) {
+          return true;
+        }
+      }
+    }
+    return false;
   };
 
   const findToolPrefixHoldback = (emitted, forwardedUpTo) => {
