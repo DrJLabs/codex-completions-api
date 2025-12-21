@@ -155,7 +155,10 @@ export function maybeInjectIngressGuardrail({
   if (hasExistingGuardrail(list)) return { injected: false, markers: null, messages: list };
 
   const markers = detectIngressMarkers(list);
-  const shouldInject = markers.has_recent_conversations_tag || markers.has_tool_result_marker;
+  const shouldInject =
+    markers.has_recent_conversations_tag ||
+    markers.has_saved_memories_tag ||
+    markers.has_tool_result_marker;
 
   if (!shouldInject) return { injected: false, markers, messages: list };
 
