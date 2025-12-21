@@ -106,6 +106,26 @@ export const config = {
   PROXY_KILL_ON_DISCONNECT: str("PROXY_KILL_ON_DISCONNECT", "false"),
   PROXY_DEBUG_PROTO: str("PROXY_DEBUG_PROTO", ""),
   PROXY_SANITIZE_METADATA: bool("PROXY_SANITIZE_METADATA", "false"),
+  PROXY_CAPTURE_CHAT_TRANSCRIPTS: bool("PROXY_CAPTURE_CHAT_TRANSCRIPTS", "false"),
+  PROXY_CAPTURE_CHAT_DIR: str(
+    "PROXY_CAPTURE_CHAT_DIR",
+    path.join(process.cwd(), "test-results", "chat-copilot", "raw")
+  ),
+  PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS: bool("PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS", "false"),
+  PROXY_CAPTURE_CHAT_RAW_DIR: str(
+    "PROXY_CAPTURE_CHAT_RAW_DIR",
+    path.join(process.cwd(), "test-results", "chat-copilot", "raw-unredacted")
+  ),
+  PROXY_CAPTURE_RESPONSES_TRANSCRIPTS: bool("PROXY_CAPTURE_RESPONSES_TRANSCRIPTS", "false"),
+  PROXY_CAPTURE_RESPONSES_DIR: str(
+    "PROXY_CAPTURE_RESPONSES_DIR",
+    path.join(process.cwd(), "test-results", "responses-copilot", "raw")
+  ),
+  PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS: bool("PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS", "false"),
+  PROXY_CAPTURE_RESPONSES_RAW_DIR: str(
+    "PROXY_CAPTURE_RESPONSES_RAW_DIR",
+    path.join(process.cwd(), "test-results", "responses-copilot", "raw-unredacted")
+  ),
   // Ingress safety: guardrails for client-provided memory/tool transcripts
   PROXY_INGRESS_GUARDRAIL: bool("PROXY_INGRESS_GUARDRAIL", "true"),
   // Worker supervisor

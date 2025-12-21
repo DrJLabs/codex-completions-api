@@ -1,0 +1,560 @@
+{
+  "metadata": {
+    "captured_at": "2025-12-21T01:10:44.062Z",
+    "scenario": "responses-2025-12-21t01-10-44-062z-8854e2a3-df8d-48b6-89fc-8dd67007c02d-stream",
+    "stream": true,
+    "outcome": "completed",
+    "route": "/v1/responses",
+    "mode": "responses_stream",
+    "endpoint_mode": "responses",
+    "output_mode_effective": "obsidian-xml",
+    "copilot_trace_source": "generated",
+    "copilot_trace_header": null,
+    "copilot_trace_present": true,
+    "ingress_summary": {
+      "has_messages": false,
+      "has_instructions": false,
+      "has_input": true,
+      "input_is_array": true,
+      "input_item_count": 6,
+      "input_item_types": [
+        "message"
+      ],
+      "input_message_count": 6,
+      "input_message_roles": [
+        "assistant",
+        "user"
+      ],
+      "has_recent_conversations_tag": true,
+      "has_use_tool_tag": true,
+      "has_tool_result_marker": true,
+      "has_input_item_metadata": false,
+      "input_item_metadata_keys": [],
+      "input_item_metadata_keys_truncated": false,
+      "has_metadata": false,
+      "metadata_keys": [],
+      "metadata_keys_truncated": false,
+      "has_session_like_metadata_key": false,
+      "has_tools": false,
+      "has_tool_choice": false,
+      "has_previous_response_id": false,
+      "has_tool_output_items": false,
+      "tool_output_bytes_total": null,
+      "model": "gpt-5.2-codev-L",
+      "candidate_id_fields_present": [],
+      "candidate_id_fields_truncated": false,
+      "has_candidate_headers": false,
+      "candidate_header_keys": [],
+      "candidate_header_keys_truncated": false
+    }
+  },
+  "request": {
+    "headers": {
+      "user-agent": "un/JS 6.5.0",
+      "accept": "application/json",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-5.2-codev-L",
+      "temperature": 1,
+      "stream": true,
+      "text": {},
+      "max_output_tokens": 65000,
+      "input": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": "<redacted>"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": "<redacted>"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": "<redacted>"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": "<redacted>"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": "<redacted>"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": "<redacted>"
+        }
+      ]
+    }
+  },
+  "stream": [
+    {
+      "type": "data",
+      "event": "response.created",
+      "data": {
+        "type": "response.created",
+        "response": {
+          "id": "<id>",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.delta",
+      "data": {
+        "type": "response.output_text.delta",
+        "delta": "<redacted>",
+        "output_index": 0
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.output_text.done",
+      "data": {
+        "type": "response.output_text.done"
+      }
+    },
+    {
+      "type": "data",
+      "event": "response.completed",
+      "data": {
+        "type": "response.completed",
+        "response": {
+          "id": "<id>",
+          "status": "completed",
+          "model": "gpt-5.2-codev-l",
+          "output": [
+            {
+              "id": "<id>",
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "<redacted>"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "done",
+      "event": "done"
+    }
+  ]
+}
