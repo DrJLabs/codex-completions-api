@@ -56,7 +56,12 @@ import { createJsonRpcChildAdapter } from "../../services/transport/child-adapte
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { requireModel } from "./require-model.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
-import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
+import {
+  applyProxyTraceHeaders,
+  ensureReqId,
+  setHttpContext,
+  getHttpContext,
+} from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
 import { createStreamObserver } from "../../services/metrics/index.js";
 import { startSpan, endSpan } from "../../services/tracing.js";
@@ -71,6 +76,12 @@ import {
   abortToolBuffer,
   shouldSkipBlock,
 } from "./tool-buffer.js";
+import { createChatStreamCapture } from "./capture.js";
+import {
+  summarizeTextParts,
+  summarizeToolCalls,
+} from "../../lib/observability/transform-summary.js";
+import { logStructured } from "../../services/logging/schema.js";
 
 const DEFAULT_MODEL = CFG.CODEX_MODEL;
 const SANDBOX_MODE = CFG.PROXY_SANDBOX_MODE;
@@ -169,6 +180,7 @@ export async function postChatStream(req, res) {
   const mode = res.locals?.modeOverride || "chat_stream";
   setHttpContext(res, { route, mode });
   const reqId = ensureReqId(res);
+  applyProxyTraceHeaders(res);
   const started = Date.now();
   let responded = false;
   let responseWritable = true;
@@ -196,6 +208,17 @@ export async function postChatStream(req, res) {
   };
 
   const body = req.body || {};
+  const originalBody = (() => {
+    try {
+      return structuredClone(body);
+    } catch {
+      try {
+        return JSON.parse(JSON.stringify(body));
+      } catch {
+        return {};
+      }
+    }
+  })();
   logHttpRequest({
     req,
     res,
@@ -343,6 +366,28 @@ export async function postChatStream(req, res) {
   });
   res.setHeader("x-proxy-output-mode", outputMode);
   const isObsidianOutput = outputMode === "obsidian-xml";
+  res.locals = res.locals || {};
+  res.locals.output_mode_requested = req.headers["x-proxy-output-mode"]
+    ? String(req.headers["x-proxy-output-mode"])
+    : null;
+  res.locals.output_mode_effective = outputMode;
+  if (!res.locals.endpoint_mode) res.locals.endpoint_mode = "chat";
+
+  const streamCapture =
+    res.locals.endpoint_mode === "responses"
+      ? null
+      : createChatStreamCapture({
+          req,
+          res,
+          requestBody: originalBody,
+          outputModeEffective: outputMode,
+        });
+  let captureFinalized = false;
+  const finalizeCapture = (outcome) => {
+    if (captureFinalized || !streamCapture) return;
+    captureFinalized = true;
+    streamCapture.finalize(outcome);
+  };
 
   const backendMode = selectBackendMode();
   const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
@@ -600,6 +645,7 @@ export async function postChatStream(req, res) {
         sendSSE(sseErrorBody(error));
       }
     } catch {}
+    finalizeCapture("failed");
     logUsageFailure({
       req,
       res,
@@ -646,6 +692,7 @@ export async function postChatStream(req, res) {
   };
   const finishSSE = () => {
     if (invokeAdapter("onDone") === true) return;
+    if (streamCapture) streamCapture.recordDone();
     finishSSEUtil(res);
   };
   const emitToolStatsComment = (payload) => {
@@ -711,6 +758,7 @@ export async function postChatStream(req, res) {
     markFirstTokenFromPayload(chunkPayload);
     const handled = invokeAdapter("onChunk", chunkPayload);
     if (handled === true) return;
+    if (streamCapture) streamCapture.record(chunkPayload);
     sendSSE(chunkPayload);
   };
   const buildChoiceFrames = (builder) => {
@@ -1603,6 +1651,52 @@ export async function postChatStream(req, res) {
       });
     }
     const outcome = resolvedFinish.reason || "ok";
+    try {
+      const outputParts = [];
+      forEachTrackedChoice((idx) => {
+        const state = ensureChoiceState(idx);
+        if (state && typeof state.emitted === "string") {
+          outputParts.push(state.emitted);
+        }
+      });
+      const textSummary = summarizeTextParts(outputParts);
+      const flattened = [];
+      forEachTrackedChoice((idx) => {
+        const snapshot = toolCallAggregator.snapshot({ choiceIndex: idx });
+        snapshot.forEach((record) => flattened.push(record));
+      });
+      const toolSummary = summarizeToolCalls(flattened);
+      logStructured(
+        {
+          component: "chat",
+          event: "chat_transform_summary",
+          level: "info",
+          req_id: reqId,
+          trace_id: res.locals?.trace_id,
+          route: "/v1/chat/completions",
+          mode: "chat_stream",
+          model: requestedModel,
+        },
+        {
+          endpoint_mode: res.locals?.endpoint_mode || "chat",
+          copilot_trace_id: res.locals?.copilot_trace_id || null,
+          output_mode_requested: res.locals?.output_mode_requested ?? null,
+          output_mode_effective: res.locals?.output_mode_effective ?? null,
+          response_shape_version: "chat_v1_stream_openai",
+          finish_reason: resolvedFinish.reason || null,
+          status: 200,
+          tool_calls_detected: hasToolCallEvidence() ? toolSummary.tool_call_count : 0,
+          tool_calls_emitted: toolSummary.tool_call_count,
+          tool_names: toolSummary.tool_names,
+          tool_names_truncated: toolSummary.tool_names_truncated,
+          output_text_bytes: textSummary.output_text_bytes,
+          output_text_hash: textSummary.output_text_hash,
+          xml_in_text: textSummary.xml_in_text,
+          tool_use_items: 0,
+        }
+      );
+    } catch {}
+    finalizeCapture(outcome === "ok" ? "completed" : outcome);
     recordStreamOutcome(outcome);
     endBackendSpan(outcome);
     try {

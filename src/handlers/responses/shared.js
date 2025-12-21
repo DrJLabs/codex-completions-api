@@ -99,7 +99,8 @@ export const detectCopilotRequest = (req) => {
   const headers = req?.headers || {};
   const ua = String(headers["user-agent"] || "").toLowerCase();
   const hasCopilotTrace = Boolean(headers["x-copilot-trace-id"] || headers["x-trace-id"]);
-  return ua.includes("obsidian/") || hasCopilotTrace;
+  const isObsidianClient = ua.includes("obsidian/") || ua.startsWith("un/js");
+  return isObsidianClient || hasCopilotTrace;
 };
 
 export const resolveResponsesOutputMode = ({ req, defaultValue, copilotDefault }) => {

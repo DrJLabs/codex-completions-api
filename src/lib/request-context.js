@@ -11,6 +11,17 @@ export function ensureReqId(res) {
   return id;
 }
 
+export function applyProxyTraceHeaders(res) {
+  if (!res || typeof res.setHeader !== "function") return null;
+  const reqId = ensureReqId(res);
+  const existing =
+    typeof res.getHeader === "function" ? res.getHeader("x-proxy-trace-id") : undefined;
+  if (!existing) {
+    res.setHeader("x-proxy-trace-id", reqId);
+  }
+  return reqId;
+}
+
 export function setHttpContext(res, { route, mode }) {
   if (!res.locals) res.locals = {};
   res.locals.httpRoute = route;

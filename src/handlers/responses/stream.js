@@ -7,8 +7,10 @@ import {
 import { createResponsesStreamAdapter } from "./stream-adapter.js";
 import { config as CFG } from "../../config/index.js";
 import { logResponsesIngressRaw } from "./ingress-logging.js";
+import { applyProxyTraceHeaders } from "../../lib/request-context.js";
 
 export async function postResponsesStream(req, res) {
+  applyProxyTraceHeaders(res);
   const originalBody = req.body || {};
   const chatBody = { ...originalBody };
   chatBody.stream = true;
@@ -31,7 +33,6 @@ export async function postResponsesStream(req, res) {
   locals.endpoint_mode = "responses";
   locals.routeOverride = "/v1/responses";
   locals.modeOverride = "responses_stream";
-  locals.streamAdapter = createResponsesStreamAdapter(res, originalBody);
 
   const outputModeRequested = req.headers["x-proxy-output-mode"]
     ? String(req.headers["x-proxy-output-mode"])
@@ -44,6 +45,7 @@ export async function postResponsesStream(req, res) {
   const restoreOutputMode = applyDefaultProxyOutputModeHeader(req, outputModeEffective);
   locals.output_mode_requested = outputModeRequested;
   locals.output_mode_effective = outputModeEffective;
+  locals.streamAdapter = createResponsesStreamAdapter(res, originalBody, req);
 
   logResponsesIngressRaw({
     req,
