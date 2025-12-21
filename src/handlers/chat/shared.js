@@ -1,4 +1,6 @@
 import { invalidRequestBody } from "../../lib/errors.js";
+import { detectCopilotRequest } from "../../lib/copilot-detect.js";
+import { detectIngressMarkers } from "../../lib/ingress-guardrail.js";
 
 const PROJECT_DOC_MAX_BYTES = 65536;
 
@@ -359,11 +361,26 @@ const normalizeOutputMode = (raw) => {
   return null;
 };
 
-export function resolveOutputMode({ headerValue, defaultValue } = {}) {
+export function resolveOutputMode({
+  headerValue,
+  defaultValue,
+  copilotDefault,
+  copilotDetection,
+} = {}) {
   const fromHeader = normalizeOutputMode(headerValue);
   if (fromHeader) return fromHeader;
+  if (copilotDetection?.copilot_detect_tier === "high") {
+    const fromCopilot = normalizeOutputMode(copilotDefault);
+    if (fromCopilot) return fromCopilot;
+  }
   const fromDefault = normalizeOutputMode(defaultValue);
   return fromDefault || "obsidian-xml";
+}
+
+export function resolveChatCopilotDetection({ headers, messages, markers } = {}) {
+  const resolvedMarkers = markers || detectIngressMarkers(messages || []);
+  const copilotDetection = detectCopilotRequest({ headers, markers: resolvedMarkers });
+  return { copilotDetection, markers: resolvedMarkers };
 }
 
 export function validateOptionalChatParams(body = {}, { allowJsonSchema = false } = {}) {
