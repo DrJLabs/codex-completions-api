@@ -293,7 +293,7 @@ export function logResponsesIngressRaw({
     const summary = ingressSummary || summarizeResponsesIngress(body, req);
     const detection =
       copilotDetection ||
-      detectCopilotRequest({ headers: req?.headers, markers: summary, responsesSummary: summary });
+      detectCopilotRequest({ headers: req?.headers, responsesSummary: summary });
 
     if (detection) {
       res.locals.copilot_detected = detection.copilot_detected;

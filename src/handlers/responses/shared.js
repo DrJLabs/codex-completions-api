@@ -114,10 +114,10 @@ export const resolveResponsesOutputMode = ({
     return { effective: String(explicit).trim(), source: "header" };
   }
   if (copilotDefault) {
-    if (copilotDetection?.copilot_detect_tier === "high") {
-      return { effective: copilotDefault, source: "copilot" };
-    }
-    if (!copilotDetection && detectCopilotRequest(req)) {
+    const isCopilot = copilotDetection
+      ? copilotDetection.copilot_detect_tier === "high"
+      : detectCopilotRequest(req);
+    if (isCopilot) {
       return { effective: copilotDefault, source: "copilot" };
     }
   }

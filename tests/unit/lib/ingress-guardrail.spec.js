@@ -76,6 +76,31 @@ describe("ingress guardrail helpers", () => {
     }
   });
 
+  test("maybeInjectIngressGuardrail injects when saved memories are present", () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const baseMessages = [
+        { role: "user", content: "<saved_memories>hi</saved_memories>\nSay hello." },
+      ];
+      const res = { locals: { req_id: "req_test", routeOverride: "/v1/chat/completions" } };
+      const req = { headers: { "user-agent": "test" } };
+
+      const result = maybeInjectIngressGuardrail({
+        req,
+        res,
+        messages: baseMessages,
+        enabled: true,
+        route: "/v1/chat/completions",
+        mode: "chat_nonstream",
+        endpointMode: "chat_completions",
+      });
+      expect(result.injected).toBe(true);
+      expect(result.messages[0]).toMatchObject({ role: "system" });
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   test("maybeInjectIngressGuardrail does not treat tag in user content as existing guardrail", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

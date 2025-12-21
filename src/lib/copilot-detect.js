@@ -1,12 +1,11 @@
 const isNonEmptyString = (value) => typeof value === "string" && value.trim() !== "";
 
 const normalizeHeaders = (headers = {}) => {
-  const normalized = {};
+  const normalized = new Map();
   for (const [key, value] of Object.entries(headers)) {
     const lowered = String(key || "").toLowerCase();
     if (!lowered) continue;
-    // eslint-disable-next-line security/detect-object-injection -- normalized header keys
-    normalized[lowered] = Array.isArray(value) ? value[0] : value;
+    normalized.set(lowered, Array.isArray(value) ? value[0] : value);
   }
   return normalized;
 };
@@ -38,12 +37,12 @@ export const detectCopilotRequest = ({
   const normalized = normalizeHeaders(headers);
   const reasons = [];
 
-  const traceHeader = normalized["x-copilot-trace-id"];
+  const traceHeader = normalized.get("x-copilot-trace-id");
   const hasTraceHeader = isNonEmptyString(traceHeader);
   if (hasTraceHeader) addReason(reasons, "header_x_copilot_trace_id");
 
-  const referer = normalized["http-referer"];
-  const title = normalized["x-title"];
+  const referer = normalized.get("http-referer");
+  const title = normalized.get("x-title");
   const hasOpenRouterPair =
     referer === "https://obsidiancopilot.com" && title === "Obsidian Copilot";
   if (hasOpenRouterPair) addReason(reasons, "header_openrouter_pair");
@@ -66,7 +65,7 @@ export const detectCopilotRequest = ({
   );
   if (toolResultTag) addReason(reasons, "marker_tool_result");
 
-  const ua = String(normalized["user-agent"] || "");
+  const ua = String(normalized.get("user-agent") || "");
   const uaLower = ua.toLowerCase();
   const uaIsObsidian = uaLower.includes("obsidian/");
   const uaIsUnjs = uaLower.startsWith("un/js");
