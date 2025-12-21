@@ -5,6 +5,7 @@ const FIXTURE_ROOT = path.join(process.cwd(), "tests", "fixtures", "obsidian-cop
 
 export async function loadCopilotResponsesFixture(filename) {
   const fullPath = path.join(FIXTURE_ROOT, filename);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- fixtures live under repo root
   const raw = await readFile(fullPath, "utf8");
   return JSON.parse(raw);
 }
