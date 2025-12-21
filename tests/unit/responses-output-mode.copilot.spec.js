@@ -10,6 +10,11 @@ describe("responses output mode for Copilot", () => {
     expect(detectCopilotRequest(req)).toBe(true);
   });
 
+  it("detects Copilot via un/JS User-Agent", () => {
+    const req = { headers: { "user-agent": "un/JS 6.5.0" } };
+    expect(detectCopilotRequest(req)).toBe(true);
+  });
+
   it("detects Copilot via trace header", () => {
     const req = { headers: { "x-copilot-trace-id": "copilot-test" } };
     expect(detectCopilotRequest(req)).toBe(true);
