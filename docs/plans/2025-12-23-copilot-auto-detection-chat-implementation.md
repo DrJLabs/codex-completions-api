@@ -1,7 +1,5 @@
 # Copilot Auto-Detection for Chat Completions Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Add feature-flagged Copilot auto-detection for `/v1/chat/completions` that mirrors the responses behavior (high-confidence only, header override always wins).
 
 **Architecture:** Compute detection from headers + chat markers, store `copilot_detect_*` in `res.locals`, and allow high-tier detection to override output mode when `PROXY_COPILOT_AUTO_DETECT=true` and no explicit `x-proxy-output-mode` is set.

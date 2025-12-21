@@ -200,6 +200,10 @@ export function summarizeResponsesIngress(body = {}, req = null) {
   let inputItemCount = null;
   let inputMessageCount = 0;
 
+  if (isNonEmptyString(input)) {
+    scanValueForMarkers(input, markerState);
+  }
+
   if (Array.isArray(inputItems)) {
     inputItemCount = inputItems.length;
     for (const item of inputItems) {
@@ -292,7 +296,6 @@ export function logResponsesIngressRaw({
       detectCopilotRequest({ headers: req?.headers, markers: summary, responsesSummary: summary });
 
     if (detection) {
-      res.locals = res.locals || {};
       res.locals.copilot_detected = detection.copilot_detected;
       res.locals.copilot_detect_tier = detection.copilot_detect_tier;
       res.locals.copilot_detect_reasons = detection.copilot_detect_reasons;

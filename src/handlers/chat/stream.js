@@ -278,7 +278,6 @@ export async function postChatStream(req, res) {
   if (guardrailResult.injected) {
     messages = guardrailResult.messages;
   }
-  res.locals = res.locals || {};
   const { copilotDetection } = resolveChatCopilotDetection({
     headers: req?.headers,
     messages,
