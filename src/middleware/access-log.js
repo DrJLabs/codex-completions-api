@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { logStructured } from "../services/logging/schema.js";
 import { ensureCopilotTraceContext } from "../lib/trace-ids.js";
+import { detectCopilotRequest } from "../lib/copilot-detect.js";
 
 export default function accessLog() {
   return function accessLogMiddleware(req, res, next) {
@@ -13,12 +14,17 @@ export default function accessLog() {
     res.locals.copilot_trace_id = copilot_trace_id;
     res.locals.copilot_trace_source = source;
     res.locals.copilot_trace_header = header;
+    const detection = detectCopilotRequest({ headers: req.headers });
+    res.locals.copilot_detected = detection.copilot_detected;
+    res.locals.copilot_detect_tier = detection.copilot_detect_tier;
+    res.locals.copilot_detect_reasons = detection.copilot_detect_reasons;
     const trace_id = res.locals.trace_id;
     res.on("finish", () => {
       try {
         const dur_ms = Date.now() - started;
         const ua = req.headers["user-agent"] || "";
         const auth = req.headers.authorization ? "present" : "none";
+        const detectLocals = res.locals || {};
         logStructured(
           {
             component: "http",
@@ -34,6 +40,9 @@ export default function accessLog() {
             copilot_trace_id,
             copilot_trace_source: source,
             copilot_trace_header: header,
+            copilot_detected: detectLocals.copilot_detected ?? false,
+            copilot_detect_tier: detectLocals.copilot_detect_tier ?? null,
+            copilot_detect_reasons: detectLocals.copilot_detect_reasons ?? [],
             method: req.method,
             status: res.statusCode,
             ua,

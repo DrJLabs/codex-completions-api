@@ -10,6 +10,9 @@ const scanTextForMarkers = (text, state) => {
   if (!state.hasRecentConversationsTag && lower.includes("<recent_conversations")) {
     state.hasRecentConversationsTag = true;
   }
+  if (!state.hasSavedMemoriesTag && lower.includes("<saved_memories")) {
+    state.hasSavedMemoriesTag = true;
+  }
   if (!state.hasUseToolTag && lower.includes("<use_tool")) {
     state.hasUseToolTag = true;
   }
@@ -20,7 +23,12 @@ const scanTextForMarkers = (text, state) => {
 
 const scanValueForMarkers = (value, state, depth = 0) => {
   if (!value) return;
-  if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+  if (
+    state.hasRecentConversationsTag &&
+    state.hasSavedMemoriesTag &&
+    state.hasUseToolTag &&
+    state.hasToolResultMarker
+  ) {
     return;
   }
   if (depth > 6) return;
@@ -33,7 +41,12 @@ const scanValueForMarkers = (value, state, depth = 0) => {
   if (Array.isArray(value)) {
     for (const entry of value) {
       scanValueForMarkers(entry, state, depth + 1);
-      if (state.hasRecentConversationsTag && state.hasUseToolTag && state.hasToolResultMarker) {
+      if (
+        state.hasRecentConversationsTag &&
+        state.hasSavedMemoriesTag &&
+        state.hasUseToolTag &&
+        state.hasToolResultMarker
+      ) {
         return;
       }
     }
@@ -49,6 +62,7 @@ const scanValueForMarkers = (value, state, depth = 0) => {
 export function detectIngressMarkers(messages = []) {
   const state = {
     hasRecentConversationsTag: false,
+    hasSavedMemoriesTag: false,
     hasUseToolTag: false,
     hasToolResultMarker: false,
   };
@@ -61,6 +75,7 @@ export function detectIngressMarkers(messages = []) {
   }
   return {
     has_recent_conversations_tag: state.hasRecentConversationsTag,
+    has_saved_memories_tag: state.hasSavedMemoriesTag,
     has_use_tool_tag: state.hasUseToolTag,
     has_tool_result_marker: state.hasToolResultMarker,
   };
@@ -68,6 +83,7 @@ export function detectIngressMarkers(messages = []) {
 
 export function buildIngressGuardrailContent({ markers } = {}) {
   const hasRecent = Boolean(markers?.has_recent_conversations_tag);
+  const hasSaved = Boolean(markers?.has_saved_memories_tag);
   const hasToolMarkup = Boolean(markers?.has_use_tool_tag);
   const hasToolResult = Boolean(markers?.has_tool_result_marker);
 
@@ -81,6 +97,7 @@ export function buildIngressGuardrailContent({ markers } = {}) {
 
   const reasons = [];
   if (hasRecent) reasons.push("recent_conversations");
+  if (hasSaved) reasons.push("saved_memories");
   if (hasToolMarkup) reasons.push("use_tool");
   if (hasToolResult) reasons.push("tool_result");
 

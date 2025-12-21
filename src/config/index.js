@@ -86,6 +86,7 @@ export const config = {
   PROXY_OUTPUT_MODE: str("PROXY_OUTPUT_MODE", "obsidian-xml").toLowerCase(),
   PROXY_RESPONSES_OUTPUT_MODE: str("PROXY_RESPONSES_OUTPUT_MODE", "openai-json").toLowerCase(),
   PROXY_RESPONSES_DEFAULT_MAX_TOKENS: num("PROXY_RESPONSES_DEFAULT_MAX_TOKENS", 0),
+  PROXY_COPILOT_AUTO_DETECT: bool("PROXY_COPILOT_AUTO_DETECT", "false"),
   PROXY_APPROVAL_POLICY: resolveApprovalPolicy(),
   PROXY_IGNORE_CLIENT_SYSTEM_PROMPT: resolveIgnoreClientSystemPrompt(),
   PROXY_TITLE_GEN_INTERCEPT: resolveTitleGenIntercept(),
