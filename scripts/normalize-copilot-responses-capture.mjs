@@ -90,8 +90,15 @@ async function main() {
   let nonstream = null;
 
   for (const file of files) {
-    const raw = await readFile(path.join(RAW_DIR, file), "utf8");
-    const payload = JSON.parse(raw);
+    let payload;
+    try {
+      const raw = await readFile(path.join(RAW_DIR, file), "utf8");
+      payload = JSON.parse(raw);
+    } catch (err) {
+      const message = err && typeof err === "object" ? err.message : String(err || "");
+      console.error(`[copilot-capture] skipping malformed file: ${file}`, message);
+      continue;
+    }
     const normalized = normalizeCapture(payload);
     const isStream = isStreamCapture(payload);
     const toolEvents = hasToolEvents(payload);

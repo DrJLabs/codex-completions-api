@@ -17,7 +17,9 @@ export const summarizeText = (text) => {
 };
 
 export const summarizeTextParts = (parts = []) => {
-  const text = Array.isArray(parts) ? parts.filter((part) => typeof part === "string").join("") : "";
+  const text = Array.isArray(parts)
+    ? parts.filter((part) => typeof part === "string").join("")
+    : "";
   return summarizeText(text);
 };
 

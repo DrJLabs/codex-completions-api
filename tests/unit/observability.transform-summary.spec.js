@@ -15,7 +15,7 @@ describe("transform summary helpers", () => {
 
   test("summarizeToolCalls hashes arguments without exposing raw text", () => {
     const summary = summarizeToolCalls([
-      { function: { name: "localSearch", arguments: "{\"query\":\"hello\"}" } },
+      { function: { name: "localSearch", arguments: '{"query":"hello"}' } },
     ]);
     expect(summary.tool_call_count).toBe(1);
     expect(summary.tool_names).toContain("localSearch");
