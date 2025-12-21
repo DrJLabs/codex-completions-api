@@ -28,6 +28,7 @@ services:
       - CODEX_FORCE_PROVIDER=
       # In dev, prefer streaming by default unless the client explicitly sets stream:false.
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}
+      - PROXY_RESPONSES_OUTPUT_MODE=${PROXY_RESPONSES_OUTPUT_MODE:-}
       - PROXY_USE_APP_SERVER=${PROXY_USE_APP_SERVER:-true}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
@@ -45,6 +46,15 @@ services:
       - PROXY_LOG_CORS_ORIGIN=${PROXY_LOG_CORS_ORIGIN:-true}
       # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
       - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
+      # Copilot capture (sanitized transcripts)
+      - PROXY_CAPTURE_CHAT_TRANSCRIPTS=${PROXY_CAPTURE_CHAT_TRANSCRIPTS:-}
+      - PROXY_CAPTURE_CHAT_DIR=${PROXY_CAPTURE_CHAT_DIR:-/app/test-results/chat-copilot/raw}
+      - PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS=${PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS:-}
+      - PROXY_CAPTURE_CHAT_RAW_DIR=${PROXY_CAPTURE_CHAT_RAW_DIR:-/app/test-results/chat-copilot/raw-unredacted}
+      - PROXY_CAPTURE_RESPONSES_TRANSCRIPTS=${PROXY_CAPTURE_RESPONSES_TRANSCRIPTS:-}
+      - PROXY_CAPTURE_RESPONSES_DIR=${PROXY_CAPTURE_RESPONSES_DIR:-/app/test-results/responses-copilot/raw}
+      - PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS=${PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS:-}
+      - PROXY_CAPTURE_RESPONSES_RAW_DIR=${PROXY_CAPTURE_RESPONSES_RAW_DIR:-/app/test-results/responses-copilot/raw-unredacted}
     ports:
       - 127.0.0.1:${DEV_PORT:-18010}:11435
     volumes:
@@ -52,6 +62,8 @@ services:
       - ./.codev:/home/node/.codex
       # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
       - ./scripts:/app/scripts:ro
+      # Persist Copilot capture artifacts
+      - ./test-results:/app/test-results
     restart: unless-stopped
     networks:
       - traefik

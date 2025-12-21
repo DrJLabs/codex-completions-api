@@ -42,9 +42,20 @@ import { createJsonRpcChildAdapter } from "../../services/transport/child-adapte
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
 import { requireModel } from "./require-model.js";
 import { mapTransportError } from "../../services/transport/index.js";
-import { ensureReqId, setHttpContext, getHttpContext } from "../../lib/request-context.js";
+import {
+  applyProxyTraceHeaders,
+  ensureReqId,
+  setHttpContext,
+  getHttpContext,
+} from "../../lib/request-context.js";
 import { logHttpRequest } from "../../dev-trace/http.js";
 import { maybeInjectIngressGuardrail } from "../../lib/ingress-guardrail.js";
+import { captureChatNonStream } from "./capture.js";
+import {
+  summarizeTextParts,
+  summarizeToolCalls,
+} from "../../lib/observability/transform-summary.js";
+import { logStructured } from "../../services/logging/schema.js";
 
 const fingerprintToolCall = (record) => {
   if (!record || typeof record !== "object") return null;
@@ -335,6 +346,7 @@ export async function postChatNonStream(req, res) {
   const mode = res.locals?.modeOverride || "chat_nonstream";
   setHttpContext(res, { route, mode });
   const reqId = ensureReqId(res);
+  applyProxyTraceHeaders(res);
   installJsonLogger(res);
   const started = Date.now();
   let responded = false;
@@ -497,6 +509,19 @@ export async function postChatNonStream(req, res) {
   };
 
   const body = req.body || {};
+  const originalBody = (() => {
+    try {
+      return structuredClone(body);
+    } catch {
+      try {
+        return JSON.parse(JSON.stringify(body));
+      } catch {
+        return {};
+      }
+    }
+  })();
+  res.locals = res.locals || {};
+  res.locals.request_body_original = originalBody;
   logHttpRequest({
     req,
     res,
@@ -598,6 +623,11 @@ export async function postChatNonStream(req, res) {
   });
   res.setHeader("x-proxy-output-mode", outputMode);
   const isObsidianOutput = outputMode === "obsidian-xml";
+  res.locals.output_mode_requested = req.headers["x-proxy-output-mode"]
+    ? String(req.headers["x-proxy-output-mode"])
+    : null;
+  res.locals.output_mode_effective = outputMode;
+  if (!res.locals.endpoint_mode) res.locals.endpoint_mode = "chat";
 
   const backendMode = selectBackendMode();
   const idleTimeoutMs =
@@ -833,6 +863,7 @@ export async function postChatNonStream(req, res) {
   let sawTaskComplete = false;
   let totalToolCallCount = 0;
   let hasTruncatedToolCalls = false;
+  let summaryEmitted = false;
   const computeFinal = () =>
     getPrimaryContent() ||
     stripAnsi(out).trim() ||
@@ -1042,6 +1073,40 @@ export async function postChatNonStream(req, res) {
     applyCors(req, res);
 
     if (statusCode !== 200 && errorBody) {
+      if (!summaryEmitted) {
+        summaryEmitted = true;
+        try {
+          logStructured(
+            {
+              component: "chat",
+              event: "chat_transform_summary",
+              level: "info",
+              req_id: reqId,
+              trace_id: res.locals?.trace_id,
+              route: "/v1/chat/completions",
+              mode: "chat_nonstream",
+              model: requestedModel,
+            },
+            {
+              endpoint_mode: res.locals?.endpoint_mode || "chat",
+              copilot_trace_id: res.locals?.copilot_trace_id || null,
+              output_mode_requested: res.locals?.output_mode_requested ?? null,
+              output_mode_effective: res.locals?.output_mode_effective ?? null,
+              response_shape_version: "chat_v1_nonstream_openai",
+              finish_reason: canonicalReason || null,
+              status: statusCode,
+              tool_calls_detected: 0,
+              tool_calls_emitted: 0,
+              tool_names: [],
+              tool_names_truncated: false,
+              output_text_bytes: 0,
+              output_text_hash: null,
+              xml_in_text: false,
+              tool_use_items: 0,
+            }
+          );
+        } catch {}
+      }
       const emissionTrigger = resolveEmissionTrigger(reasonTrail);
       logUsageFailure({
         req,
@@ -1088,6 +1153,80 @@ export async function postChatNonStream(req, res) {
       choices,
       usage: aggregatedUsage,
     };
+
+    if (!summaryEmitted) {
+      summaryEmitted = true;
+      try {
+        const contentParts = [];
+        const toolCalls = [];
+        for (const choice of choices) {
+          const message = choice?.message || {};
+          if (typeof message.content === "string") {
+            contentParts.push(message.content);
+          } else if (Array.isArray(message.content)) {
+            message.content.forEach((item) => {
+              if (item && typeof item.text === "string") {
+                contentParts.push(item.text);
+              } else if (typeof item === "string") {
+                contentParts.push(item);
+              }
+            });
+          }
+          if (Array.isArray(message.tool_calls)) {
+            toolCalls.push(...message.tool_calls);
+          }
+          if (message.function_call) {
+            toolCalls.push({
+              id: message.function_call?.id,
+              type: "function",
+              function: {
+                name: message.function_call?.name,
+                arguments: message.function_call?.arguments,
+              },
+            });
+          }
+        }
+        const textSummary = summarizeTextParts(contentParts);
+        const toolSummary = summarizeToolCalls(toolCalls);
+        logStructured(
+          {
+            component: "chat",
+            event: "chat_transform_summary",
+            level: "info",
+            req_id: reqId,
+            trace_id: res.locals?.trace_id,
+            route: "/v1/chat/completions",
+            mode: "chat_nonstream",
+            model: requestedModel,
+          },
+          {
+            endpoint_mode: res.locals?.endpoint_mode || "chat",
+            copilot_trace_id: res.locals?.copilot_trace_id || null,
+            output_mode_requested: res.locals?.output_mode_requested ?? null,
+            output_mode_effective: res.locals?.output_mode_effective ?? null,
+            response_shape_version: "chat_v1_nonstream_openai",
+            finish_reason: canonicalReason || null,
+            status: statusCode,
+            tool_calls_detected: toolSummary.tool_call_count,
+            tool_calls_emitted: toolSummary.tool_call_count,
+            tool_names: toolSummary.tool_names,
+            tool_names_truncated: toolSummary.tool_names_truncated,
+            output_text_bytes: textSummary.output_text_bytes,
+            output_text_hash: textSummary.output_text_hash,
+            xml_in_text: textSummary.xml_in_text,
+            tool_use_items: 0,
+          }
+        );
+      } catch {}
+    }
+
+    captureChatNonStream({
+      req,
+      res,
+      requestBody: originalBody,
+      responseBody: payload,
+      outputModeEffective: outputMode,
+    });
 
     respondWithJson(res, statusCode, payload);
   };

@@ -6,6 +6,12 @@ import { writeSseChunk } from "../../services/sse.js";
 import { appendProtoEvent, LOG_PROTO } from "../../dev-logging.js";
 import { ensureReqId } from "../../lib/request-context.js";
 import { logStructured, sha256, shouldLogVerbose, preview } from "../../services/logging/schema.js";
+import { createResponsesStreamCapture } from "./capture.js";
+import {
+  summarizeTextParts,
+  summarizeToolCalls,
+  summarizeToolUseItems,
+} from "../../lib/observability/transform-summary.js";
 
 const DEFAULT_ROLE = "assistant";
 const OUTPUT_DELTA_EVENT = "response.output_text.delta";
@@ -58,10 +64,16 @@ const getDeltaBytes = (payload) => {
   return delta ? Buffer.byteLength(delta, "utf8") : null;
 };
 
-export function createResponsesStreamAdapter(res, requestBody = {}) {
+export function createResponsesStreamAdapter(res, requestBody = {}, req = null) {
   const toolCallAggregator = createToolCallAggregator();
   const choiceStates = new Map();
   const eventCounts = new Map();
+  const streamCapture = createResponsesStreamCapture({
+    req: req || res?.req,
+    res,
+    requestBody,
+    outputModeEffective: res?.locals?.output_mode_effective ?? null,
+  });
   const state = {
     responseId: null,
     chatCompletionId: null,
@@ -72,6 +84,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     createdEmitted: false,
     finished: false,
     eventSeq: 0,
+    outputTextHasUseTool: false,
+    transformSummaryEmitted: false,
   };
 
   const recordEvent = (event) => {
@@ -123,6 +137,60 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     }
   };
 
+  const emitTransformSummary = (outcome, responsePayload = null) => {
+    if (state.transformSummaryEmitted) return;
+    state.transformSummaryEmitted = true;
+    try {
+      const textParts = [];
+      for (const choiceState of choiceStates.values()) {
+        if (choiceState?.textParts?.length) {
+          textParts.push(...choiceState.textParts);
+        }
+      }
+      const textSummary = summarizeTextParts(textParts);
+      const flattened = [];
+      for (const [index] of choiceStates.entries()) {
+        const snapshot = toolCallAggregator.snapshot({ choiceIndex: index });
+        snapshot.forEach((record) => flattened.push(record));
+      }
+      const toolSummary = summarizeToolCalls(flattened);
+      const toolUseSummary = responsePayload
+        ? summarizeToolUseItems(responsePayload.output)
+        : { tool_use_count: 0, tool_use_names: [] };
+      const finishReasons = Array.from(state.finishReasons);
+      logStructured(
+        {
+          component: "responses",
+          event: "responses_transform_summary",
+          level: outcome === "failed" ? "error" : "info",
+          req_id: res.locals?.req_id || ensureReqId(res),
+          trace_id: res.locals?.trace_id,
+          route: res.locals?.routeOverride || RESPONSES_ROUTE,
+          mode: res.locals?.modeOverride || res.locals?.mode || "responses_stream",
+          model: state.model || requestBody?.model,
+        },
+        {
+          endpoint_mode: res.locals?.endpoint_mode || "responses",
+          copilot_trace_id: res.locals?.copilot_trace_id || null,
+          output_mode_requested: res.locals?.output_mode_requested ?? null,
+          output_mode_effective: res.locals?.output_mode_effective ?? null,
+          response_shape_version: RESPONSE_SHAPE_VERSION,
+          status: responsePayload?.status || state.status || null,
+          finish_reason: finishReasons[0] || null,
+          tool_calls_detected: toolSummary.tool_call_count,
+          tool_calls_emitted: toolSummary.tool_call_count,
+          tool_names: toolSummary.tool_names,
+          tool_names_truncated: toolSummary.tool_names_truncated,
+          tool_use_items: toolUseSummary.tool_use_count,
+          tool_use_names: toolUseSummary.tool_use_names,
+          output_text_bytes: textSummary.output_text_bytes,
+          output_text_hash: textSummary.output_text_hash,
+          xml_in_text: state.outputTextHasUseTool || textSummary.xml_in_text,
+        }
+      );
+    } catch {}
+  };
+
   let writeChain = Promise.resolve();
   const writeEventInternal = async (event, payload) => {
     if (res.writableEnded) return;
@@ -167,6 +235,7 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
     }
   };
   const writeEvent = (event, payload) => {
+    if (streamCapture) streamCapture.record(event, payload);
     writeChain = writeChain.then(() => writeEventInternal(event, payload));
     return writeChain;
   };
@@ -204,6 +273,9 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
   const appendTextSegment = (choiceState, index, text) => {
     if (!isNonEmptyString(text)) return;
     ensureCreated();
+    if (!state.outputTextHasUseTool && text.toLowerCase().includes("<use_tool")) {
+      state.outputTextHasUseTool = true;
+    }
     choiceState.textParts.push(text);
     writeEvent(OUTPUT_DELTA_EVENT, {
       type: OUTPUT_DELTA_EVENT,
@@ -519,6 +591,8 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       },
     });
     writeEvent("done", "[DONE]");
+    if (streamCapture) streamCapture.finalize("failed");
+    emitTransformSummary("failed");
     logEventSummary("failed", { message });
     endStream();
     return false;
@@ -665,11 +739,13 @@ export function createResponsesStreamAdapter(res, requestBody = {}) {
       responsePayload.id = state.responseId || responsePayload.id;
       responsePayload.status = state.status || responsePayload.status || "completed";
 
+      emitTransformSummary("completed", responsePayload);
       writeEvent("response.completed", {
         type: "response.completed",
         response: responsePayload,
       });
       writeEvent("done", "[DONE]");
+      if (streamCapture) streamCapture.finalize("completed");
       logEventSummary("completed", { finish_reasons: Array.from(state.finishReasons) });
       endStream();
       return true;
