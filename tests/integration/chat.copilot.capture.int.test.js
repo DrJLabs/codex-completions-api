@@ -20,6 +20,7 @@ const readLatestCapture = async () => {
   if (!files.length) return null;
   const sorted = files.slice().sort();
   const file = sorted[sorted.length - 1];
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- fixture path under temp test dir
   const raw = await fs.readFile(path.join(CAPTURE_DIR, file), "utf8");
   return JSON.parse(raw);
 };

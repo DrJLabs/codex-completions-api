@@ -9,12 +9,6 @@ import {
   loadCopilotResponsesFixture,
 } from "../shared/copilot-fixtures.js";
 
-const collectDeltas = (entries) =>
-  entries
-    .filter((entry) => entry?.type === "data" && entry.event === "response.output_text.delta")
-    .map((entry) => entry.data?.delta || "")
-    .join("");
-
 describe("copilot responses fixtures", () => {
   let serverCtx;
 
@@ -31,6 +25,7 @@ describe("copilot responses fixtures", () => {
   });
 
   const nonstreamPath = path.join(COPILOT_RESPONSES_FIXTURE_ROOT, "responses-nonstream.json");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- fixture path under repo root
   const nonstreamTest = existsSync(nonstreamPath) ? test : test.skip;
 
   nonstreamTest("accepts nonstream fixture request shape", async () => {

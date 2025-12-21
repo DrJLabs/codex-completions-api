@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable security/detect-non-literal-fs-filename */
 import { readdir, readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
@@ -27,6 +28,7 @@ const normalizeValue = (value, key = "") => {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") {
     if (Object.prototype.hasOwnProperty.call(PLACEHOLDERS, key)) {
+      // eslint-disable-next-line security/detect-object-injection -- placeholder keys are constrained
       return PLACEHOLDERS[key];
     }
     return value;
@@ -36,6 +38,7 @@ const normalizeValue = (value, key = "") => {
   if (!isPlainObject(value)) return value;
   const next = {};
   for (const [entryKey, entryValue] of Object.entries(value)) {
+    // eslint-disable-next-line security/detect-object-injection -- normalize captured keys
     next[entryKey] = normalizeValue(entryValue, entryKey);
   }
   return next;

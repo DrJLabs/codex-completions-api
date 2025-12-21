@@ -74,12 +74,14 @@ export const createCaptureSanitizers = ({
     if (key === "metadata") {
       const redacted = {};
       for (const entryKey of Object.keys(value)) {
+        // eslint-disable-next-line security/detect-object-injection -- redact known metadata keys
         redacted[entryKey] = REDACTED;
       }
       return redacted;
     }
     const next = {};
     for (const [entryKey, entryValue] of Object.entries(value)) {
+      // eslint-disable-next-line security/detect-object-injection -- sanitize nested keys
       next[entryKey] = sanitizeValue(entryValue, entryKey);
     }
     return next;
@@ -100,6 +102,7 @@ export const createCaptureSanitizers = ({
         .toLowerCase()
         .trim();
       if (!key || !headerAllow.has(key)) continue;
+      // eslint-disable-next-line security/detect-object-injection -- normalized header keys
       result[key] = Array.isArray(rawValue)
         ? rawValue.map((value) => sanitizeHeaderValue(key, value))
         : sanitizeHeaderValue(key, rawValue);
@@ -122,6 +125,7 @@ export const createCaptureSanitizers = ({
         .toLowerCase()
         .trim();
       if (!key) continue;
+      // eslint-disable-next-line security/detect-object-injection -- normalized header keys
       result[key] = Array.isArray(rawValue)
         ? rawValue.map((value) => sanitizeRawHeaderValue(key, value))
         : sanitizeRawHeaderValue(key, rawValue);

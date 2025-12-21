@@ -68,7 +68,6 @@ const summarizeChatIngress = (body = {}) => {
 };
 
 const buildCaptureMetadata = ({
-  req,
   res,
   captureId,
   outputModeEffective,
@@ -93,6 +92,7 @@ const buildCaptureMetadata = ({
 
 const resolveCaptureId = (req, suffix) => {
   const headers = req?.headers || {};
+  // eslint-disable-next-line security/detect-object-injection -- constant header lookup
   const headerValue = headers[CAPTURE_ID_HEADER];
   const base =
     sanitizeCaptureId(headerValue) ||
@@ -109,7 +109,9 @@ const resolveRawCaptureDir = () =>
 
 const writeCaptureFile = async (dir, filename, payload) => {
   const target = path.join(dir, filename);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- capture path is config-derived
   await mkdir(path.dirname(target), { recursive: true });
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- capture path is config-derived
   await writeFile(target, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return target;
 };
