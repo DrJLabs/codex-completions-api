@@ -43,6 +43,7 @@ docs/private/
 .codev/sessions/
 .codev/rollouts/
 .codev/docs/
+.codev/skills/
 .codev/log/
 .codev/*.log
 .codev/*.ndjson

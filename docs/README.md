@@ -40,6 +40,7 @@ This folder is the canonical index for repository documentation. Update this fil
 - `app-server-migration/` — JSON-RPC schema exports and migration notes
 - `logging-gaps/README.md` — observability gap tracker
 - `codex-longhorizon/INDEX_TASK_DOCS.md` — internal survey/task index
+- `_archive/` — retired stories, retrospectives, sprint artifacts, validation reports, and diagrams
 
 ## Doc hygiene
 

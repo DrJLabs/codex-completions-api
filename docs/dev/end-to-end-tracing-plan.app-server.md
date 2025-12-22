@@ -134,9 +134,9 @@ The design must **not** change external API behavior or headers; it is observabi
 
 - `src/services/transport/child-adapter.js` (or similar), often named `JsonRpcChildAdapter`.
 - Related stories:
-  - `docs/stories/1-4-establish-json-rpc-transport-channel.md`
-  - `docs/stories/2-2-implement-request-translation-layer.md`
-  - `docs/stories/2-3-implement-streaming-response-adapter.md`
+  - `docs/_archive/stories/1-4-establish-json-rpc-transport-channel.md`
+  - `docs/_archive/stories/2-2-implement-request-translation-layer.md`
+  - `docs/_archive/stories/2-3-implement-streaming-response-adapter.md`
 - `docs/chat-completions-request-flow.md` describes the high-level flow.
 
 **App-server responsibilities**

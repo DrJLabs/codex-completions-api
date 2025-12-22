@@ -1,0 +1,74 @@
+<story-context id="codex-completions-api:stories:1-3-implement-worker-supervisor-and-lifecycle-hooks" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>3</storyId>
+    <title>Implement Worker Supervisor and Lifecycle Hooks</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-31T09:30:06+00:00</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/_archive/stories/1-3-implement-worker-supervisor-and-lifecycle-hooks.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>backend developer</asA>
+    <iWant>a supervised process that starts, restarts, and terminates the Codex App Server cleanly</iWant>
+    <soThat>the API can rely on a persistent worker without manual intervention</soThat>
+    <tasks>- AC#1 – Introduce a supervisor module under `src/services/worker/` to start and monitor the Codex App Server.
+  - Create lifecycle orchestration that boots the worker during startup and streams stdout/stderr through structured logging.
+  - Hook supervisor bootstrap into the app-server feature flag path and reuse the packaged CLI plus workdir from Story 1.2.
+  - Extend integration coverage to confirm supervisor boot logs and readiness gating.
+- AC#2 – Implement bounded restart/backoff handling with metrics and structured warnings.
+  - Emit restart telemetry (for example, `codex_worker_restarts_total`, `codex_worker_latency_ms`) and include exit codes/backoff windows in logs.
+  - Add unit coverage for the backoff scheduler and integration scenarios that simulate crash loops.
+- AC#3 – Deliver graceful shutdown and request draining.
+  - Toggle readiness false, drain in-flight requests, and enforce `WORKER_SHUTDOWN_GRACE_MS` prior to terminating the worker.
+  - Surface retriable errors for drained requests and restore readiness once the worker handshake succeeds.
+  - Add integration/E2E coverage for SIGTERM handling and health endpoint behavior.</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Worker supervisor boots the shared Codex App Server on proxy startup, funnels stdout/stderr into structured logging, and keeps observability hooks active across lifecycle events. (docs/epics.md#story-13-implement-worker-supervisor-and-lifecycle-hooks; docs/architecture.md#implementation-patterns)
+2. Supervisor restarts the worker with bounded exponential backoff, exposing restart metrics and warnings so operators can detect crash loops. (docs/epics.md#story-13-implement-worker-supervisor-and-lifecycle-hooks; docs/architecture.md#implementation-patterns)
+3. Shutdown drains in-flight work, updates readiness, and terminates the worker within the configured grace period while presenting retriable errors to clients. (docs/epics.md#story-13-implement-worker-supervisor-and-lifecycle-hooks; docs/PRD.md#user-journeys)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/epics.md#story-13-implement-worker-supervisor-and-lifecycle-hooks — Epic scope for supervisor startup, restart policy, and graceful shutdown acceptance criteria.
+- docs/PRD.md#user-journeys — "Worker Restart With Graceful Recovery" timeline establishing restart and readiness expectations.
+- docs/app-server-migration/codex-completions-api-migration.md#b-process-model-change-singleton-child — Migration guidance for running a singleton app-server worker with health probes and restarts.
+- docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read — JSON-RPC initialization sequence the supervisor must trigger before transport work.
+- docs/architecture.md#implementation-patterns — Logging, metrics, and shutdown conventions that the supervisor must follow.
+- docs/architecture.md#integration-points — Identifies the routers/services the supervisor needs to coordinate with for readiness and telemetry.
+- docs/bmad/architecture/tech-stack.md#testing--qa — Test layering (unit, integration, Playwright, smoke) required for supervisor coverage.
+- docs/bmad/architecture/source-tree.md#src-modules — Source layout clarifying where to place supervisor modules and supporting tests.
+- docs/_archive/stories/1-2-package-codex-cli-with-app-server-capability.md#completion-notes-list — Prior story learnings about packaged CLI paths, smoke checks, and writable `.codex-api/`.
+- docs/research-technical-2025-10-30.md#option-1-codex-app-server-migration — Research rationale for adopting the app-server and the operational implications for supervision.</docs>
+    <code>- src/services/codex-runner.js#L1-L60 — Current Codex process spawner; supervisor can wrap this to ensure shared worker lifecycle and workdir preparation.
+- src/services/backend-mode.js#L1-L80 — Feature flag resolver that toggles proto vs app-server; supervisor bootstrap must defer to this mode.
+- server.js#L1-L40 — HTTP bootstrap and signal handlers; extend to start the supervisor early and coordinate graceful shutdown.
+- src/routes/health.js#L1-L40 — `/healthz` route that reports backend state; requires augmentation to reflect worker readiness and failure conditions.
+- src/app.js#L1-L140 — Express factory wiring routers and middleware; potential insertion point for supervisor-backed readiness/maintenance gates.
+- src/services/concurrency-guard.js#L1-L80 — Provides concurrency snapshots that can integrate with worker capacity management.
+- tests/integration/routes.health.int.test.js#L1-L80 — Existing health endpoint coverage to expand with worker readiness assertions.
+- tests/integration/server.int.test.js#L1-L120 — Server bootstrap tests verifying graceful shutdown behavior, useful when adding supervisor drains.</code>
+    <dependencies>- Container base image `node:22-alpine` (Dockerfile) provides the Node 22 runtime the supervisor must target for process and signal APIs.
+- Runtime packages: `@openai/codex@0.53.0` (shared app-server binary), `express@^4.21.2` (HTTP stack), and `nanoid@^5.1.6` (request IDs) from package.json.
+- Test/tooling packages: `vitest@^4.0.3`, `@playwright/test@^1.56.1`, and `get-port@^7.0.0` (integration harness) shape the verification environment for supervisor lifecycle tests.
+- Observability and lint tooling (ESLint, Prettier, Secretlint) remain part of the verification chain invoked by `npm run verify:all`.</dependencies>
+  </artifacts>
+
+  <constraints>- Maintain writable `.codex-api/` state and avoid bundling secrets when launching the worker, matching deployment safeguards. (docs/architecture.md#deployment-architecture; docs/_archive/stories/1-2-package-codex-cli-with-app-server-capability.md#completion-notes-list)
+- Follow architecture logging/metrics conventions—structured JSON logs plus Prometheus-style counters—for every supervisor lifecycle event. (docs/architecture.md#implementation-patterns)
+- Respect the `PROXY_USE_APP_SERVER` feature flag so proto remains available during rollout toggles. (docs/app-server-migration/codex-completions-api-migration.md#b-process-model-change-singleton-child; src/services/backend-mode.js#L1-L80)
+- Meet PRD restart expectations: restart within ~10 seconds, readiness healthy inside 8 seconds, and return retriable errors during drains. (docs/PRD.md#user-journeys)</constraints>
+  <interfaces>- Supervisor ↔ `codex-runner` (`src/services/codex-runner.js`) to spawn and manage the shared `codex app-server` child with consistent env/cwd.
+- Supervisor ↔ HTTP bootstrap (`server.js`) so startup waits for worker readiness and SIGTERM/SIGINT trigger draining before process exit.
+- Supervisor ↔ health/readiness routes (`src/routes/health.js`, future `/readyz`) to expose worker status, restart counters, and failure reasons.
+- Supervisor ↔ configuration surface (`src/config/index.js`) for timeouts, backoff windows, and feature flags.
+- Supervisor ↔ telemetry pipeline (structured logs + planned metrics export) to feed observability and alerting described in architecture docs.</interfaces>
+  <tests>
+    <standards>Follow the repo-standard pipeline: Vitest unit tests for helpers, Vitest integration tests for HTTP/worker lifecycle, Playwright E2E for streaming/parity, plus smoke scripts that exercise `codex app-server --help` before verification. (docs/bmad/architecture/tech-stack.md#testing--qa)</standards>
+    <locations>tests/unit/**; tests/integration/**; tests/e2e/**; scripts/prod-smoke.sh; scripts/dev-smoke.sh</locations>
+    <ideas>- AC#1 – Add integration coverage that boots the proxy with `PROXY_USE_APP_SERVER=true`, asserts supervisor log lines, and confirms `/healthz` reports `app_server_enabled: true` only after the worker handshake.
+- AC#2 – Simulate repeated worker crashes by pointing `CODEX_BIN` at a stub that exits immediately; verify bounded backoff, restart metrics, and warning logs.
+- AC#3 – Issue SIGTERM during active streaming requests in Playwright to ensure responses drain gracefully, readiness flips to false, and clients receive retryable errors.</ideas>
+  </tests>
+</story-context>
