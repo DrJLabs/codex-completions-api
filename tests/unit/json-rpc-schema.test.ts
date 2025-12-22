@@ -170,6 +170,10 @@ describe("json-rpc schema bindings", () => {
     ensureTranscripts(["streaming-tool-calls.json"], { backend: "app" });
   }, 30000);
 
+  it("pins the schema to Codex CLI 0.77.0", () => {
+    expect(CODEX_CLI_VERSION).toBe("0.77.0");
+  });
+
   it("parses streaming text notifications and token counts", async () => {
     const worker = startWorker();
     try {

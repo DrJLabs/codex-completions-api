@@ -469,6 +469,47 @@ describe("JsonRpcTransport request lifecycle", () => {
     await expect(followUpPending).resolves.toMatchObject({ code: "request_aborted" });
   });
 
+  it("emits unknown notifications for forward compatibility", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-unknown" });
+    context.promise.catch(() => {});
+    const notifications = [];
+    context.emitter.on("notification", (payload) => notifications.push(payload));
+    context.emitter.on("error", () => {});
+
+    writeRpcNotification(child, "codex/event/app_server_v2_deprecation_notice", {
+      conversation_id: "server-conv",
+      msg: { notice: "deprecation" },
+    });
+    await flushAsync();
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      method: "codex/event/app_server_v2_deprecation_notice",
+      params: {
+        conversation_id: "server-conv",
+        msg: { notice: "deprecation" },
+      },
+    });
+
+    transport.cancelContext(context);
+    await context.promise.catch(() => {});
+  });
+
   it("cancels contexts with a default abort error when none is provided", async () => {
     CFG.WORKER_MAX_CONCURRENCY = 1;
     const child = createMockChild();
