@@ -1,7 +1,7 @@
 # Copilot Auto-Detection Tasks (proxy)
 
 ## Background
-- Plan doc: `docs/plans/2025-12-23-copilot-auto-detection.md`
+- Plan doc: `docs/_archive/plans/2025-12-23-copilot-auto-detection.md`
 - Goal: detect Obsidian Copilot reliably enough to switch only those requests to
   `obsidian-xml`, while keeping other clients on `openai-json`.
 
@@ -107,4 +107,3 @@
   - Confirm `x-proxy-output-mode: obsidian-xml` and log fields in `responses_ingress_raw`.
 - Send a non-Copilot request (generic UA, no markers).
   - Confirm `x-proxy-output-mode` remains default and log fields show `copilot_detected=false`.
-
