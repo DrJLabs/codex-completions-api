@@ -58,7 +58,7 @@ Story 3.6 added the plumbing for Keploy-driven snapshots and replays, but the CL
 
 ## References
 
-- Story 3.6 — `docs/bmad/stories/3.6.keploy-snapshot-ci-integration.md`
+- Story 3.6 — `docs/bmad/stories/_archive/3.6.keploy-snapshot-ci-integration.md`
 - `config/keploy.yaml`, `scripts/keploy-start-server.sh`
 - `docs/bmad/architecture/tech-stack.md`
 - Keploy install docs: https://keploy.io/docs
