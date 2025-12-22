@@ -219,7 +219,7 @@ web-bundles/teams/team-fullstack.txt:    title: Change Log
 docs/bmad/stories/2.1.phase-a-spec-and-contracts.md:## Change Log
 docs/bmad/stories/3.11.graceful-shutdown-sigterm-test.md:## Change Log
 docs/bmad/stories/1.6.phase-5-cleanup-and-logging.md:## Change Log
-docs/bmad/stories/3.8.keploy-evidence-toggle.md:## Change Log
+docs/bmad/stories/_archive/3.8.keploy-evidence-toggle.md:## Change Log
 docs/bmad/stories/epic-openai-chat-completions-parity.md:# Change Log
 docs/bmad/stories/1.1.phase-1-config-and-errors-extraction.md:- [ ] Update this story “Change Log” and mark Status → InProgress/Review when ready.
 docs/bmad/stories/1.1.phase-1-config-and-errors-extraction.md:## Change Log
@@ -261,11 +261,11 @@ docs/bmad/stories/4.3.multi-choice-and-error-lexicon.md:## Change Log
 docs/bmad/stories/4.2.streaming-tool-call-blocks.md:## Change Log
 docs/bmad/stories/3.9.streaming-finalizer-finish-reason.md:## Change Log
 docs/bmad/stories/6.1.responses-endpoint-handlers.md:- Change Log:
-docs/bmad/stories/3.7.keploy-cli-rollout.md:## Change Log
+docs/bmad/stories/_archive/3.7.keploy-cli-rollout.md:## Change Log
 docs/bmad/stories/3.4.streaming-concurrency-guard-determinism.md:## Change Log
 docs/bmad/stories/2.5.phase-f-non-stream-tidy.md:## Change Log
 docs/bmad/stories/4.1.finish-reason-canonicalization.md:## Change Log
-docs/bmad/stories/3.6.keploy-snapshot-ci-integration.md:## Change Log
+docs/bmad/stories/_archive/3.6.keploy-snapshot-ci-integration.md:## Change Log
 docs/bmad/stories/2.2.phase-b-streaming-finish-reason-chunk.md:## Change Log
 web-bundles/expansion-packs/bmad-2d-phaser-game-dev/teams/phaser-2d-nodejs-game-team.txt:    - 'Change Log: Requirement changes only'
 web-bundles/expansion-packs/bmad-2d-phaser-game-dev/teams/phaser-2d-nodejs-game-team.txt:### Change Log
