@@ -472,17 +472,21 @@ describe("JsonRpcTransport request lifecycle", () => {
   it("emits unknown notifications for forward compatibility", async () => {
     const child = createMockChild();
     wireJsonResponder(child, (message) => {
-      if (message.method === "initialize") {
-        writeRpcResult(child, message.id, { result: {} });
-      }
-      if (message.method === "newConversation") {
-        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
-      }
-      if (message.method === "addConversationListener") {
-        writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
-      }
-      if (message.method === "sendUserTurn") {
-        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      switch (message.method) {
+        case "initialize":
+          writeRpcResult(child, message.id, { result: {} });
+          break;
+        case "newConversation":
+          writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+          break;
+        case "addConversationListener":
+          writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
+          break;
+        case "sendUserTurn":
+          writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+          break;
+        default:
+          break;
       }
     });
     __setChild(child);
