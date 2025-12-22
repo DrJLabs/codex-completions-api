@@ -36,8 +36,8 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 ### Prerequisites
 
 - Node.js ≥ 22 and npm 10+
-- Codex CLI ≥ 0.71.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
-- `@openai/codex` is intentionally pinned to an exact version (currently 0.71.0) so JSON-RPC schemas and CLI behavior stay deterministic across dev/prod; bump only after coordinating schema/regression updates.
+- Codex CLI ≥ 0.77.0 for the default app-server workflow (install under `.codev/` for dev or `.codex-api/` for prod)
+- `@openai/codex` is intentionally pinned to an exact version (currently 0.77.0) so JSON-RPC schemas and CLI behavior stay deterministic across dev/prod; bump only after coordinating schema/regression updates.
 - Docker + Docker Compose v2 (optional but recommended for parity with production)
 - `curl`/`jq` for quick health checks
 - Legacy proto mode requires Codex CLI ≤ 0.44.x; see [Legacy proto mode](#legacy-proto-mode-codex-cli-044x) for details
@@ -325,7 +325,7 @@ Build context hygiene:
 
 - `PROXY_USE_APP_SERVER=true` boots a worker supervisor that keeps one or more `codex app-server` processes alive.
 - Readiness hinges on the JSON-RPC `initialize` handshake; `/healthz` only reports ready once the worker has completed it.
-- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.71.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
+- Use this mode everywhere (dev, CI, prod). Ensure Codex CLI ≥ 0.77.0 and keep `.codex-api/auth.json` synced from `~/.codex/auth.json` before restarting.
 - Tune worker lifecycle with `WORKER_*_TIMEOUT_MS`, `PROXY_KILL_ON_DISCONNECT`, and `PROXY_WORKER_COUNT` when running on slower hardware or when you need multiple concurrent workers.
 
 ### Legacy proto mode (Codex CLI ≤ 0.44.x)
