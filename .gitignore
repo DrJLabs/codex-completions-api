@@ -18,6 +18,10 @@ bmad-bak/
 .bmad-core/
 .bmad-infrastructure-devops/
 .bmad-ephemeral/
+!docs/_archive/v4-backup/.bmad-core/
+!docs/_archive/v4-backup/.bmad-core/**
+!docs/_archive/v4-backup/.bmad-infrastructure-devops/
+!docs/_archive/v4-backup/.bmad-infrastructure-devops/**
 .serena/
 .worktrees/
 external/*
