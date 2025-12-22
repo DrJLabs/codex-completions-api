@@ -21,13 +21,15 @@ describe("buildAppServerArgs", () => {
     });
     const configArgs = getConfigArgs(args);
 
-    expect(configArgs).toContain('model="gpt-5"');
-    expect(configArgs).toContain('preferred_auth_method="chatgpt"');
-    expect(configArgs).toContain('sandbox_mode="read-only"');
-    expect(configArgs).toContain('model_provider="chatgpt"');
-    expect(configArgs).toContain("parallel_tool_calls=true");
-    expect(configArgs).toContain('model_reasoning_effort="low"');
-    expect(configArgs).toContain('reasoning.effort="low"');
+    expect(configArgs).toEqual([
+      'model="gpt-5"',
+      'preferred_auth_method="chatgpt"',
+      'sandbox_mode="read-only"',
+      'model_provider="chatgpt"',
+      "parallel_tool_calls=true",
+      'model_reasoning_effort="low"',
+      'reasoning.effort="low"',
+    ]);
   });
 
   it("omits reasoning overrides when effort is not allowed", () => {
@@ -41,7 +43,10 @@ describe("buildAppServerArgs", () => {
     });
     const configArgs = getConfigArgs(args);
 
-    expect(configArgs).not.toContain('model_reasoning_effort="high"');
-    expect(configArgs).not.toContain('reasoning.effort="high"');
+    expect(configArgs).toEqual([
+      'model="gpt-5"',
+      'preferred_auth_method="chatgpt"',
+      'sandbox_mode="read-only"',
+    ]);
   });
 });
