@@ -1,0 +1,62 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>5</storyId>
+    <title>Wire readiness and liveness probes to worker state</title>
+    <status>drafted</status>
+    <generatedAt>2025-10-31T16:29:55Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/_archive/stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an SRE,</asA>
+    <iWant>I want the proxy readiness and liveness probes to mirror the Codex worker state,</iWant>
+    <soThat>so that orchestrators only send traffic when the app-server is actually healthy and reconnect quickly after failures.</soThat>
+    <tasks>- [ ] (AC #1) Extend worker supervisor to publish readiness/liveness signals (handshake success, advertised models, restart backoff state) via an exported API consumed by health routes. [Source: docs/_archive/stories/1-3-implement-worker-supervisor-and-lifecycle-hooks.md#dev-notes]
+  - [ ] (AC #1 Testing) Add unit coverage for supervisor readiness state transitions (startup, handshake success, worker exit). [Source: docs/bmad/architecture/tech-stack.md#testing--qa]
+- [ ] (AC #1) Update `src/routes/health.js` readiness handler to consult supervisor state, ensure fallback during startup and failure, and wire logging for probe flips. [Source: docs/bmad/architecture/source-tree.md#src-modules]
+- [ ] (AC #2) Update liveness handler to reflect worker process availability using supervisor monitoring without blocking on handshake completion. [Source: docs/epics.md#story-15-wire-readiness-and-liveness-probes-to-worker-state]
+  - [ ] (AC #2 Testing) Add integration tests simulating worker crash/restart to verify liveness and readiness transitions within the promised 5-second window. [Source: docs/_archive/stories/1-4-establish-json-rpc-transport-channel.md#tasks--subtasks]
+- [ ] (AC #3) Document probe configuration examples for Docker Compose, systemd, and Traefik in the deployment runbook (`docs/app-server-migration/codex-completions-api-migration.md`). [Source: docs/implementation-readiness-report-2025-10-30.md#recommendations]
+  - [ ] (AC #3) Add runbook checklist entry ensuring staged and production environments monitor readiness flips and restart counts. [Source: docs/architecture.md#deployment-architecture]</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Readiness probe stays false until the worker supervisor reports a successful JSON-RPC handshake and advertised models, and flips back to false within 5 seconds if the worker exits or loses handshake state. [Source: docs/epics.md#story-15-wire-readiness-and-liveness-probes-to-worker-state] [Source: docs/PRD.md#functional-requirements]
+2. Liveness probe reports process availability based on the supervisor child process, failing only when the worker is no longer running or restart thresholds are exceeded, while allowing transient restarts under the configured backoff policy. [Source: docs/epics.md#story-15-wire-readiness-and-liveness-probes-to-worker-state] [Source: docs/architecture.md#decision-summary]
+3. Compose/systemd documentation reflects the new probe behavior with example configuration for Traefik, Docker Compose, and systemd targets, including how orchestrators should react to readiness flips. [Source: docs/app-server-migration/codex-completions-api-migration.md#h-configuration--deployment]</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 1.5: Wire readiness and liveness probes to worker state | snippet: Story 1.5 requires the liveness probe to track process availability while readiness remains false until the worker handshake succeeds, flipping back within five seconds when the worker fails. The story also mandates documenting probe configuration for docker-compose and systemd deployments.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document (PRD) | section: Worker Lifecycle & Controls | snippet: FR006 keeps the JSON-RPC worker under supervised restarts with bounded backoff, and FR007 demands readiness and liveness probes before the API is advertised as ready. These controls ensure orchestration only routes traffic to a healthy worker.
+- path: docs/architecture.md | title: Decision Architecture | section: Decision Summary | snippet: The Health & Lifecycle decision extends `/healthz` and `/readyz` to require the worker handshake and graceful drains so readiness mirrors real worker state. The note ties the probes to protecting cutover traffic.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: H. Configuration & deployment | snippet: Deployment guidance shows how docker-compose mounts credentials and configures `CODEX_HOME`, ensuring readiness and liveness probes operate with the correct runtime wiring alongside upgrade and secret-handling practices.
+- path: docs/bmad/architecture/source-tree.md | title: Source Tree — Codex Completions API | section: `src/` Modules | snippet: The source map places `/healthz` in `src/routes/health.js`, indicating probe changes belong in the existing route and highlighting where integration tests live under `tests/`.
+- path: docs/bmad/architecture/tech-stack.md | title: Tech Stack — Codex Completions API | section: Testing & QA | snippet: Testing standards specify Vitest for unit/integration coverage and Playwright for SSE; smoke harnesses hit `/healthz` before broader checks, aligning with probe verification.</docs>
+    <code>- path: src/routes/health.js | kind: route | symbol: healthRouter | lines: 1-24 | reason: Current `/healthz` handler; extend here to publish readiness/liveness and maintain JSON contract.
+- path: src/services/worker/supervisor.js | kind: service | symbol: CodexWorkerSupervisor#getWorkerStatus | lines: 1-374 | reason: Emits running/ready metrics and restart counts; probes should reuse this state instead of duplicating process checks.
+- path: src/services/backend-mode.js | kind: service | symbol: selectBackendMode | lines: 1-37 | reason: Feature-flag switch controlling app-server mode; readiness must respect scenarios where worker backend is disabled.
+- path: src/config/index.js | kind: config | symbol: config.WORKER_* | lines: 1-120 | reason: Provides timeout/backoff configuration (`WORKER_HANDSHAKE_TIMEOUT_MS`, `WORKER_BACKOFF_*`); probe thresholds and telemetry should reference these values.
+- path: tests/integration/routes.health.int.test.js | kind: test | symbol: GET /healthz smoke | lines: 1-43 | reason: Integration coverage asserting `/healthz` payload; update expectations alongside probe changes.
+- path: tests/integration/worker-supervisor.int.test.js | kind: test | symbol: worker supervisor lifecycle | lines: 1-120 | reason: Exercises restart/backoff behavior; extend to cover readiness and liveness flips within required windows.</code>
+    <dependencies>node:
+  - express@^4.21.2 (HTTP routing for `/healthz`)
+  - @openai/codex@0.53.0 (app-server CLI; supervisor readiness derives from this worker)
+  - nanoid@^5.1.6 (request IDs included in health telemetry/logs)
+  - node-fetch@^3.3.2 (integration tests polling `/healthz`)</dependencies>
+  </artifacts>
+
+  <constraints>- Reuse `CodexWorkerSupervisor` state for readiness/liveness; do not spawn separate probes or process checks.
+- Keep probe logic inside `src/routes/health.js` per source-tree conventions; avoid creating new endpoints.
+- Honor configuration knobs (`WORKER_HANDSHAKE_TIMEOUT_MS`, `WORKER_BACKOFF_*`, `PROXY_USE_APP_SERVER`) so behavior matches deployment docs.
+- Emit structured logs describing probe transitions (`reason`, `elapsed_ms`) to feed planned observability dashboards.
+- Update `docs/app-server-migration/codex-completions-api-migration.md` with configuration guidance to satisfy AC #3.</constraints>
+  <interfaces>- name: GET /healthz | kind: REST endpoint | signature: GET /healthz -> { ok, sandbox_mode, backend_mode, app_server_enabled, worker_supervisor:{ready,running,restarts_total,metrics,...} } | path: src/routes/health.js</interfaces>
+  <tests>
+    <standards>Vitest covers unit and integration flows; run `npm run test:integration` for health/supervisor suites and keep Playwright SSE runs plus smoke scripts (`npm run smoke:dev`) to confirm probes before broader checks.</standards>
+    <locations>tests/integration/routes.health.int.test.js, tests/integration/worker-supervisor.int.test.js, tests/integration/backend-mode.int.test.js</locations>
+    <ideas>- AC1: Simulate failed handshake (mock supervisor ready=false) and assert `/healthz` readiness stays false plus structured log emits reason.
+- AC2: Terminate worker and verify liveness flips false within 5s, readiness recovers after supervisor restart, and restart counters increment.
+- AC3: Validate docker-compose/systemd documentation by running smoke stack with updated probes and confirming documented commands work.</ideas>
+  </tests>
+</story-context>

@@ -69,7 +69,7 @@ Traceability: Story scope derives from Epic 2, FR002d, and the FR002d change pro
 
 ### Project Structure Notes
 
-- Place new env/config docs in `docs/app-server-migration/` and `docs/codex-proxy-tool-calls.md`; keep story artifacts under `docs/stories/`. [Source: docs/app-server-migration/codex-completions-api-migration.md#i-code-touch-points-typical-repo]
+- Place new env/config docs in `docs/app-server-migration/` and `docs/codex-proxy-tool-calls.md`; keep story artifacts under `docs/_archive/story-contexts/`. [Source: docs/app-server-migration/codex-completions-api-migration.md#i-code-touch-points-typical-repo]
 - Tests and smoke helpers belong under existing directories (`tests/**/*`, `scripts/smoke/*`), and code changes must follow the repo’s ESM + 2-space style guide. [Source: docs/bmad/architecture/coding-standards.md]
 - Code touchpoints: `src/handlers/chat/stream.js`, `src/handlers/chat/nonstream.js`, `src/lib/tool-call-aggregator.js`, and `src/config/index.js`; telemetry/logging wiring may extend to `src/services/sse.js`. [Source: docs/design/multi-tool-calls-v2.md]
 - Validation artifacts: `tests/unit/**`, `tests/integration/**`, `tests/e2e/**`, and `scripts/smoke/*` plus the corresponding fixtures/log capture directories enumerated in Story 2.9. [Source: docs/test-design-epic-2.md#risk-register]
@@ -100,8 +100,8 @@ Traceability: Story scope derives from Epic 2, FR002d, and the FR002d change pro
 ## Dev Agent Record
 
 ### Context Reference
-- docs/stories/2-9a-multi-tool-calls-per-turn.context.xml
-- docs/stories/validation-report-2025-11-10T22:25:11Z.md
+- docs/_archive/story-contexts/2-9a-multi-tool-calls-per-turn.context.xml
+- docs/_archive/validation-reports/validation-report-2025-11-10T22:25:11Z.md
 
 ### Agent Model Used
 codex-5 (planned)

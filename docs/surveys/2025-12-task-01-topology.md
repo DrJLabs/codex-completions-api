@@ -48,7 +48,7 @@ tags:
   - `src/`
   - `systemd/`
   - `tests/`
-  - `v4-backup/`
+  - `docs/_archive/v4-backup/`
   - `web-bundles/`
   - `workers/`
 
@@ -81,7 +81,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Application code       | `src/`        | app code       | Express app, routers, services, adapters, JSON-RPC transport, business logic.                         | current        | Entry-point is `server.js`; deep behaviors to be reviewed in later tasks.                          |       |
 | Systemd unit files     | `systemd/`    | ops            | Host-based systemd units to run the proxy outside of Docker.                                          | current        | Additional deployment modality increases configuration drift risk vs Docker/Compose.               |       |
 | Test suite             | `tests/`      | tests          | Unit/integration/e2e tests (Vitest, Playwright).                                                      | current        | Need coverage review later; multiple configs imply multiple test “modes”.                          |       |
-| Legacy snapshot        | `v4-backup/`  | legacy archive | Archived v4-era configuration, BMAD templates, older project structure.                               | legacy         | Keeping in-tree is fine, but must be clearly marked non-authoritative to avoid confusion.          |       |
+| Legacy snapshot        | `docs/_archive/v4-backup/`  | legacy archive | Archived v4-era configuration, BMAD templates, older project structure.                               | legacy         | Keeping in-tree is fine, but must be clearly marked non-authoritative to avoid confusion.          |       |
 | Web bundles            | `web-bundles/`| artifact       | Optional web/agent bundles (likely built artifacts or packaged configs).                              | optional       | Exact contents not indexed; risk of stale artifacts if not regenerated regularly.                  |       |
 | Cloudflare workers     | `workers/`    | infra          | Cloudflare Worker projects (e.g., CORS preflight logger, routing helpers).                            | current        | Adds another operational surface; requires synchronized config with Traefik and header rules.      |       |
 
