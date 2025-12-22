@@ -27,6 +27,14 @@ Redaction rules: keys `body|payload|headers|messages|content|params|data|request
 
 Sampling: none; every worker lifecycle transition and request is logged. Rotation is external (tmpdir cleanup or operator logrotate); no payload bodies are emitted in structured logs.
 
+## Capture transcripts (full payloads)
+
+- Enable sanitized captures with `PROXY_CAPTURE_CHAT_TRANSCRIPTS` / `PROXY_CAPTURE_RESPONSES_TRANSCRIPTS`.
+- Enable raw bodies with `PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS` / `PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS`.
+- Default directories (app cwd): `test-results/chat-copilot/raw/`, `test-results/chat-copilot/raw-unredacted/`, `test-results/responses-copilot/raw/`, `test-results/responses-copilot/raw-unredacted/`.
+- Raw captures still redact secret headers (authorization, API keys, cookies).
+- Each capture includes `metadata.proxy_trace_id` to correlate with structured logs.
+
 ## Example
 
 ```json
