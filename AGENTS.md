@@ -45,6 +45,17 @@
 
 - Do not open `docs/` unless requested or the task requires it; keep detailed changes in `docs/` rather than this file.
 
+## Logging and tracing
+
+- Structured JSON logs go to stdout (access, worker lifecycle, trace/usage summaries); schema in `docs/dev/logging-schema.md`.
+- Dev stack streaming logs: `docker logs -f codex-dev-app-dev-1`.
+- Proto trace NDJSON goes to `PROTO_LOG_PATH` (default `/tmp/codex-proto-events.ndjson`); in dev stack it maps to `.codev/proto-events.ndjson`. Controlled by `PROXY_LOG_PROTO` and `PROXY_ENV=dev`.
+- Usage NDJSON goes to `TOKEN_LOG_PATH` (default `/tmp/codex-usage.ndjson`).
+- Sanitizer telemetry goes to `SANITIZER_LOG_PATH` (default `/tmp/codex-sanitizer.ndjson`).
+- Capture transcripts (full request/response bodies + stream frames) use `PROXY_CAPTURE_CHAT_TRANSCRIPTS` / `PROXY_CAPTURE_RESPONSES_TRANSCRIPTS`; raw bodies require `PROXY_CAPTURE_CHAT_RAW_TRANSCRIPTS` / `PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS`.
+- Default capture locations (host): `test-results/chat-copilot/raw/`, `test-results/chat-copilot/raw-unredacted/`, `test-results/responses-copilot/raw/`, `test-results/responses-copilot/raw-unredacted/`.
+- Raw capture files still redact secret headers; each capture includes `metadata.proxy_trace_id` for correlation.
+
 ## Global conventions
 
 - Node.js ≥ 22; use `npm` (pnpm/yarn/bun are not used here).
