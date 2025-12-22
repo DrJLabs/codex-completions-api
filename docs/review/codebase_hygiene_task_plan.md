@@ -19,7 +19,7 @@ This document is an implementation-ready backlog derived from the audit in [`doc
 - Current branch: `main` (from `git rev-parse --abbrev-ref HEAD`)
 - HEAD SHA: `e0263198eaf11d96093dacf1eec8052685ff853b` (from `git rev-parse HEAD`)
 - Working tree: **dirty (untracked files)** (from `git status --porcelain`)
-  - Untracked: `.codev/docs/`, `.codev/log/`, `auth/AGENTS.md`, `src/AGENTS.md`, `docs/review/codebase_audit_codex_appserver.md`, `docs/review/fix-codex-execution-checklist-v3-commit-review.md`
+  - Untracked: `.codev/docs/`, `.codev/log/`, `auth/AGENTS.md`, `src/AGENTS.md`, `docs/review/codebase_audit_codex_appserver.md`, `docs/_archive/review/fix-codex-execution-checklist-v3-commit-review.md`
 
 ### Audit drift check (does the audit still match the repo?)
 

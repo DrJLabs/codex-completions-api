@@ -5,7 +5,7 @@
 - Current branch: `main` (from `git rev-parse --abbrev-ref HEAD`)
 - HEAD commit SHA: `e0263198eaf11d96093dacf1eec8052685ff853b` (from `git rev-parse HEAD`)
 - Dirty/clean working tree: **dirty (untracked files present)** (from `git status --porcelain`)
-  - Untracked: `.codev/docs/`, `.codev/log/`, `auth/AGENTS.md`, `src/AGENTS.md`, `docs/review/fix-codex-execution-checklist-v3-commit-review.md`
+  - Untracked: `.codev/docs/`, `.codev/log/`, `auth/AGENTS.md`, `src/AGENTS.md`, `docs/_archive/review/fix-codex-execution-checklist-v3-commit-review.md`
 - Node/runtime/package manager assumptions (repo evidence):
   - Node: `>=22` (`package.json:engines.node`)
   - Package manager: `npm` + lockfile (`package-lock.json`), scripts in `package.json:scripts`
@@ -750,4 +750,3 @@ If the goal is to make the “Codex app-server proxy” the clear core while kee
   1. Move files + update any README links and scripts that reference paths.
   2. Run `npm run format:check`, `npm run lint`, `npm run test:unit`, and the integration subset that touches startup/config.
   3. Validate docker build still succeeds (`Dockerfile` references) and dev stack compose paths still resolve.
-
