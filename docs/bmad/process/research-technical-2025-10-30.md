@@ -82,13 +82,13 @@ Retain the existing Docker + Traefik infrastructure footprint during the migrati
 - Emits structured notifications (`agentMessageDelta`, `agentMessage`, `tokenCount`, tool events) that map directly to OpenAI SSE chunks and non-stream accumulators.
 - Supports explicit conversation/thread lifecycle (`newConversation`, `resumeConversation`), allowing the proxy to stay stateless per request.
 - Removes spawn/teardown overhead, improving tail latency and concurrency by reusing a warm process.
-- Integration strategy already drafted: singleton driver (`src/bootstrap/app-server.ts`), JSON-RPC router, SSE/non-stream assemblers, plus type-safe bindings under `docs/issues/codex-app-server/`.
+- Integration strategy already drafted: singleton driver (`src/bootstrap/app-server.ts`), JSON-RPC router, SSE/non-stream assemblers, plus type-safe bindings under `docs/_archive/issues/codex-app-server/`.
 
 **Developer Experience**
 
 - Learning curve: introduces JSON-RPC plumbing, but migration docs include driver sketches, call sequences, and binding locations.
 - Documentation: existing guides cover launch flags, request wiring, event handling, and testing updates; issues provide ready-made checklists.
-- Tooling: encourages generated TypeScript types (`docs/issues/codex-app-server/*`) for method/event safety; structured envelopes ease debugging compared to raw proto deltas.
+- Tooling: encourages generated TypeScript types (`docs/_archive/issues/codex-app-server/*`) for method/event safety; structured envelopes ease debugging compared to raw proto deltas.
 - Testing: plan calls for replacing proto shim with a JSON-RPC mock, giving deterministic fixtures for unit/integration/E2E suites, and running `npm run verify:all` in app-server mode before rollout.
 
 **Operations**
@@ -101,11 +101,11 @@ Retain the existing Docker + Traefik infrastructure footprint during the migrati
 **Ecosystem & Adoption**
 
 - Official Codex direction; all future features land here. Proto already deprecated, so sticking with the old surface will eventually break.
-- Internal issues (`docs/issues/codex-responses-endpoint--*.md`) outline concrete migration stories, confirming the path is actively supported.
+- Internal issues (`docs/_archive/issues/codex-responses-endpoint--*.md`) outline concrete migration stories, confirming the path is actively supported.
 
 **Dependency Mapping**
 
-- Codex CLI & schema: JSON-RPC method/event definitions tied to the pinned `@openai/codex` version and generated bindings in `docs/issues/codex-app-server/`.
+- Codex CLI & schema: JSON-RPC method/event definitions tied to the pinned `@openai/codex` version and generated bindings in `docs/_archive/issues/codex-app-server/`.
 - Process/runtime: singleton launcher (`src/bootstrap/app-server.ts`), health/restart hooks, and credential mounts (`CODEX_HOME`).
 - Proxy adapters: route handlers (`/v1/chat`, `/v1/responses`, etc.), SSE/non-stream wrappers, and usage accounting refactored to consume JSON-RPC notifications.
 - Concurrency/observability: request-context tracking for conversation IDs, logging, and metrics capturing JSON-RPC activity.
@@ -310,7 +310,7 @@ Follow `docs/app-server-migration/*.md`, replace proto adapters, update tests, a
 
 - docs/app-server-migration/codex-proto-vs-app-server.md
 - docs/app-server-migration/codex-completions-api-migration.md
-- docs/issues/codex-responses-endpoint--app-server-migration.md
+- docs/_archive/issues/codex-responses-endpoint--app-server-migration.md
 
 ---
 
@@ -320,8 +320,8 @@ Follow `docs/app-server-migration/*.md`, replace proto adapters, update tests, a
 
 - docs/app-server-migration/codex-proto-vs-app-server.md
 - docs/app-server-migration/codex-completions-api-migration.md
-- docs/issues/codex-responses-endpoint--app-server-migration.md
-- docs/issues/codex-responses-endpoint--conversation-adapter.md
+- docs/_archive/issues/codex-responses-endpoint--app-server-migration.md
+- docs/_archive/issues/codex-responses-endpoint--conversation-adapter.md
 
 ### Benchmarks and Case Studies
 
