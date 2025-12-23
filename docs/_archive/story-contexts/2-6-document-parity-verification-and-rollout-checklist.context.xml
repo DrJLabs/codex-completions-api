@@ -1,0 +1,68 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>6</storyId>
+    <title>Document Parity Verification and Rollout Checklist</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-02T00:03:56Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/_archive/stories/2-6-document-parity-verification-and-rollout-checklist.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>Program manager</asA>
+    <iWant>Deliver a comprehensive parity verification checklist with captured rollout evidence</iWant>
+    <soThat>Stakeholders can approve switching `/v1/chat/completions` traffic to the Codex App Server with confidence</soThat>
+    <tasks>- (AC1) Inventory parity verification obligations from epics, technical specs, test design, and migration runbook to draft checklist sections covering automated suites, parity harness execution, manual verification, and rollout metrics.
+  - (AC1) Integrate learnings from Story 2.5 by mapping refreshed parity harness assets and manifest coverage directly into the checklist.
+  - (AC1) Run `npm run lint:runbooks` to validate formatting, links, and parity checklist sections before circulation.
+- (AC2) Capture parity evidence tables under `docs/app-server-migration/` linking transcripts, manifest metadata, and regression outputs.
+  - (AC2) Refresh transcripts and regression suites via `npm run transcripts:generate`, `npm run test:parity`, `npm run test:integration`, and `npm test`, preserving output artifacts or CI links.
+- (AC3) Schedule the QA/SRE/Product review with agenda, decision criteria, and owners recorded in the checklist.
+  - (AC3) Align the review cadence with rollout readiness signals and document a smoke validation dry-run using `npm run smoke:dev` (or staging equivalent) for stakeholders.
+- (AC2) Update `docs/sprint-status.yaml` to reflect progress once the documentation package is ready.</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Parity checklist enumerates required regression suites, manual verifications, and rollout metrics before enabling the Codex App Server flag.
+2. Audit-ready evidence package lives in `docs/app-server-migration/`, capturing parity run results, CLI metadata from `test-results/chat-completions/manifest.json`, refreshed transcripts, and regression links.
+3. QA, SRE, and Product stakeholders have a scheduled review plan with sign-off checkpoints, meeting logistics, and follow-up actions.</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/epics.md — Story 2.6 defines checklist scope, evidence storage, and stakeholder approvals for parity rollout.
+- docs/tech-spec-epic-2.md — Test strategy summary links parity evidence to regression commands and mandates publishing rollout documentation under `docs/app-server-migration/`.
+- docs/PRD.md — FR013–FR015 require refreshed regression suites, smoke automation, and runbook updates backing the checklist deliverables.
+- docs/app-server-migration/codex-completions-api-migration.md — Section K details parity fixture maintenance commands; Section N lists rollout prerequisites, smoke expectations, and environment requirements.
+- docs/openai-endpoint-golden-parity.md — Golden transcript capture workflow and parity harness usage notes for keeping fixtures deterministic.
+- docs/test-design-epic-2.md — Risk-based coverage matrix and quality gate criteria establishing required P0/P1 parity suites.
+- docs/bmad/architecture/tech-stack.md — Documents repository tooling expectations, including smoke harness usage and operational notes for Codex environments.
+- stories/2-5-update-regression-suite-for-parity-evidence.md — Completion notes and file list call out parity manifest metadata, regression commands, and assets to reuse in the checklist.</docs>
+    <code>- scripts/generate-chat-transcripts.mjs — Defines proto/app capture scenarios and metadata stamping so transcripts and manifest remain deterministic.
+- tests/parity/chat-fixture-parity.test.mjs — Enforces manifest completeness, backend metadata parity, and scenario coverage expectations.
+- test-results/chat-completions/manifest.json — Captures CLI version, commit hash, and per-scenario metadata required for audit tables.
+- scripts/dev-smoke.sh — Runs CLI availability and HTTPS smoke checks that must be documented for rollout validation.
+- package.json — Pins `@openai/codex@0.53.0` and exposes scripts (`transcripts:generate`, `test:parity`, `lint:runbooks`, `smoke:dev`) referenced by the checklist.</code>
+    <dependencies>- Node runtime (package.json `dependencies`): `@openai/codex@0.53.0`, `express`, `nanoid`.
+- Tooling (package.json `devDependencies`): `vitest`, `@vitest/coverage-v8`, `@playwright/test`, `prettier`, ESLint plugins, `secretlint`.
+- External CLI expectations: Docker image for `codex app-server` smoke checks and environment variables `DEV_DOMAIN`, `KEY` for `scripts/dev-smoke.sh`.</dependencies>
+  </artifacts>
+
+  <constraints>- Maintain parity fixture captures with Codex CLI 0.53.0 and log metadata in the manifest before publishing evidence.
+- Keep `.codex-api/` writable and ensure readiness probes/health checks stay aligned with architecture decisions when documenting rollout steps.
+- Checklist must cover FR013–FR015 obligations (tests, smoke automation, runbook updates) with direct citations to authoritative docs.
+- Stakeholder review cadence must include parity metrics, smoke results, and manifest refresh evidence prior to approval.
+- When updating sprint status or documentation, preserve YAML comments and existing runbook formatting validated by `npm run lint:runbooks`.</constraints>
+  <interfaces>- `npm run transcripts:generate` — Regenerate proto/app transcripts and refresh manifest metadata.
+- `npm run test:parity` — Execute parity harness to compare proto vs. app transcripts and surface diffs.
+- `npm run test:integration` — Run integration suites covering JSON-RPC path and parity workflows.
+- `npm test` — Execute Playwright E2E/SSE suites validating streaming behavior.
+- `npm run lint:runbooks` — Prettier-based lint to keep rollout documentation formatted and link-valid.
+- `npm run smoke:dev` (or staging variant) — Smoke validation capturing CLI availability, health endpoints, and chat behavior for readiness reviews.
+- Update checklist deliverables under `docs/app-server-migration/parity-rollout-checklist.md` with parity evidence and sign-off records.</interfaces>
+  <tests>
+    <standards>Follow Epic 2 test design gates: run P0 parity suites (baseline, streaming, error), refresh transcripts via documented workflow, and record CLI metadata plus smoke results before seeking approvals.</standards>
+    <locations>tests/parity/; tests/integration/; tests/e2e/; scripts/dev-smoke.sh; test-results/chat-completions/</locations>
+    <ideas>- AC1: Cross-check checklist draft against P0/P1 parity suite inventory and runbook citations before review.
+- AC2: Verify refreshed transcript manifest metadata (CLI version, commit) and attach evidence tables in the rollout checklist.
+- AC3: Rehearse stakeholder review using `npm run smoke:dev` output and document agenda/owners in the checklist.</ideas>
+  </tests>
+</story-context>

@@ -1,0 +1,92 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>1</storyId>
+    <title>Define JSON-RPC schema bindings for chat</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-01T03:20:00Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2-1-define-json-rpc-schema-bindings-for-chat.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As a backend developer</asA>
+    <iWant>I want typed bindings between the proxy and Codex App Server schema</iWant>
+    <soThat>so that request and response translation is type-safe and future updates are manageable. [Source](docs/epics.md#story-21-define-json-rpc-schema-bindings-for-chat)</soThat>
+    <tasks>
+- [ ] (AC #1) Implement `src/lib/json-rpc/schema.ts` with JSON-RPC request/notification types (initialize, sendUserTurn, sendUserMessage, agentMessageDelta, agentMessage, tokenCount). [Source](docs/tech-spec-epic-2.md#services-and-modules)
+  - [ ] (AC #1) Capture method param/result signatures from Codex CLI JSON-RPC schema or sanitized parity fixtures. [Source](docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read) [Source](docs/_archive/stories/2-0-establish-parity-verification-infrastructure.md#dev-notes)
+  - [ ] (AC #1 Testing) Run `npm run test:unit` to ensure bindings compile where imported. [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)
+- [ ] (AC #2) Provide schema regeneration workflow tied to `@openai/codex@0.53.x`. [Source](docs/app-server-migration/codex-completions-api-migration.md#a-replace-cli-invocation)
+  - [ ] (AC #2) Add developer script (e.g., `npm run jsonrpc:schema`) that emits deterministic `schema.ts` from current CLI. [Source](docs/_archive/stories/2-0-establish-parity-verification-infrastructure.md#change-log)
+  - [ ] (AC #2 Testing) Execute the script to confirm zero-diff regeneration when the schema hasn’t changed. [Source](docs/test-design-epic-2.md#test-coverage-plan)
+- [ ] (AC #3) Author `tests/unit/json-rpc-schema.test.ts` covering baseline, tool-call, and error payload round-trips. [Source](docs/tech-spec-epic-2.md#data-models-and-contracts)
+  - [ ] (AC #3) Use parity fixtures (`test-results/chat-completions/{proto,app}`) to deserialize payloads into bindings and verify structure. [Source](docs/_archive/stories/2-0-establish-parity-verification-infrastructure.md#dev-agent-record)
+  - [ ] (AC #3 Testing) Add new test to `npm run test:unit` and ensure `npm run test:all` consumes it. [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. TypeScript bindings cover chat JSON-RPC requests/notifications (`initialize`, `sendUserTurn`, `sendUserMessage`, `agentMessageDelta`, `agentMessage`, `tokenCount`) under `src/lib/json-rpc/schema.ts`. [Source](docs/epics.md#story-21-define-json-rpc-schema-bindings-for-chat) [Source](docs/tech-spec-epic-2.md#services-and-modules)
+2. Schema module records CLI/schema version and exposes documented regeneration tied to `@openai/codex@0.53.x`. [Source](docs/epics.md#story-21-define-json-rpc-schema-bindings-for-chat) [Source](docs/app-server-migration/codex-completions-api-migration.md#a-replace-cli-invocation)
+3. Unit tests deserialize parity fixtures into bindings and assert round-trips detect schema drift. [Source](docs/epics.md#story-21-define-json-rpc-schema-bindings-for-chat) [Source](docs/test-design-epic-2.md#test-coverage-plan)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Services and Modules | snippet: Identifies `src/lib/json-rpc/schema.ts` for bindings, lists chat methods/events needing typed coverage, and references supporting config modules.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Data Models and Contracts | snippet: Describes JSON-RPC request objects (`InitializeParams`, `UserTurnParams`, `UserMessageParams`) and notifications (`AgentMessageDelta`, `AgentMessage`, `TokenCount`) plus error envelopes.
+- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 2.1: Define JSON-RPC schema bindings for chat | snippet: Calls for typed bindings, schema version pinning, and unit tests validating serialization/deserialization round-trips.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document (PRD) | section: Functional Requirements FR003 | snippet: Requires translating OpenAI-formatted requests into official JSON-RPC calls including models, tools, and context.
+- path: docs/architecture.md | title: Decision Architecture | section: Technology Stack Details | snippet: Notes Epic 2 spans `src/lib/json-rpc*`, `src/handlers/chat`, and integration tests, reinforcing centralized schema definitions.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: C. JSON-RPC client: write &amp; read | snippet: Details JSON-RPC method flow, unique IDs, and notification routing, informing schema field requirements.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating `codex-completions-api` to `codex app-server` | section: A. Replace CLI invocation | snippet: Pins `@openai/codex` to 0.53.0 and instructs on bundling the `app-server` binary, relevant for schema regeneration.
+- path: docs/test-design-epic-2.md | title: Test Design: Epic 2 - /v1/chat/completions JSON-RPC Parity | section: Test Coverage Plan | snippet: Outlines unit/integration coverage expectations for schema bindings and regression harness integration.
+- path: docs/_archive/stories/2-0-establish-parity-verification-infrastructure.md | title: Story 2.0: Establish Parity Verification Infrastructure | section: Dev Notes | snippet: Describes sanitized transcript utilities and parity harness to reuse when validating schema payloads.
+    </docs>
+    <code>
+- path: src/lib/json-rpc/ | type: directory | reason: Target location for schema bindings referenced in tech spec.
+- path: src/services/transport/appServerClient.js | reason: Transport consumes JSON-RPC definitions; bindings will feed this module.
+- path: src/handlers/chat/ | reason: Request/response adapters rely on bindings for type-safe payload construction.
+- path: tests/unit/ | reason: Unit test home for schema round-trips per architecture/test strategy guidance.
+- path: tests/parity/ | reason: Parity diff harness ensures schema alignment with proto/app fixtures.
+- path: test-results/chat-completions/ | reason: Deterministic fixtures from Story 2.0 used to validate schema payloads.
+- path: package.json | reason: Script/CLI version pinning for regeneration workflow.
+- path: scripts/ | reason: Location to add `jsonrpc:schema` regeneration helper consistent with existing parity tooling.
+    </code>
+  </artifacts>
+
+  <interfaces>
+    <apis>- name: Codex App Server JSON-RPC | location: docs/app-server-migration/codex-completions-api-migration.md#c-json-rpc-client-write--read | contract: Expects `initialize`, `sendUserTurn`, `sendUserMessage` requests with unique IDs and yields notifications `agentMessageDelta`, `agentMessage`, `tokenCount`.
+    </apis>
+    <services>- path: src/services/transport/appServerClient.js | contract: Maintains JSON-RPC channel, requires typed request/notification definitions for request tracking and error mapping.
+- path: src/handlers/chat/request.js | contract: Normalizes OpenAI payloads using schema definitions.
+- path: src/handlers/chat/stream.js | contract: Converts JSON-RPC notifications into SSE deltas, depends on notification typing.
+    </services>
+  </interfaces>
+
+  <constraints>
+- codex cli version pinned at 0.53.x for schema stability (docs/app-server-migration/codex-completions-api-migration.md#a-replace-cli-invocation).
+- reuse sanitized transcripts from Story 2.0; avoid generating ad-hoc fixtures (docs/_archive/stories/2-0-establish-parity-verification-infrastructure.md#dev-notes).
+- adhere to architecture structure: keep bindings central in `src/lib/json-rpc/` (docs/architecture.md#technology-stack-details).
+
+  <dependencies>
+- npm | packages: `@openai/codex@0.53.x`, `typescript`, `vitest`, `playwright`, `prom-client` (from package.json).
+- node | version: >=22.21.0 (docs/architecture.md#core-technologies).
+  </dependencies>
+
+  <tests>
+    <standards>Use Vitest for unit round-trips, integration harness with deterministic Codex shim, and Playwright for end-to-end SSE validation per test design. [Source](docs/test-design-epic-2.md#test-coverage-plan)</standards>
+    <locations>tests/unit/**/*.test.ts; tests/parity/**/*.test.mjs; tests/integration/**/*.test.js</locations>
+    <ideas>
+- AC #1: Unit test ensures schema definitions parse handshake payloads and error envelopes without type errors.
+- AC #2: Script-driven regeneration runs in CI, verifying version metadata stored alongside schema output.
+- AC #3: Unit test loads baseline/tool-call/error fixtures, validates serialization/deserialization and detects drift.
+    </ideas>
+  </tests>
+
+  <notes>
+- Learnings from Story 2.0 emphasize reusing sanitized fixtures and documenting CLI metadata to avoid drift.
+- Update `docs/app-server-migration/codex-completions-api-migration.md` when schema regeneration process changes.
+  </notes>
+</story-context>

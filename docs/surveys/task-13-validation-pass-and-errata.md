@@ -71,7 +71,7 @@ Validate a small set of high-impact assumptions from Tasks 1–12 against the *c
 **What we found:** Some docs/stories state proto is retired (app-server only), while parts of the test harness still start servers with `scripts/fake-codex-proto.js` for certain responses tool-call transcript checks.
 
 **Evidence locations**
-- `docs/stories/2-10-tool-call-regression-and-smoke.md` — contains “proto is retired” phrasing.
+- `docs/_archive/stories/2-10-tool-call-regression-and-smoke.md` — contains “proto is retired” phrasing.
 - `tests/e2e/responses-contract.spec.js` — starts a server using `scripts/fake-codex-proto.js` for tool-call response transcripts.
 
 **Implication**

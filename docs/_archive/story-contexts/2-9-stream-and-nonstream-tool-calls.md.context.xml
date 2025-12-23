@@ -1,0 +1,122 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>9</storyId>
+    <title>Stream &amp; non-stream handler parity for tool calls</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-09T09:03:42Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an application developer,</asA>
+    <iWant>I want the streaming and non-streaming chat handlers to integrate the ToolCallAggregator and emit OpenAI-compatible tool call payloads,</iWant>
+    <soThat>so that clients experience consistent tool_calls/function_call semantics with correct finish reasons in both modes.</soThat>
+    <tasks>### Implementation Tasks (explicit AC traceability)
+
+- [ ] **AC #1 – Streaming integration contract** (AC: #1) Wire `src/handlers/chat/stream.js` to emit one assistant role chunk per choice, feed `createToolCallAggregator()` with every JSON-RPC delta, and emit a single `&lt;use_tool&gt;` delta when the first call resolves. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #1** (AC: #1) Extend `tests/integration/chat.stream.tool-calls.int.test.js` to assert role-first framing and single `&lt;use_tool&gt;` delta under `obsidian-xml`. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #2 – Non-stream envelope parity** (AC: #2) Snapshot aggregator state in `src/handlers/chat/nonstream.js`, populate the assistant message with the `&lt;use_tool&gt;` block for `obsidian-xml`, and set `content:null` + `tool_calls[]` for `openai-json`. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #2** (AC: #2) Add unit coverage to `tests/unit/handlers/chat/nonstream.test.js` validating both output modes share identical tool metadata. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #3 – Textual fallback passthrough** (AC: #3) Surface literal `&lt;use_tool&gt;` XML from backend buffers without mutation and drop assistant text after the closing tag when textual fallback detectors fire. [Source: docs/codex-proxy-tool-calls.md#textual-fallback-detection]
+  - [ ] **Testing – AC #3** (AC: #3) Create regression fixtures with textual fallback payloads to confirm passthrough + tail suppression in both stream modes. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #4 – Finish reason normalization** (AC: #4) Update shared finish-reason helpers so `tool_calls` takes precedence once the aggregator records a call and enforce single finish chunk emission. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+  - [ ] **Testing – AC #4** (AC: #4) Cover precedence logic in `tests/unit/lib/finish-reason.test.js`, ensuring `length`/`stop` cannot override `tool_calls`. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #5 – Output-mode config surface** (AC: #5) Introduce `PROXY_OUTPUT_MODE` defaulting to `obsidian-xml`, document the `x-proxy-output-mode` override, and honor both toggles in stream + non-stream handlers. [Source: docs/app-server-migration/codex-completions-api-migration.md#h-configuration--deployment]
+  - [ ] **Testing – AC #5** (AC: #5) Update config unit tests plus `tests/integration/chat.nonstream.tool-calls.int.test.js` to toggle output modes via env + header override. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #6 – Test coverage depth** (AC: #6) Expand integration + E2E suites to include structured, textual, multi-choice, disconnect, and UTF-8 flows promised in the risk register. [Source: docs/test-design-epic-2.md#risk-register]
+  - [ ] **Testing – AC #6** (AC: #6) Track coverage additions in `tests/e2e/tool-calls.spec.ts` and commit updated transcripts showing each risk scenario. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #7 – Role-first &amp; idempotent streaming** (AC: #7) Ensure per-choice state guards role emission, `delta.tool_calls` fire on aggregator transitions only, and duplicate events are ignored. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #7** (AC: #7) Simulate duplicate backend deltas in integration tests to prove idempotent role/tool sequencing. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #8 – Cumulative arguments per delta** (AC: #8) Pipe aggregator cumulative arguments directly into SSE deltas without slicing multi-byte characters. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #8** (AC: #8) Add UTF-8 heavy fixtures (emoji, CJK) verifying streamed `delta.tool_calls[*].arguments` remain cumulative and well-formed. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #9 – Single canonical finish** (AC: #9) Emit exactly one finish event per choice once `&lt;use_tool&gt;` is written, then stop writing further assistant frames. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+  - [ ] **Testing – AC #9** (AC: #9) Extend streaming transcript assertions so duplicate finish frames fail the test. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #10 – Post-finish drop rules** (AC: #10) Drop or log late backend events after finish/send `[DONE]`, ensuring the client never sees duplicate tool payloads. [Source: docs/codex-proxy-tool-calls.md#handler-integration-contracts-for-later-stories]
+  - [ ] **Testing – AC #10** (AC: #10) Simulate backend callbacks after finish to confirm the handler drains listeners without emitting SSE frames. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #11 – OpenAI JSON parity** (AC: #11) Populate `tool_calls[]`/`function_call` shapes with ordered call metadata and keep stop-after-first-tool semantics identical to `obsidian-xml`. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #11** (AC: #11) Snapshot non-stream responses in both modes and diff to ensure metadata parity besides content rendering. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #12 – No mixed frames** (AC: #12) Guard SSE writers so a single `data:` frame never mixes assistant `content` and `delta.tool_calls`; split them into separate frames when necessary. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #12** (AC: #12) Instrument SSE writer tests to assert JSON payloads contain either `content` or `tool_calls`, never both. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #13 – SSE headers &amp; flushing** (AC: #13) Set `Content-Type`, `Cache-Control`, `Connection`, and `X-Accel-Buffering: no` plus call `res.flush()` after every chunk. [Source: docs/architecture.md#implementation-patterns]
+  - [ ] **Testing – AC #13** (AC: #13) Use supertest to confirm responses include the mandated headers and that `flush` is invoked per chunk. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #14 – Backend error precedence** (AC: #14) Preserve normal error envelopes when failures occur before tool-call detection and emit canonical finish + close when errors happen afterward. [Source: docs/codex-proxy-tool-calls.md#handler-integration-contracts-for-later-stories]
+  - [ ] **Testing – AC #14** (AC: #14) Add fixtures where the backend throws pre/post tool-call to ensure handlers emit the expected sequence. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #15 – UTF-8 &amp; large-argument safety** (AC: #15) Treat arguments as opaque text, avoid JSON parsing, and ensure SSE chunking never splits multi-byte sequences. [Source: docs/codex-proxy-tool-calls.md#best-practices--notes]
+  - [ ] **Testing – AC #15** (AC: #15) Stream enormous argument payloads in Vitest to assert Node’s `Buffer.byteLength` boundaries aren’t crossed mid-character. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #16 – Choice routing &amp; isolation** (AC: #16) Route events without `choice_index` to zero, isolate per-choice buffers, and ensure aggregator IDs stay unique per choice. [Source: docs/codex-proxy-tool-calls.md#best-practices--notes]
+  - [ ] **Testing – AC #16** (AC: #16) Add multi-choice transcripts verifying each choice receives its own role/content/tool/finish frames. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #17 – Client disconnect handling** (AC: #17) Listen for `close` on the response object, detach backend listeners, and abort SSE keepalives immediately. [Source: docs/architecture.md#implementation-patterns]
+  - [ ] **Testing – AC #17** (AC: #17) Simulate client disconnects inside integration tests to confirm the handler stops writing and tears down worker listeners. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #18 – Multi-call envelope semantics** (AC: #18) Ensure `message.tool_calls[]` preserves creation order, `content:null` for `openai-json`, and `&lt;use_tool&gt;` content for the first call in `obsidian-xml`. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow-high-level]
+  - [ ] **Testing – AC #18** (AC: #18) Add aggregator snapshot fixtures with ≥2 calls and assert ordering + rendering for both output modes. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #19 – Tool_calls precedence over function_call** (AC: #19) When both shapes exist, emit `tool_calls[]` only, set `finish_reason:&quot;tool_calls&quot;`, and still render XML content in obsidian mode. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+  - [ ] **Testing – AC #19** (AC: #19) Craft backend payloads containing both shapes to ensure the proxy normalizes down to `tool_calls[]`. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #20 – Input-shape tolerance** (AC: #20) Accept Codex v2 deltas and OpenAI-style payloads without pre-normalization, routing everything through the aggregator adapters. [Source: docs/codex-proxy-tool-calls.md#best-practices--notes]
+  - [ ] **Testing – AC #20** (AC: #20) Mix Codex v2 and OpenAI delta shapes in unit fixtures to confirm state remains stable. [Source: docs/test-design-epic-2.md#risk-register]
+- [ ] **AC #21 – Textual stripping enforcement** (AC: #21) Apply `PROXY_SUPPRESS_TAIL_AFTER_TOOLS` using textual index metadata so no assistant text appears after `&lt;use_tool&gt;` in either mode. [Source: docs/codex-proxy-tool-calls.md#textual-fallback-detection]
+  - [ ] **Testing – AC #21** (AC: #21) Add textual fallback fixtures with intentional tail text to verify suppression plus `[DONE]` termination. [Source: docs/test-design-epic-2.md#risk-register]</tasks>
+  </story>
+
+  <acceptanceCriteria>1. **Streaming integration (Obsidian mode):** Streaming handler emits one assistant role chunk, then when the first tool call completes it writes a single content delta containing the synthesized `&lt;use_tool&gt;` block (from structured or textual data), suppresses tail text, honors `PROXY_STOP_AFTER_TOOLS(*)`, emits one finish chunk with `finish_reason:&quot;tool_calls&quot;`, and closes with `[DONE]`. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow]
+2. **Non-stream integration (Obsidian mode):** Non-stream responses set `choices[n].message.content` to the `&lt;use_tool&gt;` block (synthesized or passthrough), optionally include `tool_calls[]` metadata, and set `finish_reason:&quot;tool_calls&quot;`. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow]
+3. **Textual fallback passthrough:** Literal XML blocks from the backend are forwarded unchanged (stream + non-stream) and any assistant text beyond the closing tag is dropped. [Source: docs/codex-proxy-tool-calls.md#textual-fallback-detection]
+4. **Finish-reason normalization:** Finish reason helpers/tests prioritize `&quot;tool_calls&quot;` whenever the aggregator has calls and guarantee only one finish chunk per choice. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+5. **Output-mode config:** Add `PROXY_OUTPUT_MODE` (default `obsidian-xml`) plus `x-proxy-output-mode` header override. `obsidian-xml` emits content XML; `openai-json` restores legacy `content:null` + `tool_calls`. [Source: docs/app-server-migration/codex-completions-api-migration.md#h-configuration--deployment]
+6. **Test coverage:** Integration/E2E suites cover structured + textual flows for both modes, asserting XML emission, tail suppression, single finish chunk, `[DONE]`, finish reason precedence, and parity. [Source: docs/test-design-epic-2.md#risk-register]
+7. **Role-first &amp; idempotent streaming:** Assistant role chunk is emitted exactly once per choice before any deltas; `delta.tool_calls` appear only when aggregator state changes. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow]
+8. **Cumulative arguments per delta:** Each streamed `delta.tool_calls[*].arguments` carries the cumulative JSON text gathered so far. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow]
+9. **Single canonical finish:** After emitting the XML block, stream outputs exactly one finish chunk (`finish_reason:&quot;tool_calls&quot;`) and `[DONE]`; no further assistant content or finish frames follow. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+10. **Post-finish drop rules:** After the finish chunk, streaming handler drops late backend events to avoid duplicate frames. [Source: docs/codex-proxy-tool-calls.md#handler-integration-contracts-for-later-stories]
+11. **OpenAI JSON parity:** When `openai-json` mode is selected, handler returns `content:null` + `tool_calls[]`/`function_call` while retaining stop-after-first-tool semantics. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow]
+12. **No mixed frames:** No SSE `data:` frame may contain both assistant content and `delta.tool_calls`. [Source: docs/codex-proxy-tool-calls.md#streaming-detection--flow]
+13. **SSE headers &amp; flushing:** Ensure streaming responses set proper headers (`Content-Type`, `Cache-Control`, `Connection`, `X-Accel-Buffering`) and flush after each chunk. [Source: docs/architecture.md#implementation-patterns]
+14. **Backend error precedence:** Errors before a tool-call emit normal error envelopes; errors after the XML block still emit the canonical finish chunk and close, no error frames appended. [Source: docs/codex-proxy-tool-calls.md#handler-integration-contracts-for-later-stories]
+15. **UTF-8 &amp; large-args safety:** Arguments remain opaque UTF-8 text; cumulative deltas never split multibyte sequences. [Source: docs/codex-proxy-tool-calls.md#behavioral-notes]
+16. **Choice routing &amp; isolation:** Events lacking `choice_index` target choice 0; for `n&gt;1`, role/content/tool/finish frames remain isolated per choice. [Source: docs/codex-proxy-tool-calls.md#behavioral-notes]
+17. **Client disconnect handling:** If the client closes mid-turn, stop emitting, detach listeners, and drain backend events. [Source: docs/architecture.md#implementation-patterns]
+18. **Non-stream multi-call envelope:** When snapshot contains &gt;1 calls, `message.tool_calls[]` includes all calls (ordered), `content:null` in openai-json mode, and `content` equals the `&lt;use_tool&gt;` block (first call) in obsidian-xml mode. [Source: docs/codex-proxy-tool-calls.md#non-streaming-detection--flow]
+19. **Tool_calls precedence:** If both `function_call` and `tool_calls[]` appear, prefer `tool_calls[]`, set `finish_reason:&quot;tool_calls&quot;`, and ensure XML content is emitted in obsidian mode. [Source: docs/codex-proxy-tool-calls.md#finish-reason-and-message-semantics]
+20. **Input-shape tolerance:** Handlers accept Codex v2 and OpenAI-style delta/message shapes without external normalization. [Source: docs/codex-proxy-tool-calls.md#behavioral-notes]
+21. **Textual stripping:** After textual tool markers, no trailing assistant content is emitted (stream or non-stream). [Source: docs/codex-proxy-tool-calls.md#textual-fallback-detection]</acceptanceCriteria>
+
+  <artifacts>
+    <docs>- docs/PRD.md#L31-L41 — FR002a–c define the tool-call scope: handlers must rely on ToolCallAggregator, enforce role-first SSE, configurable `obsidian-xml` vs `openai-json` output modes, drop tail text, and prove parity via regression coverage.
+- docs/codex-proxy-tool-calls.md#L70-L129 — Streaming and non-stream detection describe feeding `response.function_call_*` events into the aggregator, emitting the `&lt;use_tool&gt;` delta once, halting assistant text, and returning `finish_reason:&quot;tool_calls&quot;` with `content:null`.
+- docs/codex-proxy-tool-calls.md#L133-L152 — Textual fallback + finish-reason rules require `&lt;use_tool&gt;` block detection, tail suppression, and treating textual markers equivalently to structured tool_calls so clients always see canonical envelopes.
+- docs/test-design-epic-2.md#L11-L40 — QA risk plan (R-101–R-105) mandates dual-mode tests, UTF-8/large-argument fixtures, disconnect smokes, and configuration contract checks to keep tool-call regressions from shipping.
+- docs/tech-spec-epic-2.md#L12-L44 — Detailed design maps `/v1/chat/completions` adapters, naming `src/handlers/chat/stream.js`/`nonStream.js` as the layers that convert JSON-RPC notifications into OpenAI-compatible tool-call payloads and finish reasons.
+- docs/app-server-migration/codex-completions-api-migration.md#L63-L110 — Migration workflow explains piping `agentMessageDelta`/`agentMessage` notifications into SSE chunks unchanged, preserving tool/function call delta shaping, finish reasons, and stateless per-request conversations.
+- docs/architecture.md#L80-L126 — Integration + implementation patterns keep the `/v1/chat/completions` SSE gateway role-first with `[DONE]`, align JSON-RPC transport responsibilities, and document header/formatting expectations for streaming responses.
+- docs/_archive/stories/2-8-implement-tool-call-aggregator.md#L1-L32 — Story 2.8 documents aggregator guarantees (per-choice state, textual fallback parser, cumulative arguments, immutable snapshots) that this story must consume instead of re-implementing.</docs>
+    <code>- src/lib/tool-call-aggregator.js#L9-L640 — `createToolCallAggregator`, `ingestDelta`, and `snapshot` already normalize Codex JSON-RPC + textual `&lt;use_tool&gt;` payloads with cumulative arguments and per-choice isolation; Story 2.9 must reuse this library when emitting tool_calls.
+- src/handlers/chat/stream.js#L1-L400 — `postChatStream` wires JSON-RPC events to SSE chunks; it currently emits assistant text plus tool deltas but lacks the output-mode switch, single finish frame enforcement, and tail suppression required by the ACs.
+- src/handlers/chat/nonstream.js#L1-L320 — `postChatNonStream` assembles final OpenAI responses; it needs to honor `PROXY_OUTPUT_MODE`, emit `&lt;use_tool&gt;` content vs `tool_calls[]`, and snapshot multi-call ordering.
+- src/handlers/chat/shared.js#L1-L220 — `createFinishReasonTracker` canonicalizes finish reasons and must be reused to prioritize `tool_calls` once the aggregator records state.
+- src/services/sse.js#L1-L60 — `setSSEHeaders`, `startKeepalives`, and `finishSSE` enforce the streaming headers (`Content-Type`, `Cache-Control`, `Connection`, `X-Accel-Buffering`) and `[DONE]` emission demanded by AC #13.
+- src/config/index.js#L1-L80 — current env surface covers tool toggles (`PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`); Story 2.9 introduces `PROXY_OUTPUT_MODE` plus the `x-proxy-output-mode` override and must update `.env*` + docs accordingly.</code>
+    <dependencies>- `package.json` (Node ecosystem) — express ^4.21.2 powers `/v1/chat/completions`; @openai/codex 0.56.0 ships the Codex App Server binary whose JSON-RPC events feed the aggregator; nanoid ^5.1.6 provides choice/request IDs for SSE chunks; vitest ^4.0.3 / @playwright/test ^1.56.1 / ajv ^8.17.1 cover the test matrix; eslint ^9.38.0, prettier ^3.3.3, and secretlint ^11.2.5 enforce repo linting + security gates for new config/docs.</dependencies>
+  </artifacts>
+
+  <constraints>- docs/architecture.md#L80-L126 — `/v1/chat/completions` streaming must stay role-first, set required SSE headers, reuse the single worker, and terminate with `[DONE]`.
+- docs/app-server-migration/codex-completions-api-migration.md#L63-L110 — JSON-RPC transport remains stateless per HTTP call and must preserve OpenAI-compatible tool-call envelopes and finish reasons.
+- docs/codex-proxy-tool-calls.md#L70-L152 — Aggregator + handlers must detect structured/textual tool calls, suppress assistant text after `&lt;use_tool&gt;`, emit cumulative `delta.tool_calls` arguments, and force `finish_reason:&quot;tool_calls&quot;` when any call exists.
+- docs/test-design-epic-2.md#L11-L40 — Risk plan requires dual output modes, UTF-8 safety, disconnect handling, and configuration contract tests (`PROXY_OUTPUT_MODE`, `x-proxy-output-mode`) before marking the story ready.
+- docs/_archive/stories/2-8-implement-tool-call-aggregator.md#L1-L32 — Story 2.8’s invariants (per-choice isolation, textual fallback parser, immutable snapshots) must remain intact; no forked parsing logic is allowed in handlers.</constraints>
+  <interfaces>- `/v1/chat/completions` (stream=true) — SSE endpoint implemented by `postChatStream`, emitting role-first deltas, tool-call chunks, finish frames, and `[DONE]` via `src/services/sse.js`.
+- `/v1/chat/completions` (stream=false) — JSON endpoint implemented by `postChatNonStream`, returning OpenAI-compatible `choices[*].message` payloads that will switch between `obsidian-xml` (content contains `&lt;use_tool&gt;`) and `openai-json` (content null + `tool_calls[]`).
+- JSON-RPC transport notifications (`agentMessageDelta`, `agentMessage`, `response.function_call_arguments.*`) — delivered via `createJsonRpcChildAdapter`; handlers must ingest them through the aggregator and honor `PROXY_STOP_AFTER_TOOLS` semantics.</interfaces>
+  <tests>
+    <standards>Per docs/test-design-epic-2.md#L9-L140 we follow the risk-governance matrix: unit (Vitest) for pure helpers like ToolCallAggregator, integration (Vitest) for chat handlers with the deterministic Codex shim, and Playwright E2E for `/v1/chat/completions` SSE parity. Streaming and non-stream paths must emit role-first deltas, `[DONE]`, and canonical finish reasons across both `obsidian-xml` and `openai-json` output modes while honoring `PROXY_STOP_AFTER_TOOLS`.</standards>
+    <locations>- tests/unit/tool-call-aggregator.test.ts
+- tests/integration/chat.stream.*.int.test.js
+- tests/integration/chat.nonstream.*.int.test.js
+- tests/integration/responses.stream.*.int.test.js
+- tests/e2e/*.spec.{js,ts}</locations>
+    <ideas>- AC#1/#7/#12/#13: Add `tests/integration/chat.stream.tool-calls.int.test.js` to assert role-first SSE, no mixed frames, header set, single finish chunk, and `[DONE]` right after the `&lt;use_tool&gt;` block (obsidian mode) plus UTF-8 cumulative argument fixtures.
+- AC#2/#5/#11/#18: Create `tests/integration/chat.nonstream.tool-calls.int.test.js` covering `obsidian-xml` (content emits `&lt;use_tool&gt;`) vs `openai-json` (content null + `tool_calls[]`), multi-call ordering, `x-proxy-output-mode` override, and finish reason precedence.
+- AC#3/#21: Extend `tests/integration/responses.stream.tools.int.test.js` and new textual fixtures to ensure literal `&lt;use_tool&gt;` passthrough drops tail text in both stream + non-stream handlers.
+- AC#6/#8/#15/#17: Update Playwright + smoke suites (e.g., `tests/e2e/chat-contract.spec.js`, `scripts/smoke/stream-tool-call.js`) with large UTF-8 payloads and simulated disconnects to confirm handlers stop writing after finish and drain worker listeners.</ideas>
+  </tests>
+</story-context>

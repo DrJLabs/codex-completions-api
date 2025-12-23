@@ -43,6 +43,6 @@ Keploy replay coverage is currently missing in CI because the `keploy-dry-run` j
 
 ## Links & References
 
-- Story 3.6 — Keploy Snapshot CI Integration (`docs/bmad/stories/3.6.keploy-snapshot-ci-integration.md`)
+- Story 3.6 — Keploy Snapshot CI Integration (`docs/bmad/stories/_archive/3.6.keploy-snapshot-ci-integration.md`)
 - Story 3.10 — Release & Backup Hardening (`docs/bmad/stories/3.10.release-backup-hardening.md`)
 - Issue #77 — Golden transcripts & contract checks (`docs/bmad/issues/2025-09-13-chat-golden-transcripts-contract-checks.md`)

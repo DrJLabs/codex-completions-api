@@ -6,7 +6,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROD_COMPOSE="${PROD_COMPOSE:-$ROOT_DIR/docker-compose.yml}"
-DEV_COMPOSE="${DEV_COMPOSE:-$ROOT_DIR/compose.dev.stack.yml}"
+DEV_COMPOSE="${DEV_COMPOSE:-$ROOT_DIR/infra/compose/compose.dev.stack.yml}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.cache/codex-backups}"
 APP_IMAGE_BASENAME="codex-completions-api"
 
@@ -28,7 +28,7 @@ Usage: $(basename "$0") [--env prod|dev|both] [--from-lock PATH] [--image-id SHA
 Defaults: --env both, uses latest pointers under $BACKUP_DIR.
 Examples:
   $(basename "$0") --env prod
-  $(basename "$0") --from-lock releases/stack-images-2025-09-12.lock.json --env dev
+  $(basename "$0") --from-lock <path-to-lock.json> --env dev
   $(basename "$0") --image-id sha256:abc... --env prod
 EOF
 }

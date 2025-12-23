@@ -1,0 +1,85 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>4</storyId>
+    <title>Align error handling and retries</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-01T21:19:01Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/_archive/stories/2-4-align-error-handling-and-retries.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As an operator. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#story)</asA>
+    <iWant>I want deterministic error translation and retry mechanisms. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#story)</iWant>
+    <soThat>So that clients encounter the same HTTP codes, bodies, and retry hints after the app-server migration. [Source](docs/epics.md#story-24-align-error-handling-and-retries) [Source](docs/PRD.md#functional-requirements)</soThat>
+    <tasks>
+- [ ] Map JSON-RPC error results and transport failures to the existing error envelope and status codes by extending `mapTransportError` and related handlers. (AC #1) [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Cover worker busy/unavailable, handshake failure, and timeout codes, ensuring retryable hints mirror proto behavior. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Add regression assertions in `tests/integration/chat-jsonrpc.int.test.js` verifying 429/503/504 responses include the correct retryable flag and message. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+- [ ] Reaffirm supervisor/backoff integration so request and handshake timeouts emit retryable signals while preserving readiness gating. (AC #2) [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Exercise restart/backoff paths manually or via harness to confirm readiness flips and retry budget logging. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Extend integration coverage (or targeted harness) to simulate handshake timeout and assert retry guidance is emitted. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+- [ ] Extend `tests/integration/chat-jsonrpc.int.test.js` (and supporting fixtures) with deterministic negative-path cases for CLI/worker errors. (AC #3) [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Capture assertions for status codes, error bodies, and retryable flags across timeout, worker exit, and transport failure scenarios. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+  - [ ] Ensure failure fixtures document retry budget behaviour and readiness gating so future parity checks remain deterministic. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#tasks--subtasks)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. JSON-RPC transport and worker errors return the existing OpenAI-compatible error envelope with matching HTTP status codes (429, 500, 503, 504) and retryable hints so app-server parity is indistinguishable from proto. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#acceptance-criteria) [Source](docs/epics.md#story-24-align-error-handling-and-retries) [Source](docs/architecture.md#error-handling)
+2. Request, handshake, and worker timeouts continue to honor the documented exponential backoff/retry policy, including readiness gating and retryable signals for supervisors. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#acceptance-criteria) [Source](docs/tech-spec-epic-2.md#workflows-and-sequencing) [Source](docs/app-server-migration/codex-completions-api-migration.md#g-concurrency--timeouts)
+3. Deterministic integration coverage exercises CLI/worker failure paths (handshake failure, request timeout, worker exit) and verifies response parity including retryable flags and status codes. [Source](docs/_archive/stories/2-4-align-error-handling-and-retries.md#acceptance-criteria) [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit) [Source](docs/PRD.md#functional-requirements)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+- path: docs/epics.md | title: codex-completions-api - Epic Breakdown | section: Story 2.4: Align error handling and retries | snippet: Defines operator-focused goal plus ACs covering error mapping, retry policy, and negative test coverage.
+- path: docs/PRD.md | title: codex-completions-api Product Requirements Document | section: Functional Requirements FR001–FR004 | snippet: FR004 mandates identical HTTP status codes, error bodies, and retry hints across the migration; FR005–FR009 describe supervisor/backoff expectations.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Workflows and Sequencing Step 4 | snippet: Story 2.4 must map JSON-RPC errors/timeouts to existing HTTP classes and integrate supervisor backoff and circuit-breaker signals.
+- path: docs/tech-spec-epic-2.md | title: Epic Technical Specification: /v1/chat/completions JSON-RPC Parity | section: Reliability/Availability | snippet: Transport errors should surface through supervisor backoff with retryable hints, and timeouts trigger the same exponential retry policy.
+- path: docs/architecture.md | title: Decision Architecture | section: Error Handling | snippet: Central middleware returns `{ error: { code, message, retryable } }`, setting `retryable: true` when worker backoff is active.
+- path: docs/app-server-migration/codex-completions-api-migration.md | title: Migrating codex-completions-api to codex app-server | section: G. Concurrency &amp; timeouts | snippet: Keep per-request timeouts, return retryable errors, and only restart the shared worker when necessary.
+- path: docs/test-design-epic-2.md | title: Test Design: Epic 2 - /v1/chat/completions JSON-RPC Parity | section: P0 (Critical) - Run on every commit | snippet: P0 suite includes error and tool-call parity, requiring deterministic 400/429/503 handling before rollout.
+- path: docs/_archive/stories/2-3-implement-streaming-response-adapter.md | title: Story 2.3: Implement streaming response adapter | section: Completion Notes List | snippet: Highlights SSE adapter reuse, deterministic integration harness, and touched modules that this story must extend for failure coverage.
+    </docs>
+    <code>
+- path: src/services/transport/index.js | type: file | reason: Defines `TransportError` and `mapTransportError` converting worker failures, timeouts, and busy signals into HTTP envelopes.
+- path: src/services/transport/child-adapter.js | type: file | reason: Emits JSON-RPC notifications and propagates errors to request contexts; new failure handling should reuse its hooks.
+- path: src/handlers/chat/nonstream.js | type: file | reason: Calls `mapTransportError` for synchronous responses; needs updates to surface retry hints and diagnostics consistently.
+- path: src/handlers/chat/stream.js | type: file | reason: Streams SSE chunks and applies error mapping on disconnect; must mirror HTTP parity for retryable failures.
+- path: src/services/worker/supervisor.js | type: file | reason: Manages handshake readiness, restart backoff, and emits lifecycle events consumed by readiness guards.
+- path: src/middleware/worker-ready.js | type: file | reason: Returns 503 with `retryable: true` until the supervisor reports ready, aligning transport output with readiness state.
+- path: src/lib/errors.js | type: file | reason: Provides canonical error envelope helpers used by proto handlers; JSON-RPC mappings must remain aligned.
+- path: tests/integration/chat-jsonrpc.int.test.js | type: file | reason: Deterministic integration suite to extend with handshake timeout, worker exit, and transport error cases.
+- path: scripts/fake-codex-jsonrpc.js | type: file | reason: Test shim for injecting JSON-RPC responses and errors when exercising failure scenarios.
+    </code>
+    <dependencies>
+- node | version: &gt;=22 (package.json engines)
+- npm | packages: `@openai/codex@0.53.0`, `express`, `vitest`, `@playwright/test`
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Preserve FR004 parity—HTTP status codes, error payloads, and retry hints must remain indistinguishable from proto responses. [Source](docs/PRD.md#functional-requirements)
+- Reuse central error middleware and envelope helpers so JSON-RPC errors continue to surface through `{ error: { code, message, retryable } }`. [Source](docs/architecture.md#error-handling)
+- Propagate supervisor readiness/backoff signals when surfacing worker failures or timeouts to clients. [Source](docs/tech-spec-epic-2.md#reliability-availability)
+- Maintain documented timeout/backoff behaviour, avoiding unnecessary worker restarts for routine request timeouts. [Source](docs/app-server-migration/codex-completions-api-migration.md#g-concurrency--timeouts)
+- Expand P0 error parity coverage before rollout; ensure tests fail fast on mismatched retry hints or status codes. [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)
+  </constraints>
+  <interfaces>
+    <apis>- name: JSON-RPC error responses | contract: Worker sends `error` payloads with `code`, `message`, and optional `data`; transport layer must map these into HTTP parity envelopes. | path: docs/tech-spec-epic-2.md#workflows-and-sequencing</apis>
+    <services>- path: src/services/transport/index.js#L30-L760 | contract: `TransportError` and `mapTransportError` convert worker/backoff failures into retryable HTTP responses used by chat handlers. | path: src/services/transport/index.js</services>
+    <services>- path: src/services/worker/supervisor.js#L1-L200 | contract: Supervisor emits readiness/backoff events that `requireWorkerReady` and transport mappings rely on for retry timing. | path: src/services/worker/supervisor.js</services>
+    <services>- path: src/middleware/worker-ready.js#L1-L80 | contract: Middleware halts requests with 503 `backend_unavailable` until the supervisor reports ready, aligning with retry hints. | path: src/middleware/worker-ready.js</services>
+  </interfaces>
+  <tests>
+    <standards>Follow Epic 2 test plan for error parity: extend Vitest integration suites and parity harness so 400/429/503/504 flows remain deterministic with retryable hints. [Source](docs/test-design-epic-2.md#p0-critical---run-on-every-commit)</standards>
+    <locations>tests/integration/chat-jsonrpc.int.test.js; tests/parity; scripts/fake-codex-jsonrpc.js</locations>
+    <ideas>
+- AC #1: Add integration tests stubbing `worker_busy` and `worker_unavailable` errors while asserting HTTP status and retryable flags.
+- AC #2: Simulate handshake timeout and forced worker restart via supervisor hooks, verifying readiness gating and retry delay logging.
+- AC #3: Capture proto vs. app-server error transcripts in parity fixtures and diff for status/message drift.
+    </ideas>
+  </tests>
+</story-context>
