@@ -31,7 +31,7 @@ tags:
   - `package.json`, `package-lock.json`
   - `vitest.config.ts`, `playwright.config.ts`, `playwright.live.config.ts`
   - `tsconfig.schema.json`
-  - `rht.json`, `rht_update.json`, `rht_update2.json`
+  - `rht.json`, `rht_update.json`
   - `.env.dev.example`, `.env.example`
   - `.nvmrc`, `.prettierrc.json`, `eslint.config.mjs`, `.secretlintrc.json`
 - Top-level directories:
@@ -111,7 +111,6 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | TS schema config             | `tsconfig.schema.json`             | tooling        | TS configuration for schema-related tooling (JSON schema generation, etc.).                  | current | Indicates some TS-based tooling even though core app is JS.                                           |       |
 | Cloudflare header rules      | `rht.json`                         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
 | Cloudflare update payload    | `rht_update.json`                  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Presence of multiple update files suggests iterative CORS tuning; must ensure latest is tracked.      |       |
-| Cloudflare update payload 2  | `rht_update2.json`                 | infra artifact | Additional update payload for Cloudflare rules (not yet fully analyzed).                     | current | Needs explicit review to confirm whether it supersedes or complements previous payload.               |       |
 | Cloud/cloud bootstrap script | `setup-codex-cloud.sh`             | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
 
 ---
