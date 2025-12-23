@@ -58,8 +58,8 @@ This intentionally does not copy secrets such as `auth.json`.
 
 ## Cloud/CI bootstrap
 
-For ephemeral environments (CI runners, cloud VMs), `setup-codex-cloud.sh` installs deps, prepares writable Codex homes, and can optionally run tests:
+For ephemeral environments (CI runners, cloud VMs), `scripts/setup-codex-cloud.sh` installs deps, prepares writable Codex homes, and can optionally run tests:
 
 ```bash
-./setup-codex-cloud.sh --verify
+./scripts/setup-codex-cloud.sh --verify
 ```

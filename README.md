@@ -423,8 +423,8 @@ Suggested dev loop
 To prepare a fresh Codex Cloud (or any CI) environment with everything required to run this repo’s tests locally:
 
 ```bash
-./setup-codex-cloud.sh           # installs deps, Playwright, prepares writable dirs
-./setup-codex-cloud.sh --verify  # does the above and runs unit→integration→e2e
+./scripts/setup-codex-cloud.sh           # installs deps, Playwright, prepares writable dirs
+./scripts/setup-codex-cloud.sh --verify  # does the above and runs unit→integration→e2e
 ```
 
 Notes
