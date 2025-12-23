@@ -79,7 +79,7 @@ Goal: let any OpenAI Chat Completions client (SDKs, IDEs, curl) talk to Codex CL
 1. Copy the example compose file and adjust environment variables:
 
    ```bash
-   cp docker-compose.local.example.yml docker-compose.local.yml
+   cp infra/compose/docker-compose.local.example.yml docker-compose.local.yml
    # edit docker-compose.local.yml to set PROXY_API_KEY or other overrides
    ```
 
@@ -267,13 +267,13 @@ Dev parity stack (public behind Traefik):
 
 - Purpose: exercise the proxy with a real Codex CLI behind Traefik and ForwardAuth, mirroring prod, without touching prod.
 - Bring up: `npm run dev:stack:up`
-  - Uses a single file: `compose.dev.stack.yml` (self-contained dev app + dev auth)
+  - Uses a single file: `infra/compose/compose.dev.stack.yml` (self-contained dev app + dev auth)
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
   - If local port 18010 is in use, override:
-    - `DEV_PORT=19010 docker compose -p codex-dev -f compose.dev.stack.yml --env-file .env.dev up -d --build`
+    - `DEV_PORT=19010 docker compose -p codex-dev -f infra/compose/compose.dev.stack.yml --env-file .env.dev up -d --build`
   - Uses the host Codex CLI by default (`CODEX_BIN=codex`, requires `~/.cargo/bin/codex`)
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). The dev host now loads its routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml`, so keep that file in sync with the compose labels if you tweak origins/CORS.
-- ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
+- ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `infra/compose/compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
 - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
 - Live tests (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
@@ -294,7 +294,7 @@ Notes:
 
 ### Dev → Prod Promotion Flow (authoritative)
 
-- Change only dev inputs first: `.codev/*`, `compose.dev.stack.yml`.
+- Change only dev inputs first: `.codev/*`, `infra/compose/compose.dev.stack.yml`.
 - Validate locally (Node or container) and behind Traefik on `codex-dev…`:
   - Smoke: `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run smoke:dev`
   - Live E2E (real Codex): `DEV_DOMAIN=codex-dev.onemainarmy.com KEY=$DEV_KEY npm run test:live:dev`
@@ -604,7 +604,7 @@ Notes:
 - Compose reads `PROXY_API_KEY` from `.env.dev`.
 - Override port: `DEV_PORT=19010 npm run dev:stack:up`
 - Set `CODEX_BIN=codex` to use your host Codex CLI (requires `~/.cargo/bin/codex`).
-- File: `compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, and configures ForwardAuth dev at `127.0.0.1:18081`. Set `CODEX_BIN=/app/scripts/fake-codex-proto.js` only if you explicitly need the legacy proto shim for CI/offline tests.
+- File: `infra/compose/compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, and configures ForwardAuth dev at `127.0.0.1:18081`. Set `CODEX_BIN=/app/scripts/fake-codex-proto.js` only if you explicitly need the legacy proto shim for CI/offline tests.
 
 ## Notes and troubleshooting
 

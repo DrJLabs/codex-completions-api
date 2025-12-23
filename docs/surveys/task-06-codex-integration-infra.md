@@ -27,7 +27,7 @@ Scope: How this proxy integrates with the Codex CLI/runtime and how it is deploy
 ### Deployment / ops
 - `Dockerfile` (bakes Codex CLI into image; default CODEX_BIN/CODEX_HOME)
 - `docker-compose.yml` (prod-ish stack: app + auth, Traefik labels, host loopback publishes)
-- `compose.dev.stack.yml` (dev stack with separate hostnames/ports and volumes)
+- `infra/compose/compose.dev.stack.yml` (dev stack with separate hostnames/ports and volumes)
 - `auth/server.mjs` (ForwardAuth verifier; canonical entrypoint)
 - `scripts/dev.sh` (local dev launcher; shim switch)
 - `scripts/install.sh` (alternate “standalone installer” that generates a separate proxy + systemd user unit)
@@ -134,7 +134,7 @@ Operational implications:
 - Traefik is assumed to be **running on the host** (ForwardAuth calls `127.0.0.1`).
 - CORS is set both at Traefik and (optionally) at the app, which can drift.
 
-### 4.3 Dev Compose (`compose.dev.stack.yml`)
+### 4.3 Dev Compose (`infra/compose/compose.dev.stack.yml`)
 Similar to prod compose but with dev-specific knobs:
 - Hostname `codex-dev-api.onemainarmy.com`
 - Auth verify port `127.0.0.1:18081`

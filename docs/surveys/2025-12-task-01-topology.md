@@ -26,8 +26,8 @@ tags:
   - `server.js`
   - `Dockerfile`
   - `docker-compose.yml`
-  - `compose.dev.stack.yml`
-  - `docker-compose.local.example.yml`
+  - `infra/compose/compose.dev.stack.yml`
+  - `infra/compose/docker-compose.local.example.yml`
   - `package.json`, `package-lock.json`
   - `vitest.config.ts`, `playwright.config.ts`, `playwright.live.config.ts`
   - `tsconfig.schema.json`
@@ -43,6 +43,7 @@ tags:
   - `config/`
   - `docs/`
   - `external/`
+  - `infra/`
   - `releases/`
   - `scripts/`
   - `src/`
@@ -76,6 +77,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Provider configs       | `config/`     | config         | Example upstream provider configs (e.g., `roo-openai-compatible.json`).                               | current        | If treated as canonical without validation, may drift from actual deploy config.                   |       |
 | Documentation          | `docs/`       | docs           | Project docs, BMAD artifacts, architecture maps, migration runbooks, QA checklists, stories.          | current+archive| Contains both current and `_archive` content; ambiguity around which docs are canonical.           |       |
 | Vendored submodule     | `external/`   | dependency     | Git submodule (e.g., upstream Codex client/SDK or related resources).                                 | current        | Submodule versions can drift separately from `package.json` deps; need explicit update policy.     |       |
+| Infra artifacts        | `infra/`      | infra          | Cloudflare exports and compose variants that back dev/prod deployment.                                | current        | Risk of drift if infra files are not kept in sync with edge deployments.                            |       |
 | Release metadata       | `releases/`   | release meta   | Stack image lock JSON and other release state artifacts.                                              | current        | If not regenerated consistently, may become misleading vs actual prod deployment.                  |       |
 | Helper scripts         | `scripts/`    | tooling        | Dev/CI/ops helpers (config sync, QA scripts, stack snapshots, etc.).                                  | current        | Wide surface; some scripts may be legacy or env-specific; needs tagging/ownership.                |       |
 | Application code       | `src/`        | app code       | Express app, routers, services, adapters, JSON-RPC transport, business logic.                         | current        | Entry-point is `server.js`; deep behaviors to be reviewed in later tasks.                          |       |
@@ -92,8 +94,8 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Entry bootstrap              | `server.js`                        | entrypoint     | Main process bootstrap; selects backend mode, starts worker/supervisor, mounts Express app.  | current | Any additional entrypoints would create ambiguity; this appears to be the canonical one.              |       |
 | Container build              | `Dockerfile`                       | build          | Builds the proxy + dependencies into an image for Docker/Compose deployment.                 | current | Must align with Node version (`.nvmrc`) and runtime expectations; to be validated later.              |       |
 | Prod Compose                 | `docker-compose.yml`               | runtime        | Main Compose stack for production-like deployments (Traefik labels, service wiring).         | current | One of several compose files; must be treated as authoritative for prod.                              |       |
-| Dev stack Compose            | `compose.dev.stack.yml`            | runtime        | Dev-oriented stack composition (additional services, mount points).                          | current | If not clearly documented, dev vs prod behavior may diverge.                                          |       |
-| Local example Compose        | `docker-compose.local.example.yml` | runtime        | Template for local developer setup.                                                          | helper  | Needs periodic sync with actual service list and env var names.                                       |       |
+| Dev stack Compose            | `infra/compose/compose.dev.stack.yml`            | runtime        | Dev-oriented stack composition (additional services, mount points).                          | current | If not clearly documented, dev vs prod behavior may diverge.                                          |       |
+| Local example Compose        | `infra/compose/docker-compose.local.example.yml` | runtime        | Template for local developer setup.                                                          | helper  | Needs periodic sync with actual service list and env var names.                                       |       |
 | Package manifest             | `package.json`                     | deps           | Declares dependencies, scripts, and build/test commands.                                     | current | Must stay aligned with tooling configs and submodule expectations.                                    |       |
 | Lockfile                     | `package-lock.json`                | deps           | Frozen dependency graph for reproducible installs.                                           | current | If not kept fresh with `package.json`, may hide outdated dependencies.                                |       |
 | Node version pin             | `.nvmrc`                           | tooling        | Pins Node version used by devs/CI.                                                           | current | Divergence from Docker image Node version would cause inconsistent behavior.                          |       |
