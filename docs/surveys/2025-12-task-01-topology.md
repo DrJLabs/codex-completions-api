@@ -111,7 +111,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | TS schema config             | `tsconfig.schema.json`             | tooling        | TS configuration for schema-related tooling (JSON schema generation, etc.).                  | current | Indicates some TS-based tooling even though core app is JS.                                           |       |
 | Cloudflare header rules      | `infra/cloudflare/rht.json`         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
 | Cloudflare update payload    | `infra/cloudflare/rht_update.json`  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Keep aligned with edge changes to avoid config drift.                                                  |       |
-| Cloud/cloud bootstrap script | `setup-codex-cloud.sh`             | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
+| Cloud/cloud bootstrap script | `scripts/setup-codex-cloud.sh`     | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
 
 ---
 

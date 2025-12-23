@@ -7,12 +7,17 @@
 
 set -Eeuo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if PROJECT_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel 2>/dev/null)"; then
+  :
+else
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 cd "$PROJECT_ROOT"
 
 usage() {
   cat <<'USAGE'
-Usage: ./setup-codex-cloud.sh [--verify] [--skip-browsers] [--no-ci] [--seed-dev-config]
+Usage: ./scripts/setup-codex-cloud.sh [--verify] [--skip-browsers] [--no-ci] [--seed-dev-config]
 
 Options:
   --verify            Run tests after setup (unit → integration → e2e)
