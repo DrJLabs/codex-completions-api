@@ -15,7 +15,7 @@
     },
     {
       "env": "dev",
-      "compose_file": "compose.dev.stack.yml",
+      "compose_file": "infra/compose/compose.dev.stack.yml",
       "service": "app-dev",
       "compose_image": "codex-completions-api:dev",
       "rebuilt_at_pt": "2025-09-10T19:42:35-07:00",
