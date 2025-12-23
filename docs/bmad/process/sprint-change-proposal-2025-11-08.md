@@ -38,13 +38,13 @@
 ## 4. Detailed Change Proposals
 1. **Story 2.8 – Implement ToolCallAggregator utility**  
    - Add `src/lib/tool-call-aggregator.js`, config flags (`PROXY_STOP_AFTER_TOOLS`, `PROXY_SUPPRESS_TAIL_AFTER_TOOLS`, `PROXY_ENABLE_PARALLEL_TOOL_CALLS`), and telemetry fields (`has_tool_calls`, `tool_call_names`).  
-   - Story file: `docs/stories/2-8-implement-tool-call-aggregator.md` referencing `docs/codex-proxy-tool-calls.md`.
+   - Story file: `docs/_archive/stories/2-8-implement-tool-call-aggregator.md` referencing `docs/codex-proxy-tool-calls.md`.
 2. **Story 2.9 – Stream & non-stream handler parity for tool calls**  
    - Update streaming/non-streaming handlers to ingest Codex structured events, emit OpenAI-style `tool_calls`, and enforce `finish_reason: "tool_calls"`. Include textual fallback suppression logic.  
-   - Story file: `docs/stories/2-9-stream-and-nonstream-tool-calls.md`.
+   - Story file: `docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md`.
 3. **Story 2.10 – Tool-call regression and smoke coverage**  
    - Extend unit/integration/E2E suites plus smoke scripts to cover structured and textual tool-call paths (Obsidian Copilot scenarios). Document in `docs/test-design-epic-2.md`, runbooks, and smoke README.  
-   - Story file: `docs/stories/2-10-tool-call-regression-and-smoke.md`.
+   - Story file: `docs/_archive/stories/2-10-tool-call-regression-and-smoke.md`.
 4. **PRD Update** — Add FR016–FR017 for tool-call emission and regression evidence.  
 5. **Architecture & Runbooks** — Document aggregator flow, SSE constraints, and new testing/smoke procedures referencing `docs/codex-proxy-tool-calls.md`.
 

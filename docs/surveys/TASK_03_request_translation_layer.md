@@ -17,7 +17,7 @@ Related artifacts (referenced, not exhaustively reviewed here due to tooling con
 
 - `src/lib/json-rpc/schema.ts` (validators + item constructors)
 - `docs/app-server-migration/app-server-protocol.schema.json` (protocol schema)
-- `docs/stories/2-2-implement-request-translation-layer.md` (intended behavior/design notes)
+- `docs/_archive/stories/2-2-implement-request-translation-layer.md` (intended behavior/design notes)
 
 ---
 

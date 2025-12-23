@@ -281,10 +281,10 @@ So that `/v1/chat/completions` can emit OpenAI-compatible `tool_calls` metadata 
 
 **Acceptance Criteria:**
 
-1. Deliver `src/lib/tool-call-aggregator.{js,ts}` that ingests Codex JSON-RPC tool signals and OpenAI-style function deltas, binds fragments per choice, and exposes `ingestDelta()`, `ingestMessage()`, `snapshot()`, and `resetTurn()` APIs with immutable outputs. [Source: docs/stories/2-8-implement-tool-call-aggregator.md]
-2. Provide textual fallback helpers (`extractUseToolBlocks`, `registerTextPattern`) plus optional synthesis so `<use_tool>` payloads can be detected without structured events. [Source: docs/stories/2-8-implement-tool-call-aggregator.md]
-3. Ship Obsidian XML utilities (`toObsidianXml`, ordered parameter canon, XML escaping/array serialization) so downstream handlers emit canonical `<use_tool>` content. [Source: docs/stories/2-8-implement-tool-call-aggregator.md]
-4. Cover the module with unit tests (streaming, idempotency, textual fallback, mixed inputs) and author `docs/dev/tool-call-aggregator.md` describing the API, behaviors, and expectations. [Source: docs/stories/2-8-implement-tool-call-aggregator.md]
+1. Deliver `src/lib/tool-call-aggregator.{js,ts}` that ingests Codex JSON-RPC tool signals and OpenAI-style function deltas, binds fragments per choice, and exposes `ingestDelta()`, `ingestMessage()`, `snapshot()`, and `resetTurn()` APIs with immutable outputs. [Source: docs/_archive/stories/2-8-implement-tool-call-aggregator.md]
+2. Provide textual fallback helpers (`extractUseToolBlocks`, `registerTextPattern`) plus optional synthesis so `<use_tool>` payloads can be detected without structured events. [Source: docs/_archive/stories/2-8-implement-tool-call-aggregator.md]
+3. Ship Obsidian XML utilities (`toObsidianXml`, ordered parameter canon, XML escaping/array serialization) so downstream handlers emit canonical `<use_tool>` content. [Source: docs/_archive/stories/2-8-implement-tool-call-aggregator.md]
+4. Cover the module with unit tests (streaming, idempotency, textual fallback, mixed inputs) and author `docs/dev/tool-call-aggregator.md` describing the API, behaviors, and expectations. [Source: docs/_archive/stories/2-8-implement-tool-call-aggregator.md]
 
 **Prerequisites:** Story 2.7
 
@@ -296,10 +296,10 @@ So that clients experience OpenAI-perfect tool-call semantics in both modes.
 
 **Acceptance Criteria:**
 
-1. Streaming handler emits one assistant role chunk per choice, relays cumulative `delta.tool_calls` when aggregator state changes, synthesizes the `<use_tool>` block (structured or textual), suppresses tail text, applies `PROXY_STOP_AFTER_TOOLS`, and finishes with a single `finish_reason:"tool_calls"` chunk followed by `[DONE]`. [Source: docs/stories/2-9-stream-and-nonstream-tool-calls.md]
-2. Non-stream handler supports two output modes: `obsidian-xml` (content contains the XML block, optional `tool_calls[]`) and `openai-json` (content `null` with populated `tool_calls[]`/`function_call`), both fed by aggregator snapshots with multi-call ordering preserved. [Source: docs/stories/2-9-stream-and-nonstream-tool-calls.md]
-3. Finish-reason utilities, SSE writers, and disconnect handling enforce role-first ordering, no mixed frames, post-finish drop rules, and UTF-8 safe cumulative args; integration/E2E tests cover structured + textual flows for both output modes. [Source: docs/stories/2-9-stream-and-nonstream-tool-calls.md]
-4. Add `PROXY_OUTPUT_MODE` defaulting to `obsidian-xml` plus `x-proxy-output-mode` override, and ensure backend errors before/after tool calls surface according to the new contract. [Source: docs/stories/2-9-stream-and-nonstream-tool-calls.md]
+1. Streaming handler emits one assistant role chunk per choice, relays cumulative `delta.tool_calls` when aggregator state changes, synthesizes the `<use_tool>` block (structured or textual), suppresses tail text, applies `PROXY_STOP_AFTER_TOOLS`, and finishes with a single `finish_reason:"tool_calls"` chunk followed by `[DONE]`. [Source: docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md]
+2. Non-stream handler supports two output modes: `obsidian-xml` (content contains the XML block, optional `tool_calls[]`) and `openai-json` (content `null` with populated `tool_calls[]`/`function_call`), both fed by aggregator snapshots with multi-call ordering preserved. [Source: docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md]
+3. Finish-reason utilities, SSE writers, and disconnect handling enforce role-first ordering, no mixed frames, post-finish drop rules, and UTF-8 safe cumulative args; integration/E2E tests cover structured + textual flows for both output modes. [Source: docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md]
+4. Add `PROXY_OUTPUT_MODE` defaulting to `obsidian-xml` plus `x-proxy-output-mode` override, and ensure backend errors before/after tool calls surface according to the new contract. [Source: docs/_archive/stories/2-9-stream-and-nonstream-tool-calls.md]
 
 **Prerequisites:** Story 2.8
 
@@ -311,10 +311,10 @@ So that clients receive complete OpenAI-compatible tool_call arrays and Obsidian
 
 **Acceptance Criteria:**
 
-1. Streaming handler tracks `forwardedToolCount` per choice and emits all tool-call deltas plus `<use_tool>` chunks until the final call, honoring `STOP_AFTER_TOOLS_MODE` (first|burst) and `[DONE]` semantics. [Source: docs/design/multi-tool-calls-v2.md]
-2. Non-stream handler returns all tool calls in both JSON (`tool_calls[]`, `finish_reason:"tool_calls"`) and Obsidian XML (multiple `<use_tool>` blocks, delimiter support) with tail suppression happening only after the last call. [Source: docs/design/multi-tool-calls-v2.md]
-3. Config gates (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`, `SUPPRESS_TAIL_AFTER_TOOLS`) default to unlimited/burst but allow legacy single-call behavior via flags. [Source: docs/design/multi-tool-calls-v2.md]
-4. Telemetry counters expose per-turn tool-call counts, and docs reference the new behavior for downstream consumers. [Source: docs/design/multi-tool-calls-v2.md]
+1. Streaming handler tracks `forwardedToolCount` per choice and emits all tool-call deltas plus `<use_tool>` chunks until the final call, honoring `STOP_AFTER_TOOLS_MODE` (first|burst) and `[DONE]` semantics. [Source: docs/PRD.md#functional-requirements; docs/codex-proxy-tool-calls.md#multi-tool-turn-fidelity]
+2. Non-stream handler returns all tool calls in both JSON (`tool_calls[]`, `finish_reason:"tool_calls"`) and Obsidian XML (multiple `<use_tool>` blocks, delimiter support) with tail suppression happening only after the last call. [Source: docs/PRD.md#functional-requirements; docs/codex-proxy-tool-calls.md#non-streaming-detection--flow]
+3. Config gates (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`, `SUPPRESS_TAIL_AFTER_TOOLS`) default to unlimited/burst but allow legacy single-call behavior via flags. [Source: docs/PRD.md#functional-requirements]
+4. Telemetry counters expose per-turn tool-call counts, and docs reference the new behavior for downstream consumers. [Source: docs/codex-proxy-tool-calls.md#multi-tool-turn-fidelity]
 
 **Prerequisites:** Stories 2.8-2.9
 **Prerequisite for:** Story 2.10
@@ -327,10 +327,10 @@ So that Obsidian Copilot scenarios remain green when the app-server backend chan
 
 **Acceptance Criteria:**
 
-1. Create deterministic structured + textual fixtures under `tests/e2e/fixtures/tool-calls/` and reuse them across unit, integration, Playwright, and SSE transcript tests (role order, cumulative args, single finish, `[DONE]`). [Source: docs/stories/2-10-tool-call-regression-and-smoke.md]
-2. Extend `npm run test:integration`, `npm test`, and Playwright suites with scenarios that assert tail suppression, post-finish drop rules, multi-choice isolation, large-argument UTF-8 safety, backend error paths, and `PROXY_ENABLE_PARALLEL_TOOL_CALLS` behavior. [Source: docs/stories/2-10-tool-call-regression-and-smoke.md]
-3. Wire authenticated tool-call checks into `scripts/smoke/dev|prod` plus CI (including disconnect handling), and upload transcripts/logs on failure for triage. [Source: docs/stories/2-10-tool-call-regression-and-smoke.md]
-4. Update `docs/test-design-epic-2.md`, migration/runbook references, and Obsidian Copilot guidance to include the new fixtures, commands, and verification steps. [Source: docs/stories/2-10-tool-call-regression-and-smoke.md]
+1. Create deterministic structured + textual fixtures under `tests/e2e/fixtures/tool-calls/` and reuse them across unit, integration, Playwright, and SSE transcript tests (role order, cumulative args, single finish, `[DONE]`). [Source: docs/_archive/stories/2-10-tool-call-regression-and-smoke.md]
+2. Extend `npm run test:integration`, `npm test`, and Playwright suites with scenarios that assert tail suppression, post-finish drop rules, multi-choice isolation, large-argument UTF-8 safety, backend error paths, and `PROXY_ENABLE_PARALLEL_TOOL_CALLS` behavior. [Source: docs/_archive/stories/2-10-tool-call-regression-and-smoke.md]
+3. Wire authenticated tool-call checks into `scripts/smoke/dev|prod` plus CI (including disconnect handling), and upload transcripts/logs on failure for triage. [Source: docs/_archive/stories/2-10-tool-call-regression-and-smoke.md]
+4. Update `docs/test-design-epic-2.md`, migration/runbook references, and Obsidian Copilot guidance to include the new fixtures, commands, and verification steps. [Source: docs/_archive/stories/2-10-tool-call-regression-and-smoke.md]
 
 **Prerequisites:** Stories 2.8-2.9
 

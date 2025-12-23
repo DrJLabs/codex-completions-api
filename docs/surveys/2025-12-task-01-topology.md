@@ -26,12 +26,12 @@ tags:
   - `server.js`
   - `Dockerfile`
   - `docker-compose.yml`
-  - `compose.dev.stack.yml`
-  - `docker-compose.local.example.yml`
+  - `infra/compose/compose.dev.stack.yml`
+  - `infra/compose/docker-compose.local.example.yml`
   - `package.json`, `package-lock.json`
   - `vitest.config.ts`, `playwright.config.ts`, `playwright.live.config.ts`
   - `tsconfig.schema.json`
-  - `rht.json`, `rht_update.json`, `rht_update2.json`
+  - `infra/cloudflare/rht.json`, `infra/cloudflare/rht_update.json`
   - `.env.dev.example`, `.env.example`
   - `.nvmrc`, `.prettierrc.json`, `eslint.config.mjs`, `.secretlintrc.json`
 - Top-level directories:
@@ -43,12 +43,13 @@ tags:
   - `config/`
   - `docs/`
   - `external/`
+  - `infra/`
   - `releases/`
   - `scripts/`
   - `src/`
   - `systemd/`
   - `tests/`
-  - `v4-backup/`
+  - `docs/_archive/v4-backup/`
   - `web-bundles/`
   - `workers/`
 
@@ -76,12 +77,13 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Provider configs       | `config/`     | config         | Example upstream provider configs (e.g., `roo-openai-compatible.json`).                               | current        | If treated as canonical without validation, may drift from actual deploy config.                   |       |
 | Documentation          | `docs/`       | docs           | Project docs, BMAD artifacts, architecture maps, migration runbooks, QA checklists, stories.          | current+archive| Contains both current and `_archive` content; ambiguity around which docs are canonical.           |       |
 | Vendored submodule     | `external/`   | dependency     | Git submodule (e.g., upstream Codex client/SDK or related resources).                                 | current        | Submodule versions can drift separately from `package.json` deps; need explicit update policy.     |       |
+| Infra artifacts        | `infra/`      | infra          | Cloudflare exports and compose variants that back dev/prod deployment.                                | current        | Risk of drift if infra files are not kept in sync with edge deployments.                            |       |
 | Release metadata       | `releases/`   | release meta   | Stack image lock JSON and other release state artifacts.                                              | current        | If not regenerated consistently, may become misleading vs actual prod deployment.                  |       |
 | Helper scripts         | `scripts/`    | tooling        | Dev/CI/ops helpers (config sync, QA scripts, stack snapshots, etc.).                                  | current        | Wide surface; some scripts may be legacy or env-specific; needs tagging/ownership.                |       |
 | Application code       | `src/`        | app code       | Express app, routers, services, adapters, JSON-RPC transport, business logic.                         | current        | Entry-point is `server.js`; deep behaviors to be reviewed in later tasks.                          |       |
 | Systemd unit files     | `systemd/`    | ops            | Host-based systemd units to run the proxy outside of Docker.                                          | current        | Additional deployment modality increases configuration drift risk vs Docker/Compose.               |       |
 | Test suite             | `tests/`      | tests          | Unit/integration/e2e tests (Vitest, Playwright).                                                      | current        | Need coverage review later; multiple configs imply multiple test “modes”.                          |       |
-| Legacy snapshot        | `v4-backup/`  | legacy archive | Archived v4-era configuration, BMAD templates, older project structure.                               | legacy         | Keeping in-tree is fine, but must be clearly marked non-authoritative to avoid confusion.          |       |
+| Legacy snapshot        | `docs/_archive/v4-backup/`  | legacy archive | Archived v4-era configuration, BMAD templates, older project structure.                               | legacy         | Keeping in-tree is fine, but must be clearly marked non-authoritative to avoid confusion.          |       |
 | Web bundles            | `web-bundles/`| artifact       | Optional web/agent bundles (likely built artifacts or packaged configs).                              | optional       | Exact contents not indexed; risk of stale artifacts if not regenerated regularly.                  |       |
 | Cloudflare workers     | `workers/`    | infra          | Cloudflare Worker projects (e.g., CORS preflight logger, routing helpers).                            | current        | Adds another operational surface; requires synchronized config with Traefik and header rules.      |       |
 
@@ -92,8 +94,8 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Entry bootstrap              | `server.js`                        | entrypoint     | Main process bootstrap; selects backend mode, starts worker/supervisor, mounts Express app.  | current | Any additional entrypoints would create ambiguity; this appears to be the canonical one.              |       |
 | Container build              | `Dockerfile`                       | build          | Builds the proxy + dependencies into an image for Docker/Compose deployment.                 | current | Must align with Node version (`.nvmrc`) and runtime expectations; to be validated later.              |       |
 | Prod Compose                 | `docker-compose.yml`               | runtime        | Main Compose stack for production-like deployments (Traefik labels, service wiring).         | current | One of several compose files; must be treated as authoritative for prod.                              |       |
-| Dev stack Compose            | `compose.dev.stack.yml`            | runtime        | Dev-oriented stack composition (additional services, mount points).                          | current | If not clearly documented, dev vs prod behavior may diverge.                                          |       |
-| Local example Compose        | `docker-compose.local.example.yml` | runtime        | Template for local developer setup.                                                          | helper  | Needs periodic sync with actual service list and env var names.                                       |       |
+| Dev stack Compose            | `infra/compose/compose.dev.stack.yml`            | runtime        | Dev-oriented stack composition (additional services, mount points).                          | current | If not clearly documented, dev vs prod behavior may diverge.                                          |       |
+| Local example Compose        | `infra/compose/docker-compose.local.example.yml` | runtime        | Template for local developer setup.                                                          | helper  | Needs periodic sync with actual service list and env var names.                                       |       |
 | Package manifest             | `package.json`                     | deps           | Declares dependencies, scripts, and build/test commands.                                     | current | Must stay aligned with tooling configs and submodule expectations.                                    |       |
 | Lockfile                     | `package-lock.json`                | deps           | Frozen dependency graph for reproducible installs.                                           | current | If not kept fresh with `package.json`, may hide outdated dependencies.                                |       |
 | Node version pin             | `.nvmrc`                           | tooling        | Pins Node version used by devs/CI.                                                           | current | Divergence from Docker image Node version would cause inconsistent behavior.                          |       |
@@ -109,10 +111,9 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Playwright config            | `playwright.config.ts`             | tests/e2e      | Standard Playwright test configuration.                                                      | current | Co-exists with a live config; potential duplication.                                                  |       |
 | Live Playwright config       | `playwright.live.config.ts`        | tests/e2e      | Alternate Playwright config for live/external testing scenarios.                             | current | Two configs implies multiple live/test modes; must be clearly documented.                             |       |
 | TS schema config             | `tsconfig.schema.json`             | tooling        | TS configuration for schema-related tooling (JSON schema generation, etc.).                  | current | Indicates some TS-based tooling even though core app is JS.                                           |       |
-| Cloudflare header rules      | `rht.json`                         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
-| Cloudflare update payload    | `rht_update.json`                  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Presence of multiple update files suggests iterative CORS tuning; must ensure latest is tracked.      |       |
-| Cloudflare update payload 2  | `rht_update2.json`                 | infra artifact | Additional update payload for Cloudflare rules (not yet fully analyzed).                     | current | Needs explicit review to confirm whether it supersedes or complements previous payload.               |       |
-| Cloud/cloud bootstrap script | `setup-codex-cloud.sh`             | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
+| Cloudflare header rules      | `infra/cloudflare/rht.json`         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
+| Cloudflare update payload    | `infra/cloudflare/rht_update.json`  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Keep aligned with edge changes to avoid config drift.                                                  |       |
+| Cloud/cloud bootstrap script | `scripts/setup-codex-cloud.sh`     | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
 
 ---
 
@@ -131,7 +132,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 4. **[ISSUE-01-04] Submodule dependency (`external/`) as a second dependency channel**  
    - The `external/` submodule introduces a parallel dependency surface beyond `package.json`. Without explicit versioning and update policy, this can drift from the NPM dependencies and documentation.
 
-5. **[ISSUE-01-05] Opaque infra artifacts (`rht_update*.json`, `web-bundles/`) without high-level explanation**  
+5. **[ISSUE-01-05] Opaque infra artifacts (`infra/cloudflare/rht*.json`, `web-bundles/`) without high-level explanation**  
    - Cloudflare header transform artifacts and `web-bundles/` are present but not clearly described in root-level docs. This makes it harder to understand the infra topology and whether those artifacts are expected to be edited by hand or generated.
 
 6. **[ISSUE-01-06] Potential drift between `.env.*`, `README.md`, and actual runtime expectations**  
@@ -189,7 +190,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
   - Impact: Medium  
   - Effort: S  
   - Description:  
-    - Add short bullets to the “Project Structure” section of `README.md` for `rht*.json` and `web-bundles/`, clarifying whether they are generated, hand-edited, or optional.  
+    - Add short bullets to the “Project Structure” section of `README.md` for `infra/cloudflare/rht*.json` and `web-bundles/`, clarifying whether they are generated, hand-edited, or optional.  
     - This improves discoverability and reduces confusion for agents and contributors.
 
 ---

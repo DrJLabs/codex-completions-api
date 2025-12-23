@@ -195,8 +195,8 @@ Maintain peer-review feedback from Maintainers, Ops, and QA captured in the rese
 - docs/research-technical-2025-10-30.md
 - docs/app-server-migration/codex-proto-vs-app-server.md
 - docs/app-server-migration/codex-completions-api-migration.md
-- docs/issues/codex-responses-endpoint--app-server-migration.md
-- docs/issues/codex-responses-endpoint--conversation-adapter.md
+- docs/_archive/issues/codex-responses-endpoint--app-server-migration.md
+- docs/_archive/issues/codex-responses-endpoint--conversation-adapter.md
 
 ---
 
