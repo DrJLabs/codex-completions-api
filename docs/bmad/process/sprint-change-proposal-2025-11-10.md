@@ -9,7 +9,7 @@
 
 ## 1. Issue Summary
 - **Problem:** Stories 2-8 and 2-9 implemented infrastructure for tool calls but the proxy still emits **only one tool call per assistant turn**. Story 2-10 (testing) assumes multiple tool calls exist, so further testing would canonize an incomplete behavior.
-- **Evidence:** `docs/design/multi-tool-calls-v2.md` documents the current gap and the required handler changes; current handlers short-circuit after the first tool call.
+- **Evidence:** `docs/codex-proxy-tool-calls.md` and FR002d in `docs/PRD.md` describe the intended multi-tool behavior, but handlers still short-circuit after the first tool call.
 - **Impact of leaving as-is:** Testing work would lock in the single-call limitation, Obsidian Copilot workflows requiring chained tools would fail, and parity with OpenAI-compliant behavior would remain incomplete.
 
 ## 2. Impact Analysis
@@ -20,7 +20,7 @@
 
 ### Artifact Conflicts
 - **PRD:** Functional requirements lack an explicit statement about multiple tool calls per turn; MVP scope should codify it.  
-- **Architecture:** `docs/design/multi-tool-calls-v2.md` already captures the target behavior and should be linked from epics/stories as the normative design.  
+- **Architecture:** The tool-call contract notes in `docs/codex-proxy-tool-calls.md` capture the target behavior and should be linked from epics/stories until a full design doc exists.  
 - **Testing artifacts:** `docs/test-design-epic-2.md` and CI/Playwright specs must add regression cases for multi-call bursts, limit flags, and telemetry.  
 - **Other artifacts:** Smoke scripts + QA fixtures require updates once multi-tool support lands.
 
@@ -49,10 +49,10 @@ I want streaming and non-streaming handlers to forward every tool call emitted i
 So that clients receive complete OpenAI-compatible tool_call arrays and Obsidian `<use_tool>` blocks before regression testing starts.
 
 **Acceptance Criteria:**
-1. Streaming handler tracks `forwardedToolCount` per choice and emits all tool-call deltas plus `<use_tool>` chunks until the final call, honoring `STOP_AFTER_TOOLS_MODE` (first|burst) and `[DONE]` semantics. [Source: docs/design/multi-tool-calls-v2.md]
-2. Non-stream handler returns all tool calls in both JSON (`tool_calls[]`, `finish_reason:"tool_calls"`) and Obsidian XML (multiple `<use_tool>` blocks, delimiter support) with tail suppression happening only after the last call. [Source: docs/design/multi-tool-calls-v2.md]
-3. Config gates (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`, `SUPPRESS_TAIL_AFTER_TOOLS`) default to unlimited/burst but allow legacy single-call behavior via flags. [Source: docs/design/multi-tool-calls-v2.md]
-4. Telemetry counters expose per-turn tool-call counts, and docs reference the new behavior for downstream consumers. [Source: docs/design/multi-tool-calls-v2.md]
+1. Streaming handler tracks `forwardedToolCount` per choice and emits all tool-call deltas plus `<use_tool>` chunks until the final call, honoring `STOP_AFTER_TOOLS_MODE` (first|burst) and `[DONE]` semantics. [Source: docs/PRD.md#functional-requirements; docs/codex-proxy-tool-calls.md#multi-tool-turn-fidelity]
+2. Non-stream handler returns all tool calls in both JSON (`tool_calls[]`, `finish_reason:"tool_calls"`) and Obsidian XML (multiple `<use_tool>` blocks, delimiter support) with tail suppression happening only after the last call. [Source: docs/PRD.md#functional-requirements; docs/codex-proxy-tool-calls.md#non-streaming-detection--flow]
+3. Config gates (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`, `SUPPRESS_TAIL_AFTER_TOOLS`) default to unlimited/burst but allow legacy single-call behavior via flags. [Source: docs/PRD.md#functional-requirements]
+4. Telemetry counters expose per-turn tool-call counts, and docs reference the new behavior for downstream consumers. [Source: docs/codex-proxy-tool-calls.md#multi-tool-turn-fidelity]
 
 **Prerequisites:** Stories 2.8-2.9
 **Prerequisite for:** Story 2.10
@@ -69,7 +69,7 @@ Create a story file mirroring existing format:
   3. Extend telemetry + logging for `tool_call_count`.  
   4. Add integration tests (stream + non-stream) covering multi-call bursts, `TOOL_BLOCK_MAX`, and stop-after-tools behavior.  
   5. Update smoke scripts and docs referencing new capability.
-- **References:** `docs/design/multi-tool-calls-v2.md`, `docs/codex-proxy-tool-calls.md`, `stories/2-8`, `stories/2-9`.
+- **References:** `docs/PRD.md`, `docs/codex-proxy-tool-calls.md`, `stories/2-8`, `stories/2-9`.
 
 ### 4.3 `docs/PRD.md#Functional Requirements`
 Add explicit MVP requirement:
@@ -77,9 +77,9 @@ Add explicit MVP requirement:
 - **FR-2.9a Multi-Tool Turn Fidelity:** For any assistant turn where the Codex backend emits multiple tool calls, the proxy MUST forward every call in order for both streaming and non-streaming responses, exposing them via OpenAI `tool_calls[]` arrays and Obsidian `<use_tool>` blocks with `finish_reason:"tool_calls"`. Legacy single-call behavior is available only via deployment flags (`TOOL_BLOCK_MAX`, `STOP_AFTER_TOOLS_MODE`).
 ```
 
-### 4.4 `docs/design/multi-tool-calls-v2.md`
-- Promote the document as the authoritative architecture reference by adding a "Normative Status" banner.  
-- Embed state diagrams or sequence tables for: (a) SSE delta ingestion → multi-call emission, (b) non-stream response assembly, (c) config overrides.  
+### 4.4 Multi-tool burst design (pending)
+- Keep the change proposal + tool-call contract notes authoritative until a full design doc exists.  
+- Capture any diagrams or sequence tables in the story file or `docs/codex-proxy-tool-calls.md` once implementation starts.  
 - Call out required telemetry + observability hooks referenced by future epics.
 
 ### 4.5 `docs/test-design-epic-2.md` & CI/Test Harnesses
@@ -99,7 +99,7 @@ Add explicit MVP requirement:
   - Development Team — implement Story 2.9a code changes + telemetry.  
   - Product Owner/Scrum Master — update backlog ordering, PRD, epics, and sprint-status.  
   - QA/Test Architect — expand integration/E2E/smoke coverage and update test design doc.  
-- **Dependencies:** multi-tool design doc, aggregator module, existing handler infrastructure.  
+- **Dependencies:** tool-call contract notes, aggregator module, existing handler infrastructure.  
 - **Definition of Done:** Story 2.9a accepted, Story 2.10 unblocked, docs/tests updated, telemetry operational.
 
 ## 6. Next Steps
