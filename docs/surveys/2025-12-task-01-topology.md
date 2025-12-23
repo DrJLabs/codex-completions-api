@@ -31,7 +31,7 @@ tags:
   - `package.json`, `package-lock.json`
   - `vitest.config.ts`, `playwright.config.ts`, `playwright.live.config.ts`
   - `tsconfig.schema.json`
-  - `rht.json`, `rht_update.json`
+  - `infra/cloudflare/rht.json`, `infra/cloudflare/rht_update.json`
   - `.env.dev.example`, `.env.example`
   - `.nvmrc`, `.prettierrc.json`, `eslint.config.mjs`, `.secretlintrc.json`
 - Top-level directories:
@@ -109,8 +109,8 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 | Playwright config            | `playwright.config.ts`             | tests/e2e      | Standard Playwright test configuration.                                                      | current | Co-exists with a live config; potential duplication.                                                  |       |
 | Live Playwright config       | `playwright.live.config.ts`        | tests/e2e      | Alternate Playwright config for live/external testing scenarios.                             | current | Two configs implies multiple live/test modes; must be clearly documented.                             |       |
 | TS schema config             | `tsconfig.schema.json`             | tooling        | TS configuration for schema-related tooling (JSON schema generation, etc.).                  | current | Indicates some TS-based tooling even though core app is JS.                                           |       |
-| Cloudflare header rules      | `rht.json`                         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
-| Cloudflare update payload    | `rht_update.json`                  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Presence of multiple update files suggests iterative CORS tuning; must ensure latest is tracked.      |       |
+| Cloudflare header rules      | `infra/cloudflare/rht.json`         | infra artifact | Captured Cloudflare response-transform rule set (current state).                             | current | JSON is infra state; changes may be manual—risk of config drift vs code/docs.                         |       |
+| Cloudflare update payload    | `infra/cloudflare/rht_update.json`  | infra artifact | Update payload for Cloudflare header transform rules (CORS behavior, etc.).                  | current | Keep aligned with edge changes to avoid config drift.                                                  |       |
 | Cloud/cloud bootstrap script | `setup-codex-cloud.sh`             | ops script     | Shell script to bootstrap cloud environment for Codex stack.                                 | current | Must be checked for idempotency, secret handling, and parity with docs.                               |       |
 
 ---
@@ -130,7 +130,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
 4. **[ISSUE-01-04] Submodule dependency (`external/`) as a second dependency channel**  
    - The `external/` submodule introduces a parallel dependency surface beyond `package.json`. Without explicit versioning and update policy, this can drift from the NPM dependencies and documentation.
 
-5. **[ISSUE-01-05] Opaque infra artifacts (`rht_update*.json`, `web-bundles/`) without high-level explanation**  
+5. **[ISSUE-01-05] Opaque infra artifacts (`infra/cloudflare/rht*.json`, `web-bundles/`) without high-level explanation**  
    - Cloudflare header transform artifacts and `web-bundles/` are present but not clearly described in root-level docs. This makes it harder to understand the infra topology and whether those artifacts are expected to be edited by hand or generated.
 
 6. **[ISSUE-01-06] Potential drift between `.env.*`, `README.md`, and actual runtime expectations**  
@@ -188,7 +188,7 @@ Focus: **map the repository surface area and runtime-related entrypoints** witho
   - Impact: Medium  
   - Effort: S  
   - Description:  
-    - Add short bullets to the “Project Structure” section of `README.md` for `rht*.json` and `web-bundles/`, clarifying whether they are generated, hand-edited, or optional.  
+    - Add short bullets to the “Project Structure” section of `README.md` for `infra/cloudflare/rht*.json` and `web-bundles/`, clarifying whether they are generated, hand-edited, or optional.  
     - This improves discoverability and reduces confusion for agents and contributors.
 
 ---

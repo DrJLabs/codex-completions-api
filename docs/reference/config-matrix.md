@@ -24,7 +24,7 @@ Canonicalizes the ForwardAuth entrypoint, environment layout, and infra artifact
 
 ## Infra artifacts & external bundles
 
-- `rht*.json` - Cloudflare Response Header Transform exports (CORS/security headers). Keep them in sync with the deployed edge policy; regenerate via Cloudflare exports rather than hand-editing.
+- `infra/cloudflare/rht*.json` - Cloudflare Response Header Transform exports (CORS/security headers). Keep them in sync with the deployed edge policy; regenerate via Cloudflare exports rather than hand-editing.
 - `web-bundles/` - reserved for packaged worker bundles (e.g., from `workers/**`). Currently empty; drop built artifacts here when publishing to the edge.
 - `external/` - vendored sources:
   - `external/codex` (git submodule pinned to Codex CLI; update intentionally).
