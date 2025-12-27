@@ -16,6 +16,10 @@ This folder is the canonical index for repository documentation. Update this fil
 - `api/overview.md` — endpoint overview + runnable curl examples
 - `troubleshooting.md` — common errors and fixes
 
+## Docs workflows
+
+- `runbooks/obsidian-docs-sync.md` — bidirectional `docs/` sync with an Obsidian vault
+
 ## Deployment and ops
 
 - `deployment/dev-stack.md` — dev stack (`infra/compose/compose.dev.stack.yml`)
