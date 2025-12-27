@@ -41,6 +41,10 @@
 - Edge/Traefik changes: run `npm run smoke:dev` (dev stack) or `npm run smoke:prod` on the host before/after deploy.
 - Re-run narrow failures with verbose flags only when debugging; keep first run quiet.
 
+## Git workflow
+
+- Use standard branches in the main working tree; do not create or use isolated git worktrees for routine work.
+
 ## Docs usage
 
 - Do not open `docs/` unless requested or the task requires it; keep detailed changes in `docs/` rather than this file.
