@@ -1,7 +1,7 @@
 # App-Server Auth Signal + Login/Logout (proxy plan)
 
 ## Goal
-- Detect app-server auth expiry and return an explicit 401 to clients instead of silent failures.
+- Detect app-server auth expiry and return an explicit auth error instead of silent failures.
 - Preserve OpenAI-compatible error shapes for both streaming and non-streaming routes.
 - Provide a path to use the app-server login/logout RPCs when auth is required.
 
@@ -52,23 +52,26 @@ kept as a flagged extension.
 - In `src/services/transport/child-adapter.js`, when a JSON-RPC notification has:
   - `method: "error"`
   - `params.codexErrorInfo === "unauthorized"`
-  - `params.willRetry === false`
+  - `params.willRetry === false` or missing/undefined
   then raise a `TransportError("auth_required")` so the request fails fast.
-- For streaming responses, ensure the error terminates the stream cleanly
-  (single error event + `[DONE]`).
+- For streaming responses, document the exact SSE sequence: emit a single
+  error event with the OpenAI-compatible error body, then emit `[DONE]`.
+  The HTTP status stays `200` because headers are already sent.
 
 ### 3) Tests and fixtures
 - Unit test: `tests/unit/services/json-rpc-transport.spec.js` covering
   `auth_required` mapping to 401.
 - Integration test: `tests/integration/json-rpc-transport.int.test.js` using a
   fake app-server signal.
-- Extend `scripts/fake-codex-jsonrpc.js` with an env flag (e.g.
-  `FAKE_CODEX_UNAUTHORIZED=1`) to emit the `unauthorized` error notification.
+- Extend `scripts/fake-codex-jsonrpc.js` with an env flag aligned to existing
+  `FAKE_CODEX_*` naming (e.g. `FAKE_CODEX_UNAUTHORIZED=1`) to emit the
+  `unauthorized` error notification.
 
 ### 4) Logging and observability
 - Add a structured log field for auth-required detection
   (e.g. `auth_required: true` and `codex_error_info: "unauthorized"`).
-- Keep logs metadata-only (no auth tokens or URLs).
+- Keep logs metadata-only (no auth tokens or URLs); if a login URL is returned
+  to the client, it must not appear in logs.
 
 ## Optional extension (Option C)
 - Feature flag (example: `PROXY_AUTH_LOGIN_URL=true`).
@@ -77,18 +80,21 @@ kept as a flagged extension.
 - If a login URL is returned, include it under a safe `error.details.auth_url`
   field in the response while keeping the OpenAI error shape intact.
 - Decide how the client completes login:
-  - Option C1: client opens URL and retries; no additional proxy endpoint.
+  - Option C1 (preferred): client opens URL and retries; no additional proxy endpoint.
   - Option C2: add a small proxy endpoint to forward `account/login/completed`
-    and `account/logout` for UI-driven flows.
+    and `account/logout` for UI-driven flows if the client requires it.
 
 ## Definition of done
-- Unauthorized app-server signals produce a 401 with a stable OpenAI error shape.
-- Streaming and non-streaming both terminate cleanly with the same error.
+- Unauthorized app-server signals produce a stable OpenAI error shape.
+- Non-streaming returns HTTP 401; streaming injects the error into the 200 OK SSE
+  stream and then terminates with `[DONE]`.
 - Tests cover the mapping and detection paths.
 - Optional login URL is behind a feature flag and documented if implemented.
 
 ## Rollout
-1. Ship Option B behind a short-lived flag (if desired) and enable in dev.
-2. Verify logs show `auth_required` on expired tokens.
-3. Enable in prod and monitor client behavior.
-4. Evaluate Option C after confirmation of client needs.
+1. Ship Option B behind a short-lived flag and enable in dev.
+2. Verify logs show `auth_required` on expired tokens with no spike in 5xx or
+   client retries for valid sessions.
+3. Enable in prod and monitor client error rates and auth refresh behavior.
+4. Roll back the flag if auth errors spike unexpectedly or clients fail to recover.
+5. Evaluate Option C after confirmation of client needs.
