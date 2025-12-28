@@ -22,7 +22,7 @@ const SENSITIVE_BODY_KEYS = new Set([
   "login_id",
   "loginid",
 ]);
-const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|,]+)/gi;
+const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|]+)/gi;
 
 const isPlainObject = (value) => Object.prototype.toString.call(value) === "[object Object]";
 

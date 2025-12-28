@@ -19,6 +19,27 @@ describe("capture sanitize helpers", () => {
     expect(result.error.code).not.toContain("https://example.com/oauth");
   });
 
+  it("redacts inline auth URLs that contain commas", () => {
+    const { sanitizeValue } = createCaptureSanitizers({
+      safeStringKeys: new Set(["code", "message"]),
+    });
+    const payload = {
+      error: {
+        code: "invalid_api_key | login_url=https://example.com/oauth?x=1,y=2 | login_id=abc",
+        message: "unauthorized | login_url=https://example.com/oauth?x=1,y=2 | login_id=abc",
+      },
+    };
+
+    const result = sanitizeValue(payload);
+
+    expect(result.error.code).toContain("login_url=<redacted>");
+    expect(result.error.message).toContain("login_url=<redacted>");
+    expect(result.error.code).not.toContain("example.com");
+    expect(result.error.message).not.toContain("example.com");
+    expect(result.error.code).not.toContain("y=2");
+    expect(result.error.message).not.toContain("y=2");
+  });
+
   it("redacts auth URL fields even when key is marked safe", () => {
     const { sanitizeValue } = createCaptureSanitizers({
       safeStringKeys: new Set(["auth_url"]),

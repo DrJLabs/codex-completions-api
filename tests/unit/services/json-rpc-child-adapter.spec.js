@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 let transport;
 
+const logStructured = vi.fn();
+
+vi.mock("../../../src/services/logging/schema.js", () => ({
+  logStructured,
+}));
+
 vi.mock("../../../src/services/transport/index.js", async () => {
   const actual = await vi.importActual("../../../src/services/transport/index.js");
   return {
@@ -33,6 +39,7 @@ afterEach(() => {
     process.env.PROXY_AUTH_LOGIN_URL = ORIGINAL_AUTH_LOGIN_URL;
   }
   vi.clearAllMocks();
+  logStructured.mockClear();
 });
 
 describe("JsonRpcChildAdapter auth handling", () => {
@@ -135,6 +142,57 @@ describe("JsonRpcChildAdapter auth handling", () => {
       auth_url: "https://example.test/login",
       login_id: "login-123",
     });
+
+    resolvePromise();
+    await flushAsync();
+  });
+
+  it("redacts inline auth URLs in auth_required log entries", async () => {
+    process.env.PROXY_AUTH_LOGIN_URL = "false";
+    const { createJsonRpcChildAdapter } = await loadAdapter();
+    const emitter = new EventEmitter();
+    let resolvePromise;
+    const context = {
+      emitter,
+      promise: new Promise((resolve) => {
+        resolvePromise = resolve;
+      }),
+    };
+
+    transport = {
+      createChatRequest: vi.fn(async () => context),
+      sendUserMessage: vi.fn(),
+      cancelContext: vi.fn(),
+    };
+
+    const adapter = createJsonRpcChildAdapter({
+      reqId: "req-auth-log",
+      timeoutMs: 1000,
+      trace: { route: "/v1/chat/completions", mode: "chat_stream" },
+    });
+
+    adapter.stdin.write(JSON.stringify({ prompt: "hello" }));
+    await flushAsync();
+
+    emitter.emit("notification", {
+      method: "error",
+      params: {
+        codexErrorInfo: "unauthorized",
+        error: {
+          message: "unauthorized | login_url=https://example.test/oauth?x=1,y=2 | login_id=abc",
+          codexErrorInfo: "other",
+        },
+        willRetry: false,
+      },
+    });
+
+    await flushAsync();
+
+    expect(logStructured).toHaveBeenCalled();
+    const [, extras] = logStructured.mock.calls[0];
+    expect(extras.error_message).toContain("login_url=[REDACTED]");
+    expect(extras.error_message).not.toContain("example.test");
+    expect(extras.error_message).not.toContain("y=2");
 
     resolvePromise();
     await flushAsync();
