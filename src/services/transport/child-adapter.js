@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { getJsonRpcTransport, TransportError } from "./index.js";
 import { createUserMessageItem, normalizeInputItems } from "../../lib/json-rpc/schema.ts";
+import { logStructured } from "../logging/schema.js";
 
 const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 
@@ -133,6 +134,47 @@ export class JsonRpcChildAdapter extends EventEmitter {
       if (!message?.method) return;
       const method = String(message.method);
       const normalizedMethod = method.replace(/^codex\/event\//i, "");
+      const params = message?.params && typeof message.params === "object" ? message.params : {};
+      if (normalizedMethod === "error") {
+        const codexErrorInfo = params.codexErrorInfo;
+        const willRetry = params.willRetry;
+        const errorPayload = params.error && typeof params.error === "object" ? params.error : null;
+        const errorMessage = typeof errorPayload?.message === "string" ? errorPayload.message : "";
+        const errorInfo = errorPayload?.codexErrorInfo ?? codexErrorInfo;
+        const statusCode =
+          errorInfo?.responseStreamDisconnected?.httpStatusCode ??
+          errorInfo?.responseStreamDisconnected?.http_status_code ??
+          errorInfo?.response_stream_disconnected?.httpStatusCode ??
+          errorInfo?.response_stream_disconnected?.http_status_code ??
+          null;
+        const authRequiredSignal =
+          codexErrorInfo === "unauthorized" || statusCode === 401 || /\b401\b/.test(errorMessage);
+        if (authRequiredSignal && willRetry !== true) {
+          logStructured(
+            {
+              component: "json_rpc",
+              event: "auth_required",
+              level: "warn",
+              req_id: this.reqId,
+              route: this.trace?.route || null,
+              mode: this.trace?.mode || null,
+            },
+            {
+              auth_required: true,
+              codex_error_info: errorInfo ?? codexErrorInfo ?? null,
+              error_message: errorMessage || null,
+              http_status_code: statusCode,
+              will_retry: willRetry ?? null,
+            }
+          );
+          const authError = new TransportError("auth required", {
+            code: "auth_required",
+            retryable: false,
+          });
+          this.transport.cancelContext?.(this.context, authError);
+          return;
+        }
+      }
       if (
         normalizedMethod === "agent_message_delta" ||
         normalizedMethod === "agent_message_content_delta" ||
