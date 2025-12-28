@@ -442,7 +442,7 @@ describe("json-rpc schema bindings", () => {
 
     it("builds newConversation params with normalized optional fields", () => {
       const params = buildNewConversationParams({
-        model: " gpt-5 ",
+        model: " gpt-5.2 ",
         profile: "",
         cwd: "/tmp/codex-work",
         approvalPolicy: "On-Request",
@@ -451,7 +451,7 @@ describe("json-rpc schema bindings", () => {
         developerInstructions: null,
         includeApplyPatchTool: true,
       });
-      expect(params.model).toBe("gpt-5");
+      expect(params.model).toBe("gpt-5.2");
       expect(params.profile).toBeNull();
       expect(params.cwd).toBe("/tmp/codex-work");
       expect(params.approvalPolicy).toBe("on-request");
@@ -469,7 +469,7 @@ describe("json-rpc schema bindings", () => {
         cwd: "/tmp/work",
         approvalPolicy: "NEVER",
         sandboxPolicy: { type: "workspace-write", writable_roots: ["/tmp"] },
-        model: "gpt-5",
+        model: "gpt-5.2",
         summary: "concise",
         effort: "high",
       });
@@ -493,7 +493,7 @@ describe("json-rpc schema bindings", () => {
         cwd: "/tmp/work",
         approvalPolicy: "never",
         sandboxPolicy: "read-only",
-        model: "gpt-5",
+        model: "gpt-5.2",
         summary: "auto",
       });
       expect(params.items).toHaveLength(3);

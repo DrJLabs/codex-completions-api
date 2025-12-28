@@ -30,4 +30,4 @@ Spans are emitted for HTTP ingress and backend invocation (see `src/services/tra
 
 ## Runbook
 
-For end-to-end tracing by `req_id`, see `bmad/architecture/end-to-end-tracing-app-server.md`.
+For the internal end-to-end tracing runbook, see the internal runbook (not published here).

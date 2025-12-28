@@ -81,7 +81,7 @@ const overrides = buildOverrideMaps();
 export const MODEL_TARGET_OVERRIDES = overrides.target;
 export const MODEL_REASONING_OVERRIDES = overrides.reasoning;
 
-export function acceptedModelIds(defaultModel = "gpt-5") {
+export function acceptedModelIds(defaultModel = "gpt-5.2") {
   const dev = publicModelIds(true).map((id) => id.toLowerCase());
   const prod = publicModelIds(false).map((id) => id.toLowerCase());
   const normalizedDefault = String(defaultModel || "").toLowerCase();

@@ -17,7 +17,7 @@ describe("toStringContent", () => {
 describe("normalizeModel defaults", () => {
   it("returns codex-5 requested and default effective when name empty", () => {
     const r = normalizeModel("");
-    expect(r).toEqual({ requested: "codex-5", effective: "gpt-5" });
+    expect(r).toEqual({ requested: "codex-5", effective: "gpt-5.2" });
   });
 });
 

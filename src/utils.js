@@ -124,7 +124,7 @@ export const impliedEffortForModel = (requestedModel) => {
 
 export const normalizeModel = (
   name,
-  defaultModel = "gpt-5",
+  defaultModel = "gpt-5.2",
   publicIds = Array.from(acceptedModelIds(defaultModel))
 ) => {
   const raw = String(name || "").trim();

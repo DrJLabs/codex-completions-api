@@ -13,7 +13,7 @@ describe("buildAppServerArgs", () => {
   it("includes CLI config overrides for app-server launches", () => {
     const args = buildAppServerArgs({
       SANDBOX_MODE: "read-only",
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       FORCE_PROVIDER: "chatgpt",
       reasoningEffort: "low",
       allowEffort: new Set(["low", "medium", "high", "minimal"]),
@@ -22,7 +22,7 @@ describe("buildAppServerArgs", () => {
     const configArgs = getConfigArgs(args);
 
     expect(configArgs).toEqual([
-      'model="gpt-5"',
+      'model="gpt-5.2"',
       'preferred_auth_method="chatgpt"',
       'sandbox_mode="read-only"',
       'model_provider="chatgpt"',
@@ -35,7 +35,7 @@ describe("buildAppServerArgs", () => {
   it("omits reasoning overrides when effort is not allowed", () => {
     const args = buildAppServerArgs({
       SANDBOX_MODE: "read-only",
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       FORCE_PROVIDER: "",
       reasoningEffort: "high",
       allowEffort: new Set(["low", "medium"]),
@@ -44,7 +44,7 @@ describe("buildAppServerArgs", () => {
     const configArgs = getConfigArgs(args);
 
     expect(configArgs).toEqual([
-      'model="gpt-5"',
+      'model="gpt-5.2"',
       'preferred_auth_method="chatgpt"',
       'sandbox_mode="read-only"',
     ]);

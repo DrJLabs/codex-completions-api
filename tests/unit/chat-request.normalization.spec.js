@@ -4,7 +4,7 @@ import {
   normalizeChatJsonRpcRequest,
 } from "../../src/handlers/chat/request.js";
 
-const EFFECTIVE_MODEL = "gpt-5";
+const EFFECTIVE_MODEL = "gpt-5.2";
 
 const normalize = (overrides = {}) =>
   normalizeChatJsonRpcRequest({

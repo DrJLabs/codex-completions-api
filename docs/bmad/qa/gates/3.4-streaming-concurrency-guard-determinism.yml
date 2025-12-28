@@ -1,9 +1,0 @@
-schema: 1
-story: "3.4"
-gate: PASS
-status_reason: "Deterministic semaphore guard with test-only instrumentation; regression suite green."
-reviewer: "Quinn"
-updated: "2025-09-18T19:42:00Z"
-top_issues: []
-waiver:
-  active: false

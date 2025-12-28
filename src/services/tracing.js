@@ -16,7 +16,7 @@ const bool = (value, def = false) => {
   return /^(1|true|yes|on)$/i.test(String(value).trim());
 };
 
-const serviceName = process.env.PROXY_OTEL_SERVICE_NAME || "codex-completions-api";
+const serviceName = process.env.PROXY_OTEL_SERVICE_NAME || "codex-app-server-proxy";
 const otelEnabled = bool(process.env.PROXY_ENABLE_OTEL || process.env.OTEL_ENABLED, false);
 const otelEndpoint = process.env.PROXY_OTEL_EXPORTER_URL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 

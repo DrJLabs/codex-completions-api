@@ -5,9 +5,9 @@ This folder is the canonical index for repository documentation. Update this fil
 ## Start here
 
 - `../README.md` — overview + quickstart
+- `README-root.md` — snapshot of the repository README for doc-local reference
 - `getting-started.md` — first-run walkthrough
 - `configuration.md` — environment variables and defaults (authoritative)
-- `prd.md` — PRD entry point (canonical links)
 - `architecture.md` — architecture entry point (canonical links)
 
 ## Development
@@ -25,7 +25,6 @@ This folder is the canonical index for repository documentation. Update this fil
 ## Observability
 
 - `observability.md` — logs, request IDs, metrics, tracing
-- `bmad/architecture/end-to-end-tracing-app-server.md` — trace by `req_id`
 - `reference/config-matrix.md` — environment/mount matrix + ForwardAuth notes
 
 ## API contracts (canonical)
@@ -35,14 +34,14 @@ This folder is the canonical index for repository documentation. Update this fil
 
 ## Deep dives and backlogs
 
-- `bmad/prd.md` — requirements (BMAD PRD)
-- `bmad/architecture.md` — architecture (BMAD)
 - `app-server-migration/` — JSON-RPC schema exports and migration notes
 - `logging-gaps/README.md` — observability gap tracker
-- `codex-longhorizon/INDEX_TASK_DOCS.md` — internal survey/task index
-- `_archive/` — retired stories, retrospectives, sprint artifacts, validation reports, and diagrams
+
+## Internal docs (not published)
+
+- Internal planning/surveys/archives are maintained separately and are not part of the public distribution.
 
 ## Doc hygiene
 
 - Run `npm run format:check` and `npm run lint:runbooks` before committing doc changes.
-- Use `docs/private/` for local-only notes; it is listed in `.gitignore` so new files won’t be committed.
+- Keep local-only notes out of the public repo or in private remotes.

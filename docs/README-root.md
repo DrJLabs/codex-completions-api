@@ -246,7 +246,7 @@ AGENTS.md                       # Agent directives (project‑specific rules inc
 
 ## Environments: PROD vs DEV
 
-See docs/README.md for documentation pointers. Use `docs/private/` for local-only notes (gitignored) and keep public docs under `docs/`.
+See docs/README.md for documentation pointers. Keep public docs under `docs/` and keep local-only notes out of the public repo.
 
 ### Production
 
@@ -293,7 +293,7 @@ Notes:
 
 - The sync intentionally skips secrets like `auth.json` — manage credentials out‑of‑band.
   - For this project the source of truth is `~/.codex/auth.json`; refreshes should be propagated into `.codev/` and `.codex-api/` manually.
-- Detailed Dev → Prod procedures are available in the private documentation bundle (`docs/private/`).
+- Detailed Dev → Prod procedures are available in internal documentation (not published).
   - Public deployment/runbooks live under `docs/deployment/` and `docs/ops/`.
 
 ### Release & Backup shortcuts
@@ -426,7 +426,7 @@ Behavior:
 
 ## Documentation
 
-Treat `docs/README.md` as the canonical documentation index. Start with `docs/getting-started.md` (first run), then `docs/configuration.md` (env vars) and `docs/api/overview.md` (runnable curl examples). Configuration/mount matrices live in `docs/reference/config-matrix.md`. Use `docs/private/` for local-only notes (gitignored) and keep public runbooks under `docs/deployment/` and `docs/ops/`. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
+Treat `docs/README.md` as the canonical documentation index. Start with `docs/getting-started.md` (first run), then `docs/configuration.md` (env vars) and `docs/api/overview.md` (runnable curl examples). Configuration/mount matrices live in `docs/reference/config-matrix.md`. Keep local-only notes out of the public repo and keep public runbooks under `docs/deployment/` and `docs/ops/`. Run `npm run lint:runbooks` before committing doc changes to keep runbooks formatted.
 
 ## License
 

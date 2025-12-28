@@ -5,6 +5,11 @@
 - Ensure you’re sending `Authorization: Bearer <PROXY_API_KEY>` to protected routes.
 - `/v1/models` is public by default but may return 401 if `PROXY_PROTECT_MODELS=true`.
 
+## Login URL shown / auth.json invalid
+
+- If `auth.json` is missing or invalid, the proxy returns a login URL in the error message.
+- The Codex login flow uses a local callback on port `1435`; ensure it is open and not blocked.
+
 ## 503 worker_not_ready (app-server mode)
 
 - In app-server mode (`PROXY_USE_APP_SERVER=true`), `/v1/chat/completions` and `/v1/responses` are gated by worker readiness.

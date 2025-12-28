@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[setup] codex-completions-api testing/CI bootstrap (idempotent)"
+echo "[setup] codex-app-server-proxy testing/CI bootstrap (idempotent)"
 
 # 1) Dev deps (only those not already present)
 need_dev() { node -e "process.exit(require('./package.json').devDependencies?.['$1']?0:1)" || echo "$1"; }

@@ -3,7 +3,7 @@
 
 ⚠️ Proto backend is **retired**. All guidance here is app-server only; any proto fixtures, tests, or smoke gates have been removed and must not be reintroduced.
 
-**Goal:** Add reliable OpenAI-style function/tool call support to the proxy at `/v1/chat/completions`, using the `main` branch of the `codex-completions-api` repository as the clean foundation. Support both streaming (`stream: true`) and non-streaming (`stream: false`) modes and ensure compatibility with Obsidian Copilot’s autonomous agent tool invocation.
+**Goal:** Add reliable OpenAI-style function/tool call support to the proxy at `/v1/chat/completions`, using the `main` branch of the `codex-app-server-proxy` repository as the clean foundation. Support both streaming (`stream: true`) and non-streaming (`stream: false`) modes and ensure compatibility with Obsidian Copilot’s autonomous agent tool invocation.
 
 ---
 
@@ -316,7 +316,7 @@ data: [DONE]
 - **Prefer structured events** from `app-server v2`. They are unambiguous and stream-friendly.
 - **Fallback to textual detection** only if structured signals are absent.
 - **Cut generation** reliably after tool calls to avoid stray text; `PROXY_STOP_AFTER_TOOLS_MODE=burst` waits for the final call before cutting, while `PROXY_TOOL_BLOCK_MAX` caps the number of calls per turn (set `=1` with `PROXY_STOP_AFTER_TOOLS_MODE=first` to restore the legacy single-call behavior). The streaming handler enforces the cap even if `PROXY_STOP_AFTER_TOOLS=false` so operators can roll back without juggling extra flags.
-- **Multi-tool turn fidelity** is required: forward every tool call produced within a turn by default (per FR002d in `docs/PRD.md#functional-requirements`). Use `PROXY_TOOL_BLOCK_MAX` only as a rollback lever, and keep `PROXY_ENABLE_PARALLEL_TOOL_CALLS` disabled unless Codex + clients both support concurrent execution. Obsidian XML output concatenates every `<use_tool>` block (optionally separated by `PROXY_TOOL_BLOCK_DELIMITER`) and `PROXY_TOOL_BLOCK_DEDUP` can drop duplicated textual blocks when necessary.
+- **Multi-tool turn fidelity** is required: forward every tool call produced within a turn by default (per internal PRD FR002d; not published here). Use `PROXY_TOOL_BLOCK_MAX` only as a rollback lever, and keep `PROXY_ENABLE_PARALLEL_TOOL_CALLS` disabled unless Codex + clients both support concurrent execution. Obsidian XML output concatenates every `<use_tool>` block (optionally separated by `PROXY_TOOL_BLOCK_DELIMITER`) and `PROXY_TOOL_BLOCK_DEDUP` can drop duplicated textual blocks when necessary.
 - **No changes to Obsidian Copilot or Codex CLI**: all logic lives in the proxy.
 - **Telemetry and logs** are valuable while rolling this out — the proxy now emits an SSE comment at the end of each streaming turn (`: {"tool_call_count":N,"tool_call_truncated":bool,"stop_after_tools_mode":"burst"}`), mirrors the same payload in structured logs/usage events, and sets HTTP headers on non-stream responses (`x-codex-stop-after-tools-mode`, `x-codex-tool-call-count`, `x-codex-tool-call-truncated`).
 

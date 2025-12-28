@@ -1,6 +1,6 @@
-# Contributing to codex-completions-api
+# Contributing to Codex App-Server Proxy
 
-Thanks for helping improve the Codex Completions API. This repo aims to stay conservative and OpenAI-compatible, so small, well-validated changes are preferred.
+Thanks for helping improve the Codex App-Server Proxy. This repo aims to stay conservative and OpenAI-compatible, so small, well-validated changes are preferred.
 
 ## Prerequisites
 

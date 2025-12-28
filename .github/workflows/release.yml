@@ -32,7 +32,7 @@ jobs:
       - name: Discover latest snapshot metadata
         id: snapshot
         run: |
-          LOCK_PATH=$(ls -t releases/codex-completions-api-*.lock.json | head -n1)
+          LOCK_PATH=$(ls -t releases/codex-app-server-proxy-*.lock.json | head -n1)
           TARBALL_NAME=$(jq -r '.tarball' "$LOCK_PATH")
           if [ "$TARBALL_NAME" = "null" ] || [ -z "$TARBALL_NAME" ]; then
             echo "Snapshot metadata missing tarball path" >&2

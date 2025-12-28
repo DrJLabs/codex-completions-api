@@ -3,7 +3,7 @@ FROM node:22-alpine AS base
 
 ENV NODE_ENV=production \
     PORT=11435 \
-    CODEX_MODEL=gpt-5
+    CODEX_MODEL=gpt-5.2
 
 WORKDIR /app
 

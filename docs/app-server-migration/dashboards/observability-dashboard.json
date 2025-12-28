@@ -9,19 +9,19 @@
     {
       "type": "link",
       "title": "Incident Runbook",
-      "url": "https://github.com/DrJLabs/codex-completions-api/blob/main/docs/app-server-migration/incident-runbook.md",
+      "url": "https://github.com/DrJLabs/codex-app-server-proxy/blob/main/docs/app-server-migration/incident-runbook.md",
       "targetBlank": true
     },
     {
       "type": "link",
       "title": "Trace by req_id helper",
-      "url": "https://github.com/DrJLabs/codex-completions-api/blob/main/scripts/dev/trace-by-req-id.js",
+      "url": "https://github.com/DrJLabs/codex-app-server-proxy/blob/main/scripts/dev/trace-by-req-id.js",
       "targetBlank": true
     },
     {
       "type": "link",
       "title": "Metrics schema & alerts",
-      "url": "https://github.com/DrJLabs/codex-completions-api/blob/main/docs/app-server-migration/metrics-and-alerts.md",
+      "url": "https://github.com/DrJLabs/codex-app-server-proxy/blob/main/docs/app-server-migration/metrics-and-alerts.md",
       "targetBlank": true
     }
   ],

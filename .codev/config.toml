@@ -1,4 +1,4 @@
-model = "gpt-5"
+model = "gpt-5.2"
 sandbox_mode = "read-only"
 approval_policy = "never"
 preferred_auth_method = "chatgpt"

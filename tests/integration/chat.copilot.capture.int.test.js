@@ -53,7 +53,7 @@ describe("chat capture fixtures", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5",
+        model: "gpt-5.2",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -78,7 +78,7 @@ describe("chat capture fixtures", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5",
+        model: "gpt-5.2",
         stream: false,
         messages: [{ role: "user", content: "hello" }],
       }),

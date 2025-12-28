@@ -9,7 +9,7 @@ const docPath = path.join(
   process.cwd(),
   "docs",
   "app-server-migration",
-  "codex-completions-api-migration.md"
+  "codex-app-server-proxy-migration.md"
 );
 const requiredPatterns = [
   /\/readyz/,

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 
 const DOC_PATH = new URL(
-  "../../../docs/app-server-migration/codex-completions-api-migration.md",
+  "../../../docs/app-server-migration/codex-app-server-proxy-migration.md",
   import.meta.url
 );
 const ENV_EXAMPLE_PATH = new URL("../../../.env.example", import.meta.url);

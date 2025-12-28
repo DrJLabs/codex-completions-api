@@ -16,7 +16,7 @@ export default function responsesRouter() {
 
   r.post("/v1/responses", requireStrictAuth, (req, res) => {
     const stream = !!(req?.body && req.body.stream);
-    const model = req?.body?.model || CFG.CODEX_MODEL || "gpt-5";
+    const model = req?.body?.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
       maybeHandleTitleIntercept({

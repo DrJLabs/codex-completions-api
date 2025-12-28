@@ -36,6 +36,8 @@ blob-report/
 # BMAD (local only)
 docs/private/
 docs/runbooks/obsidian-docs-sync.md
+# Internal docs (local only)
+docs/internal/
 
 # Dev Codex HOME (.codev): track templates, ignore runtime artifacts below
 # We re-include .codev so its example config is versioned, then selectively ignore

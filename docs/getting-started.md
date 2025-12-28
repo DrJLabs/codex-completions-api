@@ -7,6 +7,11 @@ This repo provides an OpenAI-compatible proxy over Codex CLI. The main endpoints
 - Node.js **>= 22**
 - Optional: Docker + Docker Compose v2 (for stack workflows)
 
+## Quickstart (production/local for Obsidian Copilot)
+
+For the copy/paste production setup (port `11435`, `.codex-api`, Obsidian Copilot config), follow the
+**Quick Start (Production, local Obsidian Copilot)** section in `../README.md`.
+
 ## Quickstart (local Node)
 
 1. Install dependencies:
