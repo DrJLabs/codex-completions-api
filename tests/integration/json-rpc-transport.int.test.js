@@ -89,4 +89,39 @@ describe("json-rpc transport", () => {
     expect(body?.error?.code).toBe("worker_request_timeout");
     expect(body?.error?.retryable).toBe(true);
   }, 15000);
+
+  it("returns auth error when app-server signals unauthorized", async () => {
+    const started = await startServer({
+      PROXY_USE_APP_SERVER: "true",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      CODEX_WORKER_SUPERVISED: "true",
+      FAKE_CODEX_UNAUTHORIZED: "1",
+      PROXY_API_KEY: "test-sk-ci",
+    });
+    child = started.child;
+
+    const response = await fetch(`http://127.0.0.1:${started.PORT}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-sk-ci",
+      },
+      body: JSON.stringify({
+        model: "codex-5",
+        stream: false,
+        messages: [{ role: "user", content: "Auth please" }],
+      }),
+    });
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: {
+        message: "unauthorized",
+        type: "authentication_error",
+        code: "invalid_api_key",
+      },
+    });
+    expect(body.error).not.toHaveProperty("retryable");
+  }, 15000);
 });

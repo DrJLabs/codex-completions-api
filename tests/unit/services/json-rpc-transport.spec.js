@@ -164,6 +164,24 @@ describe("mapTransportError", () => {
     expect(mapped.body.error).not.toHaveProperty("retryable");
   });
 
+  it("maps auth_required to authentication errors", () => {
+    const err = new TransportError("auth required", { code: "auth_required", retryable: false });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped).toMatchObject({
+      statusCode: 401,
+      body: {
+        error: {
+          message: "unauthorized",
+          type: "authentication_error",
+          code: "invalid_api_key",
+        },
+      },
+    });
+    expect(mapped.body.error).not.toHaveProperty("retryable");
+  });
+
   it.each([
     ["handshake_timeout", 503, "backend_unavailable", true],
     ["handshake_failed", 503, "backend_unavailable", true],

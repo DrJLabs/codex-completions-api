@@ -19,6 +19,7 @@ import {
   buildSendUserMessageParams,
   buildSendUserTurnParams,
 } from "../../lib/json-rpc/schema.ts";
+import { authErrorBody } from "../../lib/errors.js";
 import {
   logBackendNotification,
   logBackendResponse,
@@ -1250,6 +1251,9 @@ export function mapTransportError(err) {
   const rawCode = err.code ?? "transport_error";
   const normalizedCode = typeof rawCode === "string" ? rawCode : String(rawCode);
   const lookupKey = normalizedCode.toLowerCase();
+  if (lookupKey === "auth_required") {
+    return { statusCode: 401, body: authErrorBody() };
+  }
   const hasMapping = Object.prototype.hasOwnProperty.call(TRANSPORT_ERROR_DETAILS, lookupKey);
   // eslint-disable-next-line security/detect-object-injection -- lookupKey guarded by hasOwnProperty
   const mapping = hasMapping ? TRANSPORT_ERROR_DETAILS[lookupKey] : undefined;
