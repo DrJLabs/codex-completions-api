@@ -29,7 +29,7 @@ describe("normalizeChatJsonRpcRequest system prompt behavior", () => {
     ];
 
     const normalized = normalizeChatJsonRpcRequest({
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       body: { messages },
       messages,
     });
@@ -47,7 +47,7 @@ describe("normalizeChatJsonRpcRequest system prompt behavior", () => {
     ];
 
     const normalized = normalizeChatJsonRpcRequest({
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       body: { messages },
       messages,
     });
@@ -65,7 +65,7 @@ describe("normalizeChatJsonRpcRequest system prompt behavior", () => {
     ];
 
     const normalized = normalizeChatJsonRpcRequest({
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       body: { messages },
       messages,
     });

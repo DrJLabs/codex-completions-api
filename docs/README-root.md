@@ -71,6 +71,7 @@ Use this when you want to run the proxy on the same machine as Obsidian Copilot 
    ```
 
 4. Configure Obsidian Copilot:
+
    - Base URL: `http://127.0.0.1:11435`
    - API key: `codex-local-secret`
    - Model: `codex-5` (or `codex-5-low` / `codex-5-medium` / `codex-5-high`)

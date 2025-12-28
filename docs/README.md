@@ -5,6 +5,7 @@ This folder is the canonical index for repository documentation. Update this fil
 ## Start here
 
 - `../README.md` — overview + quickstart
+- `README-root.md` — snapshot of the repository README for doc-local reference
 - `getting-started.md` — first-run walkthrough
 - `configuration.md` — environment variables and defaults (authoritative)
 - `prd.md` — PRD entry point (canonical links)

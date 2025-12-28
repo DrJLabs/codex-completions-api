@@ -1,4 +1,4 @@
-# Migrating `codex-completions-api` to `codex app-server`
+# Migrating `codex-app-server-proxy` to `codex app-server`
 
 ⚠️ Proto backend is fully **decommissioned** in production/staging. Parity fixtures and tests still capture **both** proto and app-server outputs until the parity suite is retired—keep them in sync, but do not run proto in live environments.
 

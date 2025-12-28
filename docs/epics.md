@@ -1,4 +1,4 @@
-# codex-completions-api - Epic Breakdown
+# Codex App-Server Proxy - Epic Breakdown
 
 **Author:** drj
 **Date:** 2025-10-30
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document provides the detailed epic breakdown for codex-completions-api, expanding on the high-level epic list in the [PRD](./PRD.md).
+This document provides the detailed epic breakdown for Codex App-Server Proxy, expanding on the high-level epic list in the [PRD](./PRD.md).
 
 Each epic includes:
 

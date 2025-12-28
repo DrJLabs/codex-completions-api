@@ -71,7 +71,7 @@ export const config = {
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
-  CODEX_MODEL: str("CODEX_MODEL", "gpt-5"),
+  CODEX_MODEL: str("CODEX_MODEL", "gpt-5.2"),
   CODEX_BIN: str("CODEX_BIN", "codex"),
   CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),

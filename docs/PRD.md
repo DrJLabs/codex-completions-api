@@ -1,4 +1,4 @@
-# codex-completions-api Product Requirements Document (PRD)
+# Codex App-Server Proxy Product Requirements Document (PRD)
 
 **Author:** drj
 **Date:** 2025-10-30

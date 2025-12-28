@@ -25,7 +25,7 @@ services:
       - WORKER_STARTUP_TIMEOUT_MS=60000
       - PROXY_LOG_PROTO=${PROXY_LOG_PROTO:-true}
       - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
-      - CODEX_MODEL=${CODEX_MODEL:-gpt-5}
+      - CODEX_MODEL=${CODEX_MODEL:-gpt-5.2}
       - CODEX_FORCE_PROVIDER=
       # In dev, prefer streaming by default unless the client explicitly sets stream:false.
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}

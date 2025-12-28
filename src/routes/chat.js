@@ -23,7 +23,7 @@ export default function chatRouter() {
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
       : defaultStream;
-    const model = body.model || CFG.CODEX_MODEL || "gpt-5";
+    const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
       maybeHandleTitleIntercept({
@@ -47,7 +47,7 @@ export default function chatRouter() {
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
       : defaultStream;
-    const model = body.model || CFG.CODEX_MODEL || "gpt-5";
+    const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
       maybeHandleTitleIntercept({

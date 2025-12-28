@@ -74,7 +74,7 @@ describe("json-rpc payload schema", () => {
       prompt: sampleBody.messages.map((m) => m.content).join("\n"),
       reqId: "test-request",
       requestedModel: sampleBody.model,
-      effectiveModel: "gpt-5",
+      effectiveModel: "gpt-5.2",
       choiceCount: 1,
       stream: true,
       reasoningEffort: "high",

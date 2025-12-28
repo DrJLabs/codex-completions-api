@@ -44,7 +44,7 @@ function buildSupervisorArgs() {
     args.push("-c", `${key}=${value}`);
   };
 
-  const model = (CFG.CODEX_MODEL || "gpt-5").trim();
+  const model = (CFG.CODEX_MODEL || "gpt-5.2").trim();
   pushConfig("model", quote(model));
 
   pushConfig("preferred_auth_method", '"chatgpt"');
