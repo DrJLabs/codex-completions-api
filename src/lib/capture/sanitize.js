@@ -7,7 +7,7 @@ const SENSITIVE_STRING_KEYS = new Set([
   "login_id",
   "loginid",
 ]);
-const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|,]+)/gi;
+const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|]+)/gi;
 
 const DEFAULT_SAFE_HEADER_VALUE_KEYS = new Set([
   "user-agent",

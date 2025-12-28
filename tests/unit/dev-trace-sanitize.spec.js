@@ -68,6 +68,25 @@ describe("dev-trace sanitize helpers", () => {
     expect(result.error.message).not.toContain("https://example.com/oauth");
   });
 
+  it("redacts inline auth URLs containing commas", async () => {
+    const { sanitizeBody } = await loadSanitize(256);
+    const payload = {
+      error: {
+        code: "invalid_api_key | login_url=https://example.com/oauth?x=1,y=2 | login_id=abc",
+        message: "unauthorized | login_url=https://example.com/oauth?x=1,y=2 | login_id=abc",
+      },
+    };
+
+    const result = sanitizeBody(payload);
+
+    expect(result.error.code).toContain("login_url=[REDACTED]");
+    expect(result.error.message).toContain("login_url=[REDACTED]");
+    expect(result.error.code).not.toContain("example.com");
+    expect(result.error.message).not.toContain("example.com");
+    expect(result.error.code).not.toContain("y=2");
+    expect(result.error.message).not.toContain("y=2");
+  });
+
   it("sanitizes RPC payloads via sanitizeRpcPayload", async () => {
     const { sanitizeRpcPayload } = await loadSanitize(20);
     const rpcResult = sanitizeRpcPayload({ tool_calls: [{ args: "a".repeat(100) }] });

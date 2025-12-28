@@ -7,6 +7,11 @@ import { config as CFG } from "../../config/index.js";
 const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 
 const toStringSafe = (data) => (typeof data === "string" ? data : (data?.toString?.("utf8") ?? ""));
+const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|]+)/gi;
+const redactInlineAuth = (value) =>
+  typeof value === "string"
+    ? value.replace(INLINE_AUTH_PATTERN, (_match, key) => `${key}=[REDACTED]`)
+    : value;
 
 export class JsonRpcChildAdapter extends EventEmitter {
   constructor({ reqId, timeoutMs, normalizedRequest = null, trace = null }) {
@@ -140,7 +145,9 @@ export class JsonRpcChildAdapter extends EventEmitter {
         const codexErrorInfo = params.codexErrorInfo;
         const willRetry = params.willRetry;
         const errorPayload = params.error && typeof params.error === "object" ? params.error : null;
-        const errorMessage = typeof errorPayload?.message === "string" ? errorPayload.message : "";
+        const rawErrorMessage =
+          typeof errorPayload?.message === "string" ? errorPayload.message : "";
+        const errorMessage = redactInlineAuth(rawErrorMessage);
         const errorInfo = errorPayload?.codexErrorInfo ?? codexErrorInfo;
         const statusCode =
           errorInfo?.responseStreamDisconnected?.httpStatusCode ??
@@ -149,7 +156,9 @@ export class JsonRpcChildAdapter extends EventEmitter {
           errorInfo?.response_stream_disconnected?.http_status_code ??
           null;
         const authRequiredSignal =
-          codexErrorInfo === "unauthorized" || statusCode === 401 || /\b401\b/.test(errorMessage);
+          codexErrorInfo === "unauthorized" ||
+          statusCode === 401 ||
+          /\b401\b/.test(rawErrorMessage);
         if (authRequiredSignal && willRetry !== true) {
           logStructured(
             {
