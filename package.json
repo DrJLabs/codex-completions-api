@@ -1,9 +1,9 @@
 {
-  "name": "codex-completions-api",
+  "name": "codex-app-server-proxy",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "OpenAI-compatible Chat Completions proxy that shells to Codex CLI and streams incremental SSE for Roo Code.",
+  "description": "OpenAI-compatible Responses-first proxy for Codex CLI with streaming SSE.",
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
