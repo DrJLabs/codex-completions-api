@@ -78,7 +78,7 @@ Use this when you want to run the proxy on the same machine as Obsidian Copilot 
    cp ~/.codex/config.toml .codex-api/config.toml
    ```
 
-3. Start the server (binds to `127.0.0.1:11435` by default):
+3. Start the server (binds to `0.0.0.0:11435` by default; set `PROXY_HOST=127.0.0.1` for loopback-only):
 
    ```bash
    PROXY_API_KEY=codex-local-secret PROXY_ENV=prod PROXY_HOST=127.0.0.1 PROXY_PORT=11435 npm run start

@@ -26,7 +26,7 @@ if (SUPERVISOR_ENABLED) {
 }
 const app = createApp();
 const PORT = CFG.PORT;
-const HOST = CFG.PROXY_HOST || "127.0.0.1";
+const HOST = CFG.PROXY_HOST || "0.0.0.0";
 
 const server = app.listen(PORT, HOST, () => {
   const address = server.address();

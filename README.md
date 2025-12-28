@@ -72,7 +72,7 @@ Use this when you want to run the proxy on the same machine as Obsidian Copilot 
 
    Pin a specific release tag by setting `IMAGE=ghcr.io/drjlabs/codex-app-server-proxy:<tag>`.
 
-4. Option B — run with Node (binds to `127.0.0.1:11435` by default):
+4. Option B — run with Node (binds to `0.0.0.0:11435` by default; set `PROXY_HOST=127.0.0.1` for loopback-only):
 
    ```bash
    PORT=11435 PROXY_API_KEY=codex-local-secret PROXY_HOST=127.0.0.1 npm run start
@@ -112,7 +112,7 @@ If the proxy returns a login URL, Codex uses a local callback on port `1435` —
 2. Use the repo-managed `.codev/config.toml` (already tracked). If you already have Codex auth,
    copy `~/.codex/auth.json` into `.codev/auth.json` as a fallback; otherwise the first
    unauthenticated request returns a login URL that will populate `.codev/auth.json`.
-3. Start the proxy (defaults to port `11435` and binds to `127.0.0.1` unless overridden):
+3. Start the proxy (defaults to port `11435` and binds to `0.0.0.0` unless overridden). Set `PROXY_HOST=127.0.0.1` for loopback-only:
 
    ```bash
    PORT=11435 PROXY_API_KEY=codex-local-secret npm run start
@@ -163,12 +163,12 @@ If the proxy returns a login URL, Codex uses a local callback on port `1435` —
    curl -s http://127.0.0.1:11435/v1/models | jq .
    ```
 
-> Note: `docker-compose.yml` sets `PROXY_HOST=0.0.0.0` inside the container so Traefik can reach the app over the bridge network. Local Node runs still default to `127.0.0.1` unless you override `PROXY_HOST`.
+> Note: `docker-compose.yml` sets `PROXY_HOST=0.0.0.0` inside the container so Traefik can reach the app over the bridge network. Local Node runs also default to `0.0.0.0`; set `PROXY_HOST=127.0.0.1` if you want loopback-only.
 
 ### Dev helpers
 
 - `npm run dev` — start the proxy with live reload and the default app-server worker supervisor.
-- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the real Codex CLI mount. Traefik now sources the `codex-dev` routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml` (file provider) instead of Docker labels, so make sure that file exists on the host when bringing the stack up.
+- `npm run dev:stack:up` — full dev stack (Traefik, auth, proxy) on `http://127.0.0.1:18010/v1` using the baked-in Codex CLI by default. To use a host-mounted CLI, set `CODEX_BIN=codex` and add the host mount described under [Development](#development). Traefik now sources the `codex-dev` routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml` (file provider) instead of Docker labels, so make sure that file exists on the host when bringing the stack up.
 - `npm run dev:shim` — starts the proxy against the deterministic app-server JSON-RPC shim (`scripts/fake-codex-jsonrpc.js`), so you can run without installing Codex CLI.
 
 ## Usage
@@ -307,7 +307,7 @@ Notes:
 ### Development
 
 - Node dev: `npm run dev` (port 18000) or `npm run dev:shim` (no Codex CLI required), using `.codev` as Codex HOME.
-- Dev stack: `npm run dev:stack:up` (port 18010 by default). By default the dev stack uses the real Codex CLI (`CODEX_BIN=codex`), mounting `~/.cargo/bin/codex` from the host. To use the lightweight proto shim instead, set `CODEX_BIN=/app/scripts/fake-codex-proto.js` in `.env.dev` and re‑up the stack.
+- Dev stack: `npm run dev:stack:up` (port 18010 by default). By default the dev stack uses the baked-in Codex CLI (`CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js`). To use your host Codex CLI instead, set `CODEX_BIN=codex` in `.env.dev` and add a volume mount that maps `~/.cargo/bin/codex` to `/usr/local/bin/codex` in `infra/compose/compose.dev.stack.yml`. To use the lightweight proto shim, set `CODEX_BIN=/app/scripts/fake-codex-proto.js` in `.env.dev` and re‑up the stack.
 
 #### Model IDs and client compatibility
 
@@ -345,7 +345,7 @@ Dev parity stack (public behind Traefik):
   - Project name: `codex-dev` (ensures it doesn’t collide with prod services)
   - If local port 18010 is in use, override:
     - `DEV_PORT=19010 docker compose -p codex-dev -f infra/compose/compose.dev.stack.yml --env-file .env.dev up -d --build`
-  - Uses the host Codex CLI by default (`CODEX_BIN=codex`, requires `~/.cargo/bin/codex`)
+  - Uses the baked-in Codex CLI by default (`CODEX_BIN=/usr/local/lib/codex-cli/bin/codex.js`). To use the host CLI instead, set `CODEX_BIN=codex` and add a volume mount for `~/.cargo/bin/codex` to `/usr/local/bin/codex`.
 - Domain: create a DNS record for `codex-dev.onemainarmy.com` to your Traefik host (Cloudflare). The dev host now loads its routers/middlewares from `/etc/traefik/dynamic/codex-dev.yml`, so keep that file in sync with the compose labels if you tweak origins/CORS.
 - ForwardAuth (dev) uses a dedicated dev auth service at `http://127.0.0.1:18081/verify`, backed by `auth-dev` in `infra/compose/compose.dev.stack.yml` and the dev key from `.env.dev`. Prod continues to use `http://127.0.0.1:18080/verify`.
 - Dev key: set in `.env.dev` (see `.env.dev.example`) and pass to smoke/tests via `KEY`.
@@ -669,7 +669,7 @@ The launcher never prints secrets and prefers project-local `.codev` config via 
 
 Convenience scripts manage a self-contained dev stack that mirrors production behind Traefik:
 
-- `npm run dev:stack:up` — build and start on `http://127.0.0.1:18010/v1` using the real app-server workers by default
+- `npm run dev:stack:up` — build and start on `http://127.0.0.1:18010/v1` using the baked-in app-server workers by default
 - `npm run dev:stack:logs` — follow logs
 - `npm run dev:stack:down` — stop and remove (prunes volumes)
 
@@ -677,8 +677,8 @@ Notes:
 
 - Compose reads `PROXY_API_KEY` from `.env.dev`.
 - Override port: `DEV_PORT=19010 npm run dev:stack:up`
-- Set `CODEX_BIN=codex` to use your host Codex CLI (requires `~/.cargo/bin/codex`).
-- File: `infra/compose/compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, mounts your host Codex CLI at `/usr/local/bin/codex`, and configures ForwardAuth dev at `127.0.0.1:18081`. Set `CODEX_BIN=/app/scripts/fake-codex-proto.js` only if you explicitly need the legacy proto shim for CI/offline tests.
+- Set `CODEX_BIN=codex` to use your host Codex CLI and add a volume mount for `~/.cargo/bin/codex` to `/usr/local/bin/codex`.
+- File: `infra/compose/compose.dev.stack.yml` — single-file dev stack (`app-dev` + `auth-dev`), maps `./.codev` to `/home/node/.codex`, uses the baked-in Codex CLI by default, and configures ForwardAuth dev at `127.0.0.1:18081`. Set `CODEX_BIN=/app/scripts/fake-codex-proto.js` only if you explicitly need the legacy proto shim for CI/offline tests.
 
 ## Notes and troubleshooting
 

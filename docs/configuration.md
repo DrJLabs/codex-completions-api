@@ -14,7 +14,7 @@ This proxy is configured via environment variables. Defaults live in `src/config
 | --- | --- | --- |
 | `PROXY_API_KEY` | `codex-local-secret` | Bearer token for protected routes |
 | `PORT` | `11435` | Listen port |
-| `PROXY_HOST` | `127.0.0.1` | Listen host |
+| `PROXY_HOST` | `0.0.0.0` | Listen host |
 | `PROXY_ENV` | *(empty)* | Model advertising mode (`dev` → `codev-5*`) |
 
 ## Backend selection
