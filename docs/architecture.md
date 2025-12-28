@@ -2,4 +2,4 @@
 
 Use this file as the stable entry point for architecture documentation.
 
-- `bmad/architecture.md` — current architecture description and operational invariants.
+- Internal architecture documentation (not published here) — operational invariants and detailed design notes.

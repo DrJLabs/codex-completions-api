@@ -36,8 +36,10 @@ http:
 ## Deploy
 
 ```bash
-docker compose up -d --build --force-recreate
+docker compose up -d --pull always --force-recreate
 ```
+
+If you need a local build instead of GHCR, set `IMAGE` explicitly or use the local compose example.
 
 ## Verify
 

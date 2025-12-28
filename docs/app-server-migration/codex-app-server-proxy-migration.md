@@ -207,7 +207,7 @@ spawn("codex", [
   "jsonrpc": "2.0",
   "id": 1,
   "method": "initialize",
-  "params": { "client_info": { "name": "codex-completions-api", "version": "1.0.0" } }
+  "params": { "client_info": { "name": "codex-app-server-proxy", "version": "1.0.0" } }
 }
 ```
 
@@ -261,7 +261,7 @@ spawn("codex", [
 - **Structured fixtures (stop-after-tools on/off):** Run `npm run transcripts:generate` twice with `PROXY_STOP_AFTER_TOOLS=false` and `PROXY_STOP_AFTER_TOOLS=true PROXY_STOP_AFTER_TOOLS_MODE=burst`, writing results under `tests/e2e/fixtures/tool-calls/*.app.json` and updating `manifest.json` to record backend, stop policy, and seed. Proto variants have been removed for Story 2.10+. These fixtures back ACs 1/2/9/23/29/31/37.
 - **Textual fallback + large-arg stub:** Capture a replay that streams a literal `<use_tool>` block (multibyte, 8KB+) and document the expected tail stripping in `tests/e2e/fixtures/tool-calls/README.md`. If the generator lacks this scenario, add a placeholder entry and link to the captured transcript path so smoke/tests can reference it (ACs 3/7/15/16/40).
 - **Disconnect/error smoke stub:** Add a smoke path that aborts after the first `delta.tool_calls` and verifies no more frames arrive; record the gap until the harness exists. Note expected artifacts: raw SSE, normalized JSON, backend stderr (ACs 12/13/18/26/36).
-- **Smoke runner usage:** `node scripts/smoke/stream-tool-call.js [--expect-xml] [--allow-single] [--include-usage]` writes artifacts to `docs/bmad/qa/artifacts/streaming-tool-call/` and fails on mixed frames or multiple finish chunks. Extend it with disconnect/textual scenarios when added, and wire into CI smoke once present (ACs 4/10/19/20/25/27/33/42).
+- **Smoke runner usage:** `node scripts/smoke/stream-tool-call.js [--expect-xml] [--allow-single] [--include-usage]` writes artifacts to the internal QA artifacts directory (not published here) and fails on mixed frames or multiple finish chunks. Extend it with disconnect/textual scenarios when added, and wire into CI smoke once present (ACs 4/10/19/20/25/27/33/42).
 - **CI gate reminder:** `npm run test:integration && npm test` must pass after fixture refresh; parity or smoke failures block rollout. Upload updated fixtures plus hashes to the PR and cite the seed/CLI version in the change summary (AC 5/18).
 
 ## L. Remaining gaps
@@ -285,7 +285,7 @@ spawn("codex", [
 ### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
-1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only for legacy proto rollback drills (Source: [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
+1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only for legacy proto rollback drills (Source: internal tech stack doc; not published here).
   2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
   3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
 - **systemd (production host):**
@@ -298,7 +298,7 @@ spawn("codex", [
 
 1. `curl -f https://{domain}/readyz` returns `200` with `"ready":true` within five seconds (Source: [../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes](../stories/1-5-wire-readiness-and-liveness-probes-to-worker-state.md#dev-notes)).
 2. `curl -f https://{domain}/livez` stays `200`; any `503` requires paging the on-call and rolling back the flag (Source: Section H).
-3. Run `npm run lint:runbooks` before publishing documentation updates to satisfy formatting and link linting (Source: [../bmad/architecture/tech-stack.md#testing--qa](../bmad/architecture/tech-stack.md#testing--qa)).
+3. Run `npm run lint:runbooks` before publishing documentation updates to satisfy formatting and link linting (Source: internal tech stack doc, testing/QA section; not published here).
 
 ### N.4 Environment configuration matrix
 
@@ -308,7 +308,7 @@ spawn("codex", [
 | Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only during rollback drills) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
 | Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only for emergency proto fallback)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 
-Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; [../bmad/architecture/tech-stack.md](../bmad/architecture/tech-stack.md)).
+Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; internal tech stack doc; not published here).
 
 ### N.5 Operational change log additions
 
