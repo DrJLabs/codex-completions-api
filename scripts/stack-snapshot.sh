@@ -15,7 +15,7 @@ Options:
   --dry-run              Print planned actions without writing files
   --docker-image <ref>   Optional Docker image reference to retag with the snapshot label
   --docker-tag-prefix <prefix>
-                         Prefix for generated Docker tag when --docker-image is provided (default: codex-completions-api)
+                         Prefix for generated Docker tag when --docker-image is provided (default: codex-app-server-proxy)
   --output-dir <path>    Directory for release artifacts (default: ./releases)
   --no-tarball           Skip tarball creation (metadata-only)
   -h, --help             Show this help text
@@ -28,7 +28,7 @@ die() { printf '[stack-snapshot][ERROR] %s\n' "$*" >&2; exit 1; }
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_OUTPUT="$ROOT_DIR/releases"
-APP_NAME="codex-completions-api"
+APP_NAME="codex-app-server-proxy"
 
 env_name="prod"
 version_label=""
@@ -112,6 +112,7 @@ create_snapshot_tarball() {
     --exclude='artifacts' \
     --exclude='.bmad-core' \
     --exclude='.idea' \
+    --exclude='docs/internal' \
     "$ROOT_DIR"/ "$staging"/
 
   tar -C "$staging" -czf "$tarball_path" .

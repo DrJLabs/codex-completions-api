@@ -1,6 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
+REMOTE_NAME="${1:-}"
+if [ "$REMOTE_NAME" = "origin" ]; then
+  if git ls-tree -r --name-only HEAD docs/internal | grep -q .; then
+    echo "[husky][pre-push] docs/internal is internal-only and must not be pushed to origin." >&2
+    echo "[husky][pre-push] Push to a private remote or remove docs/internal before pushing." >&2
+    exit 1
+  fi
+fi
+
 # Fast gate before CI: formatting + lint
 echo "[husky][pre-push] running format:check and lint"
 
@@ -30,4 +39,3 @@ EOF
 fi
 
 echo "[husky][pre-push] ok"
-
