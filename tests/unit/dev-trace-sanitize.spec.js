@@ -45,6 +45,29 @@ describe("dev-trace sanitize helpers", () => {
     expect(bufResult.endsWith("…<truncated>")).toBe(true);
   });
 
+  it("redacts auth URL fields and inline login URL strings", async () => {
+    const { sanitizeBody } = await loadSanitize(256);
+    const payload = {
+      error: {
+        code: "invalid_api_key | login_url=https://example.com/oauth?x=1 | login_id=abc",
+        message: "unauthorized | login_url=https://example.com/oauth?x=1 | login_id=abc",
+        details: {
+          auth_url: "https://example.com/oauth?x=1",
+          login_id: "abc",
+        },
+      },
+    };
+    const result = sanitizeBody(payload);
+    expect(result.error.details.auth_url).toBe("[REDACTED]");
+    expect(result.error.details.login_id).toBe("[REDACTED]");
+    expect(result.error.code).toContain("login_url=[REDACTED]");
+    expect(result.error.code).toContain("login_id=[REDACTED]");
+    expect(result.error.message).toContain("login_url=[REDACTED]");
+    expect(result.error.message).toContain("login_id=[REDACTED]");
+    expect(result.error.code).not.toContain("https://example.com/oauth");
+    expect(result.error.message).not.toContain("https://example.com/oauth");
+  });
+
   it("sanitizes RPC payloads via sanitizeRpcPayload", async () => {
     const { sanitizeRpcPayload } = await loadSanitize(20);
     const rpcResult = sanitizeRpcPayload({ tool_calls: [{ args: "a".repeat(100) }] });

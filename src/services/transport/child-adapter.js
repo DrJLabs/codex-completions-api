@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { getJsonRpcTransport, TransportError } from "./index.js";
 import { createUserMessageItem, normalizeInputItems } from "../../lib/json-rpc/schema.ts";
 import { logStructured } from "../logging/schema.js";
+import { config as CFG } from "../../config/index.js";
 
 const LOG_PREFIX = "[proxy][json-rpc-adapter]";
 
@@ -167,11 +168,24 @@ export class JsonRpcChildAdapter extends EventEmitter {
               will_retry: willRetry ?? null,
             }
           );
-          const authError = new TransportError("auth required", {
-            code: "auth_required",
-            retryable: false,
-          });
-          this.transport.cancelContext?.(this.context, authError);
+          const cancelWithAuth = (details = null) => {
+            const authError = new TransportError("auth required", {
+              code: "auth_required",
+              retryable: false,
+              details,
+            });
+            this.transport.cancelContext?.(this.context, authError);
+          };
+          if (
+            CFG.PROXY_AUTH_LOGIN_URL &&
+            typeof this.transport?.getAuthLoginDetails === "function"
+          ) {
+            Promise.resolve(this.transport.getAuthLoginDetails())
+              .then((details) => cancelWithAuth(details || null))
+              .catch(() => cancelWithAuth());
+          } else {
+            cancelWithAuth();
+          }
           return;
         }
       }

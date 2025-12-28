@@ -165,7 +165,12 @@ describe("mapTransportError", () => {
   });
 
   it("maps auth_required to authentication errors", () => {
-    const err = new TransportError("auth required", { code: "auth_required", retryable: false });
+    const details = { auth_url: "https://example.test/login", login_id: "login-123" };
+    const err = new TransportError("auth required", {
+      code: "auth_required",
+      retryable: false,
+      details,
+    });
 
     const mapped = mapTransportError(err);
 
@@ -176,10 +181,49 @@ describe("mapTransportError", () => {
           message: "unauthorized",
           type: "authentication_error",
           code: "invalid_api_key",
+          details,
         },
       },
     });
     expect(mapped.body.error).not.toHaveProperty("retryable");
+  });
+
+  it("embeds login URL in error code when auth login mode is code", () => {
+    const originalMode = CFG.PROXY_AUTH_LOGIN_URL_MODE;
+    CFG.PROXY_AUTH_LOGIN_URL_MODE = "code";
+
+    const details = { auth_url: "https://example.test/login", login_id: "login-123" };
+    const err = new TransportError("auth required", {
+      code: "auth_required",
+      retryable: false,
+      details,
+    });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped.body.error.code).toContain("login_url=https://example.test/login");
+    expect(mapped.body.error.code).toContain("login_id=login-123");
+
+    CFG.PROXY_AUTH_LOGIN_URL_MODE = originalMode;
+  });
+
+  it("embeds login URL in error message when auth login mode is code+message", () => {
+    const originalMode = CFG.PROXY_AUTH_LOGIN_URL_MODE;
+    CFG.PROXY_AUTH_LOGIN_URL_MODE = "code+message";
+
+    const details = { auth_url: "https://example.test/login", login_id: "login-123" };
+    const err = new TransportError("auth required", {
+      code: "auth_required",
+      retryable: false,
+      details,
+    });
+
+    const mapped = mapTransportError(err);
+
+    expect(mapped.body.error.message).toContain("login_url=https://example.test/login");
+    expect(mapped.body.error.message).toContain("login_id=login-123");
+
+    CFG.PROXY_AUTH_LOGIN_URL_MODE = originalMode;
   });
 
   it.each([
