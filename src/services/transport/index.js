@@ -29,7 +29,7 @@ import {
 const JSONRPC_VERSION = "2.0";
 const LOG_PREFIX = "[proxy][json-rpc-transport]";
 const DEFAULT_CLIENT_INFO = {
-  name: "codex-completions-api",
+  name: "codex-app-server-proxy",
   version: "1.0.0",
 };
 const RESULT_COMPLETION_GRACE_MS = Math.min(

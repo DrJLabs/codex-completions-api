@@ -329,7 +329,7 @@ export function buildInitializeParams(
   options: BuildInitializeOptions
 ): InitializeParams & JsonObject {
   const clientInfo = { ...(options.clientInfo || {}) } as ClientInfo;
-  if (!clientInfo.name) clientInfo.name = "codex-completions-api";
+  if (!clientInfo.name) clientInfo.name = "codex-app-server-proxy";
   if (!clientInfo.version) clientInfo.version = CODEX_CLI_VERSION;
   const params: InitializeParams & JsonObject = {
     clientInfo,
