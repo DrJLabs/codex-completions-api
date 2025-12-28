@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: codex-completions-api:dev
+    image: codex-app-server-proxy:dev
     network_mode: host
     environment:
       - PORT=${DEV_PORT:-18010}

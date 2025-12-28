@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: codex-completions-api:local
+    image: codex-app-server-proxy:local
     environment:
       PORT: "${PORT:-11435}"
       PROXY_API_KEY: "${PROXY_API_KEY?set-in-env}"
