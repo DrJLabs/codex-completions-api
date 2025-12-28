@@ -1,4 +1,13 @@
 const REDACTED = "<redacted>";
+const SENSITIVE_STRING_KEYS = new Set([
+  "auth_url",
+  "authurl",
+  "login_url",
+  "loginurl",
+  "login_id",
+  "loginid",
+]);
+const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|]+)/gi;
 
 const DEFAULT_SAFE_HEADER_VALUE_KEYS = new Set([
   "user-agent",
@@ -58,11 +67,16 @@ export const createCaptureSanitizers = ({
   const headerAllow = headerAllowlist instanceof Set ? headerAllowlist : new Set();
   const rawSecrets = rawSecretHeaders instanceof Set ? rawSecretHeaders : new Set();
 
+  const redactInlineAuth = (value) =>
+    value.replace(INLINE_AUTH_PATTERN, (_match, field) => `${field}=${REDACTED}`);
+
   const sanitizeString = (value, key) => {
     if (value === null || value === undefined) return value;
     if (typeof value !== "string") return value;
     if (!value) return value;
-    return safeStrings.has(key) ? value : REDACTED;
+    const normalizedKey = String(key || "").toLowerCase();
+    if (normalizedKey && SENSITIVE_STRING_KEYS.has(normalizedKey)) return REDACTED;
+    return safeStrings.has(key) ? redactInlineAuth(value) : REDACTED;
   };
 
   const sanitizeValue = (value, key = "") => {

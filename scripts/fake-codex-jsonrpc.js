@@ -14,6 +14,10 @@ const shutdownDelayMs = Number(process.env.FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS ?
 const exitCode = Number(process.env.FAKE_CODEX_WORKER_EXIT_CODE ?? 0);
 const errorAfterFirstTool =
   String(process.env.FAKE_CODEX_ERROR_AFTER_FIRST_TOOL || "").toLowerCase() === "true";
+const emitUnauthorized = /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_UNAUTHORIZED || ""));
+const fakeAuthUrl =
+  process.env.FAKE_CODEX_AUTH_URL || "https://example.com/fake-login?source=codex";
+const fakeLoginId = process.env.FAKE_CODEX_LOGIN_ID || "login-fake-123";
 const parseToolCallCount = () => {
   const parsed = Number.parseInt(process.env.FAKE_CODEX_TOOL_CALL_COUNT ?? "1", 10);
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -222,6 +226,28 @@ async function runJsonRpcWorker() {
         write({ jsonrpc: "2.0", id, result: {} });
         break;
       }
+      case "account/login/start": {
+        emitCapture("request", message);
+        const requestedType = typeof params?.type === "string" ? params.type.toLowerCase() : null;
+        if (requestedType === "apikey") {
+          write({
+            jsonrpc: "2.0",
+            id,
+            result: { type: "apiKey" },
+          });
+          break;
+        }
+        write({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            type: "chatgpt",
+            authUrl: fakeAuthUrl,
+            loginId: fakeLoginId,
+          },
+        });
+        break;
+      }
       case "sendUserTurn": {
         emitCapture("request", message);
         const convId = resolveConversationId(params);
@@ -235,6 +261,19 @@ async function runJsonRpcWorker() {
         const convId = resolveConversationId(params);
         if (hangMode === "message") {
           // Simulate a stalled worker by not emitting any response.
+          return;
+        }
+        if (emitUnauthorized) {
+          write({
+            jsonrpc: "2.0",
+            method: "error",
+            params: {
+              conversation_id: convId,
+              request_id: params.request_id || convId,
+              codexErrorInfo: "unauthorized",
+              willRetry: false,
+            },
+          });
           return;
         }
         const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();

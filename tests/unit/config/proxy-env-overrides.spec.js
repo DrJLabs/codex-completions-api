@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const originalApproval = process.env.PROXY_APPROVAL_POLICY;
 const originalCodexApproval = process.env.CODEX_APPROVAL_POLICY;
 const originalGraceMs = process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
+const originalAuthLoginUrlMode = process.env.PROXY_AUTH_LOGIN_URL_MODE;
 
 afterEach(() => {
   if (originalApproval === undefined) {
@@ -19,6 +20,11 @@ afterEach(() => {
     delete process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
   } else {
     process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS = originalGraceMs;
+  }
+  if (originalAuthLoginUrlMode === undefined) {
+    delete process.env.PROXY_AUTH_LOGIN_URL_MODE;
+  } else {
+    process.env.PROXY_AUTH_LOGIN_URL_MODE = originalAuthLoginUrlMode;
   }
   vi.resetModules();
 });
@@ -69,5 +75,21 @@ describe("config stop-after-tools grace", () => {
     vi.resetModules();
     const { config } = await import("../../../src/config/index.js");
     expect(config.PROXY_STOP_AFTER_TOOLS_GRACE_MS).toBe(300);
+  });
+});
+
+describe("config auth login url mode", () => {
+  it("normalizes allowed values", async () => {
+    process.env.PROXY_AUTH_LOGIN_URL_MODE = "CODE+MESSAGE";
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_AUTH_LOGIN_URL_MODE).toBe("code+message");
+  });
+
+  it("falls back to empty string for invalid values", async () => {
+    process.env.PROXY_AUTH_LOGIN_URL_MODE = "bogus";
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_AUTH_LOGIN_URL_MODE).toBe("");
   });
 });

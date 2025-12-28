@@ -1,7 +1,41 @@
-export function authErrorBody() {
-  return {
-    error: { message: "unauthorized", type: "authentication_error", code: "invalid_api_key" },
+const AUTH_DEFAULT_MESSAGE = "unauthorized";
+const AUTH_DEFAULT_CODE = "invalid_api_key";
+
+export function authErrorBody(detailsOrOptions = null) {
+  let details = null;
+  let codeOverride = null;
+  let messageOverride = null;
+
+  if (
+    detailsOrOptions &&
+    typeof detailsOrOptions === "object" &&
+    !Array.isArray(detailsOrOptions)
+  ) {
+    const hasOverrides =
+      Object.prototype.hasOwnProperty.call(detailsOrOptions, "details") ||
+      Object.prototype.hasOwnProperty.call(detailsOrOptions, "code") ||
+      Object.prototype.hasOwnProperty.call(detailsOrOptions, "message");
+    if (hasOverrides) {
+      details = detailsOrOptions.details ?? null;
+      codeOverride = detailsOrOptions.code ?? null;
+      messageOverride = detailsOrOptions.message ?? null;
+    } else {
+      details = detailsOrOptions;
+    }
+  }
+
+  const error = {
+    message:
+      typeof messageOverride === "string" && messageOverride
+        ? messageOverride
+        : AUTH_DEFAULT_MESSAGE,
+    type: "authentication_error",
+    code: typeof codeOverride === "string" && codeOverride ? codeOverride : AUTH_DEFAULT_CODE,
   };
+  if (details && typeof details === "object" && Object.keys(details).length > 0) {
+    error.details = details;
+  }
+  return { error };
 }
 
 export function modelNotFoundBody(model) {
