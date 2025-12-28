@@ -64,20 +64,27 @@ Use this when you want to run the proxy on the same machine as Obsidian Copilot 
    If auth is missing, the first unauthenticated request returns a login URL; complete it to populate
    `.codex-api/auth.json`. Do **not** copy `~/.codex/config.toml` — use the repo-managed config.
 
-3. Start the server (binds to `127.0.0.1:11435` by default):
+3. Option A — run with Docker (pulls the prebuilt GHCR image):
+
+   ```bash
+   PROXY_API_KEY=codex-local-secret docker compose up -d
+   ```
+
+   Pin a specific release tag by setting `IMAGE=ghcr.io/drjlabs/codex-app-server-proxy:<tag>`.
+
+4. Option B — run with Node (binds to `127.0.0.1:11435` by default):
 
    ```bash
    PORT=11435 PROXY_API_KEY=codex-local-secret PROXY_HOST=127.0.0.1 npm run start
    ```
 
-4. Configure Obsidian Copilot:
-
+5. Configure Obsidian Copilot:
    - Base URL: `http://127.0.0.1:11435`
    - API key: `codex-local-secret`
    - Model: `codex-5` (or `codex-5-low` / `codex-5-medium` / `codex-5-high`)
    - Streaming: enabled
 
-5. Verify:
+6. Verify:
 
    ```bash
    curl -s http://127.0.0.1:11435/healthz | jq .
@@ -130,21 +137,27 @@ If the proxy returns a login URL, Codex uses a local callback on port `1435` —
 
 ### Run with Docker Compose
 
-1. Copy the example compose file and adjust environment variables:
+1. For production-style usage, the root `docker-compose.yml` pulls the GHCR image by default:
+
+   ```bash
+   PROXY_API_KEY=codex-local-secret docker compose up -d
+   ```
+
+2. For local builds, copy the example compose file and adjust environment variables:
 
    ```bash
    cp infra/compose/docker-compose.local.example.yml docker-compose.local.yml
    # edit docker-compose.local.yml to set PROXY_API_KEY or other overrides
    ```
 
-2. Populate `.codex-api/` with the repo-managed config (`.codev/config.toml`) and optional auth fallback.
-3. Launch the stack:
+3. Populate `.codex-api/` with the repo-managed config (`.codev/config.toml`) and optional auth fallback.
+4. Launch the stack:
 
    ```bash
    docker compose -f docker-compose.local.yml up --build
    ```
 
-4. Query the API on `http://127.0.0.1:11435`:
+5. Query the API on `http://127.0.0.1:11435`:
 
    ```bash
    curl -s http://127.0.0.1:11435/v1/models | jq .
