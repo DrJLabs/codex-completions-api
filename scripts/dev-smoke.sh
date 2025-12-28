@@ -37,7 +37,7 @@ curl_metrics() {
   curl -sS -m "$REQUEST_TIMEOUT" -f "${header[@]}" "$url"
 }
 
-IMAGE="${IMAGE:-codex-completions-api:latest}"
+IMAGE="${IMAGE:-ghcr.io/drjlabs/codex-app-server-proxy:latest}"
 
 if ! command -v docker >/dev/null 2>&1; then
   fail "docker binary is required for CLI availability check"

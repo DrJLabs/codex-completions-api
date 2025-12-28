@@ -37,7 +37,7 @@ curl_metrics() {
   curl -sS -m "$REQUEST_TIMEOUT" -f "${header[@]}" "$url"
 }
 
-IMAGE="${IMAGE:-codex-completions-api:latest}"
+IMAGE="${IMAGE:-ghcr.io/drjlabs/codex-app-server-proxy:latest}"
 
 echo "== Prod smoke for $DOMAIN =="
 
