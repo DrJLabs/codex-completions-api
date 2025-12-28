@@ -25,36 +25,55 @@
 
 ## Analysis
 ### Options for internal docs handling
-1) Keep internal docs in repo and rely on local pre-push hook to block pushing to `origin`.
-2) Move internal docs into a private repo (submodule or separate) and keep only a pointer in public repo.
-3) Keep internal docs in a local‑only branch that is never pushed.
+1) Private canonical repo + public filtered mirror (most reliable; public never sees internal paths).
+2) Private repo/submodule for internal docs (reliable, but public repo still exposes a pointer).
+3) Keep internal docs in repo with local pre‑push guard only (fastest, but bypassable).
+4) Local‑only branch for internal docs (deferred; skip for now).
 
 ### Decision
-- Use option 1 to satisfy “tracked but not pushed” within a single repo:
+- Use option 3 now to satisfy “tracked but not pushed” within a single repo:
   - Add `docs/internal/` and move internal materials there.
   - Add a pre‑push guard that aborts pushes to `origin` if `docs/internal/` is present.
   - Exclude `docs/internal/` from release snapshots.
-- If stricter isolation is required later, migrate to option 2.
+- Defer stronger isolation until public distribution is required; then pick option 1 or 2.
 
 ### Risks / edge cases
-- Pre‑push hooks can be bypassed; users must opt into hooks.
+- Pre‑push hooks can be bypassed (e.g., `--no-verify`, CI, alternate remotes).
 - Renaming tarball/image names could break external automation that expects old names.
 
 ### Open questions
-- Is the hook‑based block on pushing `docs/internal/` acceptable long‑term, or should we migrate to a private submodule?
+- When public distribution becomes a requirement, should we use a filtered mirror (option 1) or a private submodule (option 2)?
 
 ## Implementation plan
-1) Rename/branding sweep:
-   - Update repo/package name, image tags, service names, telemetry defaults, JSON‑RPC client info.
-2) GHCR publish + compose/readme updates:
-   - Add GHCR publish workflow; update compose examples + README to prefer GHCR images.
-3) Docs hygiene:
-   - Create `docs/internal/`.
-   - Move internal docs (bmad/surveys/longhorizon/stories/review/PRD/epics/test‑design) under it.
-   - Update `docs/README.md` to only link public docs.
-4) Guardrails:
-   - Block pushes to `origin` when `docs/internal/` is present.
-   - Exclude `docs/internal/` from release snapshots.
+### Checklist (public surface audit + docs hygiene)
+- [x] **Inventory the public surface (repo root).**
+  Paths: `README.md`, `CONTRIBUTING.md`, `LICENSE`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `package.json`, `docker-compose.yml`, `.env.example`, `.github/`, `docs/`, `infra/`, `scripts/`, `src/`, `tests/`, `external/`.
+  How: `rg --files` to list; `rg -n "codex-completions-api|completions api|completions-api" .` to find stale name/positioning; confirm no internal-only references in public files.
+  AC: All public-facing files reference `codex-app-server-proxy` and “responses-first” positioning; no public file links into `docs/internal/`.
+- [x] **Docs IA + content audit (public docs only).**
+  Paths: `docs/README.md`, `docs/README-root.md`, `docs/getting-started.md`, `docs/configuration.md`, `docs/deployment/production.md`, `docs/troubleshooting.md`, `docs/observability.md`, `docs/architecture.md`, `docs/codex-proxy-tool-calls.md`, `docs/app-server-migration/`.
+  How: `rg -n "completions" docs` to update legacy framing; `rg -n "gpt-5" docs` to ensure `gpt-5.2`; check Quickstart includes port `11435`, login-link flow, and auth fallback.
+  AC: Public docs are internally consistent, responses-first, show correct default model, and include the login-link flow + auth fallback.
+- [x] **Internal docs isolation (track locally, no public push).**
+  Paths: `docs/internal/`, `.husky/pre-push`, `.gitignore`, `scripts/stack-snapshot.sh`, `docs/internal/README.md`.
+  How: Confirm `docs/README.md` only notes internal docs exist; pre-push blocks `origin` when `docs/internal/` exists; snapshots skip `docs/internal/`.
+  AC: Internal docs are accessible locally but guarded from accidental public push; internal artifacts are ignored.
+- [x] **GitHub/project metadata hygiene.**
+  Paths: `.github/workflows/`, `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`, `README.md`.
+  How: Check for internal-only references or private links; verify GHCR publish workflow naming and tags.
+  AC: All metadata is public-safe, GHCR instructions match `ghcr.io/<owner>/codex-app-server-proxy`, and release docs avoid internal links.
+- [x] **Runtime config + compose examples.**
+  Paths: `docker-compose.yml`, `infra/compose/compose.dev.stack.yml`, `infra/compose/docker-compose.local.example.yml`, `.env.example`, `docs/deployment/production.md`.
+  How: Verify service name, port `11435`, and GHCR image tags are consistent; ensure example env vars align with docs.
+  AC: Compose examples and docs align on ports, image names, and auth/login flow expectations.
+- [x] **Scripts and tooling docs alignment.**
+  Paths: `scripts/`, `docs/getting-started.md`, `docs/troubleshooting.md`, `docs/deployment/production.md`.
+  How: Check for references to old names or paths; ensure script output names (snapshots/backups) match new naming.
+  AC: Scripts and docs refer to the same naming, paths, and commands.
+- [x] **Source/test references to old branding.**
+  Paths: `src/`, `tests/`.
+  How: `rg -n "codex-completions-api|completions-api" src tests` to catch leftover names in telemetry, schema, or tests.
+  AC: No lingering old-brand strings in runtime or test output.
 
 ## Tests to run
 - `npm run format:check`
