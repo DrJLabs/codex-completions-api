@@ -14,6 +14,15 @@ const SECRET_HEADERS = new Set([
 
 const REDACTED = "[REDACTED]";
 const TRUNCATION_SUFFIX = "…<truncated>";
+const SENSITIVE_BODY_KEYS = new Set([
+  "auth_url",
+  "authurl",
+  "login_url",
+  "loginurl",
+  "login_id",
+  "loginid",
+]);
+const INLINE_AUTH_PATTERN = /\b(auth_url|login_url|login_id)=([^\s|,]+)/gi;
 
 const isPlainObject = (value) => Object.prototype.toString.call(value) === "[object Object]";
 
@@ -37,13 +46,35 @@ const cloneLimited = (value, limit) => {
 
 const safeToString = (value) => {
   if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return redactInlineAuth(value);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
-    return JSON.stringify(value);
+    return redactInlineAuth(JSON.stringify(value));
   } catch {
     return String(value);
   }
+};
+
+const redactInlineAuth = (value) => {
+  if (!value || typeof value !== "string") return value;
+  return value.replace(INLINE_AUTH_PATTERN, (_match, key) => `${key}=${REDACTED}`);
+};
+
+const redactSensitiveFields = (value, key = "") => {
+  if (value === null || value === undefined) return value;
+  const normalizedKey = String(key || "").toLowerCase();
+  if (normalizedKey && SENSITIVE_BODY_KEYS.has(normalizedKey)) {
+    return REDACTED;
+  }
+  if (typeof value === "string") return redactInlineAuth(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((entry) => redactSensitiveFields(entry));
+  if (!isPlainObject(value)) return value;
+  const next = {};
+  for (const [entryKey, entryValue] of Object.entries(value)) {
+    next[entryKey] = redactSensitiveFields(entryValue, entryKey);
+  }
+  return next;
 };
 
 export function sanitizeHeaders(headers = {}) {
@@ -72,15 +103,16 @@ export function sanitizeHeaders(headers = {}) {
 export function sanitizeBody(body, { limit = DEFAULT_BODY_LIMIT } = {}) {
   if (body === undefined || body === null) return null;
   if (typeof body === "string") {
-    if (body.length <= limit) return body;
-    return body.slice(0, Math.max(0, limit - TRUNCATION_SUFFIX.length)) + TRUNCATION_SUFFIX;
+    const redacted = redactInlineAuth(body);
+    if (redacted.length <= limit) return redacted;
+    return redacted.slice(0, Math.max(0, limit - TRUNCATION_SUFFIX.length)) + TRUNCATION_SUFFIX;
   }
   if (Buffer.isBuffer(body)) {
     const text = body.toString("utf8");
     return sanitizeBody(text, { limit });
   }
   if (Array.isArray(body) || isPlainObject(body)) {
-    return cloneLimited(body, limit);
+    return cloneLimited(redactSensitiveFields(body), limit);
   }
   return safeToString(body);
 }

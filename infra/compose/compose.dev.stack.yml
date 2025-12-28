@@ -4,8 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
     image: codex-completions-api:dev
+    network_mode: host
     environment:
-      - PORT=11435
+      - PORT=${DEV_PORT:-18010}
       - PROXY_ENV=dev
       # Enable origin-level CORS while Cloudflare dev rule is disabled
       - PROXY_ENABLE_CORS=true
@@ -30,6 +31,8 @@ services:
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}
       - PROXY_RESPONSES_OUTPUT_MODE=${PROXY_RESPONSES_OUTPUT_MODE:-}
       - PROXY_COPILOT_AUTO_DETECT=${PROXY_COPILOT_AUTO_DETECT:-}
+      - PROXY_AUTH_LOGIN_URL=${PROXY_AUTH_LOGIN_URL:-}
+      - PROXY_AUTH_LOGIN_URL_MODE=${PROXY_AUTH_LOGIN_URL_MODE:-}
       - PROXY_USE_APP_SERVER=${PROXY_USE_APP_SERVER:-true}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
@@ -56,8 +59,6 @@ services:
       - PROXY_CAPTURE_RESPONSES_DIR=${PROXY_CAPTURE_RESPONSES_DIR:-/app/test-results/responses-copilot/raw}
       - PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS=${PROXY_CAPTURE_RESPONSES_RAW_TRANSCRIPTS:-}
       - PROXY_CAPTURE_RESPONSES_RAW_DIR=${PROXY_CAPTURE_RESPONSES_RAW_DIR:-/app/test-results/responses-copilot/raw-unredacted}
-    ports:
-      - 127.0.0.1:${DEV_PORT:-18010}:11435
     volumes:
       # Project-local Codex config; writable for rollouts/sessions
       - ./.codev:/home/node/.codex
@@ -66,14 +67,12 @@ services:
       # Persist Copilot capture artifacts
       - ./test-results:/app/test-results
     restart: unless-stopped
-    networks:
-      - traefik
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
 
       # Backend service port inside the container
-      - traefik.http.services.codex-dev-api.loadbalancer.server.port=11435
+      - traefik.http.services.codex-dev-api.loadbalancer.server.port=${DEV_PORT:-18010}
 
       # Protected API router (dev)
       - traefik.http.routers.codex-dev-api.rule=Host(`codex-dev.onemainarmy.com`) && PathPrefix(`/v1`)

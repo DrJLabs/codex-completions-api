@@ -87,11 +87,12 @@ const summarizeTurnParamsForLog = (params) => {
 };
 
 class TransportError extends Error {
-  constructor(message, { code = "transport_error", retryable = false } = {}) {
+  constructor(message, { code = "transport_error", retryable = false, details = null } = {}) {
     super(message);
     this.name = "JsonRpcTransportError";
     this.code = code;
     this.retryable = retryable;
+    this.details = details;
   }
 }
 
@@ -200,6 +201,8 @@ class JsonRpcTransport {
     this.activeRequests = 0;
     this.destroyed = false;
     this.rpcTraceById = new Map();
+    this.authLoginCache = null;
+    this.authLoginPromise = null;
 
     this.unsubscribeSpawn = onWorkerSupervisorEvent("spawn", (child) => {
       this.#onSpawn(child);
@@ -565,6 +568,39 @@ class JsonRpcTransport {
         reject(err instanceof Error ? err : new TransportError(String(err)));
       }
     });
+  }
+
+  async getAuthLoginDetails() {
+    if (this.authLoginCache) return this.authLoginCache;
+    if (this.authLoginPromise) return this.authLoginPromise;
+
+    const requestPromise = (async () => {
+      try {
+        const result = await this.#callWorkerRpc({
+          context: null,
+          method: "account/login/start",
+          params: { type: "chatgpt" },
+          type: "account/login/start",
+          timeoutMs: Math.min(CFG.WORKER_REQUEST_TIMEOUT_MS, 5000),
+        });
+        const resultType = typeof result?.type === "string" ? result.type.toLowerCase() : null;
+        const authUrl = result?.authUrl ?? result?.auth_url ?? null;
+        const loginId = result?.loginId ?? result?.login_id ?? null;
+        if (!authUrl || (resultType && resultType !== "chatgpt")) {
+          return null;
+        }
+        const details = { auth_url: authUrl, login_id: loginId ?? null };
+        this.authLoginCache = details;
+        return details;
+      } catch {
+        return null;
+      } finally {
+        this.authLoginPromise = null;
+      }
+    })();
+
+    this.authLoginPromise = requestPromise;
+    return requestPromise;
   }
 
   sendUserMessage(context, payload) {
@@ -1252,7 +1288,30 @@ export function mapTransportError(err) {
   const normalizedCode = typeof rawCode === "string" ? rawCode : String(rawCode);
   const lookupKey = normalizedCode.toLowerCase();
   if (lookupKey === "auth_required") {
-    return { statusCode: 401, body: authErrorBody() };
+    const details = err.details ?? null;
+    let codeOverride = null;
+    let messageOverride = null;
+    const loginMode = CFG.PROXY_AUTH_LOGIN_URL_MODE;
+    if (details && typeof details === "object") {
+      const authUrl = details.auth_url ?? details.authUrl ?? null;
+      const loginId = details.login_id ?? details.loginId ?? null;
+      if (typeof authUrl === "string" && authUrl) {
+        const suffixParts = [`login_url=${authUrl}`];
+        if (typeof loginId === "string" && loginId) {
+          suffixParts.push(`login_id=${loginId}`);
+        }
+        if (loginMode === "code" || loginMode === "code+message") {
+          codeOverride = ["invalid_api_key", ...suffixParts].join(" | ");
+        }
+        if (loginMode === "message" || loginMode === "code+message") {
+          messageOverride = ["unauthorized", ...suffixParts].join(" | ");
+        }
+      }
+    }
+    return {
+      statusCode: 401,
+      body: authErrorBody({ details, code: codeOverride, message: messageOverride }),
+    };
   }
   const hasMapping = Object.prototype.hasOwnProperty.call(TRANSPORT_ERROR_DETAILS, lookupKey);
   // eslint-disable-next-line security/detect-object-injection -- lookupKey guarded by hasOwnProperty
