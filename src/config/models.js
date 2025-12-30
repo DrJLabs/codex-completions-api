@@ -29,11 +29,13 @@ const GPT52_ALIASES = GPT52_VARIANTS.map(({ suffix, effort }) => ({
   alias: `gpt-5.2-${suffix.toLowerCase()}`,
   effort,
 }));
-const GPT52_LOCAL_ALIAS = {
-  publicId: "gpt-5.2-LOCAL",
-  alias: "gpt-5.2-local",
-  effort: "low",
-};
+const GPT52_LOCAL_ALIASES = [
+  {
+    publicId: "gpt-5.2-LOCAL",
+    alias: "gpt-5.2-local",
+    effort: "low",
+  },
+];
 
 const buildBaseModels = (base) => [base, ...REASONING_VARIANTS.map((v) => `${base}-${v}`)];
 
@@ -55,7 +57,7 @@ export function publicModelIds(isDevEnv) {
   } else {
     models.push(...GPT52_CODEX_ALIASES.map(({ publicId }) => publicId));
   }
-  models.push(GPT52_LOCAL_ALIAS.publicId);
+  models.push(...GPT52_LOCAL_ALIASES.map(({ publicId }) => publicId));
   return models;
 }
 
@@ -76,7 +78,7 @@ const buildOverrideMaps = () => {
     ...GPT52_CODEV_ALIASES,
     ...GPT52_CODEX_ALIASES,
     ...GPT52_ALIASES,
-    GPT52_LOCAL_ALIAS,
+    ...GPT52_LOCAL_ALIASES,
   ]) {
     target.set(alias, GPT52_TARGET_MODEL);
     reasoning.set(alias, effort);
@@ -98,7 +100,7 @@ export function acceptedModelIds(defaultModel = "gpt-5.2") {
     ...GPT52_CODEV_ALIASES.map(({ alias }) => alias),
     ...GPT52_CODEX_ALIASES.map(({ alias }) => alias),
     ...GPT52_ALIASES.map(({ alias }) => alias),
-    GPT52_LOCAL_ALIAS.alias,
+    ...GPT52_LOCAL_ALIASES.map(({ alias }) => alias),
   ];
   if (normalizedDefault) values.push(normalizedDefault);
   return new Set(values);
