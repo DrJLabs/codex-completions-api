@@ -1,7 +1,18 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
+import { runCodexExec } from "../../../src/services/codex-exec.js";
+
+vi.mock("../../../src/services/codex-exec.js", () => ({
+  runCodexExec: vi.fn(),
+}));
 
 const createRes = () => ({
+  locals: {},
+  statusCode: null,
   setHeader: vi.fn(),
+  status: vi.fn(function status(code) {
+    this.statusCode = code;
+    return this;
+  }),
   json: vi.fn(),
   write: vi.fn(),
   end: vi.fn(),
@@ -32,6 +43,7 @@ const loadIntercept = async () => {
 
 beforeEach(() => {
   restoreEnv();
+  vi.mocked(runCodexExec).mockResolvedValue("Hello world");
 });
 
 afterEach(() => {
@@ -43,7 +55,7 @@ describe("maybeHandleTitleIntercept", () => {
     process.env.PROXY_TITLE_GEN_INTERCEPT = "false";
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({ body: baseBody, model: "codex-5", res });
+    const handled = await maybeHandleTitleIntercept({ req: {}, res, body: baseBody });
     expect(handled).toBe(false);
     expect(res.json).not.toHaveBeenCalled();
     expect(res.write).not.toHaveBeenCalled();
@@ -52,9 +64,9 @@ describe("maybeHandleTitleIntercept", () => {
   test("returns false when no title markers present", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: { ...baseBody, messages: [{ role: "user", content: "Just chat" }] },
-      model: "codex-5",
       res,
     });
     expect(handled).toBe(false);
@@ -63,9 +75,9 @@ describe("maybeHandleTitleIntercept", () => {
   test("non-stream response writes json body", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: baseBody,
-      model: "codex-5",
       res,
       stream: false,
     });
@@ -79,9 +91,9 @@ describe("maybeHandleTitleIntercept", () => {
   test("stream response writes SSE chunks and ends", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: baseBody,
-      model: "codex-5",
       res,
       stream: true,
     });
@@ -91,5 +103,19 @@ describe("maybeHandleTitleIntercept", () => {
     const writes = res.write.mock.calls.map(([arg]) => String(arg));
     expect(writes[writes.length - 1]).toContain("[DONE]");
     expect(res.end).toHaveBeenCalled();
+  });
+
+  test("returns 502 when codex exec fails", async () => {
+    vi.mocked(runCodexExec).mockRejectedValue(new Error("exec failed"));
+    const maybeHandleTitleIntercept = await loadIntercept();
+    const res = createRes();
+    const handled = await maybeHandleTitleIntercept({
+      req: {},
+      body: baseBody,
+      res,
+      stream: false,
+    });
+    expect(handled).toBe(true);
+    expect(res.status).toHaveBeenCalledWith(502);
   });
 });
