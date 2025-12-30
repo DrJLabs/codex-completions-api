@@ -4,15 +4,19 @@ set -euo pipefail
 action="${1:-}"
 shift || true
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
 compose_args=(
-  --project-directory .
+  --project-directory "$REPO_ROOT"
   -p codex-dev
-  -f infra/compose/compose.dev.stack.yml
-  --env-file .env.dev
+  -f "$REPO_ROOT/infra/compose/compose.dev.stack.yml"
+  --env-file "$REPO_ROOT/.env.dev"
 )
 
 case "$action" in
   up)
+    # Disable BuildKit for dev stack compatibility; revisit if no longer needed.
     DOCKER_BUILDKIT=0 docker compose "${compose_args[@]}" up -d --build "$@"
     ;;
   down)
