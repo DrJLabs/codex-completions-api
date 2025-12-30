@@ -11,7 +11,7 @@ import {
 } from "./title-prompt-utils.js";
 
 const TITLE_INTERCEPT_ENABLED = CFG.PROXY_TITLE_GEN_INTERCEPT;
-const DEFAULT_MODEL = CFG.PROXY_TITLE_SUMMARY_EXEC_MODEL || "gpt-5.2";
+const DEFAULT_MODEL = CFG.PROXY_TITLE_SUMMARY_EXEC_MODEL;
 
 const createChatResponse = ({ content, model, stream }) => {
   const id = `chatcmpl-${nanoid()}`;

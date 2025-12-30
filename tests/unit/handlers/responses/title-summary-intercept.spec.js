@@ -5,7 +5,11 @@ import {
   logResponsesIngressRaw,
   summarizeResponsesIngress,
 } from "../../../../src/handlers/responses/ingress-logging.js";
-import { captureResponsesNonStream } from "../../../../src/handlers/responses/capture.js";
+import {
+  captureResponsesNonStream,
+  createResponsesStreamCapture,
+} from "../../../../src/handlers/responses/capture.js";
+import { parseSSE } from "../../../shared/transcript-utils.js";
 
 vi.mock("../../../../src/services/codex-exec.js", () => ({
   runCodexExec: vi.fn(),
@@ -16,18 +20,23 @@ vi.mock("../../../../src/handlers/responses/ingress-logging.js", () => ({
 }));
 vi.mock("../../../../src/handlers/responses/capture.js", () => ({
   captureResponsesNonStream: vi.fn(),
+  createResponsesStreamCapture: vi.fn(),
 }));
 
 const createRes = () => {
   const res = {
     locals: {},
     headers: {},
+    chunks: [],
     statusCode: null,
     payload: null,
+    writableEnded: false,
     setHeader(key, value) {
       // eslint-disable-next-line security/detect-object-injection -- test helper for headers
       this.headers[key] = value;
     },
+    flushHeaders: vi.fn(),
+    flush: vi.fn(),
     status(code) {
       this.statusCode = code;
       return this;
@@ -36,12 +45,23 @@ const createRes = () => {
       this.payload = payload;
       return this;
     },
+    write(chunk) {
+      this.chunks.push(chunk);
+      return true;
+    },
+    end() {
+      this.writableEnded = true;
+    },
   };
   return res;
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  createResponsesStreamCapture.mockReturnValue({
+    record: vi.fn(),
+    finalize: vi.fn(),
+  });
   summarizeResponsesIngress.mockReturnValue({
     has_input: true,
     input_is_array: true,
@@ -117,6 +137,43 @@ describe("responses title/summary intercept", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.payload.output[0].content[0].text).toBe("Hello conversation");
+  });
+
+  test("streams SSE when stream=true", async () => {
+    const req = { headers: {} };
+    const res = createRes();
+    const body = {
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content:
+            "Generate a concise title (max 5 words) for this conversation based on its content. Return only the title without any explanation or quotes.\n\nConversation:\nuser: hello\nai: hi",
+        },
+      ],
+    };
+
+    runCodexExec.mockResolvedValue("Hello conversation");
+
+    const handled = await maybeHandleTitleSummaryIntercept({
+      req,
+      res,
+      body,
+      stream: true,
+    });
+
+    expect(handled).toBe(true);
+    expect(captureResponsesNonStream).not.toHaveBeenCalled();
+    expect(createResponsesStreamCapture).toHaveBeenCalled();
+    const entries = parseSSE(res.chunks.join(""));
+    const completed = entries.find((entry) => entry.event === "response.completed");
+    expect(completed?.data?.response?.output?.[0]?.content?.[0]?.text).toBe("Hello conversation");
+    const deltas = entries.filter((entry) => entry.event === "response.output_text.delta");
+    const combined = deltas
+      .map((entry) => (typeof entry.data?.delta === "string" ? entry.data.delta : ""))
+      .join("");
+    expect(combined).toBe("Hello conversation");
+    expect(entries.some((entry) => entry.event === "done")).toBe(true);
   });
 
   test("returns 502 when codex exec fails", async () => {

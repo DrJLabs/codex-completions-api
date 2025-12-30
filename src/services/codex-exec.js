@@ -46,9 +46,10 @@ export async function runCodexExec({
     "--output-last-message",
     outputPath,
     "-m",
-    model || CFG.PROXY_TITLE_SUMMARY_EXEC_MODEL || "gpt-5.2",
+    model || CFG.PROXY_TITLE_SUMMARY_EXEC_MODEL,
   ];
   if (resolvedReasoning) {
+    // Send both keys for compatibility with different Codex CLI versions.
     args.push("-c", `model_reasoning_effort="${resolvedReasoning}"`);
     args.push("-c", `reasoning.effort="${resolvedReasoning}"`);
   }
