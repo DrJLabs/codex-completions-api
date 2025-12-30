@@ -116,8 +116,12 @@ export async function runCodexExec({
     });
 
     try {
-      child.stdin.write(prompt);
-      child.stdin.end();
+      const written = child.stdin.write(prompt);
+      if (!written) {
+        child.stdin.once("drain", () => child.stdin.end());
+      } else {
+        child.stdin.end();
+      }
     } catch (err) {
       cleanup();
       reject(err);

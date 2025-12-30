@@ -18,52 +18,58 @@ export default function chatRouter() {
   });
 
   // POST routes for chat and legacy completions
-  r.post("/v1/chat/completions", requireStrictAuth, async (req, res) => {
-    const body = req?.body || {};
-    const stream = Object.prototype.hasOwnProperty.call(body, "stream")
-      ? !!body.stream
-      : defaultStream;
-    const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
+  r.post("/v1/chat/completions", requireStrictAuth, async (req, res, next) => {
+    try {
+      const body = req?.body || {};
+      const stream = Object.prototype.hasOwnProperty.call(body, "stream")
+        ? !!body.stream
+        : defaultStream;
 
-    if (
-      await maybeHandleTitleIntercept({
-        body,
-        model,
-        res,
-        stream,
-      })
-    ) {
-      return;
+      if (
+        await maybeHandleTitleIntercept({
+          req,
+          res,
+          body,
+          stream,
+        })
+      ) {
+        return;
+      }
+
+      return requireWorkerReady(req, res, () => {
+        if (stream) return postChatStream(req, res);
+        return postChatNonStream(req, res);
+      });
+    } catch (err) {
+      next(err);
     }
-
-    return requireWorkerReady(req, res, () => {
-      if (stream) return postChatStream(req, res);
-      return postChatNonStream(req, res);
-    });
   });
 
-  r.post("/v1/completions", requireStrictAuth, async (req, res) => {
-    const body = req?.body || {};
-    const stream = Object.prototype.hasOwnProperty.call(body, "stream")
-      ? !!body.stream
-      : defaultStream;
-    const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
+  r.post("/v1/completions", requireStrictAuth, async (req, res, next) => {
+    try {
+      const body = req?.body || {};
+      const stream = Object.prototype.hasOwnProperty.call(body, "stream")
+        ? !!body.stream
+        : defaultStream;
 
-    if (
-      await maybeHandleTitleIntercept({
-        body,
-        model,
-        res,
-        stream,
-      })
-    ) {
-      return;
+      if (
+        await maybeHandleTitleIntercept({
+          req,
+          res,
+          body,
+          stream,
+        })
+      ) {
+        return;
+      }
+
+      return requireWorkerReady(req, res, () => {
+        if (stream) return postCompletionsStream(req, res);
+        return postCompletionsNonStream(req, res);
+      });
+    } catch (err) {
+      next(err);
     }
-
-    return requireWorkerReady(req, res, () => {
-      if (stream) return postCompletionsStream(req, res);
-      return postCompletionsNonStream(req, res);
-    });
   });
 
   return r;

@@ -6,7 +6,13 @@ vi.mock("../../../src/services/codex-exec.js", () => ({
 }));
 
 const createRes = () => ({
+  locals: {},
+  statusCode: null,
   setHeader: vi.fn(),
+  status: vi.fn(function status(code) {
+    this.statusCode = code;
+    return this;
+  }),
   json: vi.fn(),
   write: vi.fn(),
   end: vi.fn(),
@@ -49,7 +55,7 @@ describe("maybeHandleTitleIntercept", () => {
     process.env.PROXY_TITLE_GEN_INTERCEPT = "false";
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = await maybeHandleTitleIntercept({ body: baseBody, model: "codex-5", res });
+    const handled = await maybeHandleTitleIntercept({ req: {}, res, body: baseBody });
     expect(handled).toBe(false);
     expect(res.json).not.toHaveBeenCalled();
     expect(res.write).not.toHaveBeenCalled();
@@ -59,8 +65,8 @@ describe("maybeHandleTitleIntercept", () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
     const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: { ...baseBody, messages: [{ role: "user", content: "Just chat" }] },
-      model: "codex-5",
       res,
     });
     expect(handled).toBe(false);
@@ -70,8 +76,8 @@ describe("maybeHandleTitleIntercept", () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
     const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: baseBody,
-      model: "codex-5",
       res,
       stream: false,
     });
@@ -86,8 +92,8 @@ describe("maybeHandleTitleIntercept", () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
     const handled = await maybeHandleTitleIntercept({
+      req: {},
       body: baseBody,
-      model: "codex-5",
       res,
       stream: true,
     });
@@ -97,5 +103,19 @@ describe("maybeHandleTitleIntercept", () => {
     const writes = res.write.mock.calls.map(([arg]) => String(arg));
     expect(writes[writes.length - 1]).toContain("[DONE]");
     expect(res.end).toHaveBeenCalled();
+  });
+
+  test("returns 502 when codex exec fails", async () => {
+    vi.mocked(runCodexExec).mockRejectedValue(new Error("exec failed"));
+    const maybeHandleTitleIntercept = await loadIntercept();
+    const res = createRes();
+    const handled = await maybeHandleTitleIntercept({
+      req: {},
+      body: baseBody,
+      res,
+      stream: false,
+    });
+    expect(handled).toBe(true);
+    expect(res.status).toHaveBeenCalledWith(502);
   });
 });

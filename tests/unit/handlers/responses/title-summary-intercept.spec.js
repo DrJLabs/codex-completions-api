@@ -41,6 +41,7 @@ const createRes = () => {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   summarizeResponsesIngress.mockReturnValue({
     has_input: true,
     input_is_array: true,
@@ -78,7 +79,6 @@ describe("responses title/summary intercept", () => {
       req,
       res,
       body,
-      model: "gpt-5.2",
       stream: false,
     });
 
@@ -111,12 +111,39 @@ describe("responses title/summary intercept", () => {
       req,
       res,
       body,
-      model: "gpt-5.2",
       stream: false,
     });
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.payload.output[0].content[0].text).toBe("Hello conversation");
+  });
+
+  test("returns 502 when codex exec fails", async () => {
+    const req = { headers: {} };
+    const res = createRes();
+    const body = {
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content:
+            "Generate a concise title (max 5 words) for this conversation based on its content. Return only the title without any explanation or quotes.\n\nConversation:\nuser: hello\nai: hi",
+        },
+      ],
+    };
+
+    runCodexExec.mockRejectedValue(new Error("codex exec timed out"));
+
+    const handled = await maybeHandleTitleSummaryIntercept({
+      req,
+      res,
+      body,
+      stream: false,
+    });
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(502);
+    expect(res.payload?.error).toBeDefined();
   });
 });
