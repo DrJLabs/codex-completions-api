@@ -176,6 +176,37 @@ describe("responses title/summary intercept", () => {
     expect(entries.some((entry) => entry.event === "done")).toBe(true);
   });
 
+  test("streams created before failed on exec error", async () => {
+    const req = { headers: {} };
+    const res = createRes();
+    const body = {
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content:
+            "Generate a concise title (max 5 words) for this conversation based on its content. Return only the title without any explanation or quotes.\n\nConversation:\nuser: hello\nai: hi",
+        },
+      ],
+    };
+
+    runCodexExec.mockRejectedValue(new Error("codex exec timed out"));
+
+    const handled = await maybeHandleTitleSummaryIntercept({
+      req,
+      res,
+      body,
+      stream: true,
+    });
+
+    expect(handled).toBe(true);
+    const entries = parseSSE(res.chunks.join(""));
+    expect(entries[0]?.event).toBe("response.created");
+    expect(entries[1]?.event).toBe("response.failed");
+    expect(entries[2]?.event).toBe("done");
+    expect(entries[1]?.data?.response?.id).toBe(entries[0]?.data?.response?.id);
+  });
+
   test("returns 502 when codex exec fails", async () => {
     const req = { headers: {} };
     const res = createRes();

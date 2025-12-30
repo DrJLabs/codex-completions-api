@@ -73,10 +73,8 @@ export const config = {
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
   CODEX_MODEL: str("CODEX_MODEL", "gpt-5.2"),
   PROXY_TITLE_SUMMARY_EXEC_MODEL: str("PROXY_TITLE_SUMMARY_EXEC_MODEL", "gpt-5.2"),
-  PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT: str(
-    "PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT",
-    "low"
-  ),
+  // prettier-ignore
+  PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT: str("PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT", "low"),
   CODEX_BIN: str("CODEX_BIN", "codex"),
   CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),

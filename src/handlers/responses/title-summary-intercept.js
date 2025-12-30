@@ -206,9 +206,24 @@ export async function maybeHandleTitleSummaryIntercept({ req, res, body = {}, st
         requestBody: body,
         outputModeEffective,
       });
+      const responseId = normalizeResponseId();
+      const createdPayload = {
+        type: "response.created",
+        response: { id: responseId, status: "in_progress" },
+      };
+      await writeSseChunk(
+        res,
+        `event: response.created\ndata: ${JSON.stringify(createdPayload)}\n\n`
+      );
+      recordResponsesSseEvent({
+        route: locals.routeOverride,
+        model: execModel,
+        event: "response.created",
+      });
+      if (streamCapture) streamCapture.record("response.created", createdPayload);
       const failurePayload = {
         type: "response.failed",
-        response: { id: normalizeResponseId(), status: "failed" },
+        response: { id: responseId, status: "failed" },
         error: {
           message: err?.message || "exec failed",
           code: "title_summary_intercept_failed",
