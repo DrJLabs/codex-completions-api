@@ -4,7 +4,7 @@ import { postResponsesNonStream } from "../handlers/responses/nonstream.js";
 import { requireWorkerReady } from "../middleware/worker-ready.js";
 import { requireStrictAuth } from "../middleware/auth.js";
 import { config as CFG } from "../config/index.js";
-import { maybeHandleTitleIntercept } from "../lib/title-intercept.js";
+import { maybeHandleTitleSummaryIntercept } from "../handlers/responses/title-summary-intercept.js";
 
 export default function responsesRouter() {
   const r = Router();
@@ -14,15 +14,16 @@ export default function responsesRouter() {
     res.status(200).end();
   });
 
-  r.post("/v1/responses", requireStrictAuth, (req, res) => {
+  r.post("/v1/responses", requireStrictAuth, async (req, res) => {
     const stream = !!(req?.body && req.body.stream);
     const model = req?.body?.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
-      maybeHandleTitleIntercept({
+      await maybeHandleTitleSummaryIntercept({
+        req,
+        res,
         body: req?.body || {},
         model,
-        res,
         stream,
       })
     ) {

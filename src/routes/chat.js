@@ -18,7 +18,7 @@ export default function chatRouter() {
   });
 
   // POST routes for chat and legacy completions
-  r.post("/v1/chat/completions", requireStrictAuth, (req, res) => {
+  r.post("/v1/chat/completions", requireStrictAuth, async (req, res) => {
     const body = req?.body || {};
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
@@ -26,7 +26,7 @@ export default function chatRouter() {
     const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
-      maybeHandleTitleIntercept({
+      await maybeHandleTitleIntercept({
         body,
         model,
         res,
@@ -42,7 +42,7 @@ export default function chatRouter() {
     });
   });
 
-  r.post("/v1/completions", requireStrictAuth, (req, res) => {
+  r.post("/v1/completions", requireStrictAuth, async (req, res) => {
     const body = req?.body || {};
     const stream = Object.prototype.hasOwnProperty.call(body, "stream")
       ? !!body.stream
@@ -50,7 +50,7 @@ export default function chatRouter() {
     const model = body.model || CFG.CODEX_MODEL || "gpt-5.2";
 
     if (
-      maybeHandleTitleIntercept({
+      await maybeHandleTitleIntercept({
         body,
         model,
         res,

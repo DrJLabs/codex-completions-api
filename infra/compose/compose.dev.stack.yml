@@ -26,6 +26,9 @@ services:
       - PROXY_LOG_PROTO=${PROXY_LOG_PROTO:-true}
       - PROTO_LOG_PATH=/home/node/.codex/proto-events.ndjson
       - CODEX_MODEL=${CODEX_MODEL:-gpt-5.2}
+      - PROXY_TITLE_GEN_INTERCEPT=${PROXY_TITLE_GEN_INTERCEPT:-true}
+      - PROXY_TITLE_SUMMARY_EXEC_MODEL=${PROXY_TITLE_SUMMARY_EXEC_MODEL:-gpt-5.2}
+      - PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT=${PROXY_TITLE_SUMMARY_EXEC_REASONING_EFFORT:-low}
       - CODEX_FORCE_PROVIDER=
       # In dev, prefer streaming by default unless the client explicitly sets stream:false.
       - PROXY_DEFAULT_STREAM=${PROXY_DEFAULT_STREAM:-true}

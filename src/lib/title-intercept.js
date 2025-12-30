@@ -1,77 +1,76 @@
 import { nanoid } from "nanoid";
 import { config as CFG } from "../config/index.js";
+import { runCodexExec } from "../services/codex-exec.js";
+import { serverErrorBody } from "./errors.js";
 
 const TITLE_INTERCEPT_ENABLED = CFG.PROXY_TITLE_GEN_INTERCEPT;
-
-const DEFAULT_TITLE = "New Conversation";
-
-const isTitleGenerationText = (text) => {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  const hasConversationTag = lower.includes("<conversation_text>");
-  const hasTitleWord = lower.includes("title");
-  const hasConcise = lower.includes("concise title");
-  const hasMaxWords = lower.includes("max 5 words") || lower.includes("maximum of five words");
-  return (
-    (hasTitleWord || hasConcise || hasMaxWords) &&
-    (hasConversationTag || lower.includes("conversation:"))
-  );
-};
+const DEFAULT_MODEL = CFG.PROXY_TITLE_SUMMARY_EXEC_MODEL || "gpt-5.2";
 
 const flattenContent = (content) => {
   if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.map(flattenContent).join(" ");
+  if (Array.isArray(content)) return content.map(flattenContent).join("\n");
   if (content && typeof content === "object") {
     if (typeof content.content === "string") return content.content;
     if (typeof content.text === "string") return content.text;
+    if (Array.isArray(content.content)) return flattenContent(content.content);
   }
   return "";
 };
 
-const collectUserText = (items = []) => {
-  if (!Array.isArray(items)) return "";
-  return items
-    .filter((m) => (m?.role || "").toLowerCase() === "user")
-    .map((m) => flattenContent(m?.content))
-    .join(" ")
+const collectMessages = (body = {}) => {
+  if (Array.isArray(body.messages) && body.messages.length) {
+    return body.messages;
+  }
+  if (Array.isArray(body.input)) {
+    return body.input.filter((item) => item && item.type === "message");
+  }
+  return [];
+};
+
+const collectPromptText = (body = {}) => {
+  const messages = collectMessages(body);
+  if (!messages.length) {
+    if (typeof body.input === "string") return body.input.trim();
+    return "";
+  }
+  return messages
+    .map((message) => {
+      const role = typeof message?.role === "string" ? message.role.trim() : "";
+      const text = flattenContent(message?.content);
+      return role ? `${role}: ${text}` : text;
+    })
+    .join("\n\n")
     .trim();
 };
 
-const collectInputText = (input = []) =>
-  Array.isArray(input)
-    ? input
-        .map((entry) => {
-          if (typeof entry === "string") return entry;
-          if (entry && typeof entry === "object") {
-            if (typeof entry.content === "string") return entry.content;
-            if (typeof entry.text === "string") return entry.text;
-            if (typeof entry.message === "string") return entry.message;
-            if (Array.isArray(entry.content)) return flattenContent(entry.content);
-          }
-          return "";
-        })
-        .join(" ")
-        .trim()
-    : "";
-
-const extractConversationText = (rawText) => {
-  if (!rawText) return "";
-  const match = rawText.match(/<conversation_text>([\s\S]*?)<\/conversation_text>/i);
-  if (match?.[1]) return match[1].trim();
-  return rawText.trim();
+const isTitleSummaryPrompt = (text) => {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const hasSummary = lower.includes("summary");
+  const hasTitle = lower.includes("title");
+  const hasBothPhrase =
+    lower.includes("both a title and a summary") || lower.includes("title and a summary");
+  const hasOutputFormat = lower.includes("# output format") || lower.includes("output format");
+  const hasJsonKeys = /"title"\s*:\s*"/i.test(text) && /"summary"\s*:\s*"/i.test(text);
+  return (
+    (hasTitle && hasSummary && hasOutputFormat && hasJsonKeys) || (hasBothPhrase && hasJsonKeys)
+  );
 };
 
-const generateTitle = (conversationText) => {
-  const cleaned = conversationText.replace(/\s+/g, " ").trim();
-  if (!cleaned) return DEFAULT_TITLE;
-  const words = cleaned.split(" ").slice(0, 5).join(" ");
-  return words || DEFAULT_TITLE;
+const isTitleOnlyPrompt = (text) => {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const hasTitleWord = lower.includes("title");
+  const hasConcise = lower.includes("concise title");
+  const hasMaxWords = lower.includes("max 5 words") || lower.includes("maximum of five words");
+  const hasConversationTag =
+    lower.includes("<conversation_text>") || lower.includes("conversation:");
+  return hasTitleWord && (hasConcise || hasMaxWords) && hasConversationTag;
 };
 
-const createTitleResponse = ({ title, model, stream }) => {
+const createChatResponse = ({ content, model, stream }) => {
   const id = `chatcmpl-${nanoid()}`;
   const created = Math.floor(Date.now() / 1000);
-
   if (stream) {
     return {
       isStream: true,
@@ -89,7 +88,7 @@ const createTitleResponse = ({ title, model, stream }) => {
           object: "chat.completion.chunk",
           created,
           model,
-          choices: [{ index: 0, delta: { content: title }, finish_reason: null }],
+          choices: [{ index: 0, delta: { content }, finish_reason: null }],
           usage: null,
         })}\n\n`,
         `data: ${JSON.stringify({
@@ -104,7 +103,6 @@ const createTitleResponse = ({ title, model, stream }) => {
       ],
     };
   }
-
   return {
     isStream: false,
     body: {
@@ -115,7 +113,7 @@ const createTitleResponse = ({ title, model, stream }) => {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: title },
+          message: { role: "assistant", content },
           finish_reason: "stop",
         },
       ],
@@ -124,31 +122,32 @@ const createTitleResponse = ({ title, model, stream }) => {
   };
 };
 
-export function maybeHandleTitleIntercept({ body = {}, model, res, stream }) {
+export async function maybeHandleTitleIntercept({ body = {}, model: _model, res, stream }) {
   if (!TITLE_INTERCEPT_ENABLED) return false;
+  const promptText = collectPromptText(body);
+  if (!isTitleSummaryPrompt(promptText) && !isTitleOnlyPrompt(promptText)) return false;
 
-  const candidateText =
-    collectUserText(body.messages || []) ||
-    collectUserText(body.input || []) ||
-    collectInputText(body.input || []);
-
-  if (!isTitleGenerationText(candidateText)) return false;
-
-  const conversationText = extractConversationText(candidateText);
-  const title = generateTitle(conversationText);
-  const response = createTitleResponse({ title, model, stream });
-
-  if (response.isStream) {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    for (const chunk of response.chunks) {
-      res.write(chunk);
+  const execModel = DEFAULT_MODEL;
+  try {
+    const output = await runCodexExec({
+      prompt: promptText,
+      model: execModel,
+    });
+    const response = createChatResponse({ content: output, model: execModel, stream });
+    if (response.isStream) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      for (const chunk of response.chunks) {
+        res.write(chunk);
+      }
+      res.end();
+      return true;
     }
-    res.end();
+    res.json(response.body);
+    return true;
+  } catch {
+    res.status(502).json(serverErrorBody("title/summary exec failed"));
     return true;
   }
-
-  res.json(response.body);
-  return true;
 }

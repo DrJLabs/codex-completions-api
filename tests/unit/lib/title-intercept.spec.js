@@ -1,4 +1,9 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
+import { runCodexExec } from "../../../src/services/codex-exec.js";
+
+vi.mock("../../../src/services/codex-exec.js", () => ({
+  runCodexExec: vi.fn(),
+}));
 
 const createRes = () => ({
   setHeader: vi.fn(),
@@ -32,6 +37,7 @@ const loadIntercept = async () => {
 
 beforeEach(() => {
   restoreEnv();
+  vi.mocked(runCodexExec).mockResolvedValue("Hello world");
 });
 
 afterEach(() => {
@@ -43,7 +49,7 @@ describe("maybeHandleTitleIntercept", () => {
     process.env.PROXY_TITLE_GEN_INTERCEPT = "false";
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({ body: baseBody, model: "codex-5", res });
+    const handled = await maybeHandleTitleIntercept({ body: baseBody, model: "codex-5", res });
     expect(handled).toBe(false);
     expect(res.json).not.toHaveBeenCalled();
     expect(res.write).not.toHaveBeenCalled();
@@ -52,7 +58,7 @@ describe("maybeHandleTitleIntercept", () => {
   test("returns false when no title markers present", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
       body: { ...baseBody, messages: [{ role: "user", content: "Just chat" }] },
       model: "codex-5",
       res,
@@ -63,7 +69,7 @@ describe("maybeHandleTitleIntercept", () => {
   test("non-stream response writes json body", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
       body: baseBody,
       model: "codex-5",
       res,
@@ -79,7 +85,7 @@ describe("maybeHandleTitleIntercept", () => {
   test("stream response writes SSE chunks and ends", async () => {
     const maybeHandleTitleIntercept = await loadIntercept();
     const res = createRes();
-    const handled = maybeHandleTitleIntercept({
+    const handled = await maybeHandleTitleIntercept({
       body: baseBody,
       model: "codex-5",
       res,
