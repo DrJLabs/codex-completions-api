@@ -7,50 +7,51 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 57.96% (3900/6728), missing 1483 lines to reach 80%.
-- Functions: 57.96% (542/935), missing 206 functions to reach 80%.
-- Branches: 41.16% (3000/7287), missing 2466 branches to reach 75%.
-- Statements: 54.49% (4162/7638), missing 1949 statements to reach 80%.
+- Lines: 60.19% (4050/6728), missing 1333 lines to reach 80%.
+- Functions: 61.60% (576/935), missing 172 functions to reach 80%.
+- Branches: 42.84% (3122/7287), missing 2344 branches to reach 75%.
+- Statements: 56.59% (4323/7638), missing 1788 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/services/codex-exec.js` | 5.0 | 0.0 | 0.0 | 4.8 |
-| `src/handlers/responses/stream-adapter.js` | 10.8 | 3.0 | 1.0 | 9.9 |
-| `src/handlers/chat/require-model.js` | 14.3 | 100.0 | 12.5 | 18.8 |
-| `src/handlers/chat/stream.js` | 16.9 | 4.9 | 5.0 | 15.2 |
-| `src/services/codex-runner.js` | 18.5 | 0.0 | 6.3 | 18.5 |
-| `src/routes/usage.js` | 21.4 | 16.7 | 0.0 | 20.0 |
-| `src/handlers/chat/capture.js` | 27.5 | 17.6 | 5.0 | 26.4 |
-| `src/app.js` | 28.2 | 11.1 | 4.5 | 26.8 |
-| `src/middleware/rate-limit.js` | 29.0 | 33.3 | 15.2 | 26.5 |
-| `src/services/metrics/chat.js` | 30.8 | 7.1 | 0.0 | 29.3 |
-| `src/handlers/chat/nonstream.js` | 30.9 | 17.2 | 15.3 | 28.9 |
-| `src/routes/chat.js` | 31.3 | 25.0 | 0.0 | 29.4 |
-| `src/handlers/responses/capture.js` | 33.3 | 23.1 | 5.0 | 34.3 |
-| `src/routes/responses.js` | 33.3 | 25.0 | 0.0 | 30.8 |
-| `src/routes/models.js` | 40.0 | 28.6 | 12.5 | 35.3 |
-| `src/handlers/responses/nonstream.js` | 46.7 | 40.0 | 14.4 | 45.0 |
-| `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.2 | 48.0 |
-| `src/services/transport/child-adapter.js` | 51.8 | 45.2 | 32.8 | 45.5 |
-| `src/handlers/chat/shared.js` | 55.1 | 71.4 | 39.3 | 52.4 |
-| `src/lib/capture/sanitize.js` | 57.1 | 40.0 | 42.2 | 49.4 |
+| `src/handlers/responses/stream-adapter.js` | 10.84 | 3.03 | 1.0 | 9.9 |
+| `src/handlers/chat/require-model.js` | 14.28 | 100.0 | 12.5 | 18.75 |
+| `src/handlers/chat/stream.js` | 16.93 | 4.9 | 4.95 | 15.21 |
+| `src/handlers/chat/capture.js` | 27.47 | 17.64 | 5.04 | 26.41 |
+| `src/app.js` | 28.2 | 11.11 | 4.47 | 26.82 |
+| `src/handlers/chat/nonstream.js` | 30.9 | 17.24 | 15.33 | 28.88 |
+| `src/routes/chat.js` | 31.25 | 25.0 | 0.0 | 29.41 |
+| `src/handlers/responses/capture.js` | 33.33 | 23.07 | 5.0 | 34.28 |
+| `src/routes/responses.js` | 33.33 | 25.0 | 0.0 | 30.76 |
+| `src/handlers/responses/nonstream.js` | 46.66 | 40.0 | 14.39 | 45.04 |
+| `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.17 | 48.0 |
+| `src/services/transport/child-adapter.js` | 51.82 | 45.16 | 32.8 | 45.5 |
+| `src/handlers/chat/shared.js` | 55.08 | 71.42 | 39.31 | 52.38 |
+| `src/lib/capture/sanitize.js` | 57.14 | 40.0 | 42.16 | 49.43 |
+| `src/services/sse.js` | 59.3 | 50.0 | 36.36 | 54.0 |
+| `src/services/metrics/index.js` | 67.82 | 64.0 | 30.98 | 62.12 |
+| `src/lib/errors.js` | 70.83 | 42.85 | 63.82 | 70.83 |
+| `src/services/transport/index.js` | 71.38 | 64.1 | 56.81 | 67.85 |
+| `src/routes/health.js` | 71.42 | 60.0 | 53.48 | 71.42 |
+| `src/services/worker/supervisor.js` | 74.4 | 75.6 | 51.23 | 71.86 |
 
 ## Suggested coverage focus
-- `src/services/codex-exec.js`: cover prompt validation, spawn error/exit
-  failures, timeout path, empty output handling, and output cleanup.
-- `src/services/codex-runner.js`: cover env sanitization and lifecycle logging
-  around `spawnCodex()`.
+- `src/handlers/responses/stream-adapter.js`: cover stream adapter fallbacks,
+  event type mapping, and termination paths.
+- `src/handlers/chat/require-model.js`: cover missing model errors and default
+  selection behavior.
 - `src/handlers/chat/stream.js` + `src/handlers/chat/nonstream.js`: cover
   stream/nonstream success/error branches, tools handling, and capture paths.
-- `src/handlers/responses/stream-adapter.js` + `src/handlers/responses/capture.js`:
-  cover stream adapter fallbacks and capture error branches.
-- `src/routes/*`: cover auth, error responses, and success paths for chat,
-  responses, models, and usage routes.
-- `src/middleware/rate-limit.js`: cover keying, window enforcement, and disabled
-  settings.
-- `src/services/metrics/chat.js`: cover metric labels, normalization, and
-  boundary conditions.
+- `src/handlers/responses/capture.js` + `src/handlers/responses/nonstream.js`:
+  cover capture error branches and nonstream error responses.
+- `src/routes/chat.js` + `src/routes/responses.js`: cover auth gates, error
+  responses, and happy paths.
+- `src/app.js`: cover trust proxy handling, middleware ordering, and guardrails.
+- `src/services/transport/child-adapter.js` + `src/services/transport/index.js`:
+  cover teardown, retry, and error handling paths.
+- `src/services/sse.js` + `src/services/metrics/index.js`: cover streaming helper
+  branches and metrics normalization boundaries.
 - `src/lib/tools/xml.js` + `src/lib/capture/sanitize.js`: cover parsing/sanitize
   branches and malformed inputs.
 
