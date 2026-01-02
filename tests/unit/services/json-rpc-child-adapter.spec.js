@@ -31,6 +31,50 @@ const loadAdapter = async () => {
   };
 };
 
+const setupAdapter = async (options = {}) => {
+  const { createJsonRpcChildAdapter } = await loadAdapter();
+  const emitter = new EventEmitter();
+  let resolvePromise;
+  const context = {
+    emitter,
+    usage: { prompt_tokens: 2, completion_tokens: 3 },
+    promise: new Promise((resolve) => {
+      resolvePromise = resolve;
+    }),
+  };
+
+  transport = {
+    createChatRequest: vi.fn(async () => context),
+    sendUserMessage: vi.fn(),
+    cancelContext: vi.fn(),
+  };
+
+  const adapter = createJsonRpcChildAdapter({
+    reqId: "req-test",
+    timeoutMs: 1000,
+    trace: { route: "/v1/chat/completions", mode: "chat_stream" },
+    ...options,
+  });
+
+  const stdout = [];
+  const stderr = [];
+  const exits = [];
+
+  adapter.stdout.on("data", (chunk) => {
+    const trimmed = String(chunk || "").trim();
+    if (!trimmed) return;
+    stdout.push(JSON.parse(trimmed));
+  });
+  adapter.stderr.on("data", (chunk) => {
+    const trimmed = String(chunk || "").trim();
+    if (!trimmed) return;
+    stderr.push(trimmed);
+  });
+  adapter.on("exit", (code) => exits.push(code));
+
+  return { adapter, emitter, context, resolvePromise, stdout, stderr, exits };
+};
+
 afterEach(() => {
   transport = undefined;
   if (ORIGINAL_AUTH_LOGIN_URL === undefined) {
@@ -193,6 +237,99 @@ describe("JsonRpcChildAdapter auth handling", () => {
     expect(extras.error_message).toContain("login_url=[REDACTED]");
     expect(extras.error_message).not.toContain("example.test");
     expect(extras.error_message).not.toContain("y=2");
+
+    resolvePromise();
+    await flushAsync();
+  });
+});
+
+describe("JsonRpcChildAdapter normalization", () => {
+  it("uses op items to derive the prompt for message items", async () => {
+    const { adapter, context, resolvePromise } = await setupAdapter();
+
+    adapter.stdin.write(JSON.stringify({ op: { items: [{ text: "from-op" }] } }));
+    await flushAsync();
+
+    expect(transport.sendUserMessage).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        items: [{ type: "text", data: { text: "from-op" } }],
+      })
+    );
+
+    resolvePromise();
+    await flushAsync();
+  });
+
+  it("uses prompt text when op items are missing", async () => {
+    const { adapter, context, resolvePromise } = await setupAdapter();
+
+    adapter.stdin.write(JSON.stringify({ prompt: "from-prompt" }));
+    await flushAsync();
+
+    expect(transport.sendUserMessage).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        items: [{ type: "text", data: { text: "from-prompt" } }],
+      })
+    );
+
+    resolvePromise();
+    await flushAsync();
+  });
+
+  it("normalizes delta, message, usage, and result payloads", async () => {
+    const { adapter, emitter, resolvePromise, stdout } = await setupAdapter();
+
+    adapter.stdin.write(JSON.stringify({ prompt: "hello" }));
+    await flushAsync();
+
+    emitter.emit("delta", { delta: "typed" });
+    emitter.emit("delta", "raw");
+    emitter.emit("delta", { content: "content" });
+    emitter.emit("message", { message: { content: "full" } });
+    emitter.emit("message", "fallback");
+    emitter.emit("usage", { completion_tokens: 9, finish_reason: "stop" });
+    emitter.emit("result", { result: { status: "completed" } });
+
+    const deltas = stdout.filter((entry) => entry.type === "agent_message_delta");
+    const messages = stdout.filter((entry) => entry.type === "agent_message");
+    const usage = stdout.find((entry) => entry.type === "token_count");
+    const done = stdout.find((entry) => entry.type === "task_complete");
+
+    expect(deltas).toEqual([
+      { type: "agent_message_delta", msg: { delta: "typed" } },
+      { type: "agent_message_delta", msg: { delta: "raw" } },
+      { type: "agent_message_delta", msg: { delta: "content" } },
+    ]);
+    expect(messages).toEqual([
+      { type: "agent_message", msg: { message: { content: "full" } } },
+      { type: "agent_message", msg: { message: { content: "fallback" } } },
+    ]);
+    expect(usage).toEqual({
+      type: "token_count",
+      msg: { prompt_tokens: 2, completion_tokens: 9, finish_reason: "stop" },
+    });
+    expect(done).toEqual({
+      type: "task_complete",
+      msg: { finish_reason: "completed" },
+    });
+
+    resolvePromise();
+    await flushAsync();
+  });
+
+  it("emits stderr and exits on errors", async () => {
+    const { adapter, resolvePromise, stderr, exits } = await setupAdapter();
+
+    adapter.on("error", () => {});
+    transport.createChatRequest.mockRejectedValueOnce(new Error("boom"));
+    const exitPromise = new Promise((resolve) => adapter.once("exit", resolve));
+    adapter.stdin.write(JSON.stringify({ prompt: "hello" }));
+    await exitPromise;
+
+    expect(stderr).toContain("Error: boom");
+    expect(exits).toContain(1);
 
     resolvePromise();
     await flushAsync();
