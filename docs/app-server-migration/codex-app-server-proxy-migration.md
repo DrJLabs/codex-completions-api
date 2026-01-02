@@ -181,7 +181,10 @@ Traefik will stop routing within a single interval when readiness falls to `fals
 
 ### H.4 Probe payload expectations
 
-`/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`). Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts; slow starts keep readiness false until handshake completes. Backoff respects the 250 ms→5 s policy—guard alerting on `next_restart_delay_ms > 5000` or `restarts_total` growth.
+- `/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`).
+- Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts.
+- Slow starts keep readiness false until the handshake completes.
+- Backoff respects the 250 ms to 5 s policy; alert if `next_restart_delay_ms > 5000` or `restarts_total` grows.
 
 ### H.5 Smoke commands (local)
 
@@ -293,7 +296,7 @@ Expect `ok:true` when the worker handshakes; crash loops should show `reason:"wo
 ### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
-1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only to disable the backend during maintenance (Source: internal tech stack doc; not published here).
+1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable (Source: internal tech stack doc; not published here).
   2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
   3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
 - **systemd (production host):**
@@ -312,9 +315,9 @@ Expect `ok:true` when the worker handshakes; crash loops should show `reason:"wo
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set `false` only to disable backend) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
-| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only for maintenance disable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
-| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only to disable backend)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
+| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5s)  |
+| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
+| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 
 Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; internal tech stack doc; not published here).
 

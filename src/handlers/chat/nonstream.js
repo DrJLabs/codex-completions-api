@@ -787,6 +787,7 @@ export async function postChatNonStream(req, res) {
       applyCors(req, res);
       return respondWithJson(res, err.statusCode, err.body);
     }
+    applyCors(req, res);
     throw err;
   }
 

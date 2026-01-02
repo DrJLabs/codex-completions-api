@@ -601,6 +601,7 @@ export async function postChatStream(req, res) {
     if (!responded) {
       releaseGuard("normalization_error");
     }
+    applyCors(req, res);
     throw err;
   }
 
