@@ -53,3 +53,64 @@ Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
   success/error branches and capture paths.
 - `src/routes/*.js`: cover route-level auth, error responses, and the happy
   path for each endpoint.
+
+## Plan overview
+### Goals
+- Maintain existing global thresholds (lines 80%, functions 80%, branches 75%,
+  statements 80%) without lowering the bar.
+- Build deterministic unit tests for `src/**` that cover error paths, branch
+  decisions, and boundary conditions.
+- Keep tests fast and hermetic (no network, no real Codex CLI) by stubbing
+  external dependencies.
+
+### Scope
+- In scope: unit coverage for `src/**` (vitest v8, `npm run coverage:unit`).
+- Out of scope: integration/e2e coverage (tracked elsewhere) and coverage for
+  `tests/**` or `dist/**` (excluded by config).
+
+### Definition of done
+- `npm run coverage:unit` passes thresholds.
+- All new unit tests are deterministic and do not depend on timing races.
+- Any new helpers for testing are documented and reused across suites.
+
+## Workstreams and milestones
+### Phase 1: quick wins (low complexity, high ROI)
+- `src/lib/bearer.js` (0% coverage).
+- `src/middleware/auth.js`.
+- `src/middleware/access-log.js`.
+- `src/routes/metrics.js` (auth gates and render path).
+- `src/middleware/metrics.js`.
+
+### Phase 2: core services (controlled mocking)
+- `src/services/codex-exec.js` (success path + error/timeout cleanup).
+- `src/services/codex-runner.js` (env sanitization, spawn options, lifecycle).
+- `src/services/metrics/chat.js` (pure metrics helpers).
+- `src/middleware/rate-limit.js` (keying + boundary behavior).
+
+### Phase 3: handlers (branch-heavy paths)
+- `src/handlers/chat/stream.js` and `src/handlers/chat/nonstream.js`.
+- `src/handlers/chat/capture.js` and `src/handlers/chat/require-model.js`.
+- `src/handlers/responses/stream-adapter.js` and `src/handlers/responses/capture.js`.
+
+### Phase 4: routes and app wiring
+- `src/routes/chat.js`, `src/routes/responses.js`, `src/routes/usage.js`,
+  `src/routes/models.js`.
+- `src/app.js` (trust proxy, middleware ordering, test router guards).
+
+## Test design checklist
+- Use `vi.spyOn` or `vi.mock` to isolate dependencies (Codex spawn, FS, timers).
+- Prefer table-driven tests for branchy logic (auth gates, flags, env values).
+- Validate error responses (status, shape, headers) and happy paths.
+- For streaming paths, assert chunk ordering and proper termination.
+- Ensure cleanup code runs (timeouts cleared, temp files removed).
+
+## Tracking template
+- Phase 1: owner=__ status=todo target_files=__ notes=__
+- Phase 2: owner=__ status=todo target_files=__ notes=__
+- Phase 3: owner=__ status=todo target_files=__ notes=__
+- Phase 4: owner=__ status=todo target_files=__ notes=__
+
+## How to verify
+- Targeted: `npm run test:unit -- tests/unit/<new-spec>.js`
+- Full unit suite: `npm run test:unit`
+- Coverage gate: `npm run coverage:unit` (must pass thresholds)
