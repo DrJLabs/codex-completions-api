@@ -345,6 +345,60 @@ describe("JsonRpcTransport handshake", () => {
   });
 });
 
+describe("JsonRpcTransport auth login", () => {
+  it("caches auth login details when worker returns chatgpt response", async () => {
+    const child = createMockChild();
+    const methods = [];
+    wireJsonResponder(child, (message) => {
+      methods.push(message.method);
+      if (message.method === "account/login/start") {
+        writeRpcResult(child, message.id, {
+          result: {
+            type: "chatgpt",
+            auth_url: "https://example.test/login",
+            login_id: "login-1",
+          },
+        });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const first = await transport.getAuthLoginDetails();
+    const second = await transport.getAuthLoginDetails();
+
+    expect(first).toEqual({ auth_url: "https://example.test/login", login_id: "login-1" });
+    expect(second).toEqual(first);
+    expect(methods.filter((method) => method === "account/login/start")).toHaveLength(1);
+  });
+
+  it("returns null when the login response type is not chatgpt", async () => {
+    const child = createMockChild();
+    let calls = 0;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "account/login/start") {
+        calls += 1;
+        writeRpcResult(child, message.id, {
+          result: { type: "other", auth_url: "https://example.test/login" },
+        });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  it("returns null when the worker is unavailable", async () => {
+    __setChild(null);
+    const transport = getJsonRpcTransport();
+
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+  });
+});
+
 describe("JsonRpcTransport request lifecycle", () => {
   it("rejects new requests when the worker is at capacity", async () => {
     CFG.WORKER_MAX_CONCURRENCY = 1;
