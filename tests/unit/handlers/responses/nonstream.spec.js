@@ -27,6 +27,8 @@ const resolveResponsesOutputModeMock = vi.fn(() => ({
   source: "default",
 }));
 
+const ORIGINAL_RESPONSES_DEFAULT_MAX_TOKENS = process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS;
+
 vi.mock("../../../../src/handlers/chat/nonstream.js", () => ({
   postChatNonStream: (...args) => postChatNonStreamMock(...args),
 }));
@@ -85,6 +87,11 @@ const makeRes = () => {
 };
 
 afterEach(() => {
+  if (ORIGINAL_RESPONSES_DEFAULT_MAX_TOKENS === undefined) {
+    delete process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS;
+  } else {
+    process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS = ORIGINAL_RESPONSES_DEFAULT_MAX_TOKENS;
+  }
   postChatNonStreamMock.mockReset();
   logResponsesIngressRawMock.mockReset();
   summarizeResponsesIngressMock.mockReset();
@@ -129,6 +136,31 @@ describe("responses nonstream handler", () => {
     expect(postChatNonStreamMock).not.toHaveBeenCalled();
   });
 
+  it("accepts numeric-string n and strips responses-only fields", async () => {
+    process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS = "64";
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({
+      input: "hello",
+      n: "2",
+      instructions: "do it",
+      previous_response_id: "resp-1",
+    });
+    const res = makeRes();
+    postChatNonStreamMock.mockImplementation(async (callReq) => {
+      expect(callReq.body.n).toBe(2);
+      expect(callReq.body.max_tokens).toBe(64);
+      expect(callReq.body.instructions).toBeUndefined();
+      expect(callReq.body.input).toBeUndefined();
+      expect(callReq.body.previous_response_id).toBeUndefined();
+    });
+
+    await postResponsesNonStream(req, res);
+
+    expect(postChatNonStreamMock).toHaveBeenCalled();
+  });
+
   it("captures transformed responses and logs summaries", async () => {
     const { postResponsesNonStream } = await import(
       "../../../../src/handlers/responses/nonstream.js"
@@ -147,6 +179,35 @@ describe("responses nonstream handler", () => {
     expect(convertChatResponseToResponsesMock).toHaveBeenCalled();
     expect(captureResponsesNonStreamMock).toHaveBeenCalled();
     expect(logStructuredMock).toHaveBeenCalled();
+  });
+
+  it("skips error response when headers have already been sent", async () => {
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello" });
+    const res = makeRes();
+    res.headersSent = true;
+    postChatNonStreamMock.mockRejectedValueOnce(new Error("boom"));
+
+    await postResponsesNonStream(req, res);
+
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it("cleans up listeners when res.off is unavailable", async () => {
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello" });
+    const res = makeRes();
+    res.off = undefined;
+    const removeListenerSpy = vi.spyOn(res, "removeListener");
+
+    await postResponsesNonStream(req, res);
+    res.emit("finish");
+
+    expect(removeListenerSpy).toHaveBeenCalled();
   });
 
   it("maps thrown errors to responses error payloads", async () => {
