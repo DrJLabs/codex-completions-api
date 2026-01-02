@@ -20,9 +20,6 @@ export function requireUsageAuth(req, res, next) {
   return requireStrictAuth(req, res, next);
 }
 
-// Back-compat alias (deprecated name).
-export const requireApiKey = requireUsageAuth;
-
 export function requireTestAuth(req, res, next) {
   if (!hasValidApiKey(req)) {
     return res.status(401).set("WWW-Authenticate", "Bearer realm=api").json(authErrorBody());

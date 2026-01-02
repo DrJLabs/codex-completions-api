@@ -14,12 +14,6 @@ const resolveTruncateMs = () => {
     if (!Number.isNaN(parsedModern)) return parsedModern;
   }
 
-  const legacy = process.env.PROXY_DEV_TRUNCATE_AFTER_MS;
-  if (legacy !== undefined && legacy !== "") {
-    const parsedLegacy = Number(legacy);
-    if (!Number.isNaN(parsedLegacy)) return parsedLegacy;
-  }
-
   return 0;
 };
 const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
@@ -152,8 +146,6 @@ export const config = {
   PROXY_USAGE_ALLOW_UNAUTH: bool("PROXY_USAGE_ALLOW_UNAUTH", "false"),
   // Non-stream guard: allow early finalize to avoid edge timeouts (ms; 0=disabled)
   PROXY_NONSTREAM_TRUNCATE_AFTER_MS: resolveTruncateMs(),
-  // Back-compat alias (deprecated name, maps to the same value)
-  PROXY_DEV_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Limits
   PROXY_MAX_PROMPT_TOKENS: num("PROXY_MAX_PROMPT_TOKENS", 0), // 0 disables context-length guard
   PROXY_MAX_CHAT_CHOICES: num("PROXY_MAX_CHAT_CHOICES", 5),
