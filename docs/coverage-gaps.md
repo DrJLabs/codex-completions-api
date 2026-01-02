@@ -7,16 +7,14 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 60.19% (4050/6728), missing 1333 lines to reach 80%.
-- Functions: 61.60% (576/935), missing 172 functions to reach 80%.
-- Branches: 42.84% (3122/7287), missing 2344 branches to reach 75%.
-- Statements: 56.59% (4323/7638), missing 1788 statements to reach 80%.
+- Lines: 63.37% (4264/6728), missing 1119 lines to reach 80%.
+- Functions: 64.70% (605/935), missing 143 functions to reach 80%.
+- Branches: 46.32% (3376/7287), missing 2090 branches to reach 75%.
+- Statements: 59.63% (4555/7638), missing 1556 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/handlers/responses/stream-adapter.js` | 10.84 | 3.03 | 1.0 | 9.9 |
-| `src/handlers/chat/require-model.js` | 14.28 | 100.0 | 12.5 | 18.75 |
 | `src/handlers/chat/stream.js` | 16.93 | 4.9 | 4.95 | 15.21 |
 | `src/handlers/chat/capture.js` | 27.47 | 17.64 | 5.04 | 26.41 |
 | `src/app.js` | 28.2 | 11.11 | 4.47 | 26.82 |
@@ -35,19 +33,18 @@ Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 | `src/services/transport/index.js` | 71.38 | 64.1 | 56.81 | 67.85 |
 | `src/routes/health.js` | 71.42 | 60.0 | 53.48 | 71.42 |
 | `src/services/worker/supervisor.js` | 74.4 | 75.6 | 51.23 | 71.86 |
+| `src/handlers/responses/shared.js` | 75.37 | 76.92 | 56.09 | 69.82 |
+| `src/handlers/chat/request.js` | 76.03 | 95.83 | 61.03 | 71.07 |
 
 ## Suggested coverage focus
-- `src/handlers/responses/stream-adapter.js`: cover stream adapter fallbacks,
-  event type mapping, and termination paths.
-- `src/handlers/chat/require-model.js`: cover missing model errors and default
-  selection behavior.
 - `src/handlers/chat/stream.js` + `src/handlers/chat/nonstream.js`: cover
   stream/nonstream success/error branches, tools handling, and capture paths.
-- `src/handlers/responses/capture.js` + `src/handlers/responses/nonstream.js`:
-  cover capture error branches and nonstream error responses.
-- `src/routes/chat.js` + `src/routes/responses.js`: cover auth gates, error
-  responses, and happy paths.
-- `src/app.js`: cover trust proxy handling, middleware ordering, and guardrails.
+- `src/handlers/chat/capture.js` + `src/handlers/responses/capture.js`: cover
+  capture error branches, partial output persistence, and edge cases.
+- `src/app.js` + `src/routes/chat.js` + `src/routes/responses.js`: cover trust
+  proxy handling, auth gates, error responses, and happy paths.
+- `src/handlers/responses/nonstream.js` + `src/handlers/responses/shared.js`:
+  cover nonstream error mapping and shared response shape helpers.
 - `src/services/transport/child-adapter.js` + `src/services/transport/index.js`:
   cover teardown, retry, and error handling paths.
 - `src/services/sse.js` + `src/services/metrics/index.js`: cover streaming helper
