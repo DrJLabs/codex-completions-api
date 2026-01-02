@@ -824,6 +824,123 @@ describe("JsonRpcTransport request lifecycle", () => {
     await context.promise.catch(() => {});
   });
 
+  it("collects content deltas and completes on task notifications", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-deltas" });
+    context.emitter.on("error", () => {});
+
+    writeRpcNotification(child, "codex/event/agent_message_content_delta", {
+      conversation_id: "server-conv",
+      msg: { content: [{ text: "hi" }] },
+    });
+    writeRpcNotification(child, "codex/event/agent_message_delta", {
+      conversation_id: "server-conv",
+      msg: { delta: { text: "structured" } },
+    });
+    writeRpcNotification(child, "codex/event/agent_message_delta", {
+      conversation_id: "server-conv",
+      msg: { delta: "skip" },
+    });
+    writeRpcNotification(child, "codex/event/token_count", {
+      conversation_id: "server-conv",
+      msg: { token_count: { prompt_tokens: 2, completion_tokens: 3 } },
+    });
+    writeRpcNotification(child, "codex/event/agent_message", {
+      conversation_id: "server-conv",
+      msg: { message: "final", finish_reason: "stop" },
+    });
+    writeRpcNotification(child, "codex/event/task_complete", {
+      conversation_id: "server-conv",
+      msg: { output: "done", finish_reason: "stop" },
+    });
+
+    const result = await context.promise;
+
+    expect(result.deltas).toHaveLength(2);
+    expect(result.finalMessage).toMatchObject({ message: "final" });
+    expect(result.result).toMatchObject({ output: "done" });
+    expect(result.finishReason).toBe("stop");
+    expect(result.usage).toMatchObject({ prompt_tokens: 2, completion_tokens: 3 });
+  });
+
+  it("uses item/completed notifications to fill final message", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-item-complete" });
+    context.emitter.on("error", () => {});
+
+    writeRpcNotification(child, "codex/event/item_completed", {
+      conversation_id: "server-conv",
+      msg: {
+        item: {
+          type: "agent_message",
+          content: [{ text: "from item" }],
+        },
+      },
+    });
+
+    const result = await context.promise;
+
+    expect(result.finalMessage).toMatchObject({ message: "from item" });
+    expect(result.finishReason).toBe("stop");
+    expect(result.result).toMatchObject({ item: expect.any(Object) });
+  });
+
+  it("fails the context on requestTimeout notifications", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-timeout-note" });
+    context.emitter.on("error", () => {});
+    const pending = context.promise.catch((err) => err);
+
+    writeRpcNotification(child, "codex/event/requestTimeout", {
+      conversation_id: "server-conv",
+      msg: { reason: "timeout" },
+    });
+
+    await expect(pending).resolves.toMatchObject({ code: "worker_request_timeout" });
+  });
+
   it("cancels contexts with a default abort error when none is provided", async () => {
     CFG.WORKER_MAX_CONCURRENCY = 1;
     const child = createMockChild();
