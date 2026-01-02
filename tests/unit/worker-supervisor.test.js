@@ -185,4 +185,32 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     const status = getWorkerStatus();
     expect(status.health.liveness.reason).toBe("shutdown_complete");
   });
+
+  test("shutdown completes when child is missing", async () => {
+    currentSupervisor.state.child = null;
+    currentSupervisor.state.running = true;
+
+    await currentSupervisor.shutdown({ reason: "no_child" });
+
+    const status = getWorkerStatus();
+    expect(status.running).toBe(false);
+    expect(status.health.liveness.reason).toBe("shutdown_complete");
+  });
+
+  test("stops restarting after exceeding restart limit", async () => {
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 4; i += 1) {
+      const child = mockChildren[mockChildren.length - 1];
+      child.exitCode = 1;
+      child.signalCode = null;
+      child.emit("exit", 1, null);
+      await settle(45);
+    }
+
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(4);
+    const status = getWorkerStatus();
+    expect(status.running).toBe(false);
+    expect(status.health.liveness.reason).toBe("restart_limit_exceeded");
+  });
 });
