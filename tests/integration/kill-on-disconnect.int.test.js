@@ -4,6 +4,7 @@ import getPort from "get-port";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -20,7 +21,8 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-proto-long.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_MODE: "long_stream",
       PROXY_PROTECT_MODELS: "false",
       PROXY_SSE_KEEPALIVE_MS: "0",
       PROXY_KILL_ON_DISCONNECT: "true",
@@ -37,6 +39,7 @@ beforeAll(async () => {
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
+  await waitForReady(PORT);
 });
 
 afterAll(async () => {
@@ -48,7 +51,7 @@ afterAll(async () => {
   } catch {}
 });
 
-test("disconnect aborts stream and kills child process", async () => {
+test("disconnect aborts stream without killing worker process", async () => {
   const controller = new AbortController();
   const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
     method: "POST",
@@ -72,7 +75,7 @@ test("disconnect aborts stream and kills child process", async () => {
   // Read a single chunk then abort
   await reader.read();
   controller.abort();
-  // Give proxy a moment to propagate SIGTERM
+  // Give proxy a moment to propagate cancellation
   await new Promise((r) => setTimeout(r, 1000));
   const pid = Number(readFileSync(PID_FILE, "utf8"));
   let alive = true;
@@ -82,5 +85,7 @@ test("disconnect aborts stream and kills child process", async () => {
   } catch {
     alive = false;
   }
-  expect(alive).toBe(false);
+  expect(alive).toBe(true);
+  const ready = await fetch(`http://127.0.0.1:${PORT}/readyz`);
+  expect(ready.ok).toBe(true);
 });

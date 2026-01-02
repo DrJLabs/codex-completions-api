@@ -6,7 +6,7 @@ let serverCtx;
 
 beforeAll(async () => {
   serverCtx = await startServer({
-    CODEX_BIN: "scripts/fake-codex-proto.js",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
     FAKE_CODEX_MODE: "tool_call",
     FAKE_CODEX_PARALLEL: "true",
     PROXY_SSE_KEEPALIVE_MS: "0",

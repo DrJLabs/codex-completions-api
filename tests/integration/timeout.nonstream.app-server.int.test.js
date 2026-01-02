@@ -19,7 +19,6 @@ describe("app-server non-stream idle timeout", () => {
       CODEX_WORKER_SUPERVISED: "true",
       FAKE_CODEX_JSONRPC_HANG: "message",
       PROXY_IDLE_TIMEOUT_MS: "100",
-      PROXY_PROTO_IDLE_MS: "2000",
       PROXY_TIMEOUT_MS: "10000",
       PROXY_API_KEY: "test-sk-ci",
     });

@@ -12,7 +12,6 @@ const codexPkg = require("@openai/codex/package.json");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..", "..");
 const TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "chat-completions");
-const PROTO_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "proto");
 const APP_TRANSCRIPT_ROOT = resolve(TRANSCRIPT_ROOT, "app");
 const TRANSCRIPT_MANIFEST_PATH = resolve(TRANSCRIPT_ROOT, "manifest.json");
 const RESPONSES_TRANSCRIPT_ROOT = resolve(PROJECT_ROOT, "test-results", "responses");
@@ -68,27 +67,21 @@ export function sanitizeStreamTranscript(chunks) {
 const APP_BACKEND_KEYS = new Set(["app", "app-server"]);
 
 function normalizeBackendName(backend) {
-  if (APP_BACKEND_KEYS.has(String(backend).toLowerCase())) return "app";
-  return "proto";
+  const normalized = String(backend).toLowerCase();
+  if (!APP_BACKEND_KEYS.has(normalized)) {
+    throw new Error(`Unsupported transcript backend: ${backend}`);
+  }
+  return "app";
 }
 
 function resolveTranscriptPath(filename, backend) {
-  const normalized = normalizeBackendName(backend);
-  const baseRoot = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
-  const desiredPath = resolve(baseRoot, filename);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (normalized === "proto" && !existsSync(desiredPath)) {
-    const legacyPath = resolve(TRANSCRIPT_ROOT, filename);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    if (existsSync(legacyPath)) return legacyPath;
-  }
-  return desiredPath;
+  normalizeBackendName(backend);
+  return resolve(APP_TRANSCRIPT_ROOT, filename);
 }
 
 function resolveTranscriptSavePath(filename, backend) {
-  const normalized = normalizeBackendName(backend);
-  const baseRoot = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
-  return resolve(baseRoot, filename);
+  normalizeBackendName(backend);
+  return resolve(APP_TRANSCRIPT_ROOT, filename);
 }
 
 export async function loadTranscript(filename, { backend = "app" } = {}) {
@@ -194,22 +187,15 @@ const REQUIRED_TRANSCRIPTS = [
 
 export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS, { backend = "app" } = {}) {
   const backends = Array.isArray(backend) ? backend : [backend];
-  const missing = [];
   for (const name of backends) {
-    const normalized = normalizeBackendName(name);
-    const root = normalized === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
-    for (const file of files) {
-      const desired = resolve(root, file);
-
-      // eslint-disable-next-line security/detect-non-literal-fs-filename
-      if (!existsSync(desired)) {
-        if (normalized === "proto") {
-          const legacy = resolve(TRANSCRIPT_ROOT, file);
-          // eslint-disable-next-line security/detect-non-literal-fs-filename
-          if (existsSync(legacy)) continue;
-        }
-        missing.push({ backend: normalized, file });
-      }
+    normalizeBackendName(name);
+  }
+  const missing = [];
+  for (const file of files) {
+    const desired = resolve(APP_TRANSCRIPT_ROOT, file);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    if (!existsSync(desired)) {
+      missing.push({ backend: "app", file });
     }
   }
 
@@ -222,7 +208,6 @@ export function ensureTranscripts(files = REQUIRED_TRANSCRIPTS, { backend = "app
 
 export {
   TRANSCRIPT_ROOT,
-  PROTO_TRANSCRIPT_ROOT,
   APP_TRANSCRIPT_ROOT,
   TRANSCRIPT_MANIFEST_PATH,
   PLACEHOLDER_ID,

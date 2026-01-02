@@ -234,7 +234,7 @@ async function main() {
   const codexBin =
     (argIndex !== -1 && process.argv[argIndex + 1]) ||
     process.env.CODEX_TRANSCRIPT_BIN ||
-    "scripts/fake-codex-proto.js";
+    "scripts/fake-codex-jsonrpc.js";
   await captureNonStreamMinimal({ codexBin });
   await captureNonStreamToolCall({ codexBin });
   await captureNonStreamChained({ codexBin });

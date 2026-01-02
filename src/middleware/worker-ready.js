@@ -1,4 +1,8 @@
-import { selectBackendMode, BACKEND_APP_SERVER } from "../services/backend-mode.js";
+import {
+  selectBackendMode,
+  BACKEND_APP_SERVER,
+  BACKEND_DISABLED,
+} from "../services/backend-mode.js";
 import { isWorkerSupervisorReady, getWorkerStatus } from "../services/worker/supervisor.js";
 import { applyCors as applyCorsUtil } from "../utils.js";
 import { config as CFG } from "../config/index.js";
@@ -8,6 +12,20 @@ const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
 
 export function requireWorkerReady(req, res, next) {
   const backendMode = selectBackendMode();
+  if (backendMode === BACKEND_DISABLED) {
+    console.warn(
+      "[proxy][worker-supervisor] app-server disabled; returning 503 backend_unavailable"
+    );
+    applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
+    return res.status(503).json({
+      error: {
+        message: "app-server disabled (proto deprecated)",
+        type: "backend_unavailable",
+        code: "app_server_disabled",
+        retryable: false,
+      },
+    });
+  }
   if (backendMode !== BACKEND_APP_SERVER) {
     return next();
   }

@@ -16,7 +16,7 @@ describe("/v1/responses Copilot output mode", () => {
 
   beforeAll(async () => {
     serverCtx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       PROXY_RESPONSES_OUTPUT_MODE: "openai-json",
       PROXY_SSE_KEEPALIVE_MS: "0",
     });
@@ -43,7 +43,7 @@ describe("/v1/responses Copilot output mode", () => {
 
   test("streams obsidian XML tool blocks for Copilot", async () => {
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
       PROXY_RESPONSES_OUTPUT_MODE: "openai-json",
       PROXY_STOP_AFTER_TOOLS: "true",

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { postChatStream, postCompletionsStream } from "../handlers/chat/stream.js";
-import { postChatNonStream, postCompletionsNonStream } from "../handlers/chat/nonstream.js";
+import { postChatStream } from "../handlers/chat/stream.js";
+import { postChatNonStream } from "../handlers/chat/nonstream.js";
 import { config as CFG } from "../config/index.js";
 import { requireStrictAuth } from "../middleware/auth.js";
 import { requireWorkerReady } from "../middleware/worker-ready.js";
@@ -10,14 +10,13 @@ export default function chatRouter() {
   const r = Router();
   const defaultStream = CFG.PROXY_DEFAULT_STREAM;
 
-  // HEAD for chat and legacy shim (OPTIONS handled globally with 204 preflight)
-  const completionPaths = ["/v1/chat/completions", "/v1/completions"];
-  r.head(completionPaths, requireStrictAuth, (_req, res) => {
+  // HEAD for chat (OPTIONS handled globally with 204 preflight)
+  r.head("/v1/chat/completions", requireStrictAuth, (_req, res) => {
     res.set("Content-Type", "application/json; charset=utf-8");
     res.status(200).end();
   });
 
-  // POST routes for chat and legacy completions
+  // POST routes for chat
   r.post("/v1/chat/completions", requireStrictAuth, async (req, res, next) => {
     try {
       const body = req?.body || {};
@@ -39,33 +38,6 @@ export default function chatRouter() {
       return requireWorkerReady(req, res, () => {
         if (stream) return postChatStream(req, res);
         return postChatNonStream(req, res);
-      });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  r.post("/v1/completions", requireStrictAuth, async (req, res, next) => {
-    try {
-      const body = req?.body || {};
-      const stream = Object.prototype.hasOwnProperty.call(body, "stream")
-        ? !!body.stream
-        : defaultStream;
-
-      if (
-        await maybeHandleTitleIntercept({
-          req,
-          res,
-          body,
-          stream,
-        })
-      ) {
-        return;
-      }
-
-      return requireWorkerReady(req, res, () => {
-        if (stream) return postCompletionsStream(req, res);
-        return postCompletionsNonStream(req, res);
       });
     } catch (err) {
       next(err);

@@ -80,7 +80,7 @@ const extractUsageFromEvent = (event) => {
 describeHarness("LangChain streaming harness", () => {
   for (const { label, env, expectedFinishReason, prompt } of STREAM_CASES) {
     test(`streams finish_reason ${label}`, async () => {
-      const serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js", ...env });
+      const serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-jsonrpc.js", ...env });
       try {
         const baseURL = `http://127.0.0.1:${serverCtx.PORT}/v1`;
         const client = new ChatOpenAI({

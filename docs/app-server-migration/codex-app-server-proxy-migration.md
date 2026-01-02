@@ -1,6 +1,6 @@
 # Migrating `codex-app-server-proxy` to `codex app-server`
 
-⚠️ Proto backend is fully **decommissioned** in production/staging. Parity fixtures and tests still capture **both** proto and app-server outputs until the parity suite is retired—keep them in sync, but do not run proto in live environments.
+⚠️ Proto backend has been removed. Parity fixtures/tests are retired; only app-server transcripts are maintained. This document remains as historical migration notes.
 
 > **Goal (completed):** Switch backend from `codex proto` to `codex app-server` **without changing** the proxy’s external OpenAI‑compatible API responses (both streaming and non‑streaming).
 
@@ -193,7 +193,7 @@ spawn("codex", [
 3. **SSE handler**: map `agentMessageDelta`/`agentMessage` to OpenAI chunks; keep existing shape.
 4. **Non‑stream handler**: assemble final message & usage; finalize finish_reason.
 5. **Config/env**: ensure `CODEX_HOME`, model/profile flags, sandbox/approvals are passed.
-6. **Tests**: replace proto shim with an **app‑server mock** speaking JSON‑RPC (golden transcripts).
+6. **Tests**: use the deterministic JSON-RPC shim and refresh golden transcripts.
 7. **Docs**: update README and deployment notes (auth, volumes, CLI version).
 
 ---
@@ -221,18 +221,17 @@ spawn("codex", [
 
 ---
 
-## K. Parity fixture maintenance workflow
+## K. Transcript fixture maintenance (app-server only)
 
-1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator writes to `test-results/chat-completions/{proto,app}/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
-2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs; keep both fixtures updated until proto retirement lands in code + tests.
-3. **Smoke the baseline** – before publishing updated fixtures, run:
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture app-server outputs. The generator writes to `test-results/chat-completions/app/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
+2. **Smoke the baseline** – before publishing updated fixtures, run:
    ```bash
    npm run test:integration
    npm test
    ```
-   This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
-4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks (or `manifest.json`) into the deployment notes so downstream stories know which baseline the fixtures represent.
-5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
+   This confirms the SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
+3. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks (or `manifest.json`) into deployment notes so downstream stories know which baseline the fixtures represent.
+4. **Intentional mismatch drills (optional)** – edit a single transcript to validate the tooling, then restore the corpus with `npm run transcripts:generate`.
 
 **Streaming delta (notification):**
 
@@ -285,7 +284,7 @@ spawn("codex", [
 ### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
-1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only for legacy proto rollback drills (Source: internal tech stack doc; not published here).
+1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only to disable the backend during maintenance (Source: internal tech stack doc; not published here).
   2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
   3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
 - **systemd (production host):**
@@ -304,9 +303,9 @@ spawn("codex", [
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set `false` only for proto compatibility checks) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
-| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only during rollback drills) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
-| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only for emergency proto fallback)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
+| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set `false` only to disable backend) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
+| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only for maintenance disable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
+| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only to disable backend)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 
 Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; internal tech stack doc; not published here).
 

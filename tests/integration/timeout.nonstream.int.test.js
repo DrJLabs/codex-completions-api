@@ -2,6 +2,7 @@ import { beforeAll, afterAll, test, expect } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -13,9 +14,10 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-proto-hang.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_JSONRPC_HANG: "message",
       PROXY_PROTECT_MODELS: "false",
-      PROXY_PROTO_IDLE_MS: "100",
+      PROXY_IDLE_TIMEOUT_MS: "100",
       PROXY_TIMEOUT_MS: "5000",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -29,6 +31,7 @@ beforeAll(async () => {
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
+  await waitForReady(PORT);
 });
 
 afterAll(async () => {

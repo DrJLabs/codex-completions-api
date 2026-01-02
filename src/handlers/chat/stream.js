@@ -1,4 +1,4 @@
-import { spawnCodex, resolvedCodexBin } from "../../services/codex-runner.js";
+import { resolvedCodexBin } from "../../services/codex-runner.js";
 import {
   setSSEHeaders,
   computeKeepaliveMs,
@@ -100,7 +100,6 @@ const SUPPRESS_TAIL_AFTER_TOOLS = CFG.PROXY_SUPPRESS_TAIL_AFTER_TOOLS;
 const REQ_TIMEOUT_MS = CFG.PROXY_TIMEOUT_MS;
 const KILL_ON_DISCONNECT = CFG.PROXY_KILL_ON_DISCONNECT.toLowerCase() !== "false";
 const STREAM_IDLE_TIMEOUT_MS = CFG.PROXY_STREAM_IDLE_TIMEOUT_MS;
-const DEBUG_PROTO = /^(1|true|yes)$/i.test(String(CFG.PROXY_DEBUG_PROTO || ""));
 const CORS_ENABLED = CFG.PROXY_ENABLE_CORS.toLowerCase() !== "false";
 const CORS_ALLOWED = CFG.PROXY_CORS_ALLOWED_ORIGINS;
 const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOWED);
@@ -401,9 +400,30 @@ export async function postChatStream(req, res) {
 
   const backendMode = selectBackendMode();
   const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
+  if (!isAppServerBackend) {
+    logUsageFailure({
+      req,
+      res,
+      reqId,
+      started,
+      route: "/v1/chat/completions",
+      mode: "chat_stream",
+      statusCode: 503,
+      reason: "backend_unavailable",
+      errorCode: "app_server_disabled",
+    });
+    applyCors(req, res);
+    return res.status(503).json({
+      error: {
+        message: "app-server disabled (proto deprecated)",
+        type: "backend_unavailable",
+        code: "app_server_disabled",
+      },
+    });
+  }
 
   const optionalValidation = validateOptionalChatParams(body, {
-    allowJsonSchema: isAppServerBackend,
+    allowJsonSchema: true,
   });
   if (!optionalValidation.ok) {
     logUsageFailure({
@@ -565,59 +585,51 @@ export async function postChatStream(req, res) {
     );
   } catch {}
   let normalizedRequest = null;
-  if (isAppServerBackend) {
-    try {
-      normalizedRequest = normalizeChatJsonRpcRequest({
-        body,
-        messages,
-        prompt,
-        effectiveModel,
-        choiceCount,
-        stream: true,
-        reasoningEffort,
-        sandboxMode: SANDBOX_MODE,
-        codexWorkdir: CODEX_WORKDIR,
-        approvalMode: APPROVAL_POLICY,
-      });
-    } catch (err) {
-      if (err instanceof ChatJsonRpcNormalizationError) {
-        if (!responded) {
-          responded = true;
-          releaseGuard("normalization_error");
-        }
-        logUsageFailure({
-          req,
-          res,
-          reqId,
-          started,
-          route: "/v1/chat/completions",
-          mode: "chat_stream",
-          statusCode: err.statusCode || 400,
-          reason: "normalization_error",
-          errorCode: err.body?.error?.code || err.code,
-          requestedModel,
-          effectiveModel,
-        });
-        applyCors(req, res);
-        return res.status(err.statusCode).json(err.body);
+  try {
+    normalizedRequest = normalizeChatJsonRpcRequest({
+      body,
+      messages,
+      prompt,
+      effectiveModel,
+      choiceCount,
+      stream: true,
+      reasoningEffort,
+      sandboxMode: SANDBOX_MODE,
+      codexWorkdir: CODEX_WORKDIR,
+      approvalMode: APPROVAL_POLICY,
+    });
+  } catch (err) {
+    if (err instanceof ChatJsonRpcNormalizationError) {
+      if (!responded) {
+        responded = true;
+        releaseGuard("normalization_error");
       }
-      throw err;
+      logUsageFailure({
+        req,
+        res,
+        reqId,
+        started,
+        route: "/v1/chat/completions",
+        mode: "chat_stream",
+        statusCode: err.statusCode || 400,
+        reason: "normalization_error",
+        errorCode: err.body?.error?.code || err.code,
+        requestedModel,
+        effectiveModel,
+      });
+      applyCors(req, res);
+      return res.status(err.statusCode).json(err.body);
     }
+    throw err;
   }
 
   const traceContext = { reqId, route: "/v1/chat/completions", mode: "chat_stream" };
-  const child = isAppServerBackend
-    ? createJsonRpcChildAdapter({
-        reqId,
-        timeoutMs: REQ_TIMEOUT_MS,
-        normalizedRequest,
-        trace: traceContext,
-      })
-    : spawnCodex(args, {
-        reqId,
-        route: traceContext.route,
-        mode: traceContext.mode,
-      });
+  const child = createJsonRpcChildAdapter({
+    reqId,
+    timeoutMs: REQ_TIMEOUT_MS,
+    normalizedRequest,
+    trace: traceContext,
+  });
   const backendSpan = startSpan("backend.invoke", {
     "proxy.route": route,
     "proxy.backend_mode": backendMode,
@@ -788,11 +800,30 @@ export async function postChatStream(req, res) {
   };
   const sendChoiceDelta = (choiceIndex, delta, finishReason = null) => {
     const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
+    const limitToolTail = (SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS) && isObsidianOutput;
+    let payloadDelta = delta;
+    if (
+      limitToolTail &&
+      payloadDelta &&
+      typeof payloadDelta === "object" &&
+      typeof payloadDelta.content === "string"
+    ) {
+      const lastClose = payloadDelta.content.lastIndexOf("</use_tool>");
+      if (lastClose >= 0) {
+        const trimmed = payloadDelta.content.slice(0, lastClose + "</use_tool>".length).trim();
+        if (trimmed !== payloadDelta.content) {
+          const rest = { ...payloadDelta };
+          delete rest.content;
+          payloadDelta = trimmed ? { ...rest, content: trimmed } : rest;
+          if (!Object.keys(payloadDelta).length) return;
+        }
+      }
+    }
     sendChunk({
       choices: [
         {
           index: normalized,
-          delta,
+          delta: payloadDelta,
           finish_reason: finishReason,
         },
       ],
@@ -1287,6 +1318,12 @@ export async function postChatStream(req, res) {
   const flushActiveToolBuffer = (state, choiceIndex, reason = "abort") => {
     if (!isObsidianOutput) return false;
     if (!state?.toolBuffer?.active) return false;
+    const emittedText = typeof state.emitted === "string" ? state.emitted : "";
+    const lastClose = emittedText.lastIndexOf("</use_tool>");
+    if (lastClose >= 0) {
+      completeToolBuffer(state.toolBuffer, lastClose + "</use_tool>".length);
+      return false;
+    }
     const { literal } = abortToolBuffer(state.toolBuffer, state.emitted);
     toolBufferMetrics.abort({ output_mode: outputMode, reason });
     logToolBufferWarning(reason, { choice_index: choiceIndex });
@@ -1316,6 +1353,7 @@ export async function postChatStream(req, res) {
       return;
     }
     if (!text) return;
+    let emittedTextualTool = false;
     let appendText = text;
     if (state.emitted) {
       if (appendText.startsWith(state.emitted)) {
@@ -1364,6 +1402,7 @@ export async function postChatStream(req, res) {
           if (!literal) continue;
           if (isObsidianOutput) {
             if (emitToolContentChunk(literal, { source: "textual", choiceIndex })) {
+              emittedTextualTool = true;
               state.forwardedUpTo = block.end;
               completeToolBuffer(state.toolBuffer, block.end);
               toolBufferMetrics.flush({ output_mode: outputMode });
@@ -1378,6 +1417,10 @@ export async function postChatStream(req, res) {
       }
     } catch {}
     const limitTail = SUPPRESS_TAIL_AFTER_TOOLS || STOP_AFTER_TOOLS;
+    if (emittedTextualTool && limitTail) {
+      scheduleStopAfterTools(choiceIndex);
+      return;
+    }
     const allowUntil = clampEmittableIndex(
       state.toolBuffer,
       state.forwardedUpTo,
@@ -1387,9 +1430,19 @@ export async function postChatStream(req, res) {
     );
     const holdbackStart = findToolPrefixHoldback(state.emitted, state.forwardedUpTo);
     const finalUntil = holdbackStart >= 0 ? Math.min(allowUntil, holdbackStart) : allowUntil;
-    const segment = state.emitted.slice(state.forwardedUpTo, finalUntil);
+    let segment = state.emitted.slice(state.forwardedUpTo, finalUntil);
     if (segment) {
-      sendChoiceDelta(choiceIndex, { content: segment });
+      if (limitTail) {
+        segment = trimTrailingTextAfterToolBlocks(segment);
+      }
+      if (segment && limitTail && state.textualToolContentSeen && segment.includes("<use_tool")) {
+        state.forwardedUpTo = finalUntil;
+        scheduleStopAfterTools(choiceIndex);
+        return;
+      }
+      if (segment) {
+        sendChoiceDelta(choiceIndex, { content: segment });
+      }
       state.sentAny = true;
       state.forwardedUpTo = finalUntil;
     }
@@ -1414,6 +1467,12 @@ export async function postChatStream(req, res) {
   };
 
   const TOOL_XML_PREFIXES = ["<use_tool", "</use_tool"];
+  const trimTrailingTextAfterToolBlocks = (content = "") => {
+    if (!content || typeof content !== "string") return content;
+    const lastClose = content.lastIndexOf("</use_tool>");
+    if (lastClose === -1) return content;
+    return content.slice(0, lastClose + "</use_tool>".length).trim();
+  };
 
   const hasTextualToolPrefix = (state, textDelta = "") => {
     if (!isObsidianOutput || !state) return false;
@@ -2081,16 +2140,10 @@ export async function postChatStream(req, res) {
           finalizeStream({ reason: finishReason, trigger: usageState.trigger || "task_complete" });
           return;
         } else if (t === "error") {
-          if (DEBUG_PROTO)
-            try {
-              console.log("[proto] error event");
-            } catch {}
+          // ignore error events from backend
         }
       } catch {
-        if (DEBUG_PROTO)
-          try {
-            console.log("[proto] parse error line:", trimmed);
-          } catch {}
+        // ignore parse errors
       }
     }
   });
@@ -2153,616 +2206,4 @@ export async function postChatStream(req, res) {
   };
   child.on("close", handleChildClose);
   child.on?.("exit", handleChildClose);
-}
-
-// POST /v1/completions with stream=true (legacy shim that maps to proto)
-export async function postCompletionsStream(req, res) {
-  try {
-    console.log("[completions] POST /v1/completions received");
-  } catch {}
-  setHttpContext(res, { route: "/v1/completions", mode: "completions_stream" });
-  const reqId = ensureReqId(res);
-  const started = Date.now();
-  let responded = false;
-  let responseWritable = true;
-
-  const body = req.body || {};
-  logHttpRequest({
-    req,
-    res,
-    route: "/v1/completions",
-    mode: "completions_stream",
-    body,
-  });
-
-  const model = requireModel({
-    req,
-    res,
-    body,
-    reqId,
-    started,
-    route: "/v1/completions",
-    mode: "completions_stream",
-    logUsageFailure,
-    applyCors,
-    sendJson: (statusCode, payload) => res.status(statusCode).json(payload),
-  });
-  if (!model) return;
-
-  // Concurrency guard for legacy completions stream as well
-  const MAX_CONC = Number(CFG.PROXY_SSE_MAX_CONCURRENCY || 0) || 0;
-
-  const prompt = Array.isArray(body.prompt) ? body.prompt.join("\n") : body.prompt || "";
-  if (IS_DEV_ENV) {
-    try {
-      console.log("[dev][prompt][completions] prompt=\n" + prompt);
-      appendProtoEvent({
-        ts: Date.now(),
-        req_id: reqId,
-        route: "/v1/completions",
-        mode: "completions",
-        kind: "submission",
-        payload: { prompt },
-      });
-    } catch (e) {
-      console.error("[dev][prompt][completions] error:", e);
-    }
-  }
-  if (!prompt) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: 400,
-      reason: "invalid_request",
-      errorCode: "prompt_required",
-    });
-    applyCors(req, res);
-    return res.status(400).json({
-      error: {
-        message: "prompt required",
-        type: "invalid_request_error",
-        param: "prompt",
-        code: "invalid_request_error",
-      },
-    });
-  }
-
-  const { requested: requestedModel, effective: effectiveModel } = normalizeModel(
-    model,
-    DEFAULT_MODEL,
-    Array.from(ACCEPTED_MODEL_IDS)
-  );
-  try {
-    console.log(
-      `[proxy] completions model requested=${requestedModel} effective=${effectiveModel} stream=${!!body.stream}`
-    );
-  } catch {}
-  if (!ACCEPTED_MODEL_IDS.has(requestedModel)) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: 404,
-      reason: "model_not_found",
-      errorCode: "model_not_found",
-      requestedModel,
-    });
-    applyCors(req, res);
-    return res.status(404).json(modelNotFoundBody(requestedModel));
-  }
-
-  let reasoningEffort = (
-    body.reasoning?.effort ||
-    body.reasoning_effort ||
-    body.reasoningEffort ||
-    ""
-  )
-    .toString()
-    .toLowerCase();
-  const allowEffort = new Set(["low", "medium", "high", "xhigh", "minimal"]);
-  if (!reasoningEffort) {
-    const implied = impliedEffortForModel(requestedModel);
-    if (implied) reasoningEffort = implied;
-  }
-
-  const backendMode = selectBackendMode();
-  const args = buildBackendArgs({
-    backendMode,
-    SANDBOX_MODE,
-    effectiveModel,
-    FORCE_PROVIDER,
-    reasoningEffort,
-    allowEffort,
-    enableParallelTools: ENABLE_PARALLEL_TOOL_CALLS,
-  });
-
-  const messages = [{ role: "user", content: prompt }];
-  const toSend = joinMessages(messages);
-  const promptTokensEst = estTokensForMessages(messages);
-
-  try {
-    console.log(
-      `[proxy] spawning backend=${backendMode} (completions):`,
-      resolvedCodexBin,
-      args.join(" "),
-      " prompt_len=",
-      toSend.length
-    );
-  } catch {}
-
-  const guardContext = setupStreamGuard({
-    res,
-    reqId,
-    route: "/v1/completions",
-    maxConc: MAX_CONC,
-    testEndpointsEnabled: TEST_ENDPOINTS_ENABLED,
-    send429: () => {
-      applyCors(req, res);
-      logUsageFailure({
-        req,
-        res,
-        reqId,
-        started,
-        route: "/v1/completions",
-        mode: "completions_stream",
-        statusCode: 429,
-        reason: "concurrency_exceeded",
-        errorCode: "concurrency_exceeded",
-      });
-      res.status(429).json({
-        error: {
-          message: "too many concurrent streams",
-          type: "rate_limit_error",
-          code: "concurrency_exceeded",
-        },
-      });
-    },
-  });
-
-  if (!guardContext.acquired) {
-    return;
-  }
-
-  const releaseGuard = (outcome) => guardContext.release(outcome);
-  applyGuardHeaders(res, guardContext.token, TEST_ENDPOINTS_ENABLED);
-
-  const completionsTrace = { reqId, route: "/v1/completions", mode: "completions_stream" };
-  let normalizedRequest = null;
-  if (backendMode === BACKEND_APP_SERVER) {
-    try {
-      normalizedRequest = normalizeChatJsonRpcRequest({
-        body,
-        messages,
-        prompt: toSend,
-        effectiveModel,
-        choiceCount: 1,
-        stream: true,
-        reasoningEffort,
-        sandboxMode: SANDBOX_MODE,
-        codexWorkdir: CODEX_WORKDIR,
-        approvalMode: APPROVAL_POLICY,
-      });
-    } catch (err) {
-      if (err instanceof ChatJsonRpcNormalizationError) {
-        if (!responded) {
-          responded = true;
-          releaseGuard("normalization_error");
-        }
-        logUsageFailure({
-          req,
-          res,
-          reqId,
-          started,
-          route: "/v1/completions",
-          mode: "completions_stream",
-          statusCode: err.statusCode || 400,
-          reason: "normalization_error",
-          errorCode: err.body?.error?.code || err.code,
-          requestedModel,
-          effectiveModel,
-        });
-        applyCors(req, res);
-        return res.status(err.statusCode).json(err.body);
-      }
-      throw err;
-    }
-  }
-  const child =
-    backendMode === BACKEND_APP_SERVER
-      ? createJsonRpcChildAdapter({
-          reqId,
-          timeoutMs: REQ_TIMEOUT_MS,
-          normalizedRequest,
-          trace: completionsTrace,
-        })
-      : spawnCodex(args, {
-          reqId,
-          route: completionsTrace.route,
-          mode: completionsTrace.mode,
-        });
-  const onChildError = (error) => {
-    try {
-      console.log("[proxy] child error (completions):", error?.message || String(error));
-    } catch {}
-    if (responded) return;
-    markCompletionsResponded();
-    try {
-      clearTimeout(timeout);
-    } catch {}
-    const mapped = mapTransportError(error);
-    try {
-      if (mapped) {
-        sendSSEUtil(res, mapped.body);
-      } else {
-        sendSSEUtil(res, sseErrorBody(error));
-      }
-    } catch {}
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/completions",
-      mode: "completions_stream",
-      statusCode: (mapped && mapped.statusCode) || 502,
-      reason: "backend_error",
-      errorCode: mapped?.body?.error?.code || "backend_error",
-      requestedModel,
-      effectiveModel,
-    });
-    try {
-      finishSSEUtil(res);
-    } catch {}
-    try {
-      releaseGuard("error");
-    } catch {}
-  };
-  child.on("error", onChildError);
-
-  const timeout = setTimeout(() => {
-    if (responded) return;
-    onChildError(new Error("request timeout"));
-    try {
-      child.kill("SIGKILL");
-    } catch {}
-  }, REQ_TIMEOUT_MS);
-
-  let idleTimerCompletions;
-  function cancelIdleCompletions() {
-    if (idleTimerCompletions) {
-      clearTimeout(idleTimerCompletions);
-      idleTimerCompletions = null;
-    }
-  }
-  const resetIdleCompletions = () => {
-    cancelIdleCompletions();
-    idleTimerCompletions = setTimeout(() => {
-      idleTimerCompletions = null;
-      if (responded) return;
-      try {
-        console.log("[proxy] completions idle timeout; terminating child");
-      } catch {}
-      try {
-        sendSSEUtil(res, {
-          error: { message: "backend idle timeout", type: "timeout_error", code: "idle_timeout" },
-        });
-      } catch {}
-      try {
-        finishSSEUtil(res);
-      } catch {}
-      logUsageFailure({
-        req,
-        res,
-        reqId,
-        started,
-        route: "/v1/completions",
-        mode: "completions_stream",
-        statusCode: 504,
-        reason: "backend_idle_timeout",
-        errorCode: "idle_timeout",
-        requestedModel,
-        effectiveModel,
-      });
-      markCompletionsResponded();
-      try {
-        child.kill("SIGTERM");
-      } catch {}
-    }, STREAM_IDLE_TIMEOUT_MS);
-  };
-  function markCompletionsResponded() {
-    responded = true;
-    cancelIdleCompletions();
-  }
-  resetIdleCompletions();
-  req.on("close", () => {
-    if (responded) return;
-    if (KILL_ON_DISCONNECT) {
-      try {
-        child.kill("SIGTERM");
-      } catch {}
-    }
-  });
-
-  try {
-    const submission = {
-      id: reqId,
-      op: { type: "user_input", items: [{ type: "text", text: toSend }] },
-    };
-    child.stdin.write(JSON.stringify(submission) + "\n");
-  } catch {}
-
-  let out = "";
-  const completionId = `cmpl-${nanoid()}`;
-  const created = Math.floor(Date.now() / 1000);
-  const sendSSE = (payload) => {
-    try {
-      if (!responseWritable) return;
-      sendSSEUtil(res, payload);
-    } catch {}
-  };
-  const sendChunk = (payload) => {
-    sendSSE({
-      id: completionId,
-      object: "text_completion.chunk",
-      created,
-      model: requestedModel,
-      ...payload,
-    });
-  };
-  const finishSSE = () => {
-    try {
-      finishSSEUtil(res);
-    } catch {}
-  };
-
-  setSSEHeaders(res);
-
-  // Keepalives (parity with chat stream)
-  let keepalive;
-  let streamClosed = false;
-  const keepaliveMs = computeKeepaliveMs(req);
-  const clearKeepalive = () => {
-    if (keepalive) {
-      try {
-        if (typeof keepalive.stop === "function") keepalive.stop();
-        else clearInterval(keepalive);
-      } catch {}
-      keepalive = null;
-    }
-  };
-  const cleanupStream = () => {
-    if (streamClosed) return;
-    streamClosed = true;
-    clearKeepalive();
-    responseWritable = false;
-    try {
-      clearTimeout(timeout);
-    } catch {}
-    try {
-      if (KILL_ON_DISCONNECT) child.kill("SIGTERM");
-    } catch {}
-    releaseGuard();
-  };
-  if (keepaliveMs > 0)
-    keepalive = startKeepalives(res, keepaliveMs, () => {
-      try {
-        if (!streamClosed) res.write(`: keepalive ${Date.now()}\n\n`);
-      } catch {}
-    });
-  res.on("close", cleanupStream);
-  res.on("finish", cleanupStream);
-  req.on?.("aborted", cleanupStream);
-
-  let buf = "";
-  let sentAny = false;
-  let emitted = "";
-  let completionChars = 0;
-  const toolStateC = { pos: 0, idx: 0 };
-
-  child.stdout.on("data", (d) => {
-    resetIdleCompletions();
-    const s = d.toString("utf8");
-    out += s;
-    buf += s;
-    if (LOG_PROTO)
-      appendProtoEvent({
-        ts: Date.now(),
-        req_id: reqId,
-        route: "/v1/completions",
-        mode: "completions_stream",
-        kind: "stdout",
-        chunk: s,
-      });
-    let idx;
-    while ((idx = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, idx);
-      buf = buf.slice(idx + 1);
-      const t = line.trim();
-      if (!t) continue;
-      try {
-        const evt = JSON.parse(t);
-        const rawTp = (evt && (evt.msg?.type || evt.type)) || "";
-        const tp = typeof rawTp === "string" ? rawTp.replace(/^codex\/event\//i, "") : "";
-        const payload = evt && typeof evt === "object" ? evt : {};
-        const params = payload.msg && typeof payload.msg === "object" ? payload.msg : payload;
-        const messagePayload = params.msg && typeof params.msg === "object" ? params.msg : params;
-        appendProtoEvent({
-          ts: Date.now(),
-          req_id: reqId,
-          route: "/v1/completions",
-          mode: "completions_stream",
-          kind: "event",
-          event: evt,
-        });
-        if (tp === "agent_message_delta") {
-          const deltaPayload = messagePayload?.delta ?? messagePayload;
-          const dlt =
-            typeof deltaPayload === "string"
-              ? deltaPayload
-              : deltaPayload && typeof deltaPayload === "object"
-                ? coerceAssistantContent(
-                    deltaPayload.content ?? deltaPayload.text ?? deltaPayload.delta ?? ""
-                  )
-                : "";
-          if (dlt) {
-            sentAny = true;
-            emitted += dlt;
-            completionChars += dlt.length;
-            sendChunk({ choices: [{ index: 0, text: dlt }] });
-            const { blocks, nextPos } = extractUseToolBlocks(emitted, toolStateC.pos);
-            toolStateC.pos = nextPos;
-            if (blocks && blocks.length) {
-              // emit proto events for tools for debugging
-              for (const b of blocks) {
-                appendProtoEvent({
-                  ts: Date.now(),
-                  req_id: reqId,
-                  route: "/v1/completions",
-                  mode: "completions_stream",
-                  kind: "tool_block",
-                  idx: ++toolStateC.idx,
-                  char_start: b.start,
-                  char_end: b.end,
-                  tool: b.name,
-                  path: b.path,
-                  query: b.query,
-                });
-              }
-            }
-          }
-        } else if (tp === "agent_message") {
-          const messageValue = messagePayload?.message ?? messagePayload;
-          const m =
-            typeof messageValue === "string"
-              ? messageValue
-              : messageValue && typeof messageValue === "object"
-                ? coerceAssistantContent(messageValue.content ?? messageValue.text ?? "")
-                : "";
-          if (m) {
-            let suffix = "";
-            if (m.startsWith(emitted)) suffix = m.slice(emitted.length);
-            else if (!sentAny) suffix = m;
-            if (suffix) {
-              sentAny = true;
-              emitted += suffix;
-              completionChars += suffix.length;
-              sendChunk({ choices: [{ index: 0, text: suffix }] });
-              const { blocks, nextPos } = extractUseToolBlocks(emitted, toolStateC.pos);
-              toolStateC.pos = nextPos;
-              for (const b of blocks || []) {
-                appendProtoEvent({
-                  ts: Date.now(),
-                  req_id: reqId,
-                  route: "/v1/completions",
-                  mode: "completions_stream",
-                  kind: "tool_block",
-                  idx: ++toolStateC.idx,
-                  char_start: b.start,
-                  char_end: b.end,
-                  tool: b.name,
-                  path: b.path,
-                  query: b.query,
-                });
-              }
-            }
-          }
-        } else if (tp === "token_count") {
-          // no-op for legacy completions stream; emit in close
-        } else if (tp === "task_complete") {
-          clearTimeout(timeout);
-          if (!sentAny) {
-            const content = stripAnsi(out).trim() || "No output from backend.";
-            sendChunk({ choices: [{ index: 0, text: content }] });
-          }
-          if (IS_DEV_ENV && sentAny) {
-            try {
-              console.log("[dev][response][completions][stream] content=\n" + emitted);
-            } catch (e) {
-              console.error("[dev][response][completions][stream] error:", e);
-            }
-          }
-          const completion_tokens_est = Math.ceil(completionChars / 4);
-          if (LOG_PROTO) {
-            try {
-              const { blocks } = extractUseToolBlocks(emitted, toolStateC.pos);
-              for (const b of blocks || []) {
-                appendProtoEvent({
-                  ts: Date.now(),
-                  req_id: reqId,
-                  route: "/v1/completions",
-                  mode: "completions_stream",
-                  kind: "tool_block",
-                  idx: ++toolStateC.idx,
-                  char_start: b.start,
-                  char_end: b.end,
-                  tool: b.name,
-                  path: b.path,
-                  query: b.query,
-                });
-              }
-            } catch {}
-          }
-          const completionsCtx = getHttpContext(res);
-          appendUsage({
-            req_id: reqId,
-            route: completionsCtx.route || "/v1/completions",
-            mode: completionsCtx.mode || "completions_stream",
-            method: req.method || "POST",
-            status_code: 200,
-            requested_model: requestedModel,
-            effective_model: effectiveModel,
-            stream: true,
-            prompt_tokens_est: promptTokensEst,
-            completion_tokens_est,
-            total_tokens_est: promptTokensEst + completion_tokens_est,
-            duration_ms: Date.now() - started,
-            status: 200,
-            user_agent: req.headers["user-agent"] || "",
-          });
-          markCompletionsResponded();
-          finishSSE();
-          return;
-        }
-      } catch {}
-    }
-  });
-  child.stderr.on("data", (e) => {
-    resetIdleCompletions();
-    const s = e.toString("utf8");
-    try {
-      console.log("[proxy] child stderr:", s.trim());
-    } catch {}
-    if (LOG_PROTO)
-      appendProtoEvent({
-        ts: Date.now(),
-        req_id: reqId,
-        route: "/v1/completions",
-        mode: "completions_stream",
-        kind: "stderr",
-        chunk: s,
-      });
-  });
-  const finalizeOnChildExit = (outcome = "released:child_close") => {
-    if (responded) return;
-    markCompletionsResponded();
-    clearTimeout(timeout);
-    cancelIdleCompletions();
-    // If not completed via task_complete, still finish stream
-    if (!sentAny) {
-      const content = stripAnsi(out).trim() || "No output from backend.";
-      sendChunk({ choices: [{ index: 0, text: content }] });
-    }
-    finishSSE();
-    releaseGuard(outcome);
-  };
-  child.on("close", () => finalizeOnChildExit("released:child_close"));
-  child.on?.("exit", () => finalizeOnChildExit("released:child_exit"));
-  child.stdout.on?.("end", () => finalizeOnChildExit("released:stdout_end"));
 }

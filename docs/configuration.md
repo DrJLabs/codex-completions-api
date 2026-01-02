@@ -21,7 +21,7 @@ This proxy is configured via environment variables. Defaults live in `src/config
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PROXY_USE_APP_SERVER` | auto | `true` uses app-server JSON-RPC; `false` uses legacy proto |
+| `PROXY_USE_APP_SERVER` | auto | `true` uses app-server JSON-RPC; `false` disables the backend (returns `app_server_disabled`) |
 | `CODEX_BIN` | `codex` | Codex CLI binary (or shim path) |
 | `CODEX_HOME` | `$PROJECT/.codex-api` | Codex home/config directory |
 | `CODEX_MODEL` | `gpt-5.2` | Default effective model (proxy also accepts `codex-5*` / `codev-5*`) |

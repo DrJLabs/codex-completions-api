@@ -3,6 +3,7 @@ import getPort from "get-port";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -48,7 +49,8 @@ const startServer = async (extraEnv = {}) => {
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
-      CODEX_BIN: "scripts/fake-codex-proto-long.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_MODE: "long_stream",
       PROXY_SSE_MAX_CONCURRENCY: "1",
       PROXY_SSE_KEEPALIVE_MS: "0",
       PROXY_RATE_LIMIT_ENABLED: "false",
@@ -60,6 +62,7 @@ const startServer = async (extraEnv = {}) => {
     stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForHealth();
+  await waitForReady(PORT);
 };
 
 beforeAll(async () => {

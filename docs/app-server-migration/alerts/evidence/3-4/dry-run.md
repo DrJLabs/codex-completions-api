@@ -2,7 +2,7 @@
 
 ## Drill 2025-11-21 (dev npm shim)
 - Timestamps: 01:23–01:26Z
-- Setup: `PORT=18000 PROXY_ENABLE_METRICS=true PROXY_METRICS_ALLOW_LOOPBACK=true PROXY_MAINTENANCE_MODE=true CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-proto.js node server.js`
+- Setup: `PORT=18000 PROXY_ENABLE_METRICS=true PROXY_METRICS_ALLOW_LOOPBACK=true PROXY_MAINTENANCE_MODE=true CODEX_HOME=.codev CODEX_BIN=scripts/fake-codex-jsonrpc.js node server.js`
 - Trigger: Killed worker 4x (PIDs 1676642 → 1681656 → 1685485 → 1686557 → 1687689), then issued POST /v1/chat/completions during restart to induce 503.
 - Alerts targeted: restart storm (>3 in 10m), error-rate (single 5xx), maintenance-state.
 - Evidence:

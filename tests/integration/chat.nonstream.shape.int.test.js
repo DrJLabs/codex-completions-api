@@ -34,7 +34,7 @@ test("non-stream response uses stop finish_reason on normal completion and inclu
   expect(ch?.index).toBe(0);
   expect(ch?.message?.role).toBe("assistant");
   expect(typeof ch?.message?.content).toBe("string");
-  // Because the fake proto emits task_complete, finish_reason should be "stop"
+  // Because the shim emits task_complete, finish_reason should be "stop"
   expect(ch?.finish_reason).toBe("stop");
   expect(typeof j?.usage?.prompt_tokens).toBe("number");
   expect(typeof j?.usage?.completion_tokens).toBe("number");

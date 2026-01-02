@@ -17,7 +17,7 @@ describe("responses non-stream contract", () => {
     minimalTranscript = await loadResponsesTranscript("nonstream-minimal.json");
     toolCallTranscript = await loadResponsesTranscript("nonstream-tool-call.json");
     chainedTranscript = await loadResponsesTranscript("nonstream-previous-response.json");
-    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
+    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-jsonrpc.js" });
   }, 10_000);
 
   afterAll(async () => {
@@ -43,7 +43,7 @@ describe("responses non-stream contract", () => {
   test("tool-call response matches transcript", async () => {
     const { request, response: expected } = toolCallTranscript;
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
     });
     try {

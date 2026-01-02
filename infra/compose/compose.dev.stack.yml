@@ -51,7 +51,7 @@ services:
       - PROXY_SUPPRESS_TAIL_AFTER_TOOLS=${PROXY_SUPPRESS_TAIL_AFTER_TOOLS:-}
       - PROXY_ENABLE_PARALLEL_TOOL_CALLS=${PROXY_ENABLE_PARALLEL_TOOL_CALLS:-}
       - PROXY_LOG_CORS_ORIGIN=${PROXY_LOG_CORS_ORIGIN:-true}
-      # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-proto.js when you want the shim
+      # Default to real Codex CLI; override with CODEX_BIN=/app/scripts/fake-codex-jsonrpc.js for the shim
       - CODEX_BIN=${CODEX_BIN:-/usr/local/lib/codex-cli/bin/codex.js}
       # Copilot capture (sanitized transcripts)
       - PROXY_CAPTURE_CHAT_TRANSCRIPTS=${PROXY_CAPTURE_CHAT_TRANSCRIPTS:-}
@@ -65,7 +65,7 @@ services:
     volumes:
       # Project-local Codex config; writable for rollouts/sessions
       - ./.codev:/home/node/.codex
-      # Mount scripts so the proto shim is available as /app/scripts/fake-codex-proto.js
+      # Mount scripts so the JSON-RPC shim is available as /app/scripts/fake-codex-jsonrpc.js
       - ./scripts:/app/scripts:ro
       # Persist Copilot capture artifacts
       - ./test-results:/app/test-results

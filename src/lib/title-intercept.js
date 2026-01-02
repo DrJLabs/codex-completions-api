@@ -80,8 +80,7 @@ export async function maybeHandleTitleIntercept({ req, res, body = {}, stream } 
   const route = req?.path || req?.originalUrl || "/v1/chat/completions";
   locals.endpoint_mode = "chat";
   locals.routeOverride = route;
-  locals.modeOverride =
-    route === "/v1/completions" ? "completions_title_intercept" : "chat_title_intercept";
+  locals.modeOverride = "chat_title_intercept";
 
   const execModel = DEFAULT_MODEL;
   try {

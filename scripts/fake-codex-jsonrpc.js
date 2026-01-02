@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { setTimeout as delay } from "node:timers/promises";
+import fs from "node:fs";
 
 const supervised =
   String(process.env.CODEX_WORKER_SUPERVISED || "")
@@ -25,7 +26,34 @@ const parseToolCallCount = () => {
   }
   return 1;
 };
+const parseToolBurstCount = () => {
+  const raw = process.env.FAKE_CODEX_TOOL_BURST_COUNT;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return null;
+};
+const parseChoiceCount = () => {
+  const raw = process.env.FAKE_CODEX_CHOICE_COUNT;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return null;
+};
+const parseToolCallChoices = () => {
+  const raw = process.env.FAKE_CODEX_TOOL_CALL_CHOICES;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const indices = raw
+    .split(/[,\s]+/)
+    .map((entry) => Number.parseInt(entry, 10))
+    .filter((entry) => Number.isFinite(entry) && entry >= 0);
+  if (!indices.length) return null;
+  return Array.from(new Set(indices));
+};
 const toolCallCount = parseToolCallCount();
+const toolBurstCount = parseToolBurstCount();
+const choiceCount = parseChoiceCount();
+const toolCallChoices = parseToolCallChoices();
 
 let heartbeatTimer = null;
 let autoExitTimer = null;
@@ -80,6 +108,12 @@ const configuredToolArgument = process.env.FAKE_CODEX_TOOL_ARGUMENT;
 const toolArgumentChunkSize = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
 const emitTextualXml =
   String(process.env.FAKE_CODEX_EMIT_TEXTUAL_XML || "true").toLowerCase() !== "false";
+const streamReadyFile = process.env.STREAM_READY_FILE;
+const streamReleaseFile = process.env.STREAM_RELEASE_FILE;
+const childPidFile = process.env.CHILD_PID_FILE;
+const longStreamIntervalMs = Number(process.env.FAKE_CODEX_STREAM_INTERVAL_MS ?? 100);
+const longStreamTicks = Number(process.env.FAKE_CODEX_STREAM_TICKS ?? 50);
+const streamHangMs = Number(process.env.FAKE_CODEX_STREAM_HANG_MS ?? 10_000);
 const splitToolArgumentPayload = (value) => {
   if (Number.isFinite(toolArgumentChunkSize) && toolArgumentChunkSize > 0) {
     const chunks = [];
@@ -102,6 +136,12 @@ const splitToolArgumentPayload = (value) => {
 
 async function runJsonRpcWorker() {
   process.stdin.setEncoding("utf8");
+  try {
+    if (childPidFile) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
+      fs.writeFileSync(childPidFile, String(process.pid), "utf8");
+    }
+  } catch {}
   write({ event: "starting" });
   await delay(Math.max(0, readyDelayMs));
   if (!skipReadyEvent) {
@@ -277,6 +317,88 @@ async function runJsonRpcWorker() {
           return;
         }
         const scenario = String(process.env.FAKE_CODEX_MODE || "").toLowerCase();
+        const requestId = params.request_id || convId;
+        if (scenario === "stream_hang") {
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessageDelta",
+            params: {
+              conversation_id: convId,
+              request_id: requestId,
+              delta: "Hello (pre-hang)",
+            },
+          });
+          if (streamReadyFile) {
+            try {
+              // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
+              fs.writeFileSync(streamReadyFile, String(process.pid), "utf8");
+            } catch {}
+          }
+          await delay(streamHangMs);
+          return;
+        }
+        if (scenario === "long_stream") {
+          const shouldHoldOpen = Boolean(streamReleaseFile);
+          let i = 0;
+          while (true) {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: requestId,
+                delta: `tick-${i} `,
+              },
+            });
+            if (i === 0 && streamReadyFile) {
+              try {
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
+                fs.writeFileSync(streamReadyFile, String(process.pid), "utf8");
+              } catch {}
+            }
+            i += 1;
+            if (!shouldHoldOpen && i >= longStreamTicks) break;
+            // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
+            if (shouldHoldOpen && streamReleaseFile && fs.existsSync(streamReleaseFile)) {
+              try {
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
+                fs.unlinkSync(streamReleaseFile);
+              } catch {}
+              break;
+            }
+            await delay(longStreamIntervalMs);
+          }
+          write({
+            jsonrpc: "2.0",
+            method: "agentMessage",
+            params: {
+              conversation_id: convId,
+              request_id: requestId,
+              message: {
+                role: "assistant",
+                content: "Long stream complete.",
+              },
+            },
+          });
+          write({
+            jsonrpc: "2.0",
+            method: "tokenCount",
+            params: {
+              conversation_id: convId,
+              request_id: requestId,
+              prompt_tokens: 8,
+              completion_tokens: 12,
+            },
+          });
+          write({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              finish_reason: "stop",
+            },
+          });
+          return;
+        }
         if (scenario === "crash") {
           process.nextTick(() => {
             clearTimers();
@@ -320,6 +442,7 @@ async function runJsonRpcWorker() {
                       function: { name: call.name },
                     },
                   ],
+                  choice_index: idx,
                 },
                 choice_index: idx,
               },
@@ -338,6 +461,7 @@ async function runJsonRpcWorker() {
                         function: { arguments: chunk },
                       },
                     ],
+                    choice_index: idx,
                   },
                   choice_index: idx,
                 },
@@ -361,6 +485,7 @@ async function runJsonRpcWorker() {
                       function: { name: call.name, arguments: `{"id":"${42 + idx}"}` },
                     },
                   ],
+                  choice_index: idx,
                 },
                 choice_index: idx,
               },
@@ -386,6 +511,130 @@ async function runJsonRpcWorker() {
           });
           return;
         }
+        if (scenario === "multi_choice_tool_call") {
+          const convId = resolveConversationId(params);
+          const requestId = params.request_id || convId;
+          const totalChoices = choiceCount ?? 2;
+          const toolChoiceSet = new Set(toolCallChoices ?? [0]);
+          const argumentValue = configuredToolArgument || '{"id":"42"}';
+          const argumentChunks = splitToolArgumentPayload(argumentValue);
+
+          for (let idx = 0; idx < totalChoices; idx += 1) {
+            if (!toolChoiceSet.has(idx)) {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessageDelta",
+                params: {
+                  conversation_id: convId,
+                  request_id: requestId,
+                  delta: { content: `Choice ${idx}`, choice_index: idx },
+                  choice_index: idx,
+                },
+              });
+              continue;
+            }
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: requestId,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `multi_tool_${idx}`,
+                      type: "function",
+                      function: { name: "lookup_user" },
+                    },
+                  ],
+                  choice_index: idx,
+                },
+                choice_index: idx,
+              },
+            });
+            for (const chunk of argumentChunks) {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessageDelta",
+                params: {
+                  conversation_id: convId,
+                  request_id: requestId,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        function: { arguments: chunk },
+                      },
+                    ],
+                    choice_index: idx,
+                  },
+                  choice_index: idx,
+                },
+              });
+            }
+          }
+
+          for (let idx = 0; idx < totalChoices; idx += 1) {
+            if (!toolChoiceSet.has(idx)) {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessage",
+                params: {
+                  conversation_id: convId,
+                  request_id: requestId,
+                  message: {
+                    role: "assistant",
+                    content: `Choice ${idx}`,
+                    choice_index: idx,
+                  },
+                  choice_index: idx,
+                },
+              });
+              continue;
+            }
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessage",
+              params: {
+                conversation_id: convId,
+                request_id: requestId,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `multi_tool_${idx}`,
+                      type: "function",
+                      function: { name: "lookup_user", arguments: argumentValue },
+                    },
+                  ],
+                  choice_index: idx,
+                },
+                choice_index: idx,
+              },
+            });
+          }
+          write({
+            jsonrpc: "2.0",
+            method: "tokenCount",
+            params: {
+              conversation_id: convId,
+              request_id: requestId,
+              prompt_tokens: 5,
+              completion_tokens: 5,
+              finish_reason: "tool_calls",
+            },
+          });
+          write({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              finish_reason: "tool_calls",
+            },
+          });
+          return;
+        }
 
         const requestedFinish = String(process.env.FAKE_CODEX_FINISH_REASON || "stop")
           .trim()
@@ -397,7 +646,12 @@ async function runJsonRpcWorker() {
         let finishReason = "stop";
         if (scenario === "content_filter") {
           finishReason = "content_filter";
-        } else if (scenario === "tool_call" || scenario === "textual_tool") {
+        } else if (
+          scenario === "tool_call" ||
+          scenario === "multi_tool_burst" ||
+          scenario === "textual_tool" ||
+          scenario === "textual_tool_tail"
+        ) {
           // Tool calls take precedence over length/stop reasons.
           finishReason = "tool_calls";
         } else if (scenario === "function_call" && !requestedLength) {
@@ -419,9 +673,14 @@ async function runJsonRpcWorker() {
               }
             : null;
 
-        const shouldEmitToolCalls = scenario === "tool_call" || scenario === "function_then_tool";
+        const shouldEmitToolCalls =
+          scenario === "tool_call" ||
+          scenario === "function_then_tool" ||
+          scenario === "multi_tool_burst";
+        const effectiveToolCallCount =
+          scenario === "multi_tool_burst" ? (toolBurstCount ?? toolCallCount) : toolCallCount;
         const toolCalls = shouldEmitToolCalls
-          ? Array.from({ length: toolCallCount }).map((_, idx) => ({
+          ? Array.from({ length: effectiveToolCallCount }).map((_, idx) => ({
               id: `tool_fake_${idx + 1}`,
               type: "function",
               function: {
@@ -447,6 +706,13 @@ async function runJsonRpcWorker() {
   <name>lookup_user</name>
   <id>ユーザー-12345</id>
 </use_tool>`;
+        } else if (scenario === "textual_tool_tail") {
+          messageText = `<use_tool>
+  <name>lookup_user</name>
+  <id>ユーザー-12345</id>
+</use_tool> AFTER_TOOL_TEXT`;
+        } else if (scenario === "token_count_only") {
+          messageText = "Token-count only stream response.";
         } else if (
           emitTextualXml &&
           (shouldEmitToolCalls ||
@@ -493,7 +759,7 @@ async function runJsonRpcWorker() {
               params: {
                 conversation_id: convId,
                 request_id: params.request_id || convId,
-                parallel_tool_calls: parallelToolCalls || toolCallCount > 1,
+                parallel_tool_calls: parallelToolCalls || effectiveToolCallCount > 1,
                 delta: {
                   tool_calls: [
                     {
@@ -624,11 +890,19 @@ async function runJsonRpcWorker() {
         } else if (finishReason === "content_filter") {
           usagePayload.finish_reason = "content_filter";
         }
-        write({
-          jsonrpc: "2.0",
-          method: "tokenCount",
-          params: usagePayload,
-        });
+        if (scenario === "provider_usage") {
+          write({
+            jsonrpc: "2.0",
+            method: "usage",
+            params: usagePayload,
+          });
+        } else {
+          write({
+            jsonrpc: "2.0",
+            method: "tokenCount",
+            params: usagePayload,
+          });
+        }
 
         if (errorAfterFirstTool && shouldEmitToolCalls) {
           write({
@@ -721,7 +995,7 @@ if (supervised) {
     scheduleExit(1, 0);
   });
 } else {
-  // Fallback: behave similar to proto shim for direct execution
-  write({ event: "fallback", mode: "proto" });
+  // Fallback: emit a minimal event for direct execution
+  write({ event: "fallback", mode: "jsonrpc" });
   process.stdin.resume();
 }

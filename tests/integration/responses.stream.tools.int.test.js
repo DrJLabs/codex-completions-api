@@ -3,6 +3,7 @@ import getPort from "get-port";
 import { spawn } from "node:child_process";
 import fetch from "node-fetch";
 import { parseSSE } from "../shared/transcript-utils.js";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -15,7 +16,8 @@ beforeAll(async () => {
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
-      CODEX_BIN: "scripts/fake-codex-proto-tools.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_MODE: "textual_tool_tail",
       PROXY_STOP_AFTER_TOOLS: "true",
       PROXY_STOP_AFTER_TOOLS_MODE: "first",
       PROXY_RESPONSES_OUTPUT_MODE: "obsidian-xml",
@@ -31,6 +33,7 @@ beforeAll(async () => {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  await waitForReady(PORT);
 });
 
 afterAll(async () => {

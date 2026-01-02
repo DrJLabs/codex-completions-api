@@ -59,12 +59,6 @@ const resolveAuthLoginUrlMode = () => {
   return ["code", "message", "code+message"].includes(normalized) ? normalized : "";
 };
 
-const resolveAppServerDefault = () => {
-  const bin = String(process.env.CODEX_BIN || "").toLowerCase();
-  const base = path.basename(bin);
-  return base.includes("fake-codex-proto") || base.endsWith("proto.js") ? "false" : "true";
-};
-
 export const config = {
   PORT: num("PORT", 11435),
   PROXY_HOST: str("PROXY_HOST", "0.0.0.0"),
@@ -79,7 +73,7 @@ export const config = {
   CODEX_HOME: str("CODEX_HOME", path.join(process.cwd(), ".codex-api")),
   PROXY_SANDBOX_MODE: str("PROXY_SANDBOX_MODE", "read-only").toLowerCase(),
   PROXY_CODEX_WORKDIR: str("PROXY_CODEX_WORKDIR", path.join(os.tmpdir(), "codex-work")),
-  PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", resolveAppServerDefault()),
+  PROXY_USE_APP_SERVER: bool("PROXY_USE_APP_SERVER", "true"),
   PROXY_ENABLE_RESPONSES: bool("PROXY_ENABLE_RESPONSES", "true"),
   CODEX_FORCE_PROVIDER: str("CODEX_FORCE_PROVIDER", ""),
   // Streaming & tools controls
@@ -106,7 +100,6 @@ export const config = {
   PROXY_TIMEOUT_MS: num("PROXY_TIMEOUT_MS", 300000),
   PROXY_IDLE_TIMEOUT_MS: num("PROXY_IDLE_TIMEOUT_MS", 15000),
   PROXY_STREAM_IDLE_TIMEOUT_MS: num("PROXY_STREAM_IDLE_TIMEOUT_MS", 300000),
-  PROXY_PROTO_IDLE_MS: num("PROXY_PROTO_IDLE_MS", 120000),
   // Misc
   PROXY_ENABLE_CORS: str("PROXY_ENABLE_CORS", "true"),
   PROXY_CORS_ALLOWED_ORIGINS: str("PROXY_CORS_ALLOWED_ORIGINS", "*"),
@@ -117,7 +110,6 @@ export const config = {
   PROXY_METRICS_TOKEN: str("PROXY_METRICS_TOKEN", ""),
   PROXY_MAINTENANCE_MODE: bool("PROXY_MAINTENANCE_MODE", "false"),
   PROXY_KILL_ON_DISCONNECT: str("PROXY_KILL_ON_DISCONNECT", "false"),
-  PROXY_DEBUG_PROTO: str("PROXY_DEBUG_PROTO", ""),
   PROXY_SANITIZE_METADATA: bool("PROXY_SANITIZE_METADATA", "false"),
   PROXY_CAPTURE_CHAT_TRANSCRIPTS: bool("PROXY_CAPTURE_CHAT_TRANSCRIPTS", "false"),
   PROXY_CAPTURE_CHAT_DIR: str(

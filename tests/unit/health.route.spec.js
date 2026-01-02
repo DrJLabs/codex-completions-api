@@ -71,7 +71,7 @@ describe("/readyz payload metadata", () => {
   });
 
   test("returns default metadata when app-server is disabled", async () => {
-    selectBackendMode.mockReturnValue("proto");
+    selectBackendMode.mockReturnValue("disabled");
     mockStatus = {
       health: {
         readiness: { ready: false, reason: "worker_not_started" },

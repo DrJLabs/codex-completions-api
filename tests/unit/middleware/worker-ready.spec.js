@@ -8,6 +8,7 @@ const applyCorsMock = vi.fn();
 vi.mock("../../../src/services/backend-mode.js", () => ({
   selectBackendMode: () => selectBackendModeMock(),
   BACKEND_APP_SERVER: "app-server",
+  BACKEND_DISABLED: "disabled",
 }));
 
 vi.mock("../../../src/services/worker/supervisor.js", () => ({
@@ -37,16 +38,25 @@ describe("requireWorkerReady", () => {
     applyCorsMock.mockReset();
   });
 
-  test("passes through for non-app-server backends", () => {
-    selectBackendModeMock.mockReturnValue("proto");
+  test("returns 503 when app-server is disabled", () => {
+    selectBackendModeMock.mockReturnValue("disabled");
     const req = {};
     const res = createRes();
     const next = vi.fn();
 
     requireWorkerReady(req, res, next);
 
-    expect(next).toHaveBeenCalled();
-    expect(res.status).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(applyCorsMock).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          type: "backend_unavailable",
+          code: "app_server_disabled",
+        }),
+      })
+    );
   });
 
   test("passes through when supervisor is ready", () => {

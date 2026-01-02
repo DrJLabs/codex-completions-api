@@ -1,58 +1,72 @@
 # Proto Deprecation Design
 
 ## Summary
-Remove the legacy `codex proto` backend and the `/v1/completions` endpoint. The proxy becomes app-server (JSON-RPC) only, with `PROXY_USE_APP_SERVER=false` acting as a hard disable instead of a proto fallback. All deterministic proto shims, parity harnesses, and proto transcript capture paths are removed. The deterministic JSON-RPC shim remains the only test/CI backend. Docs are updated to reflect the removal of proto mode and `/v1/completions`.
+Remove the legacy `codex proto` backend and the `/v1/completions` endpoint. The proxy becomes JSON-RPC (app-server) only. `PROXY_USE_APP_SERVER=false` becomes a hard disable that returns 503 instead of falling back to proto. All proto-only shims, fixtures, and parity harnesses are removed. The deterministic JSON-RPC shim remains as the sole CI/test backend.
 
 ## Goals
-- Eliminate proto runtime and test dependencies without breaking app-server behavior.
+- Eliminate proto runtime and test dependencies without changing app-server behavior.
 - Reduce backend branching to a single supported transport (JSON-RPC).
-- Remove `/v1/completions` to align with current client expectations and reduce surface area.
-- Keep a safe, explicit disable switch (`PROXY_USE_APP_SERVER=false`) that returns 503.
+- Remove `/v1/completions` to align with current client expectations and shrink surface area.
+- Keep a safe explicit disable switch (`PROXY_USE_APP_SERVER=false`) that returns `app_server_disabled`.
 
 ## Non-goals
-- No changes to `/v1/chat/completions` or `/v1/responses` external schemas.
-- No changes to auth, rate limiting, or tracing semantics beyond removing proto-only references.
-- No replacement for `/v1/completions` beyond requiring migration.
+- No changes to `/v1/chat/completions` or `/v1/responses` schemas.
+- No auth, rate limit, or tracing semantic changes beyond removing proto-only references.
+- No replacement endpoint for `/v1/completions`.
+- No renaming of proto log fields (legacy naming remains for now).
 
 ## Current State
-The proxy supports two backend modes: app-server JSON-RPC and legacy proto. The proto path spawns a per-request `codex proto` process, has its own idle timeout and debug flags, and still has shims and parity tests in CI. Documentation and runbooks reference the proto fallback as a viable option, and transcript tools generate app + proto pairs for parity checks. There is still a `/v1/completions` route and rate-limit guard in place even though the preferred client traffic is chat/responses.
+- Proxy supports two backend modes: JSON-RPC app-server and legacy proto.
+- Proto path spawns per-request `codex proto` processes with separate idle and debug flags.
+- CI includes proto shims and parity fixtures for legacy protocol behavior.
+- Docs and runbooks reference proto fallback as an available mode.
+- `/v1/completions` is still routed and rate-limited, despite responses-first client usage.
 
 ## Proposed Changes
-1) **Backend mode reduction**
-- `PROXY_USE_APP_SERVER=true` selects the JSON-RPC worker path.
-- `PROXY_USE_APP_SERVER=false` returns `app_server_disabled` (503) instead of falling back to proto.
-- Remove proto-specific defaults and flags (`PROXY_PROTO_IDLE_MS`, `PROXY_DEBUG_PROTO`).
+### 1) Backend mode reduction
+- `PROXY_USE_APP_SERVER=true` selects JSON-RPC worker path.
+- `PROXY_USE_APP_SERVER=false` returns `503 app_server_disabled` immediately.
+- Remove proto-specific env flags (`PROXY_PROTO_IDLE_MS`, `PROXY_DEBUG_PROTO`).
 
-2) **Route surface cleanup**
-- Remove `/v1/completions` routes and rate-limit coverage.
-- Keep `/v1/chat/completions` and `/v1/responses` unchanged.
+### 2) Route surface cleanup
+- Remove `/v1/completions` routes and associated tests.
+- Preserve `/v1/chat/completions` and `/v1/responses` as-is.
 
-3) **Test and tooling cleanup**
-- Remove deterministic proto shims and parity fixtures.
-- Update integration/e2e tests to use JSON-RPC shim modes for long streams, hangs, provider usage, and token-count-only cases.
-- Remove proto transcript generation and parity comparisons.
+### 3) Test and tooling cleanup
+- Remove deterministic proto shims, parity fixtures, and proto transcript generation.
+- Use `scripts/fake-codex-jsonrpc.js` for all test scenarios (stream hangs, token count only, tool calls).
+- Keep JSON-RPC schema validation and e2e coverage unchanged.
 
-4) **Documentation updates**
-- Remove references to proto mode, proto shims, and proto idle timeout flags.
-- Update runbooks and migration docs to reflect app-server only.
+### 4) Documentation updates
+- Remove proto-mode references from docs/runbooks.
+- Document `/v1/completions` removal and migration expectations.
 
-## Data Flow (App-Server Only)
-Request -> Express route -> handler -> JSON-RPC adapter -> app-server worker -> SSE/non-stream output. No alternate protocol path exists. When app-server is disabled, handlers respond with 503 immediately. Worker readiness gating and tracing remain unchanged, but no proto-specific logging gates are required for correctness.
+## Architecture (App-Server Only)
+Request → Express route → handler → JSON-RPC adapter → app-server worker → SSE/non-stream output. No alternate protocol path exists. When app-server is disabled, handlers respond with 503 immediately. Worker readiness gating and tracing remain unchanged.
 
-## Error Handling
-- `PROXY_USE_APP_SERVER=false` yields `503` with `app_server_disabled`.
-- Worker readiness and handshake failures remain on the existing readiness path.
-- Idle timeouts use `PROXY_IDLE_TIMEOUT_MS` only.
+## Compatibility Impact
+- Clients calling `/v1/completions` will receive 404/route not found. Migration path is `/v1/chat/completions` or `/v1/responses`.
+- Any configuration that depended on proto fallback now yields `app_server_disabled` (503) when app-server is off.
+
+## Configuration Changes
+- Remove proto-only env flags from docs and examples.
+- Preserve `PROXY_USE_APP_SERVER` as the single backend switch.
+- Keep `PROTO_LOG_PATH` naming for now (follow-up cleanup optional).
 
 ## Testing Strategy
-- Unit and integration suites run against `scripts/fake-codex-jsonrpc.js` exclusively.
-- Replace proto-only fixtures with JSON-RPC shim modes that simulate the same behavioral edges.
-- Keep Playwright e2e coverage intact, but remove any proto parity expectations.
+- `npm run test:unit` and `npm run test:integration` using JSON-RPC shim only.
+- Ensure multi-choice tool-call scenarios are covered with JSON-RPC shim variants.
+- E2E and contract tests should remain green without proto fixtures.
 
-## Rollout & Risk
-- Rollout is a straight removal of proto paths and `/v1/completions`.
-- Risk is primarily in clients still calling `/v1/completions` or relying on proto fallback. Mitigation: clear removal in docs and explicit 503 when app-server disabled.
-- The change reduces complexity and avoids maintaining protocol parity with deprecated CLI behavior.
+## Rollout Plan
+1) Land code removal + doc updates in a single release.
+2) Monitor access logs for `/v1/completions` traffic during rollout.
+3) Communicate migration guidance if client traffic appears.
+
+## Risks & Mitigations
+- **Client breakage on `/v1/completions`**: mitigate by monitoring logs and documenting migration.
+- **Hidden proto-only behaviors**: mitigate with expanded JSON-RPC shim scenarios and existing integration tests.
+- **Operational confusion with `PROTO_LOG_PATH`**: document it as legacy naming; consider a follow-up rename.
 
 ## Open Questions
-- None. All required compatibility is within app-server paths and JSON-RPC shim coverage.
+- None for this phase.
