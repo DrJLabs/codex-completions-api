@@ -4,6 +4,7 @@ const originalApproval = process.env.PROXY_APPROVAL_POLICY;
 const originalCodexApproval = process.env.CODEX_APPROVAL_POLICY;
 const originalGraceMs = process.env.PROXY_STOP_AFTER_TOOLS_GRACE_MS;
 const originalAuthLoginUrlMode = process.env.PROXY_AUTH_LOGIN_URL_MODE;
+const originalTrustProxy = process.env.PROXY_TRUST_PROXY;
 
 afterEach(() => {
   if (originalApproval === undefined) {
@@ -25,6 +26,11 @@ afterEach(() => {
     delete process.env.PROXY_AUTH_LOGIN_URL_MODE;
   } else {
     process.env.PROXY_AUTH_LOGIN_URL_MODE = originalAuthLoginUrlMode;
+  }
+  if (originalTrustProxy === undefined) {
+    delete process.env.PROXY_TRUST_PROXY;
+  } else {
+    process.env.PROXY_TRUST_PROXY = originalTrustProxy;
   }
   vi.resetModules();
 });
@@ -91,5 +97,21 @@ describe("config auth login url mode", () => {
     vi.resetModules();
     const { config } = await import("../../../src/config/index.js");
     expect(config.PROXY_AUTH_LOGIN_URL_MODE).toBe("");
+  });
+});
+
+describe("config trust proxy", () => {
+  it("defaults to loopback", async () => {
+    delete process.env.PROXY_TRUST_PROXY;
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_TRUST_PROXY).toBe("loopback");
+  });
+
+  it("accepts explicit overrides", async () => {
+    process.env.PROXY_TRUST_PROXY = "false";
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_TRUST_PROXY).toBe("false");
   });
 });

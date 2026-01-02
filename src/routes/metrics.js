@@ -9,12 +9,7 @@ import {
   observeWorkerRestartDelta,
 } from "../services/metrics/index.js";
 import { config as CFG } from "../config/index.js";
-
-const isLoopback = (ip = "") => {
-  if (!ip) return false;
-  const normalized = ip.replace("::ffff:", "");
-  return normalized === "127.0.0.1" || normalized === "::1";
-};
+import { getClientIp, isLoopbackAddress } from "../lib/net.js";
 
 const hasMetricsBearer = (req) => {
   const token = (CFG.PROXY_METRICS_TOKEN || "").trim();
@@ -27,7 +22,7 @@ const hasMetricsBearer = (req) => {
 const isMetricsAuthorized = (req) => {
   if (CFG.PROXY_METRICS_ALLOW_UNAUTH) return true;
   if (hasMetricsBearer(req)) return true;
-  if (CFG.PROXY_METRICS_ALLOW_LOOPBACK && isLoopback(req.ip || req.connection?.remoteAddress)) {
+  if (CFG.PROXY_METRICS_ALLOW_LOOPBACK && isLoopbackAddress(getClientIp(req))) {
     return true;
   }
   return false;

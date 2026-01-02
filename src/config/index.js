@@ -56,6 +56,7 @@ const resolveAuthLoginUrlMode = () => {
 export const config = {
   PORT: num("PORT", 11435),
   PROXY_HOST: str("PROXY_HOST", "0.0.0.0"),
+  PROXY_TRUST_PROXY: str("PROXY_TRUST_PROXY", "loopback"),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
