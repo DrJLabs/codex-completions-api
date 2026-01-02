@@ -112,6 +112,13 @@ describe("config trust proxy", () => {
     process.env.PROXY_TRUST_PROXY = "false";
     vi.resetModules();
     const { config } = await import("../../../src/config/index.js");
-    expect(config.PROXY_TRUST_PROXY).toBe("false");
+    expect(config.PROXY_TRUST_PROXY).toBe(false);
+  });
+
+  it("resolves boolean true values", async () => {
+    process.env.PROXY_TRUST_PROXY = "true";
+    vi.resetModules();
+    const { config } = await import("../../../src/config/index.js");
+    expect(config.PROXY_TRUST_PROXY).toBe(true);
   });
 });

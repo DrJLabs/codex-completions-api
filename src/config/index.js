@@ -46,6 +46,15 @@ const resolveToolBlockDelimiter = () => {
   return String(raw).replace(/\\n/g, "\n");
 };
 
+const resolveTrustProxy = () => {
+  const raw = process.env.PROXY_TRUST_PROXY;
+  const trimmed = raw === undefined || raw === null ? "loopback" : String(raw).trim();
+  if (!trimmed) return false;
+  if (boolishFalse(trimmed)) return false;
+  if (boolishTrue(trimmed)) return true;
+  return trimmed;
+};
+
 const resolveAuthLoginUrlMode = () => {
   const raw = process.env.PROXY_AUTH_LOGIN_URL_MODE ?? "";
   const normalized = String(raw).trim().toLowerCase();
@@ -56,7 +65,7 @@ const resolveAuthLoginUrlMode = () => {
 export const config = {
   PORT: num("PORT", 11435),
   PROXY_HOST: str("PROXY_HOST", "0.0.0.0"),
-  PROXY_TRUST_PROXY: str("PROXY_TRUST_PROXY", "loopback"),
+  PROXY_TRUST_PROXY: resolveTrustProxy(),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),

@@ -20,16 +20,7 @@ import { invalidRequestBody, serverErrorBody } from "./lib/errors.js";
 
 export default function createApp() {
   const app = express();
-  const trustProxyValue = (() => {
-    const raw = CFG.PROXY_TRUST_PROXY;
-    const trimmed = raw === undefined || raw === null ? "" : String(raw).trim();
-    if (!trimmed) return false;
-    const normalized = trimmed.toLowerCase();
-    if (["false", "0", "off", "no"].includes(normalized)) return false;
-    if (["true", "1", "on", "yes"].includes(normalized)) return true;
-    return trimmed;
-  })();
-  app.set("trust proxy", trustProxyValue);
+  app.set("trust proxy", CFG.PROXY_TRUST_PROXY);
   app.use(metricsMiddleware());
   app.use(tracingMiddleware());
 

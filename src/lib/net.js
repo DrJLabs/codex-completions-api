@@ -11,7 +11,7 @@ export function getClientIp(req = {}) {
 
 export function isLoopbackAddress(ip = "") {
   const normalized = normalizeIp(ip);
-  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
+  return normalized === "127.0.0.1" || normalized === "::1";
 }
 
 export function isLoopbackRequest(req = {}) {
