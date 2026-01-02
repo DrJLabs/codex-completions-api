@@ -51,6 +51,7 @@ const estTokensForMessagesMock = vi.fn();
 const logSanitizerSummaryMock = vi.fn();
 const logSanitizerToggleMock = vi.fn();
 const appendProtoEventMock = vi.fn();
+const extractUseToolBlocksMock = vi.fn(() => ({ blocks: [], nextPos: 0 }));
 const setSSEHeadersMock = vi.fn();
 const computeKeepaliveMsMock = vi.fn(() => 0);
 const startKeepalivesMock = vi.fn(() => ({ stop: vi.fn() }));
@@ -62,6 +63,14 @@ const toObsidianXmlMock = vi.fn(() => "");
 const maybeInjectIngressGuardrailMock = vi.fn();
 const createJsonRpcChildAdapterMock = vi.fn();
 const mapTransportErrorMock = vi.fn();
+const createStopAfterToolsControllerMock = vi.fn();
+const createToolBufferTrackerMock = vi.fn();
+const trackToolBufferOpenMock = vi.fn(() => -1);
+const detectNestedToolBufferMock = vi.fn(() => -1);
+const clampEmittableIndexMock = vi.fn((_state, _forwarded, end) => end);
+const completeToolBufferMock = vi.fn();
+const abortToolBufferMock = vi.fn(() => ({ literal: "" }));
+const shouldSkipBlockMock = vi.fn(() => false);
 let lastChild = null;
 
 const createMockChild = () => {
@@ -122,7 +131,7 @@ vi.mock("../../../../src/dev-logging.js", () => ({
   LOG_PROTO: false,
   appendUsage: vi.fn(),
   appendProtoEvent: (...args) => appendProtoEventMock(...args),
-  extractUseToolBlocks: vi.fn(() => ({ blocks: [], nextPos: 0 })),
+  extractUseToolBlocks: (...args) => extractUseToolBlocksMock(...args),
   logSanitizerSummary: (...args) => logSanitizerSummaryMock(...args),
   logSanitizerToggle: (...args) => logSanitizerToggleMock(...args),
 }));
@@ -157,10 +166,7 @@ vi.mock("../../../../src/handlers/chat/require-model.js", () => ({
 }));
 
 vi.mock("../../../../src/handlers/chat/stop-after-tools-controller.js", () => ({
-  createStopAfterToolsController: vi.fn(() => ({
-    schedule: vi.fn(),
-    cancel: vi.fn(),
-  })),
+  createStopAfterToolsController: (...args) => createStopAfterToolsControllerMock(...args),
 }));
 
 vi.mock("../../../../src/services/backend-mode.js", () => ({
@@ -189,13 +195,13 @@ vi.mock("../../../../src/lib/ingress-guardrail.js", () => ({
 }));
 
 vi.mock("../../../../src/handlers/chat/tool-buffer.js", () => ({
-  createToolBufferTracker: vi.fn(() => ({ active: false })),
-  trackToolBufferOpen: vi.fn(() => -1),
-  detectNestedToolBuffer: vi.fn(() => -1),
-  clampEmittableIndex: vi.fn((_state, _forwarded, end) => end),
-  completeToolBuffer: vi.fn(),
-  abortToolBuffer: vi.fn(() => ({ literal: "" })),
-  shouldSkipBlock: vi.fn(() => false),
+  createToolBufferTracker: (...args) => createToolBufferTrackerMock(...args),
+  trackToolBufferOpen: (...args) => trackToolBufferOpenMock(...args),
+  detectNestedToolBuffer: (...args) => detectNestedToolBufferMock(...args),
+  clampEmittableIndex: (...args) => clampEmittableIndexMock(...args),
+  completeToolBuffer: (...args) => completeToolBufferMock(...args),
+  abortToolBuffer: (...args) => abortToolBufferMock(...args),
+  shouldSkipBlock: (...args) => shouldSkipBlockMock(...args),
 }));
 
 vi.mock("../../../../src/handlers/chat/capture.js", () => ({
@@ -304,11 +310,16 @@ beforeEach(() => {
   estTokensForMessagesMock.mockReset().mockReturnValue(1);
   logSanitizerSummaryMock.mockReset();
   logSanitizerToggleMock.mockReset();
+  extractUseToolBlocksMock.mockReset().mockReturnValue({ blocks: [], nextPos: 0 });
   setSSEHeadersMock.mockReset();
   computeKeepaliveMsMock.mockReset().mockReturnValue(0);
   startKeepalivesMock.mockReset().mockReturnValue({ stop: vi.fn() });
   sendCommentMock.mockReset();
   appendProtoEventMock.mockReset();
+  createStopAfterToolsControllerMock.mockReset().mockReturnValue({
+    schedule: vi.fn(),
+    cancel: vi.fn(),
+  });
   createToolCallAggregatorMock.mockReset().mockReturnValue({
     hasCalls: vi.fn(() => false),
     ingestMessage: vi.fn(),
@@ -316,6 +327,13 @@ beforeEach(() => {
     snapshot: vi.fn(() => []),
     supportsParallelCalls: vi.fn(() => false),
   });
+  createToolBufferTrackerMock.mockReset().mockReturnValue({ active: false });
+  trackToolBufferOpenMock.mockReset().mockReturnValue(-1);
+  detectNestedToolBufferMock.mockReset().mockReturnValue(-1);
+  clampEmittableIndexMock.mockReset().mockImplementation((_state, _forwarded, end) => end);
+  completeToolBufferMock.mockReset();
+  abortToolBufferMock.mockReset().mockReturnValue({ literal: "" });
+  shouldSkipBlockMock.mockReset().mockReturnValue(false);
   toObsidianXmlMock.mockReset().mockReturnValue("");
   maybeInjectIngressGuardrailMock.mockReset().mockImplementation(({ messages }) => ({
     injected: false,
@@ -1025,6 +1043,29 @@ describe("postChatStream", () => {
     expect(finishPayload).toBeTruthy();
   });
 
+  it("defaults task_complete to length when no finish reason or content", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "task_complete", msg: {} }) + "\n")
+    );
+
+    const finishPayload = sendSSEMock.mock.calls.find(([, payload]) =>
+      payload?.choices?.some((choice) => choice.finish_reason === "length")
+    );
+
+    expect(finishPayload).toBeTruthy();
+  });
+
   it("emits obsidian tool content from aggregator snapshots", async () => {
     const toolDelta = {
       id: "tool-1",
@@ -1102,6 +1143,37 @@ describe("postChatStream", () => {
     expect(logSanitizerToggleMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
   });
 
+  it("records metadata sanitizer events from metadata stream events", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "metadata",
+          msg: { metadata: { session_id: "abc" }, sources: ["payload.metadata"] },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const sanitizerEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) =>
+        payload?.kind === "metadata_sanitizer" && payload?.metadata?.session_id === "abc"
+    );
+
+    expect(sanitizerEvent).toBeTruthy();
+  });
+
   it("drops function_call_output payloads flagged by guardrails", async () => {
     const postChatStream = await loadHandler();
 
@@ -1128,6 +1200,43 @@ describe("postChatStream", () => {
     lastChild.emit("close");
 
     expect(afterEventCalls).toBe(initialCalls);
+  });
+
+  it("skips aggregator XML emission when textual tool prefixes are present", async () => {
+    const toolDelta = {
+      id: "tool-1",
+      type: "function",
+      function: { name: "calc", arguments: '{"x":1}' },
+    };
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => true),
+      ingestMessage: vi.fn(),
+      ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+      snapshot: vi.fn(() => [toolDelta]),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    resolveOutputModeMock.mockReturnValue("obsidian-xml");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { content: "<use_t", tool_calls: [toolDelta] } },
+        }) + "\n"
+      )
+    );
+
+    expect(toObsidianXmlMock).not.toHaveBeenCalled();
   });
 
   it("logs sanitizer summary when metadata sanitizer is enabled", async () => {
