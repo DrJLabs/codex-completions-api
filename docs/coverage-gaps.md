@@ -7,16 +7,16 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 65.72% (4422/6728), missing 961 lines to reach 80%.
-- Functions: 68.44% (640/935), missing 108 functions to reach 80%.
-- Branches: 48.81% (3557/7287), missing 1909 branches to reach 75%.
-- Statements: 61.8% (4721/7638), missing 1390 statements to reach 80%.
+- Lines: 66.3% (4461/6728), missing 922 lines to reach 80%.
+- Functions: 68.87% (644/935), missing 104 functions to reach 80%.
+- Branches: 49.27% (3591/7287), missing 1875 branches to reach 75%.
+- Statements: 62.37% (4764/7638), missing 1347 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/handlers/chat/stream.js` | 19.29 | 6.86 | 7.81 | 17.37 |
-| `src/handlers/chat/nonstream.js` | 30.9 | 17.24 | 15.33 | 28.88 |
+| `src/handlers/chat/stream.js` | 20.15 | 7.84 | 8.19 | 18.12 |
+| `src/handlers/chat/nonstream.js` | 36.11 | 22.41 | 20.33 | 34.22 |
 | `src/handlers/responses/nonstream.js` | 46.66 | 40.0 | 14.39 | 45.04 |
 | `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.17 | 48.0 |
 | `src/services/transport/child-adapter.js` | 51.82 | 45.16 | 32.8 | 45.5 |
