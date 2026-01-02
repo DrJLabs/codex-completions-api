@@ -501,6 +501,39 @@ describe("JsonRpcTransport request lifecycle", () => {
     await pending;
   });
 
+  it("continues when addConversationListener returns no subscription id", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-no-sub" });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    expect(context.listenerAttached).toBe(true);
+    expect(context.subscriptionId).toBeNull();
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
+  });
+
   it("throws when newConversation returns no conversation id", async () => {
     const child = createMockChild();
     wireJsonResponder(child, (message) => {
@@ -554,6 +587,83 @@ describe("JsonRpcTransport request lifecycle", () => {
     ).rejects.toMatchObject({ code: "request_aborted" });
 
     contexts.set = originalSet;
+  });
+
+  it("normalizes sendUserTurn items when no fallback text is provided", async () => {
+    const child = createMockChild();
+    let sendUserTurnParams = null;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
+      }
+      if (message.method === "sendUserTurn") {
+        sendUserTurnParams = message.params;
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-empty-items",
+      turnParams: { items: [] },
+    });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    expect(sendUserTurnParams?.items).toEqual([]);
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
+  });
+
+  it("normalizes sendUserMessage text into items and strips text", async () => {
+    const child = createMockChild();
+    let sendUserMessageParams = null;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "sendUserMessage") {
+        sendUserMessageParams = message.params;
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-message-items" });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    transport.sendUserMessage(context, { text: "Hello" });
+    await flushAsync();
+
+    expect(sendUserMessageParams?.text).toBeUndefined();
+    expect(sendUserMessageParams?.items).toEqual([{ type: "text", data: { text: "Hello" } }]);
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
   });
 
   it("emits notifications and finalizes request payloads", async () => {
