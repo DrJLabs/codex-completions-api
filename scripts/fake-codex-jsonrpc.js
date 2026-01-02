@@ -107,10 +107,12 @@ const emitCapture = (direction, payload) => {
 const configuredToolArgument = process.env.FAKE_CODEX_TOOL_ARGUMENT;
 const toolArgumentChunkSize = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
 const toolXmlChunkSize = Number.parseInt(process.env.FAKE_CODEX_TOOL_XML_CHUNK_SIZE ?? "", 10);
-const truncateToolXml =
-  /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_TRUNCATE_TOOL_XML || ""));
-const abortAfterToolXml =
-  /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_ABORT_AFTER_TOOL_XML || ""));
+const truncateToolXml = /^(1|true|yes)$/i.test(
+  String(process.env.FAKE_CODEX_TRUNCATE_TOOL_XML || "")
+);
+const abortAfterToolXml = /^(1|true|yes)$/i.test(
+  String(process.env.FAKE_CODEX_ABORT_AFTER_TOOL_XML || "")
+);
 const emitTextualXml =
   String(process.env.FAKE_CODEX_EMIT_TEXTUAL_XML || "true").toLowerCase() !== "false";
 const streamReadyFile = process.env.STREAM_READY_FILE;

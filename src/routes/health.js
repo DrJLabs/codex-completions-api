@@ -83,9 +83,7 @@ export default function healthRouter() {
   router.get("/healthz", (_req, res) => {
     const snapshot = buildWorkerSnapshots();
     const healthy =
-      snapshot.appServerEnabled &&
-      snapshot.health.liveness.live &&
-      snapshot.health.readiness.ready;
+      snapshot.appServerEnabled && snapshot.health.liveness.live && snapshot.health.readiness.ready;
     res.json({
       ok: healthy,
       sandbox_mode: CFG.PROXY_SANDBOX_MODE,
