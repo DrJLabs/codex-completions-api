@@ -166,4 +166,240 @@ describe("normalizeChatJsonRpcRequest", () => {
 
     expect(normalized.turn.choiceCount).toBe(2);
   });
+
+  it("normalizes numeric sampling controls", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const normalized = normalize({
+      body: { messages, temperature: "1.2", top_p: "0.8", max_tokens: "16" },
+      messages,
+    });
+
+    expect(normalized.message.temperature).toBe(1.2);
+    expect(normalized.message.topP).toBe(0.8);
+    expect(normalized.message.maxOutputTokens).toBe(16);
+  });
+
+  it("rejects non-numeric temperature values", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, temperature: "hot" },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("temperature");
+  });
+
+  it("rejects out-of-range temperature values", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, temperature: 3 },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("temperature");
+  });
+
+  it("rejects invalid top_p values", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, top_p: 0 },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("top_p");
+  });
+
+  it("rejects invalid max_tokens values", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, max_tokens: 0 },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("max_tokens");
+  });
+
+  it("rejects parallel_tool_calls when not a boolean", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, parallel_tool_calls: "maybe" },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("parallel_tool_calls");
+  });
+
+  it("normalizes parallel_tool_calls from string flags", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const normalized = normalize({
+      body: { messages, parallel_tool_calls: "yes" },
+      messages,
+    });
+
+    expect(normalized.turn.tools?.parallelToolCalls).toBe(true);
+    expect(normalized.message.tools?.parallelToolCalls).toBe(true);
+  });
+
+  it("rejects invalid tool definitions", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, tools: [{ type: "function" }] },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("tools[0].function.name");
+  });
+
+  it("rejects tool_choice when tool definitions are missing", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, tool_choice: { function: { name: "do_it" } } },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("tool_choice");
+  });
+
+  it("rejects tool_choice with an unsupported type", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const tools = [
+      { type: "function", function: { name: "do_it", parameters: { type: "object" } } },
+    ];
+    const err = catchNormalization({
+      body: { messages, tools, tool_choice: { type: "tool", function: { name: "do_it" } } },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("tool_choice.type");
+  });
+
+  it("accepts tool_choice using fn alias", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const tools = [
+      { type: "function", function: { name: "do_it", parameters: { type: "object" } } },
+    ];
+
+    const normalized = normalize({
+      body: { messages, tools, tool_choice: { fn: { name: "do_it" } } },
+      messages,
+    });
+
+    expect(normalized.turn.tools?.choice).toMatchObject({
+      type: "function",
+      function: { name: "do_it" },
+    });
+  });
+
+  it("rejects legacy functions without a name", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, functions: [{}] },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("functions[0].name");
+  });
+
+  it("rejects reasoning payloads that are not objects", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, reasoning: "low" },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("reasoning");
+  });
+
+  it("prefers explicit reasoningEffort over reasoning payload effort", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const normalized = normalize({
+      body: { messages, reasoning: { effort: "low", summary: "short" } },
+      messages,
+      reasoningEffort: "high",
+    });
+
+    expect(normalized.turn.effort).toBe("high");
+    expect(normalized.message.reasoning).toMatchObject({ effort: "high", summary: "short" });
+  });
+
+  it("normalizes json_schema response_format with schema wrapper", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const responseFormat = {
+      type: "json_schema",
+      schema: { type: "object", properties: { answer: { type: "string" } } },
+    };
+
+    const normalized = normalize({
+      body: { messages, response_format: responseFormat },
+      messages,
+    });
+
+    expect(normalized.message.responseFormat?.type).toBe("json_schema");
+    expect(normalized.turn.finalOutputJsonSchema).toMatchObject({ type: "object" });
+  });
+
+  it("rejects response_format without a type", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, response_format: {} },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("response_format.type");
+  });
+
+  it("flattens image_url and input_text content parts", () => {
+    const messages = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "hello " },
+          { type: "image_url", image_url: { url: "https://example.com/img.png" } },
+          { type: "input_text", input_text: "done" },
+        ],
+      },
+    ];
+
+    const normalized = normalize({ body: { messages }, messages });
+    const prompt = normalized.turn.items[0]?.data?.text || "";
+    expect(prompt).toContain("hello ");
+    expect(prompt).toContain("[image:https://example.com/img.png]");
+    expect(prompt).toContain("done");
+  });
+
+  it("adds role labels when multiple user messages are present", () => {
+    const messages = [
+      { role: "user", content: "first" },
+      { role: "user", content: "second" },
+    ];
+
+    const normalized = normalize({ body: { messages }, messages });
+    const prompt = normalized.turn.items[0]?.data?.text || "";
+    expect(prompt).toContain("[user] first");
+    expect(prompt).toContain("[user] second");
+  });
+
+  it("rejects unsupported message roles", () => {
+    const messages = [{ role: "custom", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("messages[0].role");
+  });
 });
