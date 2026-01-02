@@ -2,40 +2,6 @@ import { invalidRequestBody } from "../../lib/errors.js";
 import { detectCopilotRequest } from "../../lib/copilot-detect.js";
 import { detectIngressMarkers } from "../../lib/ingress-guardrail.js";
 
-const PROJECT_DOC_MAX_BYTES = 65536;
-
-export function buildProtoArgs({
-  SANDBOX_MODE,
-  effectiveModel,
-  FORCE_PROVIDER,
-  reasoningEffort,
-  allowEffort,
-  enableParallelTools = false,
-}) {
-  const args = [
-    "proto",
-    "--config",
-    'preferred_auth_method="chatgpt"',
-    "--config",
-    `project_doc_max_bytes=${PROJECT_DOC_MAX_BYTES}`,
-    "--config",
-    'history.persistence="none"',
-    "--config",
-    "tools.web_search=false",
-    "--config",
-    `sandbox_mode="${SANDBOX_MODE}"`,
-    "--config",
-    `model="${effectiveModel}"`,
-  ];
-  if (FORCE_PROVIDER) args.push("--config", `model_provider="${FORCE_PROVIDER}"`);
-  if (enableParallelTools) args.push("--config", "parallel_tool_calls=true");
-  if (allowEffort?.has?.(reasoningEffort)) {
-    args.push("--config", `model_reasoning_effort="${reasoningEffort}"`);
-    args.push("--config", `reasoning.effort="${reasoningEffort}"`);
-  }
-  return args;
-}
-
 export function buildAppServerArgs({
   SANDBOX_MODE,
   effectiveModel,
@@ -63,10 +29,12 @@ export function buildAppServerArgs({
 }
 
 export function buildBackendArgs({ backendMode, ...rest }) {
-  if ((backendMode || "").toLowerCase() === "app-server") {
-    return buildAppServerArgs(rest);
+  if ((backendMode || "").toLowerCase() !== "app-server") {
+    throw new Error(
+      `Unsupported backend mode: "${backendMode ?? "unknown"}" (only "app-server" is supported)`
+    );
   }
-  return buildProtoArgs(rest);
+  return buildAppServerArgs(rest);
 }
 
 const CANONICAL_FINISH_REASONS = new Set([

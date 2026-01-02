@@ -1,5 +1,5 @@
 // Integration tests for Express API using a real child server
-// Spawns server.js on a random port with a deterministic proto shim
+// Spawns server.js on a random port with a deterministic JSON-RPC shim
 
 import { beforeAll, afterAll, test, expect } from "vitest";
 import getPort from "get-port";
@@ -8,6 +8,7 @@ import { unlinkSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fetch from "node-fetch";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let BASE;
@@ -69,7 +70,8 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: API_KEY,
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      // FAKE_CODEX_MODE intentionally omitted to use default shim behavior.
       PROXY_PROTECT_MODELS: "false",
       TOKEN_LOG_PATH: TOKEN_FILE,
       PROTO_LOG_PATH: PROTO_FILE,
@@ -82,6 +84,7 @@ beforeAll(async () => {
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
   await waitForHealth();
+  await waitForReady(PORT);
 });
 
 afterAll(async () => {

@@ -55,7 +55,8 @@ beforeAll(async () => {
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
       PROXY_SSE_KEEPALIVE_MS: "0",
-      CODEX_BIN: "scripts/fake-codex-proto-token-count-only.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_MODE: "token_count_only",
       TOKEN_LOG_PATH: tokenLogPath,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -82,7 +83,7 @@ afterAll(() => {
   }
 });
 
-test("token_count-only proto yields finish_reason stop and usage emission", async () => {
+test("token_count-only stream yields finish_reason stop and usage emission", async () => {
   const frames = await collectSSE(
     `http://127.0.0.1:${PORT}/v1/chat/completions`,
     {

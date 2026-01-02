@@ -28,6 +28,10 @@ export async function waitForUrlOk(url, { timeoutMs = 5000, intervalMs = 100 } =
   }
 }
 
+export async function waitForReady(port, options = {}) {
+  return waitForUrlOk(`http://127.0.0.1:${port}/readyz`, options);
+}
+
 // Start a test server on a random port and wait until /healthz is OK
 export async function startServer(envOverrides = {}) {
   const PORT = await getPort();
@@ -35,22 +39,8 @@ export async function startServer(envOverrides = {}) {
     envOverrides.PROXY_USE_APP_SERVER !== undefined
       ? envOverrides.PROXY_USE_APP_SERVER
       : process.env.PROXY_USE_APP_SERVER;
-  const binOverride = envOverrides.CODEX_BIN;
-  const binLower = String(binOverride || "").toLowerCase();
-  const inferredFlagFromBin = binOverride
-    ? binLower.includes("jsonrpc") || binLower.includes("app-server")
-      ? "true"
-      : "false"
-    : undefined;
-  let normalizedFlag = "false";
-  if (desiredFlag !== undefined) {
-    normalizedFlag = String(desiredFlag).toLowerCase() === "true" ? "true" : "false";
-  } else if (inferredFlagFromBin !== undefined) {
-    normalizedFlag = inferredFlagFromBin;
-  }
-  const resolvedBin =
-    binOverride ||
-    (normalizedFlag === "true" ? "scripts/fake-codex-jsonrpc.js" : "scripts/fake-codex-proto.js");
+  const normalizedFlag = String(desiredFlag ?? "true").toLowerCase() === "true" ? "true" : "false";
+  const resolvedBin = envOverrides.CODEX_BIN || "scripts/fake-codex-jsonrpc.js";
   const resolvedSupervisor =
     envOverrides.CODEX_WORKER_SUPERVISED || (normalizedFlag === "true" ? "true" : undefined);
   const child = spawn("node", ["server.js"], {

@@ -14,7 +14,7 @@ describe("chat completion streaming multi-choice", () => {
   beforeAll(async () => {
     ensureTranscripts(["streaming-multi-choice.json"]);
     transcript = await loadTranscript("streaming-multi-choice.json");
-    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
+    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-jsonrpc.js" });
   }, 10_000);
 
   afterAll(async () => {

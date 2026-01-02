@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import fetch from "node-fetch";
-import path from "node:path";
 import { startServer, stopServer } from "./helpers.js";
 import { parseSSE } from "../shared/transcript-utils.js";
 
@@ -30,7 +29,7 @@ const resetToolBufferMetrics = async (port) => {
 describe("chat stream tool buffering", () => {
   test("collapses multi-chunk textual XML into a single SSE frame", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
@@ -71,7 +70,7 @@ describe("chat stream tool buffering", () => {
 
   test("avoids malformed tool XML when tag prefixes are split across chunks", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
@@ -111,7 +110,7 @@ describe("chat stream tool buffering", () => {
 
   test("flushes partial buffers when backend disconnects mid-block", async () => {
     const ctx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "multi_choice_tool_call",
       FAKE_CODEX_CHOICE_COUNT: "1",
       FAKE_CODEX_TOOL_CALL_CHOICES: "0",
@@ -145,47 +144,6 @@ describe("chat stream tool buffering", () => {
       expect(metrics.summary.aborted.name).toBe("codex_tool_buffer_aborted_total");
     } finally {
       await resetToolBufferMetrics(ctx.PORT);
-      await stopServer(ctx.child);
-    }
-  });
-
-  test("replaying the codex regression transcript only emits one textual use_tool chunk", async () => {
-    const fixturePath = path.resolve("tests/fixtures/proto-replay/req-HevrLsVQESL3K1M3_3dHi.jsonl");
-    const ctx = await startServer({
-      CODEX_BIN: "scripts/replay-codex-fixture.js",
-      PROTO_FIXTURE_PATH: fixturePath,
-      PROTO_FIXTURE_DELAY_MS: "0",
-      PROXY_SSE_KEEPALIVE_MS: "0",
-      PROXY_SANITIZE_METADATA: "false",
-      PROXY_TEST_ENDPOINTS: "false",
-    });
-
-    try {
-      const response = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/chat/completions?stream=true`, {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer test-sk-ci",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestPayload),
-      });
-      expect(response.ok).toBe(true);
-      const transcript = await response.text();
-      const entries = parseSSE(transcript).filter((entry) => entry?.type === "data");
-      const toolChunks = entries
-        .map((entry) => entry.data?.choices?.[0]?.delta?.content)
-        .filter((segment) => typeof segment === "string" && segment.includes("<use_tool"));
-      expect(toolChunks).toHaveLength(1);
-
-      const usageRes = await fetch(`http://127.0.0.1:${ctx.PORT}/v1/usage`, {
-        headers: defaultHeaders,
-      });
-      expect(usageRes.ok).toBe(true);
-      const usagePayload = await usageRes.json();
-      expect(usagePayload.tool_buffer_metrics).toBeDefined();
-      expect(usagePayload.tool_buffer_metrics).toHaveProperty("started");
-      expect(usagePayload.tool_buffer_metrics).toHaveProperty("flushed");
-    } finally {
       await stopServer(ctx.child);
     }
   });

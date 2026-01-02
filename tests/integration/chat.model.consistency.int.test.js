@@ -46,7 +46,7 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       PROXY_PROTECT_MODELS: "false",
     },
     stdio: "ignore",

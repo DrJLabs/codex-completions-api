@@ -16,7 +16,7 @@ describe("responses streaming contract", () => {
     ensureResponsesTranscripts();
     transcript = await loadResponsesTranscript("streaming-text.json");
     toolCallTranscript = await loadResponsesTranscript("streaming-tool-call.json");
-    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto.js" });
+    serverCtx = await startServer({ CODEX_BIN: "scripts/fake-codex-jsonrpc.js" });
   }, 10_000);
 
   afterAll(async () => {
@@ -41,7 +41,7 @@ describe("responses streaming contract", () => {
 
   test("tool-call streaming sequence matches transcript", async () => {
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
     });
     try {

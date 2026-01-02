@@ -13,7 +13,7 @@ const CHOICE_COUNTS = (process.env.BENCH_COUNTS || "1,2,5")
   .split(",")
   .map((value) => Number(value.trim()))
   .filter((value) => Number.isFinite(value) && value > 0);
-const CODEX_BIN = process.env.BENCH_CODEX_BIN || "scripts/fake-codex-proto.js";
+const CODEX_BIN = process.env.BENCH_CODEX_BIN || "scripts/fake-codex-jsonrpc.js";
 
 function computeStats(samples) {
   if (!samples.length) {

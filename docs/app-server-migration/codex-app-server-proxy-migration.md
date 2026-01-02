@@ -1,6 +1,6 @@
 # Migrating `codex-app-server-proxy` to `codex app-server`
 
-⚠️ Proto backend is fully **decommissioned** in production/staging. Parity fixtures and tests still capture **both** proto and app-server outputs until the parity suite is retired—keep them in sync, but do not run proto in live environments.
+⚠️ Proto backend has been removed. Parity fixtures/tests are retired; only app-server transcripts are maintained. This document remains as historical migration notes.
 
 > **Goal (completed):** Switch backend from `codex proto` to `codex app-server` **without changing** the proxy’s external OpenAI‑compatible API responses (both streaming and non‑streaming).
 
@@ -133,56 +133,68 @@ spawn("codex", [
 - **Profiles/models:** if callers specify `model`, run multiple app-server **instances** (one per model/profile) and route based on the request. Do not rely on in‑process model switching unless officially supported.
 - **Upgrades:** pin a tested CLI version; track release notes for JSON‑RPC/event name changes.
 - **Secrets:** keep credentials outside the image—mount them into `/app/.codex-api` and ensure the directory stays writable for Codex rollouts and session state.
-- **Probes & orchestration:**
-  - _Docker Compose:_ add explicit HTTP health checks so orchestrators only send traffic once `/readyz` reports ready. Example:
+- **Probes & orchestration:** keep your orchestrator wiring aligned to readiness (`/readyz`) and liveness (`/livez`) so traffic drains promptly when workers restart.
 
-    ```yaml
-    services:
-      codex-api:
-        healthcheck:
-          test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-11435}/readyz || exit 1"]
-          interval: 10s
-          timeout: 3s
-          retries: 5
-          start_period: 15s
-    ```
+### H.1 Docker Compose health checks
 
-    Compose keeps restarting the container if `/livez` fails; the readiness endpoint flips back to `503` within ~5s of a worker exit, so the check above gates deployment rolls until the worker handshake succeeds again.
+Add explicit HTTP health checks so orchestrators only send traffic once `/readyz` reports ready. Example:
 
-  - _systemd:_ ensure units rely on the new probes and restart counters. Recommended unit fragment:
+```yaml
+services:
+  codex-api:
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-11435}/readyz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+```
 
-    ```ini
-    [Service]
-    ExecStart=/usr/bin/node /opt/codex/server.js
-    ExecStartPost=/usr/bin/curl --fail --silent --retry 5 --retry-connrefused http://127.0.0.1:${PORT:-11435}/livez
-    Restart=on-failure
-    RestartSec=5s
-    ```
+Compose keeps restarting the container if `/livez` fails; the readiness endpoint flips back to `503` within ~5s of a worker exit, so the check above gates deployment rolls until the worker handshake succeeds again.
 
-    Systemd will only report the service healthy after `/livez` succeeds; readiness remains false until the supervisor announces the JSON-RPC handshake.
+### H.2 systemd configuration
 
-  - _Traefik:_ wire the external load balancer to `/readyz` so traffic drains instantly when the worker restarts:
+Ensure units rely on the new probes and restart counters. Recommended unit fragment:
 
-    ```yaml
-    labels:
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz"
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.interval=5s"
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.timeout=2s"
-    ```
+```ini
+[Service]
+ExecStart=/usr/bin/node /opt/codex/server.js
+ExecStartPost=/usr/bin/curl --fail --silent --retry 5 --retry-connrefused http://127.0.0.1:${PORT:-11435}/livez
+Restart=on-failure
+RestartSec=5s
+```
 
-    Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
+Systemd will only report the service healthy after `/livez` succeeds; readiness remains false until the supervisor announces the JSON-RPC handshake.
 
-  - _Probe payload expectations:_ `/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`). Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts; slow starts keep readiness false until handshake completes. Backoff respects the 250 ms→5 s policy—guard alerting on `next_restart_delay_ms > 5000` or `restarts_total` growth.
+### H.3 Traefik load balancer wiring
 
-  - _Smoke commands (local)_:
+Wire the external load balancer to `/readyz` so traffic drains instantly when the worker restarts:
 
-    ```bash
-    curl -fsS http://127.0.0.1:${PORT:-11435}/readyz | jq '.health.readiness'
-    curl -fsS http://127.0.0.1:${PORT:-11435}/livez | jq '.health.liveness'
-    curl -fsS http://127.0.0.1:${PORT:-11435}/metrics | grep codex_worker_restarts_total
-    ```
+```yaml
+labels:
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz"
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.interval=5s"
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.timeout=2s"
+```
 
-    Expect `ok:true` when the worker handshakes; crash loops should show `reason:"worker_exit"` plus incremented `restarts_total` and non-zero `next_restart_delay_ms` until recovery.
+Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
+
+### H.4 Probe payload expectations
+
+- `/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`).
+- Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts.
+- Slow starts keep readiness false until the handshake completes.
+- Backoff respects the 250 ms to 5 s policy; alert if `next_restart_delay_ms > 5000` or `restarts_total` grows.
+
+### H.5 Smoke commands (local)
+
+```bash
+curl -fsS http://127.0.0.1:${PORT:-11435}/readyz | jq '.health.readiness'
+curl -fsS http://127.0.0.1:${PORT:-11435}/livez | jq '.health.liveness'
+curl -fsS http://127.0.0.1:${PORT:-11435}/metrics | grep codex_worker_restarts_total
+```
+
+Expect `ok:true` when the worker handshakes; crash loops should show `reason:"worker_exit"` plus incremented `restarts_total` and non-zero `next_restart_delay_ms` until recovery.
 
 ---
 
@@ -193,7 +205,7 @@ spawn("codex", [
 3. **SSE handler**: map `agentMessageDelta`/`agentMessage` to OpenAI chunks; keep existing shape.
 4. **Non‑stream handler**: assemble final message & usage; finalize finish_reason.
 5. **Config/env**: ensure `CODEX_HOME`, model/profile flags, sandbox/approvals are passed.
-6. **Tests**: replace proto shim with an **app‑server mock** speaking JSON‑RPC (golden transcripts).
+6. **Tests**: use the deterministic JSON-RPC shim and refresh golden transcripts.
 7. **Docs**: update README and deployment notes (auth, volumes, CLI version).
 
 ---
@@ -221,18 +233,17 @@ spawn("codex", [
 
 ---
 
-## K. Parity fixture maintenance workflow
+## K. Transcript fixture maintenance (app-server only)
 
-1. **Refresh transcripts** – run `npm run transcripts:generate` to capture paired proto and app-server outputs. The generator writes to `test-results/chat-completions/{proto,app}/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
-2. **Verify parity** – execute `npm run test:parity` to compare normalized proto vs. app transcripts. The harness fails fast when a scenario diverges or is missing, producing actionable diffs; keep both fixtures updated until proto retirement lands in code + tests.
-3. **Smoke the baseline** – before publishing updated fixtures, run:
+1. **Refresh transcripts** – run `npm run transcripts:generate` to capture app-server outputs. The generator writes to `test-results/chat-completions/app/`, stamps each artifact with `backend`, `backend_storage`, `codex_bin`, `cli_version`, `node_version`, and the current Git `commit`, and regenerates `test-results/chat-completions/manifest.json` summarizing scenario coverage.
+2. **Smoke the baseline** – before publishing updated fixtures, run:
    ```bash
    npm run test:integration
    npm test
    ```
-   This confirms the Epic 1 stack and SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
-4. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks (or `manifest.json`) into the deployment notes so downstream stories know which baseline the fixtures represent.
-5. **Intentional mismatch drills** – when validating the harness, edit a single transcript, run `npm run test:parity` to observe the failure diagnostics, then restore the corpus with `npm run transcripts:generate`.
+   This confirms the SSE adapters remain healthy after regeneration. Capture the command output (or CI links) for the release record.
+3. **Log versions** – copy the Codex CLI/App Server version information from the transcript `metadata` blocks (or `manifest.json`) into deployment notes so downstream stories know which baseline the fixtures represent.
+4. **Intentional mismatch drills (optional)** – edit a single transcript to validate the tooling, then restore the corpus with `npm run transcripts:generate`.
 
 **Streaming delta (notification):**
 
@@ -285,7 +296,7 @@ spawn("codex", [
 ### N.2 Toggle workflow by environment
 
 - **Docker Compose (dev & staging):**
-1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; flip to `false` only for legacy proto rollback drills (Source: internal tech stack doc; not published here).
+1. Edit `.env.dev` or the staging compose overrides so `PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable (Source: internal tech stack doc; not published here).
   2. Run `npm run dev:stack:down` (if active) followed by `npm run dev:stack:up` to rebuild with the new flag.
   3. Execute `npm run smoke:dev` to validate CLI availability (`codex app-server --help`) and edge routing before promoting traffic (Source: [../../scripts/dev-smoke.sh](../../scripts/dev-smoke.sh)).
 - **systemd (production host):**
@@ -304,9 +315,9 @@ spawn("codex", [
 
 | Environment       | Default backend | Flag toggle location                                         | CLI version requirement | `CODEX_HOME` mount | Smoke verification command              | Probe expectation                                                                        |
 | ----------------- | --------------- | ------------------------------------------------------------ | ----------------------- | ------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set `false` only for proto compatibility checks) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5 s) |
-| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; flip to `false` only during rollback drills) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
-| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set `false` only for emergency proto fallback)  | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
+| Local / Dev stack | app-server (`true`) | `.env.dev` (`PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `${REPO}/.codev`   | `npm run smoke:dev`                     | `http://127.0.0.1:${PORT:-11435}/readyz` returns `200` after supervisor handshake (<5s)  |
+| Staging           | app-server (`true`) | compose overrides / `.env.dev` (`PROXY_USE_APP_SERVER=true` by default; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:dev` (with `DEV_DOMAIN`) | `https://{staging-domain}/readyz` gated via Traefik health check                         |
+| Production        | app-server (`true`) | `/etc/systemd/system/codex-openai-proxy.service.d/env.conf` (`Environment=PROXY_USE_APP_SERVER=true`; set to `false` only during maintenance windows when the backend is unavailable) | `@openai/codex@0.53.0`  | `/app/.codex-api`  | `npm run smoke:prod`                    | `https://codex-api.onemainarmy.com/readyz` wired to Traefik health monitor               |
 
 Defaults mirror `.env.example`, `.env.dev`, and `docker-compose.yml`; the docs lint compares this matrix against those files to catch drift (Source: Section H; internal tech stack doc; not published here).
 

@@ -22,7 +22,7 @@
     "lint:runbooks": "prettier -c docs/app-server-migration",
     "format": "prettier -w .",
     "format:check": "prettier -c .",
-    "secret-scan": "secretlint .",
+    "secret-scan": "node scripts/secret-scan-staged.mjs",
     "prepare": "npm run husky:enable",
     "husky:enable": "husky install && chmod +x .husky/* || true",
     "husky:fix-perms": "chmod +x .husky/* || true",
@@ -37,7 +37,6 @@
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest --dir tests/unit",
     "test:integration": "vitest run tests/integration --reporter=default",
-    "test:parity": "vitest run tests/parity --reporter=default",
     "test:all": "npm run test:unit && npm run test:integration && npm test",
     "transcripts:generate": "node scripts/generate-chat-transcripts.mjs",
     "copilot:fixtures:normalize": "node scripts/normalize-copilot-responses-capture.mjs",
@@ -74,6 +73,7 @@
     "@playwright/test": "^1.56.1",
     "@secretlint/secretlint-rule-preset-recommend": "^11.2.5",
     "@vitest/coverage-v8": "^4.0.3",
+    "@vitest/eslint-plugin": "^1.6.4",
     "ajv": "^8.17.1",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^10.1.8",
@@ -82,7 +82,6 @@
     "eslint-plugin-playwright": "^2.2.0",
     "eslint-plugin-promise": "^7.2.1",
     "eslint-plugin-security": "^3.0.1",
-    "eslint-plugin-vitest": "^0.5.4",
     "get-port": "^7.0.0",
     "globals": "^16.4.0",
     "husky": "^9.1.6",
@@ -94,6 +93,9 @@
     "typescript-eslint": "^8.22.0",
     "typescript-json-schema": "^0.60.0",
     "vitest": "^4.0.3"
+  },
+  "overrides": {
+    "qs": "6.14.1"
   },
   "lint-staged": {
     "**/*.{js,mjs,cjs,ts,tsx,jsx}": [

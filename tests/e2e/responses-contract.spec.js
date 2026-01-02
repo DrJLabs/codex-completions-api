@@ -27,7 +27,7 @@ test.describe("Responses contract baselines", () => {
   test("non-stream tool-call response matches transcript", async ({ request: _request }) => {
     const transcript = await loadResponsesTranscript("nonstream-tool-call.json");
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
     });
     try {
@@ -75,7 +75,7 @@ test.describe("Responses contract baselines", () => {
   test("streaming tool-call SSE matches transcript", async ({ request: _request }) => {
     const transcript = await loadResponsesTranscript("streaming-tool-call.json");
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
     });
     try {

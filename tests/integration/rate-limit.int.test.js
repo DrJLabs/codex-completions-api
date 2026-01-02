@@ -3,6 +3,7 @@ import getPort from "get-port";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -46,6 +47,7 @@ const startServer = async (extraEnv = {}) => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   await waitForHealth();
+  await waitForReady(PORT);
 };
 
 const cleanTempFiles = async () => {
@@ -66,7 +68,7 @@ afterAll(async () => {
 
 test("non-stream second request gets 429 from rate limiter", async () => {
   await startServer({
-    CODEX_BIN: "scripts/fake-codex-proto.js",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
     PROXY_RATE_LIMIT_ENABLED: "true",
     PROXY_RATE_LIMIT_WINDOW_MS: "100000",
     PROXY_RATE_LIMIT_MAX: "1",
@@ -101,7 +103,7 @@ test("non-stream second request gets 429 from rate limiter", async () => {
 
 test("responses endpoint is rate limited alongside chat/completions", async () => {
   await startServer({
-    CODEX_BIN: "scripts/fake-codex-proto.js",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
     PROXY_RATE_LIMIT_ENABLED: "true",
     PROXY_RATE_LIMIT_WINDOW_MS: "100000",
     PROXY_RATE_LIMIT_MAX: "1",
@@ -137,7 +139,8 @@ test("responses endpoint is rate limited alongside chat/completions", async () =
 test("streaming concurrency guard deterministically rejects surplus streams", async () => {
   await cleanTempFiles();
   await startServer({
-    CODEX_BIN: "scripts/fake-codex-proto-long.js",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "long_stream",
     PROXY_RATE_LIMIT_ENABLED: "false",
     PROXY_SSE_MAX_CONCURRENCY: "1",
     PROXY_SSE_KEEPALIVE_MS: "0",
@@ -233,7 +236,8 @@ test("streaming concurrency guard deterministically rejects surplus streams", as
 test("guard headers are hidden when PROXY_TEST_ENDPOINTS is disabled", async () => {
   await cleanTempFiles();
   await startServer({
-    CODEX_BIN: "scripts/fake-codex-proto-long.js",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "long_stream",
     PROXY_RATE_LIMIT_ENABLED: "false",
     PROXY_SSE_MAX_CONCURRENCY: "1",
     PROXY_SSE_KEEPALIVE_MS: "0",

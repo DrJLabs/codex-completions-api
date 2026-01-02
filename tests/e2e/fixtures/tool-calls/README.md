@@ -13,12 +13,12 @@ Purpose: deterministic fixtures for structured and textual tool-call flows (app-
 - Payloads: structured tool_calls, textual `<use_tool>` fallback, large-args (>=8KB UTF-8), multi-choice
 - Error paths: pre-tool-call error, mid-stream error after first tool delta
 - Disconnect: client close after first `delta.tool_calls`
-- Proto fixtures were removed in favor of the app-server JSON-RPC shim to align with Stories 2.11/2.12 and Epic 3.
+- Proto fixtures were removed in favor of the app-server JSON-RPC shim to align with current transport coverage.
 
 ## Usage
 
 1. Capture baseline transcripts per scenario (app-server) with metadata (cli version, model, seed, stop-after-tools flags).
-2. Normalize dynamic fields (ids, timestamps) using existing parity harness patterns.
+2. Normalize dynamic fields (ids, timestamps) using the transcript utilities in `tests/shared/transcript-utils.js`.
 3. Store raw + normalized in this directory; keep manifest.json in sync.
 4. Consume fixtures in integration/Playwright/smoke tests.
 5. Upload failure artifacts (raw SSE, normalized JSON, logs) in CI with redaction filters.

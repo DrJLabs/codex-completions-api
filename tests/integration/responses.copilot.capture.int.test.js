@@ -14,7 +14,7 @@ describe("copilot responses fixtures", () => {
 
   beforeAll(async () => {
     serverCtx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       PROXY_RESPONSES_OUTPUT_MODE: "openai-json",
       PROXY_SSE_KEEPALIVE_MS: "0",
     });
@@ -50,7 +50,7 @@ describe("copilot responses fixtures", () => {
   test("streams tool fixture and emits tool events", async () => {
     const fixture = await loadCopilotResponsesFixture("responses-stream-tool.json");
     const toolServer = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
       PROXY_RESPONSES_OUTPUT_MODE: fixture.metadata.output_mode_effective,
       PROXY_STOP_AFTER_TOOLS: "true",

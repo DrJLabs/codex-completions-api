@@ -6,22 +6,14 @@ import { stopServer, waitForUrlOk } from "./helpers.js";
 
 async function startServerWithLogs(envOverrides = {}) {
   const PORT = await getPort();
-  const binOverride = envOverrides.CODEX_BIN;
-  const binLower = String(binOverride || "").toLowerCase();
-  const inferredFlagFromBin = binOverride
-    ? binLower.includes("jsonrpc") || binLower.includes("app-server")
-      ? "true"
-      : "false"
-    : undefined;
   const desiredFlag = envOverrides.PROXY_USE_APP_SERVER;
-  const resolvedFlag = desiredFlag
-    ? String(desiredFlag).toLowerCase() === "true"
-      ? "true"
-      : "false"
-    : inferredFlagFromBin || "true";
-  const resolvedBin =
-    binOverride ||
-    (resolvedFlag === "true" ? "scripts/fake-codex-jsonrpc.js" : "scripts/fake-codex-proto.js");
+  const resolvedFlag =
+    desiredFlag !== undefined
+      ? String(desiredFlag).toLowerCase() === "true"
+        ? "true"
+        : "false"
+      : "true";
+  const resolvedBin = envOverrides.CODEX_BIN || "scripts/fake-codex-jsonrpc.js";
   const resolvedSupervisor =
     envOverrides.CODEX_WORKER_SUPERVISED || (resolvedFlag === "true" ? "true" : undefined);
   const child = spawn("node", ["server.js"], {
@@ -88,16 +80,15 @@ describe("backend mode feature flag", () => {
     expect(logs).toMatch(/spawning backend=app-server/);
   });
 
-  it("switches to proto mode when flag disabled", async () => {
+  it("disables app-server when flag disabled", async () => {
     const started = await startServerWithLogs({
       PROXY_USE_APP_SERVER: "false",
-      CODEX_BIN: "scripts/fake-codex-proto.js",
     });
     child = started.child;
     const response = await fetch(`http://127.0.0.1:${started.PORT}/healthz`);
     expect(response.status).toBe(200);
     const payload = await response.json();
-    expect(payload.backend_mode).toBe("proto");
+    expect(payload.backend_mode).toBe("disabled");
     expect(payload.app_server_enabled).toBe(false);
     const chat = await fetch(`http://127.0.0.1:${started.PORT}/v1/chat/completions`, {
       method: "POST",
@@ -114,11 +105,11 @@ describe("backend mode feature flag", () => {
     const stdoutLogs = started.stdout.join("");
     const stderrLogs = started.stderr.join("");
     expect(stdoutLogs).toContain(
-      "[proxy][backend-mode] PROXY_USE_APP_SERVER=false -> defaulting to proto backend"
+      "[proxy][backend-mode] PROXY_USE_APP_SERVER=false -> app-server disabled (proto deprecated)"
     );
-    expect(chat.status).toBe(200);
+    expect(chat.status).toBe(503);
     await chat.json();
-    expect(stdoutLogs).toMatch(/spawning backend=proto/);
+    expect(stdoutLogs).not.toMatch(/spawning backend=/);
     expect(stderrLogs).not.toContain("worker not ready");
   });
 });

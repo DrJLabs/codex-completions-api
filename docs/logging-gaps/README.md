@@ -70,7 +70,7 @@ This document tracks remaining observability gaps from **HTTP ingress → app-se
 - Status: [ ] TODO
 - Problem: `requireWorkerReady` returns `503` with `console.warn` only; no structured event that can be joined by `req_id`.
 - Acceptance criteria:
-  - `POST /v1/chat/completions|/v1/completions|/v1/responses` returning `503 worker_not_ready` emits a structured log event containing `req_id`, `route`, `method`, `status`, `trace_id?`, `copilot_trace_id?`, and `worker_status`.
+  - `POST /v1/chat/completions|/v1/responses` returning `503 worker_not_ready` emits a structured log event containing `req_id`, `route`, `method`, `status`, `trace_id?`, `copilot_trace_id?`, and `worker_status`.
   - Event is emitted exactly once per request, and does not leak secrets.
 - Tests:
   - Add: `tests/integration/worker-ready.logging.int.test.js` capturing stdout, asserting the event exists and matches `X-Request-Id`.

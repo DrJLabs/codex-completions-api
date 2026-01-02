@@ -5,7 +5,10 @@ let PORT;
 let child;
 
 beforeAll(async () => {
-  const ctx = await startServer({ CODEX_BIN: "scripts/fake-codex-proto-no-complete.js" });
+  const ctx = await startServer({
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "token_count_only",
+  });
   PORT = ctx.PORT;
   child = ctx.child;
 }, 10_000);

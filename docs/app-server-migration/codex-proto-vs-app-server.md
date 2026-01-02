@@ -1,5 +1,6 @@
 # Migrating from `codex proto` to `codex app-server`
 
+> **Status:** The proxy no longer supports `codex proto`; this document is retained for historical context.
 > **Purpose:** A developer guide to replace deprecated **`codex proto`** integrations with the supported **`codex app-server`**. Focus: input/output protocol, launch semantics, session management, and migration implications for proxies that translate Codex output into OpenAI‑compatible responses.
 
 ---

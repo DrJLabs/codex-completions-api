@@ -125,7 +125,7 @@ if [[ -n "$KEY" ]]; then
   TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
   TOOL_SMOKE_ENDPOINT="${TOOL_SMOKE_ENDPOINT:-responses}"
-  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-textual}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured}"
   run_tool_smoke() {
     local mode="$1"; shift
     local flags=("$@")

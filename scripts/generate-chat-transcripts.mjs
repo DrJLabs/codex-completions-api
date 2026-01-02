@@ -6,7 +6,6 @@ import fetch from "node-fetch";
 import { startServer, stopServer, wait } from "../tests/integration/helpers.js";
 import {
   TRANSCRIPT_ROOT,
-  PROTO_TRANSCRIPT_ROOT,
   APP_TRANSCRIPT_ROOT,
   saveTranscript,
   saveTranscriptManifest,
@@ -21,8 +20,6 @@ const BASE_HEADERS = {
   Authorization: "Bearer test-sk-ci",
 };
 
-const DEFAULT_PROTO_CODEX = "scripts/fake-codex-proto.js";
-const TRUNCATION_PROTO_CODEX = "scripts/fake-codex-proto-no-complete.js";
 const JSON_RPC_CODEX = "scripts/fake-codex-jsonrpc.js";
 
 function gitCommitSha() {
@@ -34,13 +31,6 @@ function gitCommitSha() {
 }
 
 const BACKENDS = [
-  {
-    id: "proto",
-    metadata: "proto",
-    saveKey: "proto",
-    codexBin: DEFAULT_PROTO_CODEX,
-    env: {},
-  },
   {
     id: "app",
     metadata: "app-server",
@@ -291,7 +281,6 @@ const SCENARIOS = [
     beforeRequest: () => wait(50),
     errorLabel: "truncation",
     env: { FAKE_CODEX_FINISH_REASON: "length", FAKE_CODEX_MODE: "truncation" },
-    codexOverride: { proto: TRUNCATION_PROTO_CODEX },
     processResponse: toNonStreamResponse,
   },
   {
@@ -347,8 +336,8 @@ async function runCapture({
     const scenarioId = metadataPayload?.scenario ?? filename.replace(/\.json$/, "");
     const extra = {
       scenario: scenarioId,
-      backend: backend?.metadata ?? backend?.id ?? "proto",
-      backend_storage: backend?.saveKey ?? "proto",
+      backend: backend?.metadata ?? backend?.id ?? "app-server",
+      backend_storage: backend?.saveKey ?? "app",
     };
     if (metadataPayload?.extra) Object.assign(extra, metadataPayload.extra);
     const transcript = {
@@ -381,12 +370,11 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
     processError,
     errorLabel,
     env,
-    codexOverride,
     metadata,
     expectStatus = 200,
   } = scenario;
 
-  const codexBin = codexOverride?.[backend.id] ?? backend.codexBin;
+  const codexBin = backend.codexBin;
   return runCapture({
     backend,
     codexBin,
@@ -432,8 +420,6 @@ async function main() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   await mkdir(TRANSCRIPT_ROOT, { recursive: true });
   // eslint-disable-next-line security/detect-non-literal-fs-filename
-  await mkdir(PROTO_TRANSCRIPT_ROOT, { recursive: true });
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
   await mkdir(APP_TRANSCRIPT_ROOT, { recursive: true });
 
   const commitSha = gitCommitSha();
@@ -478,8 +464,7 @@ async function main() {
       };
       manifest.scenarios[scenario.filename] = existing;
     }
-    const targetRoot = backend.saveKey === "app" ? APP_TRANSCRIPT_ROOT : PROTO_TRANSCRIPT_ROOT;
-    console.log(`Captured ${backend.metadata} transcripts in`, targetRoot);
+    console.log(`Captured ${backend.metadata} transcripts in`, APP_TRANSCRIPT_ROOT);
   }
 
   await saveTranscriptManifest(manifest);

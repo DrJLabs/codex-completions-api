@@ -3,7 +3,7 @@ import globals from "globals";
 import playwright from "eslint-plugin-playwright";
 import security from "eslint-plugin-security";
 import tseslint from "typescript-eslint";
-import vitest from "eslint-plugin-vitest";
+import vitest from "@vitest/eslint-plugin";
 import { FlatCompat } from "@eslint/eslintrc";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,8 @@ const commonTestRules = {
   "promise/param-names": "off",
   "n/no-unsupported-features/node-builtins": "off",
   "no-constant-condition": "off",
+  "vitest/no-conditional-expect": "off",
+  "vitest/no-standalone-expect": "off",
 };
 const tsFilePatterns = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 

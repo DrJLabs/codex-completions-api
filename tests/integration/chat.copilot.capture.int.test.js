@@ -31,7 +31,7 @@ describe("chat capture fixtures", () => {
   beforeAll(async () => {
     await fs.rm(CAPTURE_DIR, { recursive: true, force: true });
     serverCtx = await startServer({
-      CODEX_BIN: "scripts/fake-codex-proto.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       FAKE_CODEX_MODE: "tool_call",
       PROXY_CAPTURE_CHAT_TRANSCRIPTS: "true",
       PROXY_CAPTURE_CHAT_DIR: CAPTURE_DIR,

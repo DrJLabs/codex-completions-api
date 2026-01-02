@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import fetch from "node-fetch";
-import { wait } from "./helpers.js";
+import { wait, waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -32,7 +32,8 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(PORT),
       PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-proto-long.js",
+      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      FAKE_CODEX_MODE: "long_stream",
       PROXY_PROTECT_MODELS: "false",
       PROXY_SSE_KEEPALIVE_MS: "0",
       PROXY_KILL_ON_DISCONNECT: "true",
@@ -52,6 +53,7 @@ beforeAll(async () => {
     } catch {}
     await wait(100);
   }
+  await waitForReady(PORT);
 }, 10_000);
 
 afterAll(async () => {
@@ -69,7 +71,7 @@ afterAll(async () => {
   } catch {}
 });
 
-test("aborting responses stream kills codex child process", async () => {
+test("aborting responses stream cancels request without killing worker", async () => {
   const controller = new AbortController();
   const res = await fetch(`http://127.0.0.1:${PORT}/v1/responses?stream=true`, {
     method: "POST",
@@ -95,7 +97,7 @@ test("aborting responses stream kills codex child process", async () => {
   await iterator.next();
   controller.abort();
 
-  // wait for proxy to propagate abort and terminate shim
+  // wait for proxy to propagate abort and cancel request
   await wait(300);
 
   const pidRaw = existsSync(PID_FILE) ? readFileSync(PID_FILE, "utf8").trim() : "";
@@ -109,7 +111,9 @@ test("aborting responses stream kills codex child process", async () => {
   } catch {
     alive = false;
   }
-  expect(alive).toBe(false);
+  expect(alive).toBe(true);
+  const ready = await fetch(`http://127.0.0.1:${PORT}/readyz`);
+  expect(ready.ok).toBe(true);
 
   // Ensure concurrency guard released after abort
   const start = Date.now();
