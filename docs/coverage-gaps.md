@@ -7,52 +7,52 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 56.9% (3829/6729), missing 1555 lines to reach 80%.
-- Functions: 56.36% (527/935), missing 221 functions to reach 80%.
-- Branches: 40.38% (2943/7288), missing 2523 branches to reach 75%.
-- Statements: 53.46% (4084/7639), missing 2028 statements to reach 80%.
+- Lines: 57.96% (3900/6728), missing 1483 lines to reach 80%.
+- Functions: 57.96% (542/935), missing 206 functions to reach 80%.
+- Branches: 41.16% (3000/7287), missing 2466 branches to reach 75%.
+- Statements: 54.49% (4162/7638), missing 1949 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/lib/bearer.js` | 0.0 | 0.0 | 0.0 | 0.0 |
-| `src/middleware/access-log.js` | 4.0 | 33.3 | 0.0 | 4.0 |
 | `src/services/codex-exec.js` | 5.0 | 0.0 | 0.0 | 4.8 |
-| `src/middleware/auth.js` | 7.7 | 0.0 | 0.0 | 7.1 |
-| `src/routes/metrics.js` | 8.0 | 0.0 | 0.0 | 6.9 |
 | `src/handlers/responses/stream-adapter.js` | 10.8 | 3.0 | 1.0 | 9.9 |
 | `src/handlers/chat/require-model.js` | 14.3 | 100.0 | 12.5 | 18.8 |
-| `src/middleware/metrics.js` | 16.7 | 25.0 | 0.0 | 16.7 |
 | `src/handlers/chat/stream.js` | 16.9 | 4.9 | 5.0 | 15.2 |
 | `src/services/codex-runner.js` | 18.5 | 0.0 | 6.3 | 18.5 |
 | `src/routes/usage.js` | 21.4 | 16.7 | 0.0 | 20.0 |
 | `src/handlers/chat/capture.js` | 27.5 | 17.6 | 5.0 | 26.4 |
+| `src/app.js` | 28.2 | 11.1 | 4.5 | 26.8 |
 | `src/middleware/rate-limit.js` | 29.0 | 33.3 | 15.2 | 26.5 |
 | `src/services/metrics/chat.js` | 30.8 | 7.1 | 0.0 | 29.3 |
 | `src/handlers/chat/nonstream.js` | 30.9 | 17.2 | 15.3 | 28.9 |
 | `src/routes/chat.js` | 31.3 | 25.0 | 0.0 | 29.4 |
 | `src/handlers/responses/capture.js` | 33.3 | 23.1 | 5.0 | 34.3 |
 | `src/routes/responses.js` | 33.3 | 25.0 | 0.0 | 30.8 |
-| `src/app.js` | 34.9 | 20.0 | 13.0 | 33.3 |
 | `src/routes/models.js` | 40.0 | 28.6 | 12.5 | 35.3 |
+| `src/handlers/responses/nonstream.js` | 46.7 | 40.0 | 14.4 | 45.0 |
+| `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.2 | 48.0 |
+| `src/services/transport/child-adapter.js` | 51.8 | 45.2 | 32.8 | 45.5 |
+| `src/handlers/chat/shared.js` | 55.1 | 71.4 | 39.3 | 52.4 |
+| `src/lib/capture/sanitize.js` | 57.1 | 40.0 | 42.2 | 49.4 |
 
 ## Suggested coverage focus
-- `src/lib/bearer.js`: unit tests for empty/invalid headers, case-insensitive
-  `Bearer` prefix, trimming, and missing headers in `bearerToken()`.
-- `src/middleware/auth.js`: exercise `requireStrictAuth`, `requireUsageAuth`,
-  and `requireTestAuth` across valid/invalid tokens and loopback gating.
-- `src/middleware/access-log.js`: cover happy-path logging and the error
-  fallback inside the `finish` handler.
-- `src/routes/metrics.js`: cover auth gates (metrics token, allow unauth,
-  allow loopback), plus the success path for rendering metrics.
 - `src/services/codex-exec.js`: cover prompt validation, spawn error/exit
   failures, timeout path, empty output handling, and output cleanup.
 - `src/services/codex-runner.js`: cover env sanitization and lifecycle logging
   around `spawnCodex()`.
-- `src/handlers/chat/*` and `src/handlers/responses/*`: cover stream/nonstream
-  success/error branches and capture paths.
-- `src/routes/*.js`: cover route-level auth, error responses, and the happy
-  path for each endpoint.
+- `src/handlers/chat/stream.js` + `src/handlers/chat/nonstream.js`: cover
+  stream/nonstream success/error branches, tools handling, and capture paths.
+- `src/handlers/responses/stream-adapter.js` + `src/handlers/responses/capture.js`:
+  cover stream adapter fallbacks and capture error branches.
+- `src/routes/*`: cover auth, error responses, and success paths for chat,
+  responses, models, and usage routes.
+- `src/middleware/rate-limit.js`: cover keying, window enforcement, and disabled
+  settings.
+- `src/services/metrics/chat.js`: cover metric labels, normalization, and
+  boundary conditions.
+- `src/lib/tools/xml.js` + `src/lib/capture/sanitize.js`: cover parsing/sanitize
+  branches and malformed inputs.
 
 ## Plan overview
 ### Goals
