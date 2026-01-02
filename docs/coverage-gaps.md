@@ -7,27 +7,24 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 63.64% (4282/6728), missing 1101 lines to reach 80%.
-- Functions: 65.34% (611/935), missing 137 functions to reach 80%.
-- Branches: 46.52% (3390/7287), missing 2076 branches to reach 75%.
-- Statements: 59.89% (4575/7638), missing 1536 statements to reach 80%.
+- Lines: 65.72% (4422/6728), missing 961 lines to reach 80%.
+- Functions: 68.44% (640/935), missing 108 functions to reach 80%.
+- Branches: 48.81% (3557/7287), missing 1909 branches to reach 75%.
+- Statements: 61.8% (4721/7638), missing 1390 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/handlers/chat/stream.js` | 16.93 | 4.9 | 4.95 | 15.21 |
-| `src/handlers/chat/capture.js` | 27.47 | 17.64 | 5.04 | 26.41 |
-| `src/app.js` | 28.2 | 11.11 | 4.47 | 26.82 |
+| `src/handlers/chat/stream.js` | 19.29 | 6.86 | 7.81 | 17.37 |
 | `src/handlers/chat/nonstream.js` | 30.9 | 17.24 | 15.33 | 28.88 |
-| `src/handlers/responses/capture.js` | 33.33 | 23.07 | 5.0 | 34.28 |
 | `src/handlers/responses/nonstream.js` | 46.66 | 40.0 | 14.39 | 45.04 |
 | `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.17 | 48.0 |
 | `src/services/transport/child-adapter.js` | 51.82 | 45.16 | 32.8 | 45.5 |
 | `src/handlers/chat/shared.js` | 55.08 | 71.42 | 39.31 | 52.38 |
 | `src/lib/capture/sanitize.js` | 57.14 | 40.0 | 42.16 | 49.43 |
+| `src/app.js` | 57.69 | 44.44 | 32.83 | 56.09 |
 | `src/services/sse.js` | 59.3 | 50.0 | 36.36 | 54.0 |
 | `src/services/metrics/index.js` | 67.82 | 64.0 | 30.98 | 62.12 |
-| `src/lib/errors.js` | 70.83 | 42.85 | 63.82 | 70.83 |
 | `src/services/transport/index.js` | 71.38 | 64.1 | 56.81 | 67.85 |
 | `src/routes/health.js` | 71.42 | 60.0 | 53.48 | 71.42 |
 | `src/services/worker/supervisor.js` | 74.4 | 75.6 | 51.23 | 71.86 |
@@ -35,15 +32,16 @@ Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 | `src/handlers/chat/request.js` | 76.03 | 95.83 | 61.03 | 71.07 |
 | `src/handlers/responses/stream-adapter.js` | 78.3 | 84.84 | 59.5 | 75.85 |
 | `src/handlers/responses/ingress-logging.js` | 78.94 | 75.0 | 63.69 | 72.72 |
+| `src/lib/ingress-guardrail.js` | 79.06 | 100 | 58.62 | 68.75 |
+| `src/lib/errors.js` | 79.16 | 71.42 | 65.95 | 79.16 |
+| `src/lib/json-rpc/schema.ts` | 81.81 | 96.87 | 55.64 | 71.22 |
 
 ## Suggested coverage focus
 - `src/handlers/chat/stream.js` + `src/handlers/chat/nonstream.js`: cover
   stream/nonstream success/error branches, tools handling, and capture paths.
-- `src/handlers/chat/capture.js` + `src/handlers/responses/capture.js`: cover
-  capture error branches, partial output persistence, and edge cases.
-- `src/app.js`: cover trust proxy handling, middleware ordering, and guardrails.
 - `src/handlers/responses/nonstream.js` + `src/handlers/responses/shared.js`:
   cover nonstream error mapping and shared response shape helpers.
+- `src/app.js`: cover test router branches, CORS toggles, and error handlers.
 - `src/handlers/responses/stream-adapter.js`: cover remaining fallbacks and
   event summary logging branches.
 - `src/services/transport/child-adapter.js` + `src/services/transport/index.js`:
@@ -52,6 +50,10 @@ Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
   branches and metrics normalization boundaries.
 - `src/lib/tools/xml.js` + `src/lib/capture/sanitize.js`: cover parsing/sanitize
   branches and malformed inputs.
+- `src/routes/health.js` + `src/services/worker/supervisor.js`: cover readiness
+  and liveness branches across backend modes.
+- `src/lib/ingress-guardrail.js` + `src/lib/errors.js`: cover guardrail error
+  shapes and non-happy-path mappings.
 
 ## Plan overview
 ### Goals
