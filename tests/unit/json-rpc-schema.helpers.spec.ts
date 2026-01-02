@@ -2,14 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   JSONRPC_VERSION,
+  createUserMessageItem,
+  buildAddConversationListenerParams,
   buildInitializeParams,
   buildNewConversationParams,
+  buildSendUserMessageParams,
   buildSendUserTurnParams,
   extractConversationId,
   extractRequestId,
+  isAgentMessageDeltaNotification,
+  isAgentMessageNotification,
+  isInitializeResult,
   isJsonRpcErrorResponse,
   isJsonRpcNotification,
   isJsonRpcSuccessResponse,
+  isRequestTimeoutNotification,
+  isSendUserMessageResult,
+  isSendUserTurnResult,
+  isTokenCountNotification,
   normalizeInputItems,
 } from "../../src/lib/json-rpc/schema.ts";
 
@@ -35,6 +45,14 @@ describe("json-rpc schema helper behavior", () => {
     const fallbackItems = normalizeInputItems([], "fallback");
     expect(fallbackItems).toHaveLength(1);
     expect(fallbackItems[0]).toMatchObject({ type: "text", data: { text: "fallback" } });
+  });
+
+  it("creates message items with nullish text and ignores non-array inputs", () => {
+    const item = createUserMessageItem(undefined as unknown as string);
+    expect(item.data.text).toBe("");
+
+    const items = normalizeInputItems("oops", 123 as unknown as string);
+    expect(items).toEqual([]);
   });
 
   it("applies approval, summary, and sandbox fallbacks", () => {
@@ -120,6 +138,20 @@ describe("json-rpc schema helper behavior", () => {
     expect(params.capabilities).toEqual({ feature: true });
   });
 
+  it("fills initialize defaults and snake_case fields", () => {
+    const params = buildInitializeParams({
+      clientInfo: {},
+      capabilities: null,
+      protocolVersion: "2.0.0",
+    });
+
+    expect(params.clientInfo.name).toBe("codex-app-server-proxy");
+    expect(params.clientInfo.version).toBe("0.77.0");
+    expect(params.client_info).toEqual(params.clientInfo);
+    expect(params.protocol_version).toBe("2.0.0");
+    expect(params.capabilities).toBeNull();
+  });
+
   it("extracts conversation and request ids from nested payloads", () => {
     expect(extractConversationId({ conversation_id: "conv-1" })).toBe("conv-1");
     expect(extractConversationId({ conversation: { id: "conv-2" } })).toBe("conv-2");
@@ -127,6 +159,60 @@ describe("json-rpc schema helper behavior", () => {
 
     expect(extractRequestId({ request_id: "req-1" })).toBe("req-1");
     expect(extractRequestId({ context: { request_id: "req-2" } })).toBe("req-2");
+  });
+
+  it("builds new conversation params with nullable fields", () => {
+    const params = buildNewConversationParams({
+      sandbox: { mode: "read-only" },
+      profile: "",
+      config: "nope" as unknown as Record<string, unknown>,
+      includeApplyPatchTool: true,
+    });
+
+    expect(params.sandbox).toBe("read-only");
+    expect(params.profile).toBeNull();
+    expect(params).not.toHaveProperty("config");
+    expect(params.includeApplyPatchTool).toBe(true);
+  });
+
+  it("skips invalid choice counts and preserves null tools", () => {
+    const params = buildSendUserTurnParams({
+      items: [],
+      conversationId: "conv",
+      cwd: "/tmp",
+      approvalPolicy: "never",
+      sandboxPolicy: "read-only",
+      model: "gpt-5.2",
+      summary: "auto",
+      choiceCount: "0",
+      tools: [] as unknown as Record<string, unknown>,
+      effort: "invalid" as unknown as string,
+    });
+
+    expect(params.choiceCount).toBeUndefined();
+    expect(params.choice_count).toBeUndefined();
+    expect(params.tools).toBeNull();
+    expect(params).not.toHaveProperty("effort");
+  });
+
+  it("sets snake_case response fields in sendUserMessage params", () => {
+    const params = buildSendUserMessageParams({
+      conversationId: "conv",
+      items: [],
+      includeUsage: false,
+      metadata: null,
+      topP: 0.9,
+      maxOutputTokens: 8,
+      responseFormat: null,
+      finalOutputJsonSchema: null,
+    });
+
+    expect(params.includeUsage).toBe(false);
+    expect(params.include_usage).toBe(false);
+    expect(params.top_p).toBe(0.9);
+    expect(params.max_output_tokens).toBe(8);
+    expect(params.response_format).toBeNull();
+    expect(params.final_output_json_schema).toBeNull();
   });
 
   it("identifies jsonrpc notifications and responses", () => {
@@ -142,5 +228,74 @@ describe("json-rpc schema helper behavior", () => {
     expect(isJsonRpcSuccessResponse(success)).toBe(true);
     expect(isJsonRpcErrorResponse(error)).toBe(true);
     expect(isJsonRpcNotification({})).toBe(false);
+  });
+
+  it("handles notification predicates for invalid payloads", () => {
+    const badDelta = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "agentMessageDelta",
+      params: { conversation_id: "conv" },
+    };
+    expect(isAgentMessageDeltaNotification(badDelta)).toBe(false);
+
+    const badToken = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "tokenCount",
+      params: { conversation_id: "conv" },
+    };
+    expect(isTokenCountNotification(badToken)).toBe(false);
+
+    const timeout = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "requestTimeout",
+      params: { request_id: "req-1" },
+    };
+    expect(isRequestTimeoutNotification(timeout)).toBe(true);
+  });
+
+  it("recognizes notifications with alternate identifiers", () => {
+    const agentMessage = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "agentMessage",
+      params: { conversationId: "conv-1", message: { role: "assistant" } },
+    };
+    expect(isAgentMessageNotification(agentMessage)).toBe(true);
+
+    const tokenCount = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "tokenCount",
+      params: { requestId: "req-1", completion_tokens: 5 },
+    };
+    expect(isTokenCountNotification(tokenCount)).toBe(true);
+
+    const timeout = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "requestTimeout",
+      params: { requestId: "req-2" },
+    };
+    expect(isRequestTimeoutNotification(timeout)).toBe(true);
+  });
+
+  it("validates send-user results for type mismatches", () => {
+    expect(isInitializeResult({ advertised_models: "not-array" })).toBe(false);
+    expect(isSendUserTurnResult({ context: { conversation_id: "conv" } })).toBe(true);
+    expect(isSendUserMessageResult({ finish_reason: 12 })).toBe(false);
+    expect(isSendUserMessageResult({ usage: "bad" })).toBe(false);
+  });
+
+  it("rejects invalid jsonrpc responses", () => {
+    expect(isJsonRpcErrorResponse({ jsonrpc: JSONRPC_VERSION, error: {} })).toBe(false);
+    expect(isJsonRpcSuccessResponse({ jsonrpc: JSONRPC_VERSION, id: 1 })).toBe(false);
+  });
+
+  it("includes experimentalRawEvents for addConversationListener", () => {
+    const params = buildNewConversationParams({ model: "gpt-5.2" });
+    const listener = buildAddConversationListenerParams({
+      conversationId: "conv-1",
+      experimentalRawEvents: true,
+    });
+
+    expect(params.model).toBe("gpt-5.2");
+    expect(listener.experimentalRawEvents).toBe(true);
   });
 });

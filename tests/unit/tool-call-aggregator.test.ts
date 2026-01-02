@@ -390,4 +390,166 @@ describe("ToolCallAggregator", () => {
     const fresh = aggregator.snapshot();
     expect(fresh[0].function.arguments).toBe("{}");
   });
+
+  it("skips invalid text matcher registrations and suppresses warnings in production", () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const warnSpy =
+      typeof process.emitWarning === "function"
+        ? vi.spyOn(process, "emitWarning").mockImplementation(() => {})
+        : vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const noop = registerTextPattern("", () => {});
+    expect(typeof noop).toBe("function");
+    const unregister = registerTextPattern("badMatcherProd", () => {
+      throw new Error("boom");
+    });
+
+    const result = extractUseToolBlocks("<use_tool><name>x</name></use_tool>", 0);
+    expect(result.blocks.length).toBeGreaterThan(0);
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    unregister();
+    warnSpy.mockRestore();
+    if (originalEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  it("parses JSON-only use_tool blocks with name and fields", () => {
+    const payload = '<use_tool>{"name":"alpha","path":"/tmp","query":"q"}</use_tool>';
+    const result = extractUseToolBlocks(payload, 0);
+
+    expect(result.blocks[0].name).toBe("alpha");
+    expect(result.blocks[0].path).toBe("/tmp");
+    expect(result.blocks[0].query).toBe("q");
+    expect(result.blocks[0].argsText).toContain('"query":"q"');
+  });
+
+  it("reuses call ids across alias fields and updates arguments", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    aggregator.ingestDelta({
+      tool_calls: [
+        {
+          tool_call_id: "call_1",
+          function: { name: "alpha", arguments: '{"x":' },
+        },
+      ],
+    });
+    aggregator.ingestDelta({
+      tool_calls: [
+        {
+          call_id: "call_1",
+          function: { arguments: '"1"}' },
+        },
+      ],
+    });
+
+    const snapshot = aggregator.snapshot();
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].function.arguments).toBe('{"x":"1"}');
+  });
+
+  it("ingests response output item events and argument completion", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    const added = aggregator.ingestDelta({
+      type: "response.output_item.added",
+      item: { id: "item_1", type: "function_call", name: "calc" },
+    });
+    expect(added.updated).toBe(true);
+
+    aggregator.ingestDelta({
+      type: "response.function_call_arguments.delta",
+      item_id: "item_1",
+      delta: '{"a":',
+    });
+    aggregator.ingestMessage({
+      type: "response.function_call_arguments.done",
+      item_id: "item_1",
+      arguments: '{"a":1}',
+    });
+
+    const snapshot = aggregator.snapshot();
+    expect(snapshot[0].function).toEqual({ name: "calc", arguments: '{"a":1}' });
+  });
+
+  it("synthesizes textual tool calls from array content", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    const payload = {
+      message: {
+        content: ['<use_tool><name>lookup</name><args>{"id":42}</args></use_tool>'],
+      },
+    };
+    const result = aggregator.ingestMessage(payload, { emitIfMissing: true });
+
+    expect(result.updated).toBe(true);
+    expect(result.deltas[0].function.name).toBe("lookup");
+    expect(result.deltas[0].function.arguments).toContain('"id":42');
+  });
+
+  it("disables parallel tool calls when nested flag is false", () => {
+    const aggregator = createToolCallAggregator();
+    aggregator.ingestDelta([
+      {
+        parallelToolCalls: false,
+        tool_calls: [{ index: 0, function: { name: "serial", arguments: "{}" } }],
+      },
+    ]);
+
+    expect(aggregator.supportsParallelCalls()).toBe(false);
+  });
+
+  it("ingests function_call payloads and replaces arguments", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    aggregator.ingestDelta({
+      function_call: { name: "legacy", arguments: '{"a":' },
+    });
+    aggregator.ingestDelta({
+      function_call: { arguments: '{"a":1}' },
+    });
+
+    const snapshot = aggregator.snapshot();
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].function.arguments).toBe('{"a":1}');
+  });
+
+  it("supports alternate argument keys and tool_call_index aliases", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    aggregator.ingestDelta({
+      tool_calls: [
+        {
+          tool_call_index: "1",
+          function: { name: "alpha", arguments_chunk: '{"x":' },
+        },
+      ],
+    });
+    aggregator.ingestDelta({
+      tool_calls: [
+        {
+          toolCallIndex: 1,
+          function: { argumentsChunk: '"y"}' },
+        },
+      ],
+    });
+
+    const snapshot = aggregator.snapshot({ choiceIndex: 0 });
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].function.arguments).toBe('{"x":"y"}');
+  });
+
+  it("clears all tool calls when resetTurn is called without a choice index", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    aggregator.ingestDelta({
+      tool_calls: [{ index: 0, function: { name: "one", arguments: "{}" } }],
+    });
+    aggregator.ingestDelta({
+      tool_calls: [{ index: 1, function: { name: "two", arguments: "{}" } }],
+    });
+
+    expect(aggregator.hasCalls()).toBe(true);
+    aggregator.resetTurn();
+    expect(aggregator.hasCalls()).toBe(false);
+  });
 });

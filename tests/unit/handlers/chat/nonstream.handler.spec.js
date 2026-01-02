@@ -452,6 +452,39 @@ describe("postChatNonStream guardrails", () => {
     expect(res.payload?.error?.code).toBe("response_transform_failed");
   });
 
+  it("falls back to writeHead when res.json throws", async () => {
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({});
+    const res = buildRes();
+    res.json = vi.fn(() => {
+      throw new Error("boom");
+    });
+
+    await postChatNonStream(req, res);
+
+    expect(res.writeHead).toHaveBeenCalledWith(400, {
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it("skips JSON response when headers were already sent", async () => {
+    const postChatNonStream = await loadHandler();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = buildReq({});
+    const res = buildRes();
+    res.headersSent = true;
+
+    await postChatNonStream(req, res);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[proxy][chat.nonstream] attempted to send JSON after headers were already sent"
+    );
+    errorSpy.mockRestore();
+  });
+
   it("builds a response from agent_message output", async () => {
     const postChatNonStream = await loadHandler();
 

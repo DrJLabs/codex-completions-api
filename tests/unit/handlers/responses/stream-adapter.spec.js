@@ -15,16 +15,23 @@ vi.mock("../../../../src/handlers/responses/capture.js", () => ({
   createResponsesStreamCapture: vi.fn(),
 }));
 
+const logProtoState = { enabled: false };
+const shouldLogVerboseMock = vi.fn(() => false);
+const previewMock = vi.fn(() => ({ preview: "", truncated: false }));
+const appendProtoEventMock = vi.fn();
+
 vi.mock("../../../../src/services/logging/schema.js", () => ({
   logStructured: vi.fn(),
   sha256: vi.fn(() => "hash"),
-  shouldLogVerbose: vi.fn(() => false),
-  preview: vi.fn(() => ({ preview: "", truncated: false })),
+  shouldLogVerbose: (...args) => shouldLogVerboseMock(...args),
+  preview: (...args) => previewMock(...args),
 }));
 
 vi.mock("../../../../src/dev-logging.js", () => ({
-  appendProtoEvent: vi.fn(),
-  LOG_PROTO: false,
+  appendProtoEvent: (...args) => appendProtoEventMock(...args),
+  get LOG_PROTO() {
+    return logProtoState.enabled;
+  },
 }));
 
 const buildRes = () => ({
@@ -57,6 +64,10 @@ beforeEach(() => {
     record: vi.fn(),
     finalize: vi.fn(),
   });
+  logProtoState.enabled = false;
+  shouldLogVerboseMock.mockReset().mockReturnValue(false);
+  previewMock.mockReset().mockReturnValue({ preview: "", truncated: false });
+  appendProtoEventMock.mockReset();
 });
 
 describe("responses stream adapter", () => {
@@ -320,5 +331,76 @@ describe("responses stream adapter", () => {
       output_tokens: 2,
       total_tokens: 5,
     });
+  });
+
+  it("records delta previews when verbose proto logging is enabled", async () => {
+    logProtoState.enabled = true;
+    shouldLogVerboseMock.mockReturnValue(true);
+    previewMock.mockReturnValue({ preview: "Hello", truncated: false });
+
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-9",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { content: "Hello" } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const protoEntry = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.delta_preview === "Hello"
+    );
+    expect(protoEntry).toBeTruthy();
+  });
+
+  it("logs tool argument previews when JSON is invalid", async () => {
+    logProtoState.enabled = true;
+    shouldLogVerboseMock.mockReturnValue(true);
+    previewMock.mockReturnValue({ preview: "{bad", truncated: true });
+
+    const toolDelta = {
+      id: "call_bad",
+      index: 0,
+      type: "function",
+      function: { name: "badTool", arguments: "{bad" },
+    };
+    createToolCallAggregator.mockReturnValue(
+      buildAggregator({
+        ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+        snapshot: vi.fn(() => [
+          {
+            id: "call_bad",
+            type: "function",
+            function: { name: "badTool", arguments: "{bad" },
+          },
+        ]),
+      })
+    );
+
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-10",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { tool_calls: [toolDelta] } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const protoEntry = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.args_preview === "{bad"
+    );
+    expect(protoEntry).toBeTruthy();
   });
 });

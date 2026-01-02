@@ -51,6 +51,7 @@ const estTokensForMessagesMock = vi.fn();
 const logSanitizerSummaryMock = vi.fn();
 const logSanitizerToggleMock = vi.fn();
 const appendProtoEventMock = vi.fn();
+const appendUsageMock = vi.fn();
 const extractUseToolBlocksMock = vi.fn(() => ({ blocks: [], nextPos: 0 }));
 const setSSEHeadersMock = vi.fn();
 const computeKeepaliveMsMock = vi.fn(() => 0);
@@ -129,7 +130,7 @@ vi.mock("../../../../src/handlers/chat/shared.js", async () => {
 
 vi.mock("../../../../src/dev-logging.js", () => ({
   LOG_PROTO: false,
-  appendUsage: vi.fn(),
+  appendUsage: (...args) => appendUsageMock(...args),
   appendProtoEvent: (...args) => appendProtoEventMock(...args),
   extractUseToolBlocks: (...args) => extractUseToolBlocksMock(...args),
   logSanitizerSummary: (...args) => logSanitizerSummaryMock(...args),
@@ -316,6 +317,7 @@ beforeEach(() => {
   startKeepalivesMock.mockReset().mockReturnValue({ stop: vi.fn() });
   sendCommentMock.mockReset();
   appendProtoEventMock.mockReset();
+  appendUsageMock.mockReset();
   createStopAfterToolsControllerMock.mockReset().mockReturnValue({
     schedule: vi.fn(),
     cancel: vi.fn(),
@@ -1256,5 +1258,163 @@ describe("postChatStream", () => {
     expect(logSanitizerSummaryMock).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: true })
     );
+  });
+
+  it("logs usage failures when appendUsage throws in dev", async () => {
+    configMock.PROXY_ENV = "dev";
+    appendUsageMock.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({ messages: [] });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[dev][usage][stream] failed to append usage",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("falls back to SSE when stream adapter onChunk throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({ messages: [{ role: "user", content: "hi" }] });
+    const res = buildRes();
+    res.locals.streamAdapter = {
+      onChunk: vi.fn(() => {
+        throw new Error("boom");
+      }),
+    };
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message_delta", msg: { delta: "hello" } }) + "\n")
+    );
+    lastChild.emit("close");
+
+    const sawContent = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content === "hello")
+    );
+
+    expect(sawContent).toBe(true);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[proxy][chat.stream] stream adapter onChunk failed",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("schedules stop-after-tools when delta repeats emitted content", async () => {
+    const scheduleMock = vi.fn();
+    createStopAfterToolsControllerMock.mockReturnValue({
+      schedule: scheduleMock,
+      cancel: vi.fn(),
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({ messages: [{ role: "user", content: "hi" }] });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({ type: "agent_message_delta", msg: { delta: "hello world" } }) + "\n"
+      )
+    );
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message_delta", msg: { delta: "world" } }) + "\n")
+    );
+
+    expect(scheduleMock).toHaveBeenCalledWith(0);
+  });
+
+  it("flushes nested tool buffer content", async () => {
+    resolveOutputModeMock.mockReturnValue("obsidian-xml");
+    trackToolBufferOpenMock.mockReturnValue(0);
+    detectNestedToolBufferMock.mockReturnValue(1);
+    abortToolBufferMock.mockReturnValue({ literal: "<use_tool>call</use_tool>" });
+    createToolBufferTrackerMock.mockReturnValue({
+      active: { start: 0, nestedScanPos: 0 },
+      skipUntil: 0,
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({ messages: [{ role: "user", content: "hi" }] });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({ type: "agent_message_delta", msg: { delta: "<use_tool>call" } }) + "\n"
+      )
+    );
+
+    const sawTool = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content === "<use_tool>call</use_tool>")
+    );
+
+    expect(sawTool).toBe(true);
+    expect(abortToolBufferMock).toHaveBeenCalled();
+  });
+
+  it("emits tool stats comments when tool calls forward in text mode", async () => {
+    const toolDelta = {
+      id: "tool-1",
+      type: "function",
+      function: { name: "calc", arguments: "{}" },
+    };
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => true),
+      ingestMessage: vi.fn(),
+      ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+      snapshot: vi.fn(() => [toolDelta]),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    resolveOutputModeMock.mockReturnValue("text");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { tool_calls: [toolDelta], content: "" } },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const toolStatPayload = sendCommentMock.mock.calls
+      .map(([, payload]) => {
+        try {
+          return JSON.parse(String(payload));
+        } catch {
+          return null;
+        }
+      })
+      .find((payload) => payload?.tool_call_count);
+
+    expect(toolStatPayload?.tool_call_count).toBe(1);
   });
 });

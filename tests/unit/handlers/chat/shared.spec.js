@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildBackendArgs,
   canonicalizeFinishReason,
+  coerceAssistantContent,
   createFinishReasonTracker,
   extractFinishReasonFromMessage,
+  resolveOutputMode,
   resolveFinishReasonPriority,
   validateOptionalChatParams,
 } from "../../../../src/handlers/chat/shared.js";
@@ -63,6 +66,24 @@ describe("chat shared helpers", () => {
     ).toBe("length");
   });
 
+  it("flattens nested assistant content into text", () => {
+    expect(coerceAssistantContent(["a", { text: "b" }, { content: ["c", { text: "d" }] }])).toBe(
+      "abcd"
+    );
+  });
+
+  it("resolves output modes from header, copilot, and defaults", () => {
+    expect(resolveOutputMode({ headerValue: "openai" })).toBe("openai-json");
+    expect(
+      resolveOutputMode({
+        headerValue: "unknown",
+        copilotDefault: "openai",
+        copilotDetection: { copilot_detect_tier: "high" },
+      })
+    ).toBe("openai-json");
+    expect(resolveOutputMode({ headerValue: "unknown", defaultValue: "bad" })).toBe("obsidian-xml");
+  });
+
   it("validates optional chat params for response_format and seed", () => {
     const invalidLogprobs = validateOptionalChatParams({ logprobs: true });
     expect(invalidLogprobs.ok).toBe(false);
@@ -92,5 +113,20 @@ describe("chat shared helpers", () => {
     const invalidSeed = validateOptionalChatParams({ seed: "abc" });
     expect(invalidSeed.ok).toBe(false);
     expect(invalidSeed.error?.error?.param).toBe("seed");
+
+    const invalidTopLogprobs = validateOptionalChatParams({ top_logprobs: 5 });
+    expect(invalidTopLogprobs.ok).toBe(false);
+    expect(invalidTopLogprobs.error?.error?.param).toBe("top_logprobs");
+  });
+
+  it("throws when backend mode is unsupported", () => {
+    expect(() =>
+      buildBackendArgs({
+        backendMode: "json-rpc",
+        SANDBOX_MODE: "read-only",
+        effectiveModel: "gpt-5.2",
+        FORCE_PROVIDER: "",
+      })
+    ).toThrow(/Unsupported backend mode/);
   });
 });
