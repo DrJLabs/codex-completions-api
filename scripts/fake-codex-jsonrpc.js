@@ -106,6 +106,11 @@ const emitCapture = (direction, payload) => {
 
 const configuredToolArgument = process.env.FAKE_CODEX_TOOL_ARGUMENT;
 const toolArgumentChunkSize = Number(process.env.FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE || 0);
+const toolXmlChunkSize = Number.parseInt(process.env.FAKE_CODEX_TOOL_XML_CHUNK_SIZE ?? "", 10);
+const truncateToolXml =
+  /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_TRUNCATE_TOOL_XML || ""));
+const abortAfterToolXml =
+  /^(1|true|yes)$/i.test(String(process.env.FAKE_CODEX_ABORT_AFTER_TOOL_XML || ""));
 const emitTextualXml =
   String(process.env.FAKE_CODEX_EMIT_TEXTUAL_XML || "true").toLowerCase() !== "false";
 const streamReadyFile = process.env.STREAM_READY_FILE;
@@ -113,6 +118,14 @@ const streamReleaseFile = process.env.STREAM_RELEASE_FILE;
 const childPidFile = process.env.CHILD_PID_FILE;
 const longStreamIntervalMs = Number(process.env.FAKE_CODEX_STREAM_INTERVAL_MS ?? 100);
 const longStreamTicks = Number(process.env.FAKE_CODEX_STREAM_TICKS ?? 50);
+const longStreamMaxTicksRaw = Number.parseInt(
+  process.env.FAKE_CODEX_STREAM_RELEASE_MAX_TICKS ?? "",
+  10
+);
+const longStreamMaxTicks =
+  Number.isFinite(longStreamMaxTicksRaw) && longStreamMaxTicksRaw > 0
+    ? longStreamMaxTicksRaw
+    : 10_000;
 const streamHangMs = Number(process.env.FAKE_CODEX_STREAM_HANG_MS ?? 10_000);
 const splitToolArgumentPayload = (value) => {
   if (Number.isFinite(toolArgumentChunkSize) && toolArgumentChunkSize > 0) {
@@ -132,6 +145,44 @@ const splitToolArgumentPayload = (value) => {
   }
 
   return [value];
+};
+
+const splitTextByByteLength = (value, chunkSize) => {
+  if (!value || !Number.isFinite(chunkSize) || chunkSize <= 0) return [value];
+  const chunks = [];
+  let current = "";
+  let currentBytes = 0;
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (current && currentBytes + charBytes > chunkSize) {
+      chunks.push(current);
+      current = char;
+      currentBytes = charBytes;
+      continue;
+    }
+    current += char;
+    currentBytes += charBytes;
+  }
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [value];
+};
+
+const applyToolXmlControls = (value) => {
+  if (!value || typeof value !== "string") return value;
+  if (!truncateToolXml || !value.includes("<use_tool")) return value;
+  const closingAt = value.indexOf("</use_tool>");
+  if (closingAt < 0) return value;
+  const cutoff = Math.min(value.length, closingAt + 4);
+  return value.slice(0, cutoff);
+};
+
+const splitToolXmlPayload = (value) => {
+  if (!Number.isFinite(toolXmlChunkSize) || toolXmlChunkSize <= 0) {
+    return [value];
+  }
+  if (!value || typeof value !== "string") return [value];
+  if (!value.includes("<use_tool")) return [value];
+  return splitTextByByteLength(value, toolXmlChunkSize);
 };
 
 async function runJsonRpcWorker() {
@@ -358,6 +409,7 @@ async function runJsonRpcWorker() {
             }
             i += 1;
             if (!shouldHoldOpen && i >= longStreamTicks) break;
+            if (shouldHoldOpen && i >= longStreamMaxTicks) break;
             // eslint-disable-next-line security/detect-non-literal-fs-filename -- test helper
             if (shouldHoldOpen && streamReleaseFile && fs.existsSync(streamReleaseFile)) {
               try {
@@ -742,6 +794,7 @@ async function runJsonRpcWorker() {
             }
           }
         }
+        messageText = applyToolXmlControls(messageText);
         // XML chunk emission moved after toolCalls when present
         const skipFinishOnDisconnect =
           String(process.env.FAKE_CODEX_SKIP_FINISH_ON_DISCONNECT || "").toLowerCase() === "true";
@@ -800,15 +853,24 @@ async function runJsonRpcWorker() {
             await delay(10);
           }
           if (messageText) {
-            write({
-              jsonrpc: "2.0",
-              method: "agentMessageDelta",
-              params: {
-                conversation_id: convId,
-                request_id: params.request_id || convId,
-                delta: messageText,
-              },
-            });
+            const messageChunks = splitToolXmlPayload(messageText);
+            for (const chunk of messageChunks) {
+              write({
+                jsonrpc: "2.0",
+                method: "agentMessageDelta",
+                params: {
+                  conversation_id: convId,
+                  request_id: params.request_id || convId,
+                  delta: chunk,
+                },
+              });
+            }
+          }
+
+          if (abortAfterToolXml && messageText.includes("<use_tool")) {
+            clearTimers();
+            scheduleExit(exitCode, 0);
+            return;
           }
 
           if (skipFinishOnDisconnect) {
@@ -816,15 +878,24 @@ async function runJsonRpcWorker() {
             return;
           }
         } else if (messageText) {
-          write({
-            jsonrpc: "2.0",
-            method: "agentMessageDelta",
-            params: {
-              conversation_id: convId,
-              request_id: params.request_id || convId,
-              delta: messageText,
-            },
-          });
+          const messageChunks = splitToolXmlPayload(messageText);
+          for (const chunk of messageChunks) {
+            write({
+              jsonrpc: "2.0",
+              method: "agentMessageDelta",
+              params: {
+                conversation_id: convId,
+                request_id: params.request_id || convId,
+                delta: chunk,
+              },
+            });
+          }
+
+          if (abortAfterToolXml && messageText.includes("<use_tool")) {
+            clearTimers();
+            scheduleExit(exitCode, 0);
+            return;
+          }
         }
 
         const assistantMessage = {

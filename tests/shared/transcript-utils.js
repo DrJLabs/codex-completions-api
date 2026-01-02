@@ -67,7 +67,7 @@ export function sanitizeStreamTranscript(chunks) {
 const APP_BACKEND_KEYS = new Set(["app", "app-server"]);
 
 function normalizeBackendName(backend) {
-  const normalized = String(backend).toLowerCase();
+  const normalized = String(backend).trim().toLowerCase();
   if (!APP_BACKEND_KEYS.has(normalized)) {
     throw new Error(`Unsupported transcript backend: ${backend}`);
   }

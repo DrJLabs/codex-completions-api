@@ -38,27 +38,27 @@ test("GET /healthz returns ok + sandbox_mode", async () => {
   expect(r.status).toBe(200);
   expect(r.headers.get("content-type")).toMatch(/application\/json/);
   const j = await r.json();
-  expect(j).toHaveProperty("ok", true);
+  expect(j).toHaveProperty("ok", false);
   expect(j).toHaveProperty("sandbox_mode");
   expect(j).toHaveProperty("health");
   expect(j.health).toHaveProperty("readiness");
   expect(j.health).toHaveProperty("liveness");
-  expect(j.health.readiness).toMatchObject({ ready: true });
-  expect(j.health.liveness).toMatchObject({ live: true });
+  expect(j.health.readiness).toMatchObject({ ready: false });
+  expect(j.health.liveness).toMatchObject({ live: false });
 });
 
-test("GET /readyz reports success when app server disabled", async () => {
+test("GET /readyz reports failure when app server disabled", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/readyz`);
-  expect(r.status).toBe(200);
+  expect(r.status).toBe(503);
   const j = await r.json();
-  expect(j).toMatchObject({ ok: true, app_server_enabled: false });
-  expect(j.health.readiness).toMatchObject({ ready: true, reason: "app_server_disabled" });
+  expect(j).toMatchObject({ ok: false, app_server_enabled: false });
+  expect(j.health.readiness).toMatchObject({ ready: false, reason: "app_server_disabled" });
 });
 
-test("GET /livez reports success when app server disabled", async () => {
+test("GET /livez reports failure when app server disabled", async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/livez`);
-  expect(r.status).toBe(200);
+  expect(r.status).toBe(503);
   const j = await r.json();
-  expect(j).toMatchObject({ ok: true, app_server_enabled: false });
-  expect(j.health.liveness).toMatchObject({ live: true, reason: "app_server_disabled" });
+  expect(j).toMatchObject({ ok: false, app_server_enabled: false });
+  expect(j.health.liveness).toMatchObject({ live: false, reason: "app_server_disabled" });
 });

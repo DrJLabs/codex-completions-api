@@ -71,6 +71,7 @@ beforeAll(async () => {
       PORT: String(PORT),
       PROXY_API_KEY: API_KEY,
       CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+      // FAKE_CODEX_MODE intentionally omitted to use default shim behavior.
       PROXY_PROTECT_MODELS: "false",
       TOKEN_LOG_PATH: TOKEN_FILE,
       PROTO_LOG_PATH: PROTO_FILE,

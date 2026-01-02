@@ -43,7 +43,7 @@ export default function healthRouter() {
           },
         }
       : {
-          ready: true,
+          ready: false,
           reason: "app_server_disabled",
           details: restartMeta,
         };
@@ -59,7 +59,7 @@ export default function healthRouter() {
           },
         }
       : {
-          live: true,
+          live: false,
           reason: "app_server_disabled",
           details: restartMeta,
         };
@@ -83,8 +83,9 @@ export default function healthRouter() {
   router.get("/healthz", (_req, res) => {
     const snapshot = buildWorkerSnapshots();
     const healthy =
+      snapshot.appServerEnabled &&
       snapshot.health.liveness.live &&
-      (!snapshot.appServerEnabled || snapshot.health.readiness.ready);
+      snapshot.health.readiness.ready;
     res.json({
       ok: healthy,
       sandbox_mode: CFG.PROXY_SANDBOX_MODE,
@@ -98,8 +99,8 @@ export default function healthRouter() {
   router.get("/readyz", (_req, res) => {
     const snapshot = buildWorkerSnapshots();
     if (!snapshot.appServerEnabled) {
-      return res.json({
-        ok: true,
+      return res.status(503).json({
+        ok: false,
         backend_mode: snapshot.backendMode,
         app_server_enabled: false,
         health: { readiness: snapshot.health.readiness },
@@ -118,8 +119,8 @@ export default function healthRouter() {
   router.get("/livez", (_req, res) => {
     const snapshot = buildWorkerSnapshots();
     if (!snapshot.appServerEnabled) {
-      return res.json({
-        ok: true,
+      return res.status(503).json({
+        ok: false,
         backend_mode: snapshot.backendMode,
         app_server_enabled: false,
         health: { liveness: snapshot.health.liveness },

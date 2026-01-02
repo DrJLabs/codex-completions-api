@@ -11,6 +11,7 @@ import {
   applyCors as applyCorsUtil,
 } from "../../utils.js";
 import { config as CFG } from "../../config/index.js";
+import { selectBackendMode } from "../../services/backend-mode.js";
 import { acceptedModelIds } from "../../config/models.js";
 import { resolveChoiceIndexFromPayload } from "./choice-index.js";
 import { modelNotFoundBody, invalidRequestBody, tokensExceededBody } from "../../lib/errors.js";
@@ -33,7 +34,6 @@ import {
   resolveOutputMode,
 } from "./shared.js";
 import { createToolCallAggregator, toObsidianXml } from "../../lib/tool-call-aggregator.js";
-import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
@@ -641,27 +641,6 @@ export async function postChatNonStream(req, res) {
   if (!res.locals.endpoint_mode) res.locals.endpoint_mode = "chat";
 
   const backendMode = selectBackendMode();
-  if (backendMode !== BACKEND_APP_SERVER) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_nonstream",
-      statusCode: 503,
-      reason: "backend_unavailable",
-      errorCode: "app_server_disabled",
-    });
-    applyCors(req, res);
-    return respondWithJson(res, 503, {
-      error: {
-        message: "app-server disabled (proto deprecated)",
-        type: "backend_unavailable",
-        code: "app_server_disabled",
-      },
-    });
-  }
   const idleTimeoutMs = CFG.PROXY_IDLE_TIMEOUT_MS;
 
   const optionalValidation = validateOptionalChatParams(body, {

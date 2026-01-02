@@ -85,7 +85,8 @@ describe("/readyz payload metadata", () => {
     const body = await res.json();
     server.close();
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
+    expect(body.ok).toBe(false);
     expect(body.app_server_enabled).toBe(false);
     expect(body.health.readiness.details.restarts_total).toBe(0);
     expect(body.health.readiness.details.next_restart_delay_ms).toBe(0);

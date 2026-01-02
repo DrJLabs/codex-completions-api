@@ -133,56 +133,65 @@ spawn("codex", [
 - **Profiles/models:** if callers specify `model`, run multiple app-server **instances** (one per model/profile) and route based on the request. Do not rely on in‑process model switching unless officially supported.
 - **Upgrades:** pin a tested CLI version; track release notes for JSON‑RPC/event name changes.
 - **Secrets:** keep credentials outside the image—mount them into `/app/.codex-api` and ensure the directory stays writable for Codex rollouts and session state.
-- **Probes & orchestration:**
-  - _Docker Compose:_ add explicit HTTP health checks so orchestrators only send traffic once `/readyz` reports ready. Example:
+- **Probes & orchestration:** keep your orchestrator wiring aligned to readiness (`/readyz`) and liveness (`/livez`) so traffic drains promptly when workers restart.
 
-    ```yaml
-    services:
-      codex-api:
-        healthcheck:
-          test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-11435}/readyz || exit 1"]
-          interval: 10s
-          timeout: 3s
-          retries: 5
-          start_period: 15s
-    ```
+### H.1 Docker Compose health checks
 
-    Compose keeps restarting the container if `/livez` fails; the readiness endpoint flips back to `503` within ~5s of a worker exit, so the check above gates deployment rolls until the worker handshake succeeds again.
+Add explicit HTTP health checks so orchestrators only send traffic once `/readyz` reports ready. Example:
 
-  - _systemd:_ ensure units rely on the new probes and restart counters. Recommended unit fragment:
+```yaml
+services:
+  codex-api:
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${PORT:-11435}/readyz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+```
 
-    ```ini
-    [Service]
-    ExecStart=/usr/bin/node /opt/codex/server.js
-    ExecStartPost=/usr/bin/curl --fail --silent --retry 5 --retry-connrefused http://127.0.0.1:${PORT:-11435}/livez
-    Restart=on-failure
-    RestartSec=5s
-    ```
+Compose keeps restarting the container if `/livez` fails; the readiness endpoint flips back to `503` within ~5s of a worker exit, so the check above gates deployment rolls until the worker handshake succeeds again.
 
-    Systemd will only report the service healthy after `/livez` succeeds; readiness remains false until the supervisor announces the JSON-RPC handshake.
+### H.2 systemd configuration
 
-  - _Traefik:_ wire the external load balancer to `/readyz` so traffic drains instantly when the worker restarts:
+Ensure units rely on the new probes and restart counters. Recommended unit fragment:
 
-    ```yaml
-    labels:
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz"
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.interval=5s"
-      - "traefik.http.services.codex-api.loadbalancer.healthCheck.timeout=2s"
-    ```
+```ini
+[Service]
+ExecStart=/usr/bin/node /opt/codex/server.js
+ExecStartPost=/usr/bin/curl --fail --silent --retry 5 --retry-connrefused http://127.0.0.1:${PORT:-11435}/livez
+Restart=on-failure
+RestartSec=5s
+```
 
-    Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
+Systemd will only report the service healthy after `/livez` succeeds; readiness remains false until the supervisor announces the JSON-RPC handshake.
 
-  - _Probe payload expectations:_ `/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`). Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts; slow starts keep readiness false until handshake completes. Backoff respects the 250 ms→5 s policy—guard alerting on `next_restart_delay_ms > 5000` or `restarts_total` growth.
+### H.3 Traefik load balancer wiring
 
-  - _Smoke commands (local)_:
+Wire the external load balancer to `/readyz` so traffic drains instantly when the worker restarts:
 
-    ```bash
-    curl -fsS http://127.0.0.1:${PORT:-11435}/readyz | jq '.health.readiness'
-    curl -fsS http://127.0.0.1:${PORT:-11435}/livez | jq '.health.liveness'
-    curl -fsS http://127.0.0.1:${PORT:-11435}/metrics | grep codex_worker_restarts_total
-    ```
+```yaml
+labels:
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.path=/readyz"
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.interval=5s"
+  - "traefik.http.services.codex-api.loadbalancer.healthCheck.timeout=2s"
+```
 
-    Expect `ok:true` when the worker handshakes; crash loops should show `reason:"worker_exit"` plus incremented `restarts_total` and non-zero `next_restart_delay_ms` until recovery.
+Traefik will stop routing within a single interval when readiness falls to `false`, aligning with the supervisor’s <5s guarantee.
+
+### H.4 Probe payload expectations
+
+`/readyz` exposes restart/backoff metadata in `health.readiness.details` (`restarts_total`, `next_restart_delay_ms`, `last_exit`, `startup_latency_ms`, `last_ready_at`). Crash/restart cycles flip readiness to `503` within <5s while `/livez` stays `200` during supervised restarts; slow starts keep readiness false until handshake completes. Backoff respects the 250 ms→5 s policy—guard alerting on `next_restart_delay_ms > 5000` or `restarts_total` growth.
+
+### H.5 Smoke commands (local)
+
+```bash
+curl -fsS http://127.0.0.1:${PORT:-11435}/readyz | jq '.health.readiness'
+curl -fsS http://127.0.0.1:${PORT:-11435}/livez | jq '.health.liveness'
+curl -fsS http://127.0.0.1:${PORT:-11435}/metrics | grep codex_worker_restarts_total
+```
+
+Expect `ok:true` when the worker handshakes; crash loops should show `reason:"worker_exit"` plus incremented `restarts_total` and non-zero `next_restart_delay_ms` until recovery.
 
 ---
 

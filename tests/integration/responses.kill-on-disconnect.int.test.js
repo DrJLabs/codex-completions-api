@@ -112,6 +112,8 @@ test("aborting responses stream cancels request without killing worker", async (
     alive = false;
   }
   expect(alive).toBe(true);
+  const ready = await fetch(`http://127.0.0.1:${PORT}/readyz`);
+  expect(ready.ok).toBe(true);
 
   // Ensure concurrency guard released after abort
   const start = Date.now();

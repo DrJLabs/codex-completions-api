@@ -51,7 +51,7 @@ import {
   metadataKeys,
   normalizeMetadataKey,
 } from "../../lib/metadata-sanitizer.js";
-import { selectBackendMode, BACKEND_APP_SERVER } from "../../services/backend-mode.js";
+import { selectBackendMode } from "../../services/backend-mode.js";
 import { mapTransportError } from "../../services/transport/index.js";
 import { createJsonRpcChildAdapter } from "../../services/transport/child-adapter.js";
 import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./request.js";
@@ -399,28 +399,6 @@ export async function postChatStream(req, res) {
   };
 
   const backendMode = selectBackendMode();
-  const isAppServerBackend = backendMode === BACKEND_APP_SERVER;
-  if (!isAppServerBackend) {
-    logUsageFailure({
-      req,
-      res,
-      reqId,
-      started,
-      route: "/v1/chat/completions",
-      mode: "chat_stream",
-      statusCode: 503,
-      reason: "backend_unavailable",
-      errorCode: "app_server_disabled",
-    });
-    applyCors(req, res);
-    return res.status(503).json({
-      error: {
-        message: "app-server disabled (proto deprecated)",
-        type: "backend_unavailable",
-        code: "app_server_disabled",
-      },
-    });
-  }
 
   const optionalValidation = validateOptionalChatParams(body, {
     allowJsonSchema: true,
@@ -619,6 +597,9 @@ export async function postChatStream(req, res) {
       });
       applyCors(req, res);
       return res.status(err.statusCode).json(err.body);
+    }
+    if (!responded) {
+      releaseGuard("normalization_error");
     }
     throw err;
   }
@@ -1435,7 +1416,14 @@ export async function postChatStream(req, res) {
       if (limitTail) {
         segment = trimTrailingTextAfterToolBlocks(segment);
       }
-      if (segment && limitTail && state.textualToolContentSeen && segment.includes("<use_tool")) {
+      let segmentHasToolBlock = false;
+      if (segment && limitTail && state.textualToolContentSeen) {
+        try {
+          const { blocks } = extractUseToolBlocks(segment, 0);
+          segmentHasToolBlock = Boolean(blocks && blocks.length);
+        } catch {}
+      }
+      if (segment && limitTail && state.textualToolContentSeen && segmentHasToolBlock) {
         state.forwardedUpTo = finalUntil;
         scheduleStopAfterTools(choiceIndex);
         return;

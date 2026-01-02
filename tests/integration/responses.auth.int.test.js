@@ -2,6 +2,7 @@ import { beforeAll, afterAll, test, expect } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -26,6 +27,7 @@ beforeAll(async () => {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  await waitForReady(PORT);
 }, 10_000);
 
 afterAll(async () => {

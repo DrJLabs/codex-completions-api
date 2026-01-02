@@ -30,7 +30,9 @@ export function buildAppServerArgs({
 
 export function buildBackendArgs({ backendMode, ...rest }) {
   if ((backendMode || "").toLowerCase() !== "app-server") {
-    throw new Error("app-server backend is disabled");
+    throw new Error(
+      `Unsupported backend mode: "${backendMode ?? "unknown"}" (only "app-server" is supported)`
+    );
   }
   return buildAppServerArgs(rest);
 }
