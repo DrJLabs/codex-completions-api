@@ -132,4 +132,72 @@ describe("chat nonstream helper behavior", () => {
 
     expect(extractTextualUseToolBlock("<use_tool>oops</use_tool>")).toBeNull();
   });
+
+  it("joins tool blocks when dedupe is disabled and delimiter is empty", async () => {
+    process.env.PROXY_TOOL_BLOCK_DEDUP = "false";
+    process.env.PROXY_TOOL_BLOCK_DELIMITER = "";
+    const { extractTextualUseToolBlock } = await loadHelpers();
+    const text = "<use_tool>one</use_tool><use_tool>two</use_tool>";
+    const firstEnd = text.indexOf("</use_tool>") + "</use_tool>".length;
+    const secondStart = text.indexOf("<use_tool>", firstEnd);
+    const secondEnd = text.indexOf("</use_tool>", secondStart) + "</use_tool>".length;
+
+    extractUseToolBlocksMock.mockReturnValue({
+      blocks: [
+        { start: 0, end: firstEnd },
+        { start: secondStart, end: secondEnd },
+      ],
+      nextPos: secondEnd,
+    });
+
+    expect(extractTextualUseToolBlock(text)).toBe(text);
+  });
+
+  it("builds assistant message with content_filter", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+
+    const result = buildAssistantMessage({
+      canonicalReason: "content_filter",
+      choiceContent: "blocked",
+    });
+
+    expect(result.message.content).toBeNull();
+    expect(result.hasToolCalls).toBe(false);
+  });
+
+  it("builds assistant message for tool calls without obsidian output", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+    const snapshot = [buildRecord("lookup_user", JSON.stringify({ id: "1" }))];
+
+    const result = buildAssistantMessage({
+      snapshot,
+      choiceContent: "ignored",
+      isObsidianOutput: false,
+    });
+
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect(result.message.content).toBeNull();
+  });
+
+  it("builds assistant message with function_call payload", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+
+    const result = buildAssistantMessage({
+      choiceContent: "ignored",
+      functionCallPayload: { name: "do_thing", arguments: "{}" },
+    });
+
+    expect(result.message.function_call).toEqual({ name: "do_thing", arguments: "{}" });
+    expect(result.message.content).toBeNull();
+  });
+
+  it("trims trailing content after use_tool blocks", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+
+    const result = buildAssistantMessage({
+      choiceContent: "before <use_tool>call</use_tool> after",
+    });
+
+    expect(result.message.content).toBe("before <use_tool>call</use_tool>");
+  });
 });
