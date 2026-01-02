@@ -48,6 +48,8 @@ const buildAggregator = (overrides = {}) => ({
   ...overrides,
 });
 
+const waitForWrites = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 beforeEach(() => {
   vi.clearAllMocks();
   createToolCallAggregator.mockReturnValue(buildAggregator());
@@ -72,11 +74,66 @@ describe("responses stream adapter", () => {
       choices: [{ index: 0, delta: { content: "Hello" } }],
     });
     await adapter.onDone();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForWrites();
 
     const entries = parseSSE(res.chunks.join(""));
     expect(entries[0]?.event).toBe("response.created");
     const deltas = entries.filter((entry) => entry.event === "response.output_text.delta");
     expect(deltas.map((entry) => entry.data.delta).join("")).toBe("Hello");
+  });
+
+  it("emits tool call delta and done events", async () => {
+    const toolDelta = {
+      id: "call_1",
+      index: 0,
+      type: "function",
+      function: {
+        name: "search",
+        arguments: '{"query":"hi"}',
+      },
+    };
+    const toolSnapshot = [
+      {
+        id: "call_1",
+        type: "function",
+        function: {
+          name: "search",
+          arguments: '{"query":"hi"}',
+        },
+      },
+    ];
+    createToolCallAggregator.mockReturnValue(
+      buildAggregator({
+        ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+        snapshot: vi.fn(() => toolSnapshot),
+      })
+    );
+
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-2",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { tool_calls: [toolDelta] } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const events = entries.map((entry) => entry.event).filter(Boolean);
+    const addedIndex = events.indexOf("response.output_item.added");
+    const deltaIndex = events.indexOf("response.function_call_arguments.delta");
+    const doneIndex = events.indexOf("response.function_call_arguments.done");
+    const outputDoneIndex = events.indexOf("response.output_item.done");
+
+    expect(addedIndex).toBeGreaterThan(-1);
+    expect(deltaIndex).toBeGreaterThan(addedIndex);
+    expect(doneIndex).toBeGreaterThan(deltaIndex);
+    expect(outputDoneIndex).toBeGreaterThan(doneIndex);
   });
 });
