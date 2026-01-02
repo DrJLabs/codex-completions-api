@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createToolCallAggregator,
   extractUseToolBlocks,
@@ -208,6 +208,43 @@ describe("ToolCallAggregator", () => {
     expect(blocks.map((block) => block.name)).toEqual(["localSearch", "tripleBlock"]);
     expect(nextPos).toBe(sample.length);
     unregister();
+  });
+
+  it("warns when a custom matcher throws", () => {
+    const warnSpy =
+      typeof process.emitWarning === "function"
+        ? vi.spyOn(process, "emitWarning").mockImplementation(() => {})
+        : vi.spyOn(console, "warn").mockImplementation(() => {});
+    const unregister = registerTextPattern("badMatcher", () => {
+      throw new Error("boom");
+    });
+
+    const result = extractUseToolBlocks("<use_tool><name>x</name></use_tool>", 0);
+    expect(result.blocks.length).toBeGreaterThan(0);
+    expect(warnSpy).toHaveBeenCalled();
+
+    unregister();
+    warnSpy.mockRestore();
+  });
+
+  it("handles malformed JSON inside use_tool blocks", () => {
+    const warnSpy =
+      typeof process.emitWarning === "function"
+        ? vi.spyOn(process, "emitWarning").mockImplementation(() => {})
+        : vi.spyOn(console, "warn").mockImplementation(() => {});
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    const payload = "<use_tool>{not-json}</use_tool>";
+    const result = aggregator.ingestMessage(
+      { message: { content: payload } },
+      { emitIfMissing: true }
+    );
+
+    expect(result.updated).toBe(true);
+    expect(result.deltas[0].function.name).toBe("use_tool");
+    expect(result.deltas[0].function.arguments ?? "").toBe("");
+    expect(aggregator.snapshot()[0].function.arguments).toBe("");
+
+    warnSpy.mockRestore();
   });
 
   it("builds snapshots from non-stream messages with malformed or missing args", () => {
