@@ -58,6 +58,7 @@ const sendSSEMock = vi.fn();
 const finishSSEMock = vi.fn();
 const sendCommentMock = vi.fn();
 const createToolCallAggregatorMock = vi.fn();
+const toObsidianXmlMock = vi.fn(() => "");
 const maybeInjectIngressGuardrailMock = vi.fn();
 const createJsonRpcChildAdapterMock = vi.fn();
 const mapTransportErrorMock = vi.fn();
@@ -207,7 +208,7 @@ vi.mock("../../../../src/handlers/chat/capture.js", () => ({
 
 vi.mock("../../../../src/lib/tool-call-aggregator.js", () => ({
   createToolCallAggregator: (...args) => createToolCallAggregatorMock(...args),
-  toObsidianXml: vi.fn(() => ""),
+  toObsidianXml: (...args) => toObsidianXmlMock(...args),
 }));
 
 vi.mock("../../../../src/lib/observability/transform-summary.js", () => ({
@@ -315,6 +316,7 @@ beforeEach(() => {
     snapshot: vi.fn(() => []),
     supportsParallelCalls: vi.fn(() => false),
   });
+  toObsidianXmlMock.mockReset().mockReturnValue("");
   maybeInjectIngressGuardrailMock.mockReset().mockImplementation(({ messages }) => ({
     injected: false,
     messages,
@@ -383,6 +385,22 @@ describe("postChatStream", () => {
       model: "gpt-test",
       messages: [{ role: "user", content: "hi" }],
       n: 2,
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload?.error?.param).toBe("n");
+  });
+
+  it("returns 400 when choice count is below minimum", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      n: "0",
     });
     const res = buildRes();
 
@@ -487,6 +505,23 @@ describe("postChatStream", () => {
     const firstPayload = sendSSEMock.mock.calls[0][1];
     expect(firstPayload?.choices).toHaveLength(2);
     expect(firstPayload.choices.every((choice) => choice.delta?.role === "assistant")).toBe(true);
+  });
+
+  it("accepts string choice count values", async () => {
+    configMock.PROXY_MAX_CHAT_CHOICES = 2;
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      n: "2",
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    const firstPayload = sendSSEMock.mock.calls[0][1];
+    expect(firstPayload?.choices).toHaveLength(2);
   });
 
   it("exits when stream guard does not acquire", async () => {
@@ -900,6 +935,171 @@ describe("postChatStream", () => {
     );
 
     expect(sawUsage).toBe(true);
+  });
+
+  it("uses token_count events for usage payloads", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      stream_options: { include_usage: true },
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "token_count",
+          msg: { prompt_tokens: 3, completion_tokens: 5 },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const usagePayload = sendSSEMock.mock.calls.find(([, payload]) => payload?.usage)?.[1];
+
+    expect(usagePayload?.usage?.prompt_tokens).toBe(3);
+    expect(usagePayload?.usage?.completion_tokens).toBe(5);
+    expect(usagePayload?.usage?.total_tokens).toBe(8);
+  });
+
+  it("uses provider usage events when available", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      stream_options: { include_usage: true },
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "usage",
+          msg: { usage: { prompt_tokens: 7, completion_tokens: 9 } },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const usagePayload = sendSSEMock.mock.calls.find(([, payload]) => payload?.usage)?.[1];
+
+    expect(usagePayload?.usage?.prompt_tokens).toBe(7);
+    expect(usagePayload?.usage?.completion_tokens).toBe(9);
+    expect(usagePayload?.usage?.total_tokens).toBe(16);
+  });
+
+  it("emits finish chunks on task_complete events", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "task_complete",
+          msg: { finish_reason: "stop", prompt_tokens: 2, completion_tokens: 4 },
+        }) + "\n"
+      )
+    );
+
+    const finishPayload = sendSSEMock.mock.calls.find(([, payload]) =>
+      payload?.choices?.some((choice) => choice.finish_reason === "stop")
+    );
+
+    expect(finishPayload).toBeTruthy();
+  });
+
+  it("emits obsidian tool content from aggregator snapshots", async () => {
+    const toolDelta = {
+      id: "tool-1",
+      type: "function",
+      function: { name: "calc", arguments: "{}" },
+    };
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => true),
+      ingestMessage: vi.fn(),
+      ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+      snapshot: vi.fn(() => [
+        { id: "tool-1", type: "function", function: { name: "calc", arguments: '{"x":1}' } },
+      ]),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    toObsidianXmlMock.mockReturnValue("<use_tool>calc</use_tool>");
+    resolveOutputModeMock.mockReturnValue("obsidian-xml");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { tool_calls: [toolDelta], content: "" } },
+        }) + "\n"
+      )
+    );
+
+    const sawXml = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content?.includes("<use_tool>"))
+    );
+
+    expect(sawXml).toBe(true);
+  });
+
+  it("records metadata sanitizer events when enabled", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: {
+            delta: { content: "session_id: abc\n", metadata: { session_id: "abc" } },
+          },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const sanitizerEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "metadata_sanitizer"
+    );
+
+    expect(sanitizerEvent).toBeTruthy();
+    expect(logSanitizerToggleMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
   });
 
   it("drops function_call_output payloads flagged by guardrails", async () => {
