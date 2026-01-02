@@ -20,4 +20,4 @@
 
 ## Non-goals
 - Renaming the repo, npm package, Docker image tags, or OTEL service names.
-- Removing legacy endpoints; `/v1/chat/completions` and `/v1/completions` remain for compatibility.
+- Removing legacy endpoints beyond keeping `/v1/chat/completions` for compatibility (`/v1/completions` is already removed as part of the proto deprecation).

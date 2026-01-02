@@ -1,7 +1,9 @@
 # Proto Deprecation Design
 
+**Status:** Completed — proto backend and `/v1/completions` are removed; app-server JSON-RPC is the only backend.
+
 ## Summary
-Remove the legacy `codex proto` backend and the `/v1/completions` endpoint. The proxy becomes JSON-RPC (app-server) only. `PROXY_USE_APP_SERVER=false` becomes a hard disable that returns 503 instead of falling back to proto. All proto-only shims, fixtures, and parity harnesses are removed. The deterministic JSON-RPC shim remains as the sole CI/test backend.
+Removed the legacy `codex proto` backend and the `/v1/completions` endpoint. The proxy is JSON-RPC (app-server) only. `PROXY_USE_APP_SERVER=false` is a hard disable that returns 503 instead of falling back to proto. Proto-only shims, fixtures, and parity harnesses are removed. The deterministic JSON-RPC shim remains as the sole CI/test backend.
 
 ## Goals
 - Eliminate proto runtime and test dependencies without changing app-server behavior.
@@ -15,14 +17,14 @@ Remove the legacy `codex proto` backend and the `/v1/completions` endpoint. The 
 - No replacement endpoint for `/v1/completions`.
 - No renaming of proto log fields (legacy naming remains for now).
 
-## Current State
-- Proxy supports two backend modes: JSON-RPC app-server and legacy proto.
-- Proto path spawns per-request `codex proto` processes with separate idle and debug flags.
-- CI includes proto shims and parity fixtures for legacy protocol behavior.
-- Docs and runbooks reference proto fallback as an available mode.
-- `/v1/completions` is still routed and rate-limited, despite responses-first client usage.
+## Previous State (pre-deprecation)
+- Proxy supported two backend modes: JSON-RPC app-server and legacy proto.
+- Proto path spawned per-request `codex proto` processes with separate idle and debug flags.
+- CI included proto shims and parity fixtures for legacy protocol behavior.
+- Docs and runbooks referenced proto fallback as an available mode.
+- `/v1/completions` was still routed and rate-limited, despite responses-first client usage.
 
-## Proposed Changes
+## Implemented Changes
 ### 1) Backend mode reduction
 - `PROXY_USE_APP_SERVER=true` selects JSON-RPC worker path.
 - `PROXY_USE_APP_SERVER=false` returns `503 app_server_disabled` immediately.
@@ -58,10 +60,10 @@ Request → Express route → handler → JSON-RPC adapter → app-server worker
 - Ensure multi-choice tool-call scenarios are covered with JSON-RPC shim variants.
 - E2E and contract tests should remain green without proto fixtures.
 
-## Rollout Plan
-1) Land code removal + doc updates in a single release.
-2) Monitor access logs for `/v1/completions` traffic during rollout.
-3) Communicate migration guidance if client traffic appears.
+## Rollout Notes
+1) Landed code removal + doc updates in a single release.
+2) Monitored access logs for `/v1/completions` traffic during rollout.
+3) Communicated migration guidance where client traffic appeared.
 
 ## Risks & Mitigations
 - **Client breakage on `/v1/completions`**: mitigate by monitoring logs and documenting migration.
