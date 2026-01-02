@@ -143,4 +143,46 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(afterHandshake.ready).toBe(true);
     expect(currentSupervisor.state.ready).toBe(true);
   });
+
+  test("start is a no-op when already running", async () => {
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+
+    currentSupervisor.start();
+    await settle();
+
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("waitForReady times out without a ready signal", async () => {
+    await expect(currentSupervisor.waitForReady(10)).rejects.toThrow("worker readiness timeout");
+  });
+
+  test("recordHandshakeFailure updates readiness state", async () => {
+    currentSupervisor.recordHandshakeFailure(new Error("handshake exploded"));
+    await settle();
+
+    const status = getWorkerStatus();
+    expect(status.health.readiness.reason).toBe("handshake_failed");
+    expect(status.health.readiness.handshake?.error).toBe("handshake exploded");
+  });
+
+  test("recordHandshakePending includes extra details", async () => {
+    currentSupervisor.recordHandshakePending({ note: "waiting" });
+    await settle();
+
+    const status = getWorkerStatus();
+    expect(status.health.readiness.reason).toBe("handshake_pending");
+    expect(status.health.readiness.details?.note).toBe("waiting");
+  });
+
+  test("shutdown short-circuits when the child already exited", async () => {
+    const child = mockChildren[mockChildren.length - 1];
+    child.exitCode = 0;
+    child.signalCode = null;
+
+    await currentSupervisor.shutdown({ reason: "already_done" });
+
+    const status = getWorkerStatus();
+    expect(status.health.liveness.reason).toBe("shutdown_complete");
+  });
 });
