@@ -188,4 +188,137 @@ describe("responses stream adapter", () => {
     const completed = entries.find((entry) => entry.event === "response.completed");
     expect(completed?.data?.response?.status).toBe("incomplete");
   });
+
+  it("handles array and object content deltas", async () => {
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-5",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { content: ["A", { text: "B" }] } }],
+    });
+    adapter.onChunk({
+      id: "chatcmpl-5",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { content: { text: "C" } } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const deltas = entries
+      .filter((entry) => entry.event === "response.output_text.delta")
+      .map((entry) => entry.data.delta)
+      .join("");
+    expect(deltas).toBe("ABC");
+  });
+
+  it("ingests tool calls from message payloads when deltas do not update", async () => {
+    const toolDelta = {
+      id: "call_2",
+      index: 0,
+      type: "function",
+      function: { name: "calc", arguments: '{"x":1}' },
+    };
+    createToolCallAggregator.mockReturnValue(
+      buildAggregator({
+        ingestDelta: vi.fn(() => ({ updated: false, deltas: [] })),
+        ingestMessage: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+        snapshot: vi.fn(() => [
+          {
+            id: "call_2",
+            type: "function",
+            function: { name: "calc", arguments: '{"x":1}' },
+          },
+        ]),
+      })
+    );
+
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-6",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: {}, message: { tool_calls: [toolDelta] } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const events = entries.map((entry) => entry.event).filter(Boolean);
+    expect(events).toContain("response.output_item.added");
+  });
+
+  it("emits response.completed when no chunks were received", async () => {
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const completed = entries.find((entry) => entry.event === "response.completed");
+    expect(completed?.data?.response?.output?.[0]?.content?.[0]?.text).toBe("");
+  });
+
+  it("marks responses failed when finish reasons include cancellation", async () => {
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-7",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "cancelled" }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const completed = entries.find((entry) => entry.event === "response.completed");
+    expect(completed?.data?.response?.status).toBe("failed");
+  });
+
+  it("maps usage input/output tokens into response summaries", async () => {
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-8",
+      model: "gpt-test",
+      usage: { input_tokens: 3, output_tokens: 2 },
+      choices: [{ index: 0, delta: { content: "Hello" } }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const completed = entries.find((entry) => entry.event === "response.completed");
+    expect(completed?.data?.response?.usage).toEqual({
+      input_tokens: 3,
+      output_tokens: 2,
+      total_tokens: 5,
+    });
+  });
 });
