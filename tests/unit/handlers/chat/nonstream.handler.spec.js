@@ -475,6 +475,48 @@ describe("postChatNonStream guardrails", () => {
     expect(res.end).toHaveBeenCalled();
   });
 
+  it("bails when headers are sent during fallback", async () => {
+    const postChatNonStream = await loadHandler();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = buildReq({});
+    const res = buildRes();
+    res.json = vi.fn(() => {
+      res.headersSent = true;
+      throw new Error("boom");
+    });
+
+    await postChatNonStream(req, res);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[proxy][chat.nonstream] headers sent during fallback attempt; cannot recover"
+    );
+    expect(res.writeHead).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("logs when fallback JSON response fails", async () => {
+    const postChatNonStream = await loadHandler();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = buildReq({});
+    const res = buildRes();
+    res.json = vi.fn(() => {
+      throw new Error("boom");
+    });
+    res.writeHead = vi.fn(() => {
+      throw new Error("writeHead boom");
+    });
+
+    await postChatNonStream(req, res);
+
+    const sawFallback = errorSpy.mock.calls.some(
+      ([message]) => message === "[proxy][chat.nonstream] fallback JSON response failed"
+    );
+    expect(sawFallback).toBe(true);
+    errorSpy.mockRestore();
+  });
+
   it("skips JSON response when headers were already sent", async () => {
     const postChatNonStream = await loadHandler();
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -533,6 +575,40 @@ describe("postChatNonStream guardrails", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.payload?.choices?.[0]?.message?.content).toBe("Partial");
+  });
+
+  it("handles string deltas and nested function_call arguments", async () => {
+    const ingestMessageMock = vi.fn();
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => false),
+      ingestMessage: ingestMessageMock,
+      ingestDelta: vi.fn(() => ({ updated: false })),
+      snapshot: vi.fn(() => []),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message_delta",
+      delta: "Partial",
+      arguments: { function_call: { name: "doThing", arguments: "{}" } },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(ingestMessageMock).toHaveBeenCalledWith(
+      { message: { content: "Partial" } },
+      { choiceIndex: 0, emitIfMissing: true }
+    );
+    expect(res.payload?.choices?.[0]?.message?.function_call?.name).toBe("doThing");
   });
 
   it("includes tool_calls when the aggregator reports calls", async () => {
@@ -805,6 +881,27 @@ describe("postChatNonStream guardrails", () => {
     expect(lastChild.kill).toHaveBeenCalledWith("SIGTERM");
 
     lastChild.stdout.emit("end");
+    vi.useRealTimers();
+  });
+
+  it("responds on idle timeout and terminates the child", async () => {
+    configMock.PROXY_IDLE_TIMEOUT_MS = 10;
+    vi.useFakeTimers();
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    vi.advanceTimersByTime(15);
+
+    expect(res.statusCode).toBe(504);
+    expect(res.payload?.error?.code).toBe("idle_timeout");
+    expect(lastChild.kill).toHaveBeenCalledWith("SIGTERM");
     vi.useRealTimers();
   });
 
