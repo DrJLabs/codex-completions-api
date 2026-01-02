@@ -278,6 +278,48 @@ describe("JsonRpcChildAdapter normalization", () => {
     await flushAsync();
   });
 
+  it("ignores duplicate writes and falls back on invalid JSON", async () => {
+    const { adapter, context, resolvePromise } = await setupAdapter();
+
+    adapter.stdin.write("{not json");
+    adapter.stdin.write(JSON.stringify({ prompt: "ignored" }));
+    await flushAsync();
+
+    expect(transport.createChatRequest).toHaveBeenCalledTimes(1);
+    expect(transport.sendUserMessage).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        items: [{ type: "text", data: { text: "" } }],
+      })
+    );
+
+    resolvePromise();
+    await flushAsync();
+  });
+
+  it("forwards unknown notifications and strips normalized text payloads", async () => {
+    const { adapter, emitter, context, resolvePromise, stdout } = await setupAdapter({
+      normalizedRequest: {
+        turn: { items: [], text: "turn text" },
+        message: { items: [], text: "message text" },
+      },
+    });
+
+    adapter.stdin.write(JSON.stringify({ prompt: "hello" }));
+    await flushAsync();
+
+    emitter.emit("notification", { method: "custom_event", params: { ok: true } });
+    await flushAsync();
+
+    const messagePayload = transport.sendUserMessage.mock.calls[0][1];
+    expect(messagePayload.text).toBeUndefined();
+    expect(messagePayload.items).toEqual([{ type: "text", data: { text: "hello" } }]);
+    expect(stdout).toContainEqual({ type: "custom_event", msg: { ok: true } });
+
+    resolvePromise();
+    await flushAsync();
+  });
+
   it("normalizes delta, message, usage, and result payloads", async () => {
     const { adapter, emitter, resolvePromise, stdout } = await setupAdapter();
 
