@@ -22,7 +22,7 @@
     "lint:runbooks": "prettier -c docs/app-server-migration",
     "format": "prettier -w .",
     "format:check": "prettier -c .",
-    "secret-scan": "secretlint .",
+    "secret-scan": "node scripts/secret-scan-staged.mjs",
     "prepare": "npm run husky:enable",
     "husky:enable": "husky install && chmod +x .husky/* || true",
     "husky:fix-perms": "chmod +x .husky/* || true",
