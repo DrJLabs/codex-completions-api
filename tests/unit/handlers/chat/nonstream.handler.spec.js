@@ -50,6 +50,8 @@ const installJsonLoggerMock = vi.fn();
 const createToolCallAggregatorMock = vi.fn();
 const createJsonRpcChildAdapterMock = vi.fn();
 const mapTransportErrorMock = vi.fn();
+const appendProtoEventMock = vi.fn();
+const logSanitizerToggleMock = vi.fn();
 let lastChild = null;
 
 vi.mock("../../../../src/config/index.js", () => ({
@@ -95,10 +97,10 @@ vi.mock("../../../../src/handlers/chat/shared.js", async () => {
 vi.mock("../../../../src/dev-logging.js", () => ({
   LOG_PROTO: false,
   appendUsage: vi.fn(),
-  appendProtoEvent: vi.fn(),
+  appendProtoEvent: (...args) => appendProtoEventMock(...args),
   extractUseToolBlocks: vi.fn(() => ({ blocks: [], nextPos: 0 })),
   logSanitizerSummary: vi.fn(),
-  logSanitizerToggle: vi.fn(),
+  logSanitizerToggle: (...args) => logSanitizerToggleMock(...args),
 }));
 
 vi.mock("../../../../src/services/backend-mode.js", () => ({
@@ -230,8 +232,11 @@ beforeEach(() => {
     return lastChild;
   });
   mapTransportErrorMock.mockReset();
+  appendProtoEventMock.mockReset();
+  logSanitizerToggleMock.mockReset();
   configMock.PROXY_MAX_PROMPT_TOKENS = 0;
   configMock.PROXY_MAX_CHAT_CHOICES = 1;
+  configMock.PROXY_NONSTREAM_TRUNCATE_AFTER_MS = 0;
 });
 
 afterEach(() => {
@@ -296,6 +301,29 @@ describe("postChatNonStream guardrails", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.payload?.error?.param).toBe("n");
+  });
+
+  it("accepts string choice count values", async () => {
+    configMock.PROXY_MAX_CHAT_CHOICES = 2;
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      n: "2",
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { content: "Hello" },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.payload?.choices).toHaveLength(2);
   });
 
   it("returns 400 when optional params are invalid", async () => {
@@ -375,6 +403,53 @@ describe("postChatNonStream guardrails", () => {
 
     expect(res.statusCode).toBe(422);
     expect(res.payload).toEqual(errorBody);
+  });
+
+  it("applies response transforms when provided", async () => {
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+    res.locals.responseTransform = (payload) => ({ ...payload, transformed: true });
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { content: "Hello" },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.payload?.transformed).toBe(true);
+  });
+
+  it("handles response transform failures with a 500", async () => {
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+    res.locals.responseTransform = () => {
+      throw new Error("boom");
+    };
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { content: "Hello" },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.statusCode).toBe(500);
+    expect(res.payload?.error?.code).toBe("response_transform_failed");
   });
 
   it("builds a response from agent_message output", async () => {
@@ -477,6 +552,87 @@ describe("postChatNonStream guardrails", () => {
     expect(res.payload?.usage?.prompt_tokens).toBe(3);
     expect(res.payload?.usage?.completion_tokens).toBe(2);
     expect(res.payload?.usage?.total_tokens).toBe(5);
+  });
+
+  it("records metadata sanitizer events when enabled", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const metadataLine = JSON.stringify({
+      type: "metadata",
+      msg: { metadata: { session_id: "abc" } },
+    });
+    lastChild.stdout.emit("data", `${metadataLine}\n`);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { content: "Hello" },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    const sanitizerEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "metadata_sanitizer"
+    );
+
+    expect(sanitizerEvent).toBeTruthy();
+    expect(logSanitizerToggleMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+  });
+
+  it("honors task_complete events when determining finish reasons", async () => {
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const taskLine = JSON.stringify({
+      type: "task_complete",
+      msg: { finish_reason: "stop" },
+    });
+    lastChild.stdout.emit("data", `${taskLine}\n`);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { content: "Hello" },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.payload?.choices?.[0]?.finish_reason).toBe("stop");
+  });
+
+  it("terminates the child early when truncation is enabled", async () => {
+    configMock.PROXY_NONSTREAM_TRUNCATE_AFTER_MS = 5;
+    vi.useFakeTimers();
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    vi.advanceTimersByTime(5);
+
+    expect(lastChild.kill).toHaveBeenCalledWith("SIGTERM");
+
+    lastChild.stdout.emit("end");
+    vi.useRealTimers();
   });
 
   it("maps transport errors from child process failures", async () => {
