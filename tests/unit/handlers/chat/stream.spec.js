@@ -41,6 +41,7 @@ const resolveChatCopilotDetectionMock = vi.fn();
 const resolveOutputModeMock = vi.fn();
 const normalizeModelMock = vi.fn();
 const buildBackendArgsMock = vi.fn();
+const normalizeChatJsonRpcRequestMock = vi.fn();
 const setupStreamGuardMock = vi.fn();
 const applyGuardHeadersMock = vi.fn();
 const createStreamObserverMock = vi.fn();
@@ -121,8 +122,15 @@ vi.mock("../../../../src/services/transport/child-adapter.js", () => ({
 }));
 
 vi.mock("../../../../src/handlers/chat/request.js", () => ({
-  normalizeChatJsonRpcRequest: vi.fn(() => ({})),
-  ChatJsonRpcNormalizationError: class ChatJsonRpcNormalizationError extends Error {},
+  normalizeChatJsonRpcRequest: (...args) => normalizeChatJsonRpcRequestMock(...args),
+  ChatJsonRpcNormalizationError: class ChatJsonRpcNormalizationError extends Error {
+    constructor(body, statusCode = 400) {
+      super("Chat request normalization failed");
+      this.name = "ChatJsonRpcNormalizationError";
+      this.statusCode = statusCode;
+      this.body = body;
+    }
+  },
 }));
 
 vi.mock("../../../../src/handlers/chat/require-model.js", () => ({
@@ -254,6 +262,7 @@ beforeEach(() => {
     requested: "gpt-test",
     effective: "gpt-test",
   });
+  normalizeChatJsonRpcRequestMock.mockReset().mockReturnValue({});
   buildBackendArgsMock.mockReset().mockReturnValue([]);
   setupStreamGuardMock.mockReset().mockReturnValue({
     acquired: true,
@@ -394,5 +403,55 @@ describe("postChatStream", () => {
 
     expect(setupStreamGuardMock).toHaveBeenCalled();
     expect(applyGuardHeadersMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 when stream guard triggers concurrency error", async () => {
+    setupStreamGuardMock.mockImplementation(({ send429 }) => {
+      send429();
+      return { acquired: false };
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.payload?.error?.code).toBe("concurrency_exceeded");
+    expect(applyCorsMock).toHaveBeenCalled();
+  });
+
+  it("returns normalization errors from json-rpc normalization", async () => {
+    const { ChatJsonRpcNormalizationError } = await import(
+      "../../../../src/handlers/chat/request.js"
+    );
+    const releaseMock = vi.fn();
+    const errorBody = invalidRequestBody("model", "bad model", "invalid_request_error");
+    normalizeChatJsonRpcRequestMock.mockImplementation(() => {
+      throw new ChatJsonRpcNormalizationError(errorBody, 422);
+    });
+    setupStreamGuardMock.mockReturnValue({
+      acquired: true,
+      token: "guard",
+      release: releaseMock,
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.payload).toEqual(errorBody);
+    expect(applyGuardHeadersMock).toHaveBeenCalledWith(res, "guard", false);
+    expect(releaseMock).toHaveBeenCalledWith("normalization_error");
   });
 });
