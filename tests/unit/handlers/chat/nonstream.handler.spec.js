@@ -52,6 +52,8 @@ const createJsonRpcChildAdapterMock = vi.fn();
 const mapTransportErrorMock = vi.fn();
 const appendProtoEventMock = vi.fn();
 const logSanitizerToggleMock = vi.fn();
+const logSanitizerSummaryMock = vi.fn();
+const maybeInjectIngressGuardrailMock = vi.fn();
 let lastChild = null;
 
 vi.mock("../../../../src/config/index.js", () => ({
@@ -99,7 +101,7 @@ vi.mock("../../../../src/dev-logging.js", () => ({
   appendUsage: vi.fn(),
   appendProtoEvent: (...args) => appendProtoEventMock(...args),
   extractUseToolBlocks: vi.fn(() => ({ blocks: [], nextPos: 0 })),
-  logSanitizerSummary: vi.fn(),
+  logSanitizerSummary: (...args) => logSanitizerSummaryMock(...args),
   logSanitizerToggle: (...args) => logSanitizerToggleMock(...args),
 }));
 
@@ -132,11 +134,7 @@ vi.mock("../../../../src/handlers/chat/require-model.js", () => ({
 }));
 
 vi.mock("../../../../src/lib/ingress-guardrail.js", () => ({
-  maybeInjectIngressGuardrail: vi.fn(({ messages }) => ({
-    injected: false,
-    messages,
-    markers: [],
-  })),
+  maybeInjectIngressGuardrail: (...args) => maybeInjectIngressGuardrailMock(...args),
 }));
 
 vi.mock("../../../../src/lib/tool-call-aggregator.js", () => ({
@@ -234,6 +232,14 @@ beforeEach(() => {
   mapTransportErrorMock.mockReset();
   appendProtoEventMock.mockReset();
   logSanitizerToggleMock.mockReset();
+  logSanitizerSummaryMock.mockReset();
+  maybeInjectIngressGuardrailMock.mockReset().mockImplementation(({ messages }) => ({
+    injected: false,
+    messages,
+    markers: [],
+  }));
+  configMock.PROXY_ENV = "prod";
+  configMock.PROXY_SANITIZE_METADATA = false;
   configMock.PROXY_MAX_PROMPT_TOKENS = 0;
   configMock.PROXY_MAX_CHAT_CHOICES = 1;
   configMock.PROXY_NONSTREAM_TRUNCATE_AFTER_MS = 0;
@@ -618,6 +624,140 @@ describe("postChatNonStream guardrails", () => {
 
     expect(sanitizerEvent).toBeTruthy();
     expect(logSanitizerToggleMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+  });
+
+  it("sanitizes metadata from content and summarizes removals", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: {
+        content: "session_id: abc\nhello",
+        metadata: { session_id: "abc" },
+      },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.payload?.choices?.[0]?.message?.content).toBe("hello");
+
+    const sanitizerEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "metadata_sanitizer" && payload?.removed_lines?.length
+    );
+
+    expect(sanitizerEvent).toBeTruthy();
+    expect(logSanitizerSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true })
+    );
+  });
+
+  it("uses implied reasoning effort for codex-5 variants", async () => {
+    acceptedModelIdsMock.mockReturnValue(new Set(["codex-5-low"]));
+    const postChatNonStream = await loadHandler();
+    requireModelMock.mockReturnValue("codex-5-low");
+    normalizeModelMock.mockReturnValue({
+      requested: "codex-5-low",
+      effective: "codex-5-low",
+    });
+
+    const req = buildReq({
+      model: "codex-5-low",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    expect(buildBackendArgsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: "low" })
+    );
+  });
+
+  it("logs dev prompt submissions in dev mode", async () => {
+    configMock.PROXY_ENV = "dev";
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const submission = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "submission"
+    );
+
+    expect(submission).toBeTruthy();
+  });
+
+  it("emits metadata sanitizer state when enabled", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const stateEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "metadata_sanitizer_state"
+    );
+
+    expect(stateEvent).toBeTruthy();
+  });
+
+  it("uses injected guardrail messages when provided", async () => {
+    maybeInjectIngressGuardrailMock.mockImplementation(({ messages }) => ({
+      injected: true,
+      messages: [{ role: "user", content: "guarded" }],
+      markers: ["guardrail"],
+    }));
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    expect(joinMessagesMock).toHaveBeenCalledWith([{ role: "user", content: "guarded" }]);
+  });
+
+  it("propagates function_call signals from payloads", async () => {
+    const postChatNonStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatNonStream(req, res);
+
+    const line = JSON.stringify({
+      type: "agent_message",
+      message: { function_call: { name: "doThing", arguments: "{}" } },
+    });
+    lastChild.stdout.emit("data", `${line}\n`);
+    lastChild.stdout.emit("end");
+
+    expect(res.payload?.choices?.[0]?.message?.function_call?.name).toBe("doThing");
   });
 
   it("honors task_complete events when determining finish reasons", async () => {

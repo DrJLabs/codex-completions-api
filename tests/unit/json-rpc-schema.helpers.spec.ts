@@ -154,10 +154,12 @@ describe("json-rpc schema helper behavior", () => {
 
   it("extracts conversation and request ids from nested payloads", () => {
     expect(extractConversationId({ conversation_id: "conv-1" })).toBe("conv-1");
+    expect(extractConversationId({ conversationId: "conv-1b" })).toBe("conv-1b");
     expect(extractConversationId({ conversation: { id: "conv-2" } })).toBe("conv-2");
     expect(extractConversationId({ context: { conversation_id: "conv-3" } })).toBe("conv-3");
 
     expect(extractRequestId({ request_id: "req-1" })).toBe("req-1");
+    expect(extractRequestId({ requestId: "req-1b" })).toBe("req-1b");
     expect(extractRequestId({ context: { request_id: "req-2" } })).toBe("req-2");
   });
 
@@ -230,6 +232,11 @@ describe("json-rpc schema helper behavior", () => {
     expect(isJsonRpcNotification({})).toBe(false);
   });
 
+  it("returns null when extracting identifiers from non-objects", () => {
+    expect(extractConversationId(null)).toBeNull();
+    expect(extractRequestId("nope")).toBeNull();
+  });
+
   it("handles notification predicates for invalid payloads", () => {
     const badDelta = {
       jsonrpc: JSONRPC_VERSION,
@@ -251,6 +258,16 @@ describe("json-rpc schema helper behavior", () => {
       params: { request_id: "req-1" },
     };
     expect(isRequestTimeoutNotification(timeout)).toBe(true);
+  });
+
+  it("accepts valid chat notifications", () => {
+    const delta = {
+      jsonrpc: JSONRPC_VERSION,
+      method: "agentMessageDelta",
+      params: { conversation_id: "conv-1", delta: { content: "hello" } },
+    };
+
+    expect(isAgentMessageDeltaNotification(delta)).toBe(true);
   });
 
   it("recognizes notifications with alternate identifiers", () => {

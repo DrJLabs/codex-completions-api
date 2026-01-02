@@ -402,4 +402,161 @@ describe("normalizeChatJsonRpcRequest", () => {
     expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
     expect(err?.body?.error?.param).toBe("messages[0].role");
   });
+
+  it("flattens mixed content parts and stringifies unknown objects", () => {
+    const messages = [
+      {
+        role: "user",
+        content: [
+          "alpha",
+          { text: "beta" },
+          { content: "gamma" },
+          { type: "text", text: "delta" },
+          { type: "image_url", image_url: "https://example.com/a.png" },
+          { type: "image_url", image_url: { url: "https://example.com/b.png" } },
+          { type: "input_text", input_text: "epsilon" },
+          { foo: "bar" },
+          42,
+        ],
+      },
+    ];
+
+    const normalized = normalize({ body: { messages }, messages });
+    const prompt = normalized.turn.items[0]?.data?.text || "";
+
+    expect(prompt).toContain("alpha");
+    expect(prompt).toContain("beta");
+    expect(prompt).toContain("gamma");
+    expect(prompt).toContain("delta");
+    expect(prompt).toContain("[image:https://example.com/a.png]");
+    expect(prompt).toContain("[image:https://example.com/b.png]");
+    expect(prompt).toContain("epsilon");
+    expect(prompt).toContain('{"foo":"bar"}');
+  });
+
+  it("flattens object content that wraps an array", () => {
+    const messages = [
+      {
+        role: "user",
+        content: { content: ["hello", { text: " world" }] },
+      },
+    ];
+
+    const normalized = normalize({ body: { messages }, messages });
+    const prompt = normalized.turn.items[0]?.data?.text || "";
+
+    expect(prompt).toContain("hello world");
+  });
+
+  it("rejects tool_choice values that are not strings or objects", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, tool_choice: 12 },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("tool_choice");
+  });
+
+  it("rejects tool_choice objects with invalid type or missing definitions", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const tools = [
+      { type: "function", function: { name: "do_it", parameters: { type: "object" } } },
+    ];
+
+    const badType = catchNormalization({
+      body: { messages, tools, tool_choice: { type: "search", function: { name: "do_it" } } },
+      messages,
+    });
+    expect(badType?.body?.error?.param).toBe("tool_choice.type");
+
+    const missingDefinitions = catchNormalization({
+      body: { messages, tool_choice: { type: "function", function: { name: "do_it" } } },
+      messages,
+    });
+    expect(missingDefinitions?.body?.error?.param).toBe("tool_choice");
+  });
+
+  it("validates tool definitions before normalization", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const nonArray = catchNormalization({
+      body: { messages, tools: {} },
+      messages,
+    });
+    expect(nonArray?.body?.error?.param).toBe("tools");
+
+    const missingTool = catchNormalization({
+      body: { messages, tools: [null] },
+      messages,
+    });
+    expect(missingTool?.body?.error?.param).toBe("tools[0]");
+
+    const wrongType = catchNormalization({
+      body: { messages, tools: [{ type: "search", function: { name: "do_it" } }] },
+      messages,
+    });
+    expect(wrongType?.body?.error?.param).toBe("tools[0].type");
+
+    const missingName = catchNormalization({
+      body: { messages, tools: [{ type: "function", function: {} }] },
+      messages,
+    });
+    expect(missingName?.body?.error?.param).toBe("tools[0].function.name");
+  });
+
+  it("rejects malformed legacy function arrays", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const notArray = catchNormalization({
+      body: { messages, functions: "nope" },
+      messages,
+    });
+    expect(notArray?.body?.error?.param).toBe("functions");
+
+    const missingName = catchNormalization({
+      body: { messages, functions: [{ name: "" }] },
+      messages,
+    });
+    expect(missingName?.body?.error?.param).toBe("functions[0].name");
+  });
+
+  it("rejects reasoning when not an object", () => {
+    const messages = [{ role: "user", content: "hello" }];
+    const err = catchNormalization({
+      body: { messages, reasoning: "nope" },
+      messages,
+    });
+
+    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
+    expect(err?.body?.error?.param).toBe("reasoning");
+  });
+
+  it("rejects null or unsupported response_format types", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const nullFormat = catchNormalization({
+      body: { messages, response_format: null },
+      messages,
+    });
+    expect(nullFormat?.body?.error?.param).toBe("response_format");
+
+    const badType = catchNormalization({
+      body: { messages, response_format: { type: "xml" } },
+      messages,
+    });
+    expect(badType?.body?.error?.param).toBe("response_format.type");
+  });
+
+  it("normalizes falsey parallel_tool_calls flags", () => {
+    const messages = [{ role: "user", content: "hello" }];
+
+    const normalized = normalize({
+      body: { messages, parallel_tool_calls: "no" },
+      messages,
+    });
+
+    expect(normalized.turn.tools?.parallelToolCalls).toBe(false);
+  });
 });

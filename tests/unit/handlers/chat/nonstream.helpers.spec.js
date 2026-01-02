@@ -69,6 +69,18 @@ describe("chat nonstream helper behavior", () => {
     expect(buildCanonicalXml([])).toBeNull();
   });
 
+  it("returns null when canonical xml has no valid args", async () => {
+    const { buildCanonicalXml } = await loadHelpers();
+
+    const snapshot = [
+      { id: "tool_alpha", type: "function", function: { name: "alpha", arguments: "" } },
+      { type: "function", function: { name: "beta" } },
+      null,
+    ];
+
+    expect(buildCanonicalXml(snapshot)).toBeNull();
+  });
+
   it("builds canonical xml with dedupe and skips invalid JSON", async () => {
     const { buildCanonicalXml } = await loadHelpers();
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -122,6 +134,36 @@ describe("chat nonstream helper behavior", () => {
     expect(result).toContain("one");
     expect(result).toContain("two");
     expect(result.split("\n\n").length).toBe(2);
+  });
+
+  it("returns null when no textual tool blocks are detected", async () => {
+    const { extractTextualUseToolBlock } = await loadHelpers();
+    extractUseToolBlocksMock.mockReturnValue({ blocks: [], nextPos: 0 });
+
+    expect(extractTextualUseToolBlock("<use_tool>nope</use_tool>")).toBeNull();
+  });
+
+  it("returns null for empty textual tool content", async () => {
+    const { extractTextualUseToolBlock } = await loadHelpers();
+
+    expect(extractTextualUseToolBlock("")).toBeNull();
+  });
+
+  it("uses index-based block offsets and skips empty literals", async () => {
+    const { extractTextualUseToolBlock } = await loadHelpers();
+    const text = "<use_tool>one</use_tool>";
+
+    extractUseToolBlocksMock.mockReturnValue({
+      blocks: [
+        { indexStart: 0, indexEnd: text.length },
+        { start: 0, end: 0 },
+      ],
+      nextPos: text.length,
+    });
+
+    const result = extractTextualUseToolBlock(text);
+
+    expect(result).toContain("<use_tool>");
   });
 
   it("returns null when parsing textual tool blocks throws", async () => {
@@ -189,6 +231,71 @@ describe("chat nonstream helper behavior", () => {
 
     expect(result.message.function_call).toEqual({ name: "do_thing", arguments: "{}" });
     expect(result.message.content).toBeNull();
+  });
+
+  it("falls back to textual tool blocks when canonical xml is empty", async () => {
+    process.env.PROXY_TOOL_BLOCK_MAX = "1";
+    const { buildAssistantMessage } = await loadHelpers();
+
+    const snapshot = [
+      buildRecord("lookup_user", "{bad json"),
+      { type: "function", function: { name: "send_email", arguments: "{bad json" } },
+    ];
+    const text = "<use_tool>one</use_tool><use_tool>two</use_tool>";
+    const firstEnd = text.indexOf("</use_tool>") + "</use_tool>".length;
+    const secondStart = text.indexOf("<use_tool>", firstEnd);
+    const secondEnd = text.indexOf("</use_tool>", secondStart) + "</use_tool>".length;
+
+    extractUseToolBlocksMock.mockReturnValue({
+      blocks: [
+        { start: 0, end: firstEnd },
+        { start: secondStart, end: secondEnd },
+      ],
+      nextPos: secondEnd,
+    });
+
+    const result = buildAssistantMessage({
+      snapshot,
+      choiceContent: text,
+      isObsidianOutput: true,
+    });
+
+    expect(result.message.content).toContain("<use_tool>");
+    expect(result.toolCallsTruncated).toBe(true);
+    expect(result.hasToolCalls).toBe(true);
+  });
+
+  it("prefers canonical xml for obsidian output when available", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+    const snapshot = [
+      { type: "function", function: { name: "lookup_user", arguments: '{"id":1}' } },
+    ];
+
+    const result = buildAssistantMessage({
+      snapshot,
+      choiceContent: "ignored",
+      isObsidianOutput: true,
+    });
+
+    expect(result.message.content).toContain("<use_tool>");
+    expect(result.message.tool_calls).toHaveLength(1);
+  });
+
+  it("handles non-object function fields in tool call records", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+    const snapshot = [{ type: "function", function: "noop", id: "tool-x" }];
+
+    const result = buildAssistantMessage({ snapshot });
+
+    expect(result.message.tool_calls?.[0]?.function).toBe("noop");
+  });
+
+  it("accepts null snapshot inputs without tool calls", async () => {
+    const { buildAssistantMessage } = await loadHelpers();
+
+    const result = buildAssistantMessage({ snapshot: null });
+
+    expect(result.toolCallCount).toBe(0);
   });
 
   it("trims trailing content after use_tool blocks", async () => {

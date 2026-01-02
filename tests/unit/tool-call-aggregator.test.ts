@@ -8,6 +8,12 @@ import {
 const deterministicIdFactory = ({ choiceIndex, ordinal }) => `tool_${choiceIndex}_${ordinal}`;
 
 describe("ToolCallAggregator", () => {
+  it("ignores invalid text pattern registrations", () => {
+    const noop = registerTextPattern(" ", null as unknown as () => void);
+    expect(typeof noop).toBe("function");
+    noop();
+  });
+
   it("emits name-first deltas with cumulative arguments", () => {
     const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
     const first = aggregator.ingestDelta({
@@ -227,6 +233,24 @@ describe("ToolCallAggregator", () => {
     warnSpy.mockRestore();
   });
 
+  it("dedupes warnings for repeated matcher failures", () => {
+    const warnSpy =
+      typeof process.emitWarning === "function"
+        ? vi.spyOn(process, "emitWarning").mockImplementation(() => {})
+        : vi.spyOn(console, "warn").mockImplementation(() => {});
+    const unregister = registerTextPattern("repeatBoom", () => {
+      throw new Error("boom");
+    });
+
+    extractUseToolBlocks("<use_tool><name>x</name></use_tool>", 0);
+    extractUseToolBlocks("<use_tool><name>x</name></use_tool>", 0);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    unregister();
+    warnSpy.mockRestore();
+  });
+
   it("handles malformed JSON inside use_tool blocks", () => {
     const warnSpy =
       typeof process.emitWarning === "function"
@@ -245,6 +269,38 @@ describe("ToolCallAggregator", () => {
     expect(aggregator.snapshot()[0].function.arguments).toBe("");
 
     warnSpy.mockRestore();
+  });
+
+  it("parses JSON payloads in use_tool blocks", () => {
+    const aggregator = createToolCallAggregator({ idFactory: deterministicIdFactory });
+    const payload = '<use_tool>{"name":"jsonTool","path":"/tmp","query":"docs"}</use_tool>';
+
+    const result = aggregator.ingestMessage(
+      { message: { content: payload } },
+      { emitIfMissing: true }
+    );
+
+    expect(result.updated).toBe(true);
+    expect(result.deltas[0].function.name).toBe("jsonTool");
+    expect(result.deltas[0].function.arguments).toContain('"path":"/tmp"');
+  });
+
+  it("skips incomplete use_tool blocks without closing tags", () => {
+    const { blocks } = extractUseToolBlocks("<use_tool><name>x</name>", 0);
+    expect(blocks).toEqual([]);
+  });
+
+  it("falls back to the default matcher when registry is cleared", async () => {
+    vi.resetModules();
+    const mod = await import("../../src/lib/tool-call-aggregator.js");
+    const unregister = mod.registerTextPattern("use_tool", () => ({
+      blocks: [],
+      nextPos: 0,
+    }));
+    unregister();
+
+    const { blocks } = mod.extractUseToolBlocks("<use_tool><name>x</name></use_tool>", 0);
+    expect(blocks.length).toBeGreaterThan(0);
   });
 
   it("builds snapshots from non-stream messages with malformed or missing args", () => {
