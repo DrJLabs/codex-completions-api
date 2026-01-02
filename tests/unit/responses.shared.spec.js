@@ -1,9 +1,15 @@
 import { describe, test, expect } from "vitest";
 import {
+  applyDefaultProxyOutputModeHeader,
   coerceInputToChatMessages,
+  initializeStreamingState,
   mapChoiceToOutput,
   convertChatResponseToResponses,
   buildStreamingEnvelope,
+  normalizeMessageId,
+  normalizeResponseId,
+  resolveResponsesOutputMode,
+  updateStreamingToolCalls,
 } from "../../src/handlers/responses/shared.js";
 
 describe("responses shared helpers", () => {
@@ -134,5 +140,105 @@ describe("responses shared helpers", () => {
       usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 },
       previous_response_id: "resp_prev",
     });
+  });
+
+  test("normalizes response/message ids and strips prefixes", () => {
+    expect(normalizeResponseId("resp_abc")).toBe("resp_abc");
+    expect(normalizeResponseId("chatcmpl-xyz")).toBe("resp_xyz");
+    expect(normalizeResponseId("  bad*id  ")).toBe("resp_badid");
+    expect(normalizeMessageId("msg_123")).toBe("msg_123");
+    expect(normalizeMessageId("  bad*id  ")).toBe("msg_badid");
+  });
+
+  test("resolves responses output mode from header, copilot, or default", () => {
+    const headerReq = { headers: { "x-proxy-output-mode": "xml" } };
+    expect(
+      resolveResponsesOutputMode({
+        req: headerReq,
+        defaultValue: "text",
+        copilotDefault: "copilot",
+      })
+    ).toEqual({ effective: "xml", source: "header" });
+
+    const copilotReq = { headers: { "user-agent": "Obsidian/1.0" } };
+    expect(
+      resolveResponsesOutputMode({
+        req: copilotReq,
+        defaultValue: "text",
+        copilotDefault: "copilot",
+      })
+    ).toEqual({ effective: "copilot", source: "copilot" });
+
+    const fallbackReq = { headers: {} };
+    expect(
+      resolveResponsesOutputMode({
+        req: fallbackReq,
+        defaultValue: "text",
+        copilotDefault: "copilot",
+        copilotDetection: { copilot_detect_tier: "low" },
+      })
+    ).toEqual({ effective: "text", source: "default" });
+  });
+
+  test("applyDefaultProxyOutputModeHeader sets and restores headers", () => {
+    const req = { headers: {} };
+    const restore = applyDefaultProxyOutputModeHeader(req, "xml");
+
+    expect(req.headers["x-proxy-output-mode"]).toBe("xml");
+    restore();
+    expect(req.headers["x-proxy-output-mode"]).toBeUndefined();
+
+    const existing = { headers: { "x-proxy-output-mode": "keep" } };
+    const noop = applyDefaultProxyOutputModeHeader(existing, "xml");
+    noop();
+    expect(existing.headers["x-proxy-output-mode"]).toBe("keep");
+  });
+
+  test("updates streaming tool calls with deltas", () => {
+    const toolCalls = new Map();
+
+    updateStreamingToolCalls(
+      [
+        {
+          index: 0,
+          id: "call_1",
+          type: "function",
+          function: { name: "lookup", arguments: "{" },
+        },
+      ],
+      toolCalls
+    );
+    updateStreamingToolCalls(
+      [
+        {
+          index: 0,
+          function: { arguments: '"id":1}' },
+        },
+      ],
+      toolCalls
+    );
+
+    const call = toolCalls.get(0);
+    expect(call.function.arguments).toBe('{"id":1}');
+    updateStreamingToolCalls(null, toolCalls);
+    expect(toolCalls.size).toBe(1);
+  });
+
+  test("buildStreamingEnvelope supplies empty output text by default", () => {
+    const state = initializeStreamingState();
+    state.messageId = "msg_empty";
+    state.responseId = "resp_empty";
+    state.model = "codex-5";
+
+    const envelope = buildStreamingEnvelope({
+      state,
+      requestBody: {},
+      usage: null,
+      status: "completed",
+      textSegments: [],
+      toolCalls: new Map(),
+    });
+
+    expect(envelope.output[0].content).toEqual([{ type: "output_text", text: "" }]);
   });
 });
