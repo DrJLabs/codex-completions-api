@@ -28,6 +28,7 @@ const resolveResponsesOutputModeMock = vi.fn(() => ({
 }));
 
 const ORIGINAL_RESPONSES_DEFAULT_MAX_TOKENS = process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS;
+const ORIGINAL_MAX_CHAT_CHOICES = process.env.PROXY_MAX_CHAT_CHOICES;
 
 vi.mock("../../../../src/handlers/chat/nonstream.js", () => ({
   postChatNonStream: (...args) => postChatNonStreamMock(...args),
@@ -91,6 +92,11 @@ afterEach(() => {
     delete process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS;
   } else {
     process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS = ORIGINAL_RESPONSES_DEFAULT_MAX_TOKENS;
+  }
+  if (ORIGINAL_MAX_CHAT_CHOICES === undefined) {
+    delete process.env.PROXY_MAX_CHAT_CHOICES;
+  } else {
+    process.env.PROXY_MAX_CHAT_CHOICES = ORIGINAL_MAX_CHAT_CHOICES;
   }
   postChatNonStreamMock.mockReset();
   logResponsesIngressRawMock.mockReset();
@@ -161,6 +167,38 @@ describe("responses nonstream handler", () => {
     expect(postChatNonStreamMock).toHaveBeenCalled();
   });
 
+  it("returns 400 when n exceeds max choices", async () => {
+    process.env.PROXY_MAX_CHAT_CHOICES = "1";
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello", n: 2 });
+    const res = makeRes();
+
+    await postResponsesNonStream(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.objectContaining({ param: "n" }) })
+    );
+  });
+
+  it("respects explicit max_tokens when fallback default is set", async () => {
+    process.env.PROXY_RESPONSES_DEFAULT_MAX_TOKENS = "64";
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello", max_tokens: 12 });
+    const res = makeRes();
+    postChatNonStreamMock.mockImplementation(async (callReq) => {
+      expect(callReq.body.max_tokens).toBe(12);
+    });
+
+    await postResponsesNonStream(req, res);
+
+    expect(postChatNonStreamMock).toHaveBeenCalled();
+  });
+
   it("captures transformed responses and logs summaries", async () => {
     const { postResponsesNonStream } = await import(
       "../../../../src/handlers/responses/nonstream.js"
@@ -179,6 +217,59 @@ describe("responses nonstream handler", () => {
     expect(convertChatResponseToResponsesMock).toHaveBeenCalled();
     expect(captureResponsesNonStreamMock).toHaveBeenCalled();
     expect(logStructuredMock).toHaveBeenCalled();
+  });
+
+  it("skips transformation when status is an error", async () => {
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello" });
+    const res = makeRes();
+    postChatNonStreamMock.mockImplementation(async (_req, callRes) => {
+      const payload = { error: { message: "nope" } };
+      const transformed = callRes.locals.responseTransform(payload, 500);
+      expect(transformed).toBe(payload);
+    });
+
+    await postResponsesNonStream(req, res);
+
+    expect(convertChatResponseToResponsesMock).not.toHaveBeenCalled();
+    expect(captureResponsesNonStreamMock).not.toHaveBeenCalled();
+  });
+
+  it("summarizes text and tool output from transformed responses", async () => {
+    const { postResponsesNonStream } = await import(
+      "../../../../src/handlers/responses/nonstream.js"
+    );
+    const req = makeReq({ input: "hello" });
+    const res = makeRes();
+    const transformed = {
+      id: "resp-1",
+      model: "gpt-test",
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          content: [
+            { type: "output_text", text: "hello" },
+            { type: "text", text: "world" },
+          ],
+        },
+        { type: "tool_use", name: "do_it" },
+      ],
+    };
+    convertChatResponseToResponsesMock.mockReturnValueOnce(transformed);
+    postChatNonStreamMock.mockImplementation(async (_req, callRes) => {
+      callRes.locals.responseTransform(
+        { id: "chatcmpl-1", model: "gpt-test", choices: [{ message: { content: "hi" } }] },
+        200
+      );
+    });
+
+    await postResponsesNonStream(req, res);
+
+    expect(summarizeTextPartsMock).toHaveBeenCalledWith(["hello", "world"]);
+    expect(summarizeToolUseItemsMock).toHaveBeenCalledWith(transformed.output);
   });
 
   it("skips error response when headers have already been sent", async () => {
