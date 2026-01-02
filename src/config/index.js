@@ -14,12 +14,6 @@ const resolveTruncateMs = () => {
     if (!Number.isNaN(parsedModern)) return parsedModern;
   }
 
-  const legacy = process.env.PROXY_DEV_TRUNCATE_AFTER_MS;
-  if (legacy !== undefined && legacy !== "") {
-    const parsedLegacy = Number(legacy);
-    if (!Number.isNaN(parsedLegacy)) return parsedLegacy;
-  }
-
   return 0;
 };
 const boolishTrue = (value) => /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
@@ -52,6 +46,15 @@ const resolveToolBlockDelimiter = () => {
   return String(raw).replace(/\\n/g, "\n");
 };
 
+const resolveTrustProxy = () => {
+  const raw = process.env.PROXY_TRUST_PROXY;
+  const trimmed = raw === undefined || raw === null ? "loopback" : String(raw).trim();
+  if (!trimmed) return false;
+  if (boolishFalse(trimmed)) return false;
+  if (boolishTrue(trimmed)) return true;
+  return trimmed;
+};
+
 const resolveAuthLoginUrlMode = () => {
   const raw = process.env.PROXY_AUTH_LOGIN_URL_MODE ?? "";
   const normalized = String(raw).trim().toLowerCase();
@@ -62,6 +65,7 @@ const resolveAuthLoginUrlMode = () => {
 export const config = {
   PORT: num("PORT", 11435),
   PROXY_HOST: str("PROXY_HOST", "0.0.0.0"),
+  PROXY_TRUST_PROXY: resolveTrustProxy(),
   API_KEY: str("PROXY_API_KEY", "codex-local-secret"),
   PROXY_ENV: str("PROXY_ENV", ""),
   PROTECT_MODELS: bool("PROXY_PROTECT_MODELS", "false"),
@@ -152,8 +156,6 @@ export const config = {
   PROXY_USAGE_ALLOW_UNAUTH: bool("PROXY_USAGE_ALLOW_UNAUTH", "false"),
   // Non-stream guard: allow early finalize to avoid edge timeouts (ms; 0=disabled)
   PROXY_NONSTREAM_TRUNCATE_AFTER_MS: resolveTruncateMs(),
-  // Back-compat alias (deprecated name, maps to the same value)
-  PROXY_DEV_TRUNCATE_AFTER_MS: resolveTruncateMs(),
   // Limits
   PROXY_MAX_PROMPT_TOKENS: num("PROXY_MAX_PROMPT_TOKENS", 0), // 0 disables context-length guard
   PROXY_MAX_CHAT_CHOICES: num("PROXY_MAX_CHAT_CHOICES", 5),

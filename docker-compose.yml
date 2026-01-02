@@ -9,7 +9,6 @@ services:
       - PROXY_SANDBOX_MODE=${PROXY_SANDBOX_MODE:-read-only}
       - PROXY_CODEX_WORKDIR=${PROXY_CODEX_WORKDIR:-/tmp/codex-work}
       - PROXY_NONSTREAM_TRUNCATE_AFTER_MS=${PROXY_NONSTREAM_TRUNCATE_AFTER_MS:-8000}
-      - PROXY_DEV_TRUNCATE_AFTER_MS=${PROXY_DEV_TRUNCATE_AFTER_MS:-2500}
       - PROXY_USE_APP_SERVER=${PROXY_USE_APP_SERVER:-true}
       # Explicitly unset provider forcing; Codex will auto-select based on auth/config
       - CODEX_FORCE_PROVIDER=

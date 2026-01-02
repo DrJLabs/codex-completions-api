@@ -20,6 +20,7 @@ import { invalidRequestBody, serverErrorBody } from "./lib/errors.js";
 
 export default function createApp() {
   const app = express();
+  app.set("trust proxy", CFG.PROXY_TRUST_PROXY);
   app.use(metricsMiddleware());
   app.use(tracingMiddleware());
 

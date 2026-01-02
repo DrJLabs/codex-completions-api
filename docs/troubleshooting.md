@@ -26,7 +26,7 @@
 ## Cloudflare 524 / long non-stream requests
 
 - Consider using streaming mode.
-- For dev stacks behind Cloudflare, the repo supports an early-finalize guard (`PROXY_DEV_TRUNCATE_AFTER_MS`) to avoid the 100s no-bytes window.
+- For dev stacks behind Cloudflare, the repo supports an early-finalize guard (`PROXY_NONSTREAM_TRUNCATE_AFTER_MS`) to avoid the 100s no-bytes window.
 
 ## Need the canonical contract?
 
