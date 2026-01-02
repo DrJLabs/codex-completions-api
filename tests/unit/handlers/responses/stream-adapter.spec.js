@@ -136,4 +136,56 @@ describe("responses stream adapter", () => {
     expect(doneIndex).toBeGreaterThan(deltaIndex);
     expect(outputDoneIndex).toBeGreaterThan(doneIndex);
   });
+
+  it("emits response.failed when onChunk throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    createToolCallAggregator.mockReturnValue(
+      buildAggregator({
+        ingestDelta: vi.fn(() => {
+          throw new Error("boom");
+        }),
+      })
+    );
+
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-3",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: {} }],
+    });
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const events = entries.map((entry) => entry.event).filter(Boolean);
+    expect(events).toContain("response.failed");
+    expect(events).toContain("done");
+    errorSpy.mockRestore();
+  });
+
+  it("marks incomplete when finish_reason is length", async () => {
+    const { createResponsesStreamAdapter } = await import(
+      "../../../../src/handlers/responses/stream-adapter.js"
+    );
+
+    const res = buildRes();
+    const adapter = createResponsesStreamAdapter(res, { model: "gpt-test" });
+
+    adapter.onChunk({
+      id: "chatcmpl-4",
+      model: "gpt-test",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "length" }],
+    });
+    await adapter.onDone();
+    await waitForWrites();
+
+    const entries = parseSSE(res.chunks.join(""));
+    const completed = entries.find((entry) => entry.event === "response.completed");
+    expect(completed?.data?.response?.status).toBe("incomplete");
+  });
 });
