@@ -96,4 +96,30 @@ ignored`;
     expect(message.tool_calls).toHaveLength(1);
     expect(toolCallsTruncated).toBe(true);
   });
+
+  test("content_filter forces null assistant content", () => {
+    const { message } = buildAssistantMessage({
+      snapshot: [],
+      choiceContent: "blocked",
+      normalizedContent: "blocked",
+      canonicalReason: "content_filter",
+      isObsidianOutput: true,
+    });
+
+    expect(message.content).toBeNull();
+  });
+
+  test("function_call payload uses function_call and null content", () => {
+    const { message } = buildAssistantMessage({
+      snapshot: [],
+      choiceContent: "ignored",
+      normalizedContent: "",
+      canonicalReason: "stop",
+      isObsidianOutput: true,
+      functionCallPayload: { name: "lookup", arguments: "{}" },
+    });
+
+    expect(message.function_call).toMatchObject({ name: "lookup" });
+    expect(message.content).toBeNull();
+  });
 });

@@ -328,6 +328,22 @@ describe("postChatStream", () => {
     expect(res.payload?.error?.param).toBe("n");
   });
 
+  it("returns 400 when choice count exceeds max", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      n: 2,
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload?.error?.param).toBe("n");
+  });
+
   it("returns 400 when optional params invalid", async () => {
     validateOptionalChatParamsMock.mockReturnValue({
       ok: false,
@@ -453,5 +469,27 @@ describe("postChatStream", () => {
     expect(res.payload).toEqual(errorBody);
     expect(applyGuardHeadersMock).toHaveBeenCalledWith(res, "guard", false);
     expect(releaseMock).toHaveBeenCalledWith("normalization_error");
+  });
+
+  it("sets output mode headers before normalization errors", async () => {
+    const { ChatJsonRpcNormalizationError } = await import(
+      "../../../../src/handlers/chat/request.js"
+    );
+    resolveOutputModeMock.mockReturnValue("obsidian-xml");
+    normalizeChatJsonRpcRequestMock.mockImplementation(() => {
+      throw new ChatJsonRpcNormalizationError({ error: { code: "bad" } }, 422);
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(res.headers.get("x-proxy-output-mode")).toBe("obsidian-xml");
+    expect(res.locals.output_mode_effective).toBe("obsidian-xml");
   });
 });
