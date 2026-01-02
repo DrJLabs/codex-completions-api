@@ -414,6 +414,94 @@ describe("JsonRpcTransport request lifecycle", () => {
     await expect(nextPending).resolves.toMatchObject({ code: "request_aborted" });
   });
 
+  it("skips newConversation when an explicit conversation id is provided", async () => {
+    const child = createMockChild();
+    const methods = [];
+    wireJsonResponder(child, (message) => {
+      methods.push(message.method);
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "explicit" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-explicit",
+      turnParams: { conversation_id: "explicit" },
+    });
+    context.emitter.on("error", () => {});
+    const pending = context.promise.catch(() => {});
+
+    expect(methods).toContain("sendUserTurn");
+    expect(methods).not.toContain("newConversation");
+    expect(methods).not.toContain("addConversationListener");
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await pending;
+  });
+
+  it("throws when newConversation returns no conversation id", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const contexts = transport.contextsByRequest;
+    const originalSet = contexts.set.bind(contexts);
+    contexts.set = (key, ctx) => {
+      ctx.emitter.on("error", () => {});
+      ctx.promise.catch(() => {});
+      return originalSet(key, ctx);
+    };
+
+    await expect(
+      transport.createChatRequest({ requestId: "req-missing-conversation" })
+    ).rejects.toMatchObject({ code: "worker_invalid_response" });
+
+    contexts.set = originalSet;
+  });
+
+  it("aborts immediately when the request signal is already aborted", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const contexts = transport.contextsByRequest;
+    const originalSet = contexts.set.bind(contexts);
+    contexts.set = (key, ctx) => {
+      ctx.emitter.on("error", () => {});
+      ctx.promise.catch(() => {});
+      return originalSet(key, ctx);
+    };
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      transport.createChatRequest({ requestId: "req-aborted", signal: controller.signal })
+    ).rejects.toMatchObject({ code: "request_aborted" });
+
+    contexts.set = originalSet;
+  });
+
   it("emits notifications and finalizes request payloads", async () => {
     CFG.WORKER_MAX_CONCURRENCY = 2;
     const child = createMockChild();
