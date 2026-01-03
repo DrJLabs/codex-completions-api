@@ -57,8 +57,8 @@ beforeAll(async () => {
   child = server.child;
 });
 
-afterAll(() => {
-  stopServer(child);
+afterAll(async () => {
+  await stopServer(child);
   if (tokenLogDir) {
     try {
       fs.rmSync(tokenLogDir, { recursive: true, force: true });

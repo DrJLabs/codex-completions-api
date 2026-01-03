@@ -222,7 +222,14 @@ export const createStreamOutputCoordinator = ({
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      if (typeof logToolBufferWarning === "function") {
+        logToolBufferWarning("textual_extraction_failed", {
+          choice_index: choiceIndex,
+          error: err?.message,
+        });
+      }
+    }
     const limitTail = suppressTailAfterTools || stopAfterTools;
     if (emittedTextualTool && limitTail) {
       scheduleStopAfterTools(choiceIndex);
@@ -247,7 +254,15 @@ export const createStreamOutputCoordinator = ({
         try {
           const { blocks } = extractUseToolBlocks(segment, 0);
           segmentHasToolBlock = Boolean(blocks && blocks.length);
-        } catch {}
+        } catch (err) {
+          if (typeof logToolBufferWarning === "function") {
+            logToolBufferWarning("textual_extraction_failed", {
+              choice_index: choiceIndex,
+              error: err?.message,
+              phase: "segment",
+            });
+          }
+        }
       }
       if (segment && limitTail && state.textualToolContentSeen && segmentHasToolBlock) {
         state.forwardedUpTo = finalUntil;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   normalizeToolCallSnapshot,
   buildCanonicalXml,
@@ -61,5 +61,20 @@ describe("tool output helpers", () => {
     expect(trimTrailingTextAfterToolBlocks(text)).toBe(
       "<use_tool>one</use_tool><use_tool>two</use_tool>"
     );
+  });
+
+  it("reports errors when textual extraction fails and a logger is provided", () => {
+    const logError = vi.fn();
+    const extractBlocks = () => {
+      throw new Error("explode");
+    };
+
+    const result = extractTextualUseToolBlock("<use_tool>oops</use_tool>", {
+      extractBlocks,
+      logError,
+    });
+
+    expect(result).toBeNull();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ message: "explode" }));
   });
 });

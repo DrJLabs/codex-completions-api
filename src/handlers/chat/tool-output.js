@@ -95,7 +95,10 @@ export const extractTextualUseToolBlock = (text, options = getToolOutputOptions(
       results.push(literal);
     }
     return joinToolBlocks(results, options.delimiter || "");
-  } catch {
+  } catch (err) {
+    if (typeof options.logError === "function") {
+      options.logError(err);
+    }
     return null;
   }
 };
