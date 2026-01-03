@@ -823,7 +823,7 @@ describe("postChatStream", () => {
     lastChild.emit("close");
 
     const sawContent = sendSSEMock.mock.calls.some(([, payload]) =>
-      payload?.choices?.some((choice) => choice?.delta?.content === "hello")
+      payload?.choices?.some((choice) => choice?.delta?.content?.includes("hello"))
     );
 
     expect(sawContent).toBe(true);
@@ -1290,6 +1290,77 @@ describe("postChatStream", () => {
     );
 
     expect(sanitizerEvent).toBeTruthy();
+  });
+
+  it("holds partial metadata lines until completion", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    const initialCalls = sendSSEMock.mock.calls.length;
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { content: "session_" } },
+        }) + "\n"
+      )
+    );
+
+    expect(sendSSEMock.mock.calls.length).toBe(initialCalls);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { content: "id: abc\nhello\n" } },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const sanitizerEvent = appendProtoEventMock.mock.calls.find(
+      ([payload]) => payload?.kind === "metadata_sanitizer" && payload?.removed_lines?.length === 1
+    );
+
+    expect(sanitizerEvent).toBeTruthy();
+  });
+
+  it("deduplicates repeated metadata removals in summary counts", async () => {
+    configMock.PROXY_SANITIZE_METADATA = true;
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { content: "session_id: abc\nsession_id: abc\n" } },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    expect(logSanitizerSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, count: 1 })
+    );
   });
 
   it("drops function_call_output payloads flagged by guardrails", async () => {
