@@ -1689,8 +1689,8 @@ export async function postChatStream(req, res) {
         stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
       });
     }
-    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!finishSent) emitFinishChunk();
+    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!usageState.logged) logUsage(resolvedTrigger);
     if (toolCallAggregator.hasCalls()) {
       try {
@@ -1832,12 +1832,11 @@ export async function postChatStream(req, res) {
       buf = buf.slice(idx + 1);
       try {
         const parsed = parseStreamEventLine(line, {
-          resolveChoiceIndexFromPayload,
           extractMetadataFromPayload,
           sanitizeMetadata: SANITIZE_METADATA,
         });
         if (!parsed) continue;
-        const { type: t, payload, params, messagePayload, metadataInfo, baseChoiceIndex } = parsed;
+        const { type: t, payload, params, messagePayload, metadataInfo } = parsed;
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,

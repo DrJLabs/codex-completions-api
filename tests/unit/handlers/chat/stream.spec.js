@@ -1301,6 +1301,35 @@ describe("postChatStream", () => {
     expect(sawUsage).toBe(true);
   });
 
+  it("emits finish before usage when include_usage is requested", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      stream_options: { include_usage: true },
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message_delta", msg: { delta: "hello" } }) + "\n")
+    );
+    lastChild.emit("close");
+
+    const finishIndex = sendSSEMock.mock.calls.findIndex(
+      ([, payload]) =>
+        Array.isArray(payload?.choices) && payload.choices.some((choice) => choice?.finish_reason)
+    );
+    const usageIndex = sendSSEMock.mock.calls.findIndex(([, payload]) => payload?.usage);
+
+    expect(finishIndex).toBeGreaterThanOrEqual(0);
+    expect(usageIndex).toBeGreaterThanOrEqual(0);
+    expect(finishIndex).toBeLessThan(usageIndex);
+  });
+
   it("uses token_count events for usage payloads", async () => {
     const postChatStream = await loadHandler();
 
