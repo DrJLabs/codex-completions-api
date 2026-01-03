@@ -1,0 +1,50 @@
+import { describe, expect, it, vi } from "vitest";
+import { createStreamOutputCoordinator } from "../../../../src/handlers/chat/stream-output.js";
+
+describe("stream output coordinator", () => {
+  it("emits text delta in text mode", () => {
+    const state = {
+      emitted: "",
+      forwardedUpTo: 0,
+      scanPos: 0,
+      lastToolEnd: -1,
+      textualToolContentSeen: false,
+      dropAssistantContentAfterTools: false,
+      sentAny: false,
+      hasToolEvidence: false,
+      structuredCount: 0,
+      forwardedToolCount: 0,
+      toolBuffer: { active: false },
+    };
+
+    const sendChoiceDelta = vi.fn();
+    const coordinator = createStreamOutputCoordinator({
+      isObsidianOutput: false,
+      outputMode: "text",
+      stopAfterTools: false,
+      suppressTailAfterTools: false,
+      toolCallAggregator: { snapshot: () => [] },
+      toolBufferMetrics: { start: vi.fn(), flush: vi.fn(), abort: vi.fn() },
+      ensureChoiceState: () => state,
+      sendChoiceDelta,
+      emitTextualToolMetadata: vi.fn(() => false),
+      scheduleStopAfterTools: vi.fn(),
+      extractUseToolBlocks: () => ({ blocks: [], nextPos: 0 }),
+      trackToolBufferOpen: () => -1,
+      detectNestedToolBuffer: () => -1,
+      clampEmittableIndex: (_buffer, _forwarded, end) => end,
+      completeToolBuffer: vi.fn(),
+      abortToolBuffer: () => ({ literal: "" }),
+      shouldSkipBlock: () => false,
+      trimTrailingTextAfterToolBlocks: (text) => text,
+      buildObsidianXmlRecord: () => null,
+      logToolBufferWarning: vi.fn(),
+    });
+
+    coordinator.appendContentSegment("hello", { choiceIndex: 0 });
+
+    expect(sendChoiceDelta).toHaveBeenCalledWith(0, { content: "hello" });
+    expect(state.emitted).toBe("hello");
+    expect(state.sentAny).toBe(true);
+  });
+});
