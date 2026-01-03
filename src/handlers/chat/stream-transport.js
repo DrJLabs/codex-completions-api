@@ -7,6 +7,11 @@ export const wireStreamTransport = ({
   extractMetadataFromPayload,
   sanitizeMetadata = false,
 } = {}) => {
+  const resolveChoiceIndex = (payload, messagePayload, params, baseChoiceIndex) =>
+    typeof resolveChoiceIndexFromPayload === "function"
+      ? (resolveChoiceIndexFromPayload(payload, messagePayload, params) ?? baseChoiceIndex ?? 0)
+      : (baseChoiceIndex ?? 0);
+
   const handleLine = (line) => {
     const parsed = parseStreamEventLine(line, {
       resolveChoiceIndexFromPayload,
@@ -18,12 +23,7 @@ export const wireStreamTransport = ({
     if (type === "agent_message_content_delta" || type === "agent_message_delta") {
       if (!runtime?.handleDelta) return false;
       const deltaPayload = messagePayload?.delta ?? messagePayload;
-      const choiceIndex =
-        typeof resolveChoiceIndexFromPayload === "function"
-          ? (resolveChoiceIndexFromPayload(deltaPayload, messagePayload, params) ??
-            baseChoiceIndex ??
-            0)
-          : (baseChoiceIndex ?? 0);
+      const choiceIndex = resolveChoiceIndex(deltaPayload, messagePayload, params, baseChoiceIndex);
       runtime.handleDelta({
         choiceIndex,
         delta: deltaPayload,
@@ -35,12 +35,7 @@ export const wireStreamTransport = ({
     if (type === "agent_message") {
       if (!runtime?.handleMessage) return false;
       const finalMessage = messagePayload?.message ?? messagePayload;
-      const choiceIndex =
-        typeof resolveChoiceIndexFromPayload === "function"
-          ? (resolveChoiceIndexFromPayload(finalMessage, messagePayload, params) ??
-            baseChoiceIndex ??
-            0)
-          : (baseChoiceIndex ?? 0);
+      const choiceIndex = resolveChoiceIndex(finalMessage, messagePayload, params, baseChoiceIndex);
       runtime.handleMessage({
         choiceIndex,
         message: finalMessage,
@@ -54,6 +49,12 @@ export const wireStreamTransport = ({
 
   if (child?.stdout?.on) {
     let buffer = "";
+    const flushBuffer = () => {
+      if (buffer.length > 0) {
+        handleLine(buffer);
+        buffer = "";
+      }
+    };
     child.stdout.on("data", (chunk) => {
       buffer += String(chunk);
       let idx;
@@ -63,6 +64,8 @@ export const wireStreamTransport = ({
         handleLine(line);
       }
     });
+    child.stdout.on("end", flushBuffer);
+    child.stdout.on("close", flushBuffer);
   }
 
   return { handleLine };

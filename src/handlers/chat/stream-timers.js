@@ -3,6 +3,7 @@ export const createStreamTimers = ({ idleMs, onIdle }) => {
 
   return {
     startIdleTimer() {
+      if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => onIdle(), idleMs);
     },
     stopIdleTimer() {

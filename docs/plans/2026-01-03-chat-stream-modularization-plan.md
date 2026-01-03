@@ -2,19 +2,23 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Reduce `src/handlers/chat/stream.js` to an orchestration layer while sharing tool and function-call normalization with nonstream, without changing externally visible behavior.
+## Overview
 
-**Architecture:** Add a small stream runtime and transport wiring layer, and centralize tool and function-call normalization into a shared module. Keep `stream-output.js` as the output coordinator and make `stream.js` orchestrate request validation, backend wiring, timers, and response close only.
+- Goal: Reduce `src/handlers/chat/stream.js` to an orchestration layer while sharing tool and function-call normalization with nonstream, without changing externally visible behavior.
 
-**Tech Stack:** Node.js (ESM), Express handlers, Vitest unit tests, Playwright E2E.
+- Architecture: Add a small stream runtime and transport wiring layer, and centralize tool and function-call normalization into a shared module. Keep `stream-output.js` as the output coordinator and make `stream.js` orchestrate request validation, backend wiring, timers, and response close only.
+
+- Tech Stack: Node.js (ESM), Express handlers, Vitest unit tests, Playwright E2E.
+
+## Implementation Tasks
 
 ### Task 1: Introduce a stream runtime module
 
-**Files:**
+#### Files
 - Create: `src/handlers/chat/stream-runtime.js`
 - Test: `tests/unit/handlers/chat/stream-runtime.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { describe, expect, it, vi } from "vitest";
@@ -52,12 +56,12 @@ describe("stream runtime", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-runtime.spec.js`
 Expected: FAIL (module not found or missing export)
 
-**Step 3: Write minimal implementation**
+#### Step 3: Write minimal implementation
 
 ```javascript
 export const createStreamRuntime = ({ output, toolNormalizer, finishTracker }) => ({
@@ -83,12 +87,12 @@ export const createStreamRuntime = ({ output, toolNormalizer, finishTracker }) =
 });
 ```
 
-**Step 4: Run test to verify it passes**
+#### Step 4: Run test to verify it passes
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-runtime.spec.js`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/stream-runtime.js tests/unit/handlers/chat/stream-runtime.spec.js
@@ -97,13 +101,13 @@ git commit -m "feat(chat): add stream runtime skeleton"
 
 ### Task 2: Centralize tool and function-call normalization
 
-**Files:**
+#### Files
 - Create: `src/handlers/chat/tool-call-normalizer.js`
 - Modify: `src/handlers/chat/tool-buffer.js`
 - Modify: `src/handlers/chat/tool-output.js`
 - Test: `tests/unit/handlers/chat/tool-call-normalizer.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { describe, expect, it } from "vitest";
@@ -129,12 +133,12 @@ describe("tool-call-normalizer", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/tool-call-normalizer.spec.js`
 Expected: FAIL (module not found or function not implemented)
 
-**Step 3: Write minimal implementation**
+#### Step 3: Write minimal implementation
 
 ```javascript
 import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
@@ -165,12 +169,12 @@ export const createToolCallNormalizer = (config) => {
 };
 ```
 
-**Step 4: Run test to verify it passes**
+#### Step 4: Run test to verify it passes
 
 Run: `npx vitest run tests/unit/handlers/chat/tool-call-normalizer.spec.js`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/tool-call-normalizer.js tests/unit/handlers/chat/tool-call-normalizer.spec.js
@@ -179,11 +183,11 @@ git commit -m "feat(chat): add tool-call normalizer"
 
 ### Task 3: Add transport wiring for normalized events
 
-**Files:**
+#### Files
 - Create: `src/handlers/chat/stream-transport.js`
 - Test: `tests/unit/handlers/chat/stream-transport.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { EventEmitter } from "node:events";
@@ -205,12 +209,12 @@ describe("stream transport", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-transport.spec.js`
 Expected: FAIL
 
-**Step 3: Write minimal implementation**
+#### Step 3: Write minimal implementation
 
 ```javascript
 import { parseStreamEventLine } from "./stream-event.js";
@@ -229,12 +233,12 @@ export const wireStreamTransport = ({ child, runtime }) => {
 };
 ```
 
-**Step 4: Run test to verify it passes**
+#### Step 4: Run test to verify it passes
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-transport.spec.js`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/stream-transport.js tests/unit/handlers/chat/stream-transport.spec.js
@@ -243,11 +247,11 @@ git commit -m "feat(chat): add stream transport wiring"
 
 ### Task 4: Extract stream timer management
 
-**Files:**
+#### Files
 - Create: `src/handlers/chat/stream-timers.js`
 - Test: `tests/unit/handlers/chat/stream-timers.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { describe, expect, it, vi } from "vitest";
@@ -268,12 +272,12 @@ describe("stream timers", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-timers.spec.js`
 Expected: FAIL
 
-**Step 3: Write minimal implementation**
+#### Step 3: Write minimal implementation
 
 ```javascript
 export const createStreamTimers = ({ idleMs, onIdle }) => {
@@ -290,12 +294,12 @@ export const createStreamTimers = ({ idleMs, onIdle }) => {
 };
 ```
 
-**Step 4: Run test to verify it passes**
+#### Step 4: Run test to verify it passes
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-timers.spec.js`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/stream-timers.js tests/unit/handlers/chat/stream-timers.spec.js
@@ -304,11 +308,11 @@ git commit -m "feat(chat): add stream timer helpers"
 
 ### Task 5: Rewire stream handler to runtime modules
 
-**Files:**
+#### Files
 - Modify: `src/handlers/chat/stream.js`
 - Modify: `tests/unit/handlers/chat/stream.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { describe, expect, it, vi } from "vitest";
@@ -337,23 +341,23 @@ describe("postChatStream wiring", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/stream.spec.js -t "creates a stream runtime"`
 Expected: FAIL (createStreamRuntime not called)
 
-**Step 3: Implement the wiring**
+#### Step 3: Implement the wiring
 - Instantiate `createStreamRuntime` and `createToolCallNormalizer` once per request.
 - Replace inline delta/message handling with runtime calls.
 - Use `wireStreamTransport` to bridge child adapter events to runtime.
 - Keep existing error mapping, keepalive, and response close behavior intact.
 
-**Step 4: Run the focused test**
+#### Step 4: Run the focused test
 
 Run: `npx vitest run tests/unit/handlers/chat/stream.spec.js -t "creates a stream runtime"`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/stream.js tests/unit/handlers/chat/stream.spec.js
@@ -362,11 +366,11 @@ git commit -m "refactor(chat): rewire stream handler to runtime"
 
 ### Task 6: Share tool normalization with nonstream
 
-**Files:**
+#### Files
 - Modify: `src/handlers/chat/nonstream.js`
 - Test: `tests/unit/handlers/chat/nonstream.helpers.spec.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 
 ```javascript
 import { describe, expect, it } from "vitest";
@@ -381,21 +385,21 @@ describe("nonstream tool normalization", () => {
 });
 ```
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/nonstream.helpers.spec.js -t "normalizes function_call"`
 Expected: FAIL
 
-**Step 3: Implement shared helper usage**
+#### Step 3: Implement shared helper usage
 - Add a small helper in `tool-call-normalizer.js` that nonstream can call.
 - Replace nonstream inline function_call handling with the shared helper.
 
-**Step 4: Run the focused test**
+#### Step 4: Run the focused test
 
 Run: `npx vitest run tests/unit/handlers/chat/nonstream.helpers.spec.js -t "normalizes function_call"`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/nonstream.js tests/unit/handlers/chat/nonstream.helpers.spec.js
@@ -404,29 +408,29 @@ git commit -m "refactor(chat): share tool normalization with nonstream"
 
 ### Task 7: Remove dead logic and tighten module boundaries
 
-**Files:**
+#### Files
 - Modify: `src/handlers/chat/stream.js`
 - Modify: `src/handlers/chat/stream-output.js`
 - Modify: `src/handlers/chat/tool-output.js`
 
-**Step 1: Write the failing test**
+#### Step 1: Write the failing test
 - Add or extend a unit test that asserts output ordering (finish before usage when `include_usage=true`) using existing `stream-output` tests.
 
-**Step 2: Run test to verify it fails**
+#### Step 2: Run test to verify it fails
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-output.spec.js -t "finish before usage"`
 Expected: FAIL (if new assertion not yet satisfied)
 
-**Step 3: Remove unused code paths**
+#### Step 3: Remove unused code paths
 - Delete now-unneeded inline helpers in `stream.js` that duplicate runtime or tool-call-normalizer logic.
 - Ensure `stream-output.js` and `tool-output.js` only receive normalized payloads.
 
-**Step 4: Run the focused test**
+#### Step 4: Run the focused test
 
 Run: `npx vitest run tests/unit/handlers/chat/stream-output.spec.js -t "finish before usage"`
 Expected: PASS
 
-**Step 5: Commit**
+#### Step 5: Commit
 
 ```bash
 git add src/handlers/chat/stream.js src/handlers/chat/stream-output.js src/handlers/chat/tool-output.js tests/unit/handlers/chat/stream-output.spec.js
@@ -435,25 +439,25 @@ git commit -m "refactor(chat): tighten stream module boundaries"
 
 ### Task 8: Full verification
 
-**Files:**
+#### Files
 - Test: `tests/unit/**`, `tests/integration/**`, `tests/**` (Playwright)
 
-**Step 1: Run unit tests**
+#### Step 1: Run unit tests
 
 Run: `npm run test:unit`
 Expected: PASS
 
-**Step 2: Run integration tests**
+#### Step 2: Run integration tests
 
 Run: `npm run test:integration`
 Expected: PASS
 
-**Step 3: Run Playwright suite**
+#### Step 3: Run Playwright suite
 
 Run: `npm test`
 Expected: PASS
 
-**Step 4: Commit verification note**
+#### Step 4: Commit verification note
 
 ```bash
 git status -sb

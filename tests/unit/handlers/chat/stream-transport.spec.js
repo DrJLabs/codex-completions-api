@@ -59,4 +59,22 @@ describe("stream transport", () => {
       expect.objectContaining({ choiceIndex: 0, delta: "hi" })
     );
   });
+
+  it("flushes buffered data on end", () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    const runtime = { handleDelta: vi.fn() };
+
+    wireStreamTransport({ child, runtime });
+
+    child.stdout.emit(
+      "data",
+      `${JSON.stringify({ type: "agent_message_delta", msg: { delta: "hi" } })}`
+    );
+    child.stdout.emit("end");
+
+    expect(runtime.handleDelta).toHaveBeenCalledWith(
+      expect.objectContaining({ choiceIndex: 0, delta: "hi" })
+    );
+  });
 });

@@ -121,10 +121,8 @@ export const buildAssistantMessage = ({
     normalizedMessage.content = trimTrailingTextAfterToolBlocks(normalizedMessage.content);
   }
 
-  const normalizedToolCallCount = Array.isArray(normalizedMessage.tool_calls)
-    ? normalizedMessage.tool_calls.length
-    : toolCallRecords.length;
-  const normalizedHasToolCalls = hasToolCalls || normalizedToolCallCount > 0;
+  const normalizedToolCallCount = normalizedMessage.tool_calls?.length ?? 0;
+  const normalizedHasToolCalls = normalizedToolCallCount > 0;
 
   return {
     message: normalizedMessage,

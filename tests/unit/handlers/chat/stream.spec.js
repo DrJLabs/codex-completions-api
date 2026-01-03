@@ -1571,6 +1571,19 @@ describe("postChatStream", () => {
     const idleTimeoutMs = configMock.PROXY_STREAM_IDLE_TIMEOUT_MS;
     configMock.PROXY_STREAM_IDLE_TIMEOUT_MS = 5;
     try {
+      createStreamTimersMock.mockImplementation(({ idleMs, onIdle }) => {
+        let timer = null;
+        return {
+          startIdleTimer() {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(onIdle, idleMs);
+          },
+          stopIdleTimer() {
+            if (timer) clearTimeout(timer);
+            timer = null;
+          },
+        };
+      });
       const postChatStream = await loadHandler();
 
       const req = buildReq({
