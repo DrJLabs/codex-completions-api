@@ -73,6 +73,10 @@ const clampEmittableIndexMock = vi.fn((_state, _forwarded, end) => end);
 const completeToolBufferMock = vi.fn();
 const abortToolBufferMock = vi.fn(() => ({ literal: "" }));
 const shouldSkipBlockMock = vi.fn(() => false);
+const createStreamRuntimeMock = vi.fn();
+const wireStreamTransportMock = vi.fn();
+const createStreamTimersMock = vi.fn();
+const createToolCallNormalizerMock = vi.fn();
 let lastChild = null;
 
 const createMockChild = () => {
@@ -178,6 +182,36 @@ vi.mock("../../../../src/handlers/chat/stream-event.js", async () => {
     parseStreamEventLine: vi.fn((...args) => actual.parseStreamEventLine(...args)),
   };
 });
+
+vi.mock("../../../../src/handlers/chat/stream-runtime.js", async () => {
+  const actual = await vi.importActual("../../../../src/handlers/chat/stream-runtime.js");
+  return {
+    ...actual,
+    createStreamRuntime: (...args) => {
+      createStreamRuntimeMock(...args);
+      return actual.createStreamRuntime(...args);
+    },
+  };
+});
+
+vi.mock("../../../../src/handlers/chat/stream-transport.js", async () => {
+  const actual = await vi.importActual("../../../../src/handlers/chat/stream-transport.js");
+  return {
+    ...actual,
+    wireStreamTransport: (...args) => {
+      wireStreamTransportMock(...args);
+      return actual.wireStreamTransport(...args);
+    },
+  };
+});
+
+vi.mock("../../../../src/handlers/chat/stream-timers.js", () => ({
+  createStreamTimers: (...args) => createStreamTimersMock(...args),
+}));
+
+vi.mock("../../../../src/handlers/chat/tool-call-normalizer.js", () => ({
+  createToolCallNormalizer: (...args) => createToolCallNormalizerMock(...args),
+}));
 
 vi.mock("../../../../src/services/backend-mode.js", () => ({
   selectBackendMode: vi.fn(() => "json-rpc"),
@@ -346,6 +380,17 @@ beforeEach(() => {
   completeToolBufferMock.mockReset();
   abortToolBufferMock.mockReset().mockReturnValue({ literal: "" });
   shouldSkipBlockMock.mockReset().mockReturnValue(false);
+  createStreamRuntimeMock.mockReset();
+  wireStreamTransportMock.mockReset();
+  createStreamTimersMock.mockReset().mockReturnValue({
+    startIdleTimer: vi.fn(),
+    stopIdleTimer: vi.fn(),
+  });
+  createToolCallNormalizerMock.mockReset().mockReturnValue({
+    ingestDelta: vi.fn((payload) => payload),
+    ingestMessage: vi.fn((payload) => payload),
+    finalize: vi.fn(),
+  });
   toObsidianXmlMock.mockReset().mockReturnValue("");
   maybeInjectIngressGuardrailMock.mockReset().mockImplementation(({ messages }) => ({
     injected: false,
@@ -396,6 +441,34 @@ describe("postChatStream", () => {
     expect(applyCorsMock).toHaveBeenCalled();
     expect(res.statusCode).toBe(400);
     expect(res.payload?.error?.code).toBe("invalid_request_error");
+  });
+
+  it("creates a stream runtime for orchestration", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(createStreamRuntimeMock).toHaveBeenCalled();
+  });
+
+  it("wires stream transport to runtime", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(wireStreamTransportMock).toHaveBeenCalled();
   });
 
   it("returns 400 when choice count is invalid", async () => {
@@ -1234,6 +1307,35 @@ describe("postChatStream", () => {
     expect(sawUsage).toBe(true);
   });
 
+  it("emits finish before usage when include_usage is requested", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      stream_options: { include_usage: true },
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message_delta", msg: { delta: "hello" } }) + "\n")
+    );
+    lastChild.emit("close");
+
+    const finishIndex = sendSSEMock.mock.calls.findIndex(
+      ([, payload]) =>
+        Array.isArray(payload?.choices) && payload.choices.some((choice) => choice?.finish_reason)
+    );
+    const usageIndex = sendSSEMock.mock.calls.findIndex(([, payload]) => payload?.usage);
+
+    expect(finishIndex).toBeGreaterThanOrEqual(0);
+    expect(usageIndex).toBeGreaterThanOrEqual(0);
+    expect(finishIndex).toBeLessThan(usageIndex);
+  });
+
   it("uses token_count events for usage payloads", async () => {
     const postChatStream = await loadHandler();
 
@@ -1469,6 +1571,19 @@ describe("postChatStream", () => {
     const idleTimeoutMs = configMock.PROXY_STREAM_IDLE_TIMEOUT_MS;
     configMock.PROXY_STREAM_IDLE_TIMEOUT_MS = 5;
     try {
+      createStreamTimersMock.mockImplementation(({ idleMs, onIdle }) => {
+        let timer = null;
+        return {
+          startIdleTimer() {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(onIdle, idleMs);
+          },
+          stopIdleTimer() {
+            if (timer) clearTimeout(timer);
+            timer = null;
+          },
+        };
+      });
       const postChatStream = await loadHandler();
 
       const req = buildReq({

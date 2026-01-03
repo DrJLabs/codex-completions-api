@@ -59,6 +59,11 @@ import { requireModel } from "./require-model.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { parseStreamEventLine } from "./stream-event.js";
 import { createStreamOutputCoordinator } from "./stream-output.js";
+import { createStreamRuntime } from "./stream-runtime.js";
+import { createStreamTimers } from "./stream-timers.js";
+import { createStreamRuntimeEmitter } from "./stream-runtime-emitter.js";
+import { wireStreamTransport } from "./stream-transport.js";
+import { createToolCallNormalizer } from "./tool-call-normalizer.js";
 import { buildObsidianXmlRecord, trimTrailingTextAfterToolBlocks } from "./tool-output.js";
 import {
   applyProxyTraceHeaders,
@@ -849,6 +854,7 @@ export async function postChatStream(req, res) {
     if (streamClosed) return;
     streamClosed = true;
     clearKeepalive();
+    stopIdleTimer();
     responseWritable = false;
     try {
       clearTimeout(timeout);
@@ -878,6 +884,7 @@ export async function postChatStream(req, res) {
   let lastToolStats = { count: 0, truncated: 0 };
   const includeUsage = !!(body?.stream_options?.include_usage || body?.include_usage);
   const toolCallAggregator = createToolCallAggregator();
+  const toolNormalizer = createToolCallNormalizer();
   const cloneToolCallDelta = (delta) => {
     if (!delta || typeof delta !== "object") return {};
     const cloned = { ...delta };
@@ -1160,17 +1167,16 @@ export async function postChatStream(req, res) {
     firstTokenMs: null,
     totalDurationMs: null,
   };
-  let streamIdleTimer;
-  const resetStreamIdle = () => {
-    if (streamIdleTimer) clearTimeout(streamIdleTimer);
-    streamIdleTimer = setTimeout(() => {
+  const { startIdleTimer, stopIdleTimer } = createStreamTimers({
+    idleMs: STREAM_IDLE_TIMEOUT_MS,
+    onIdle: () => {
       if (!finalized) trackFinishReason("length", "stream_idle_timeout");
       try {
         child.kill("SIGTERM");
       } catch {}
-    }, STREAM_IDLE_TIMEOUT_MS);
-  };
-  resetStreamIdle();
+    },
+  });
+  startIdleTimer();
 
   const updateUsageCounts = (trigger, { prompt, completion } = {}, { provider = false } = {}) => {
     const promptNum = Number.isFinite(prompt) ? Number(prompt) : NaN;
@@ -1335,6 +1341,60 @@ export async function postChatStream(req, res) {
   flushDanglingToolBuffers = outputCoordinator.flushDanglingToolBuffers;
   hasTextualToolPrefix = outputCoordinator.hasTextualToolPrefix;
 
+  const { emitDeltaFromRuntime, emitMessageFromRuntime } = createStreamRuntimeEmitter({
+    sanitizeMetadata: SANITIZE_METADATA,
+    coerceAssistantContent,
+    toolCallAggregator,
+    ensureChoiceState,
+    isObsidianOutput,
+    hasTextualToolPrefix,
+    emitAggregatorToolContent,
+    sendChoiceDelta,
+    cloneToolCallDelta,
+    logProto: LOG_PROTO,
+    appendProtoEvent,
+    reqId,
+    enqueueSanitizedSegment,
+    mergeMetadataInfo,
+    applyMetadataSanitizer,
+    appendContentSegment,
+    emitTextualToolMetadata,
+    scheduleStopAfterTools,
+    markHasToolCalls: () => {
+      hasToolCallsFlag = true;
+    },
+  });
+
+  const streamRuntime = createStreamRuntime({
+    output: {
+      emitDelta: (choiceIndex, deltaPayload, context = {}) =>
+        emitDeltaFromRuntime({
+          choiceIndex,
+          deltaPayload,
+          metadataInfo: context.metadataInfo,
+          eventType: context.eventType,
+        }),
+      emitMessage: (choiceIndex, finalMessage, context = {}) =>
+        emitMessageFromRuntime({
+          choiceIndex,
+          finalMessage,
+          metadataInfo: context.metadataInfo,
+          eventType: context.eventType,
+        }),
+      emitUsage: () => {},
+      emitFinish: () => {},
+      emitError: () => {},
+    },
+    toolNormalizer,
+    finishTracker,
+  });
+  const { handleLine: handleTransportLine } = wireStreamTransport({
+    runtime: streamRuntime,
+    resolveChoiceIndexFromPayload,
+    extractMetadataFromPayload,
+    sanitizeMetadata: SANITIZE_METADATA,
+  });
+
   const shouldDropFunctionCallOutput = (payload = null) => {
     if (!payload || typeof payload !== "object") return false;
     const outputField = payload.output;
@@ -1474,8 +1534,8 @@ export async function postChatStream(req, res) {
         stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
       });
     }
-    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!finishSent) emitFinishChunk();
+    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
     if (!usageState.logged) logUsage(resolvedTrigger);
     if (toolCallAggregator.hasCalls()) {
       try {
@@ -1597,7 +1657,7 @@ export async function postChatStream(req, res) {
 
   child.stdout.on("data", (chunk) => {
     if (finalized) return;
-    resetStreamIdle();
+    startIdleTimer();
     const s = chunk.toString("utf8");
     out += s;
     buf += s;
@@ -1617,12 +1677,11 @@ export async function postChatStream(req, res) {
       buf = buf.slice(idx + 1);
       try {
         const parsed = parseStreamEventLine(line, {
-          resolveChoiceIndexFromPayload,
           extractMetadataFromPayload,
           sanitizeMetadata: SANITIZE_METADATA,
         });
         if (!parsed) continue;
-        const { type: t, payload, params, messagePayload, metadataInfo, baseChoiceIndex } = parsed;
+        const { type: t, payload, params, messagePayload, metadataInfo } = parsed;
         appendProtoEvent({
           ts: Date.now(),
           req_id: reqId,
@@ -1636,191 +1695,12 @@ export async function postChatStream(req, res) {
           const finishCandidate = extractFinishReasonFromMessage(messagePayload);
           if (finishCandidate) trackFinishReason(finishCandidate, t || "event");
         }
-        if (t === "agent_message_content_delta" || t === "agent_message_delta") {
-          const deltaPayload = messagePayload?.delta ?? messagePayload;
-          const choiceIndex =
-            resolveChoiceIndexFromPayload(deltaPayload, messagePayload, params) ??
-            baseChoiceIndex ??
-            0;
-          if (typeof deltaPayload === "string") {
-            if (SANITIZE_METADATA) {
-              enqueueSanitizedSegment(
-                deltaPayload,
-                metadataInfo,
-                {
-                  stage: "agent_message_delta",
-                  eventType: t,
-                },
-                { choiceIndex }
-              );
-            } else if (deltaPayload) {
-              appendContentSegment(deltaPayload, { choiceIndex });
-            }
-          } else if (deltaPayload && typeof deltaPayload === "object") {
-            const textDelta = coerceAssistantContent(
-              deltaPayload.content ?? deltaPayload.text ?? ""
-            );
-            const { deltas, updated } = toolCallAggregator.ingestDelta(deltaPayload, {
-              choiceIndex,
-            });
-            if (updated) {
-              hasToolCallsFlag = true;
-              const state = ensureChoiceState(choiceIndex);
-              state.hasToolEvidence = true;
-              if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
-              const snapshot = toolCallAggregator.snapshot({ choiceIndex });
-              state.structuredCount = snapshot.length;
-              for (const toolDelta of deltas) {
-                if (LOG_PROTO) {
-                  appendProtoEvent({
-                    ts: Date.now(),
-                    req_id: reqId,
-                    route: "/v1/chat/completions",
-                    mode: "chat_stream",
-                    kind: "tool_call_delta",
-                    event: toolDelta,
-                  });
-                }
-                state.hasToolEvidence = true;
-                sendChoiceDelta(choiceIndex, {
-                  tool_calls: [cloneToolCallDelta(toolDelta)],
-                });
-              }
-              if (!isObsidianOutput || state.textualToolContentSeen) {
-                state.forwardedToolCount = snapshot.length;
-              } else if (!hasTextualToolPrefix(state, textDelta)) {
-                emitAggregatorToolContent(choiceIndex, snapshot);
-              }
-            }
-            if (SANITIZE_METADATA) {
-              enqueueSanitizedSegment(
-                textDelta,
-                metadataInfo,
-                {
-                  stage: "agent_message_delta",
-                  eventType: t,
-                },
-                { choiceIndex }
-              );
-            } else if (textDelta) {
-              appendContentSegment(textDelta, { choiceIndex });
-            }
-          }
-        } else if (t === "agent_message") {
-          const finalMessage = messagePayload?.message ?? messagePayload;
-          const choiceIndex =
-            resolveChoiceIndexFromPayload(finalMessage, messagePayload, params) ??
-            baseChoiceIndex ??
-            0;
-          if (typeof finalMessage === "string") {
-            const rawMessage = finalMessage;
-            if (rawMessage) {
-              if (emitTextualToolMetadata(choiceIndex, rawMessage)) {
-                const state = ensureChoiceState(choiceIndex);
-                state.hasToolEvidence = true;
-              }
-              let aggregatedInfo = null;
-              if (SANITIZE_METADATA) {
-                enqueueSanitizedSegment(
-                  "",
-                  metadataInfo,
-                  {
-                    stage: "agent_message",
-                    eventType: t,
-                  },
-                  { flush: true, choiceIndex }
-                );
-                aggregatedInfo = mergeMetadataInfo(null);
-              }
-              const sanitizedMessage = SANITIZE_METADATA
-                ? applyMetadataSanitizer(rawMessage, aggregatedInfo, {
-                    stage: "agent_message",
-                    eventType: t,
-                  })
-                : rawMessage;
-              if (sanitizedMessage) {
-                let suffix = "";
-                const state = ensureChoiceState(choiceIndex);
-                if (sanitizedMessage.startsWith(state.emitted)) {
-                  suffix = sanitizedMessage.slice(state.emitted.length);
-                } else if (!state.sentAny) {
-                  suffix = sanitizedMessage;
-                }
-                if (suffix) appendContentSegment(suffix, { choiceIndex });
-                else if (SANITIZE_METADATA) scheduleStopAfterTools(choiceIndex);
-              } else if (SANITIZE_METADATA) {
-                scheduleStopAfterTools(choiceIndex);
-              }
-            }
-          } else if (finalMessage && typeof finalMessage === "object") {
-            const { deltas, updated } = toolCallAggregator.ingestMessage(finalMessage, {
-              emitIfMissing: true,
-              choiceIndex,
-            });
-            const state = ensureChoiceState(choiceIndex);
-            if (updated) {
-              hasToolCallsFlag = true;
-              state.hasToolEvidence = true;
-              if (!isObsidianOutput) state.dropAssistantContentAfterTools = true;
-              for (const toolDelta of deltas) {
-                if (LOG_PROTO) {
-                  appendProtoEvent({
-                    ts: Date.now(),
-                    req_id: reqId,
-                    route: "/v1/chat/completions",
-                    mode: "chat_stream",
-                    kind: "tool_call_delta",
-                    event: toolDelta,
-                    source: "agent_message",
-                  });
-                }
-                sendChoiceDelta(choiceIndex, {
-                  tool_calls: [cloneToolCallDelta(toolDelta)],
-                });
-              }
-            }
-            if (toolCallAggregator.hasCalls()) hasToolCallsFlag = true;
-            const snapshot = toolCallAggregator.snapshot({ choiceIndex });
-            state.structuredCount = snapshot.length;
-            const text = coerceAssistantContent(finalMessage.content ?? finalMessage.text ?? "");
-            if (!isObsidianOutput || state.textualToolContentSeen) {
-              state.forwardedToolCount = snapshot.length;
-            } else if (!hasTextualToolPrefix(state, text)) {
-              emitAggregatorToolContent(choiceIndex, snapshot);
-            }
-            let aggregatedInfo = null;
-            if (SANITIZE_METADATA) {
-              enqueueSanitizedSegment(
-                "",
-                metadataInfo,
-                {
-                  stage: "agent_message",
-                  eventType: t,
-                },
-                { flush: true, choiceIndex }
-              );
-              aggregatedInfo = mergeMetadataInfo(null);
-            }
-            const sanitizedText = SANITIZE_METADATA
-              ? applyMetadataSanitizer(text, aggregatedInfo, {
-                  stage: "agent_message",
-                  eventType: t,
-                })
-              : text;
-            if (sanitizedText) {
-              let suffix = "";
-              const state = ensureChoiceState(choiceIndex);
-              if (sanitizedText.startsWith(state.emitted)) {
-                suffix = sanitizedText.slice(state.emitted.length);
-              } else if (!state.sentAny) {
-                suffix = sanitizedText;
-              }
-              if (suffix) appendContentSegment(suffix, { choiceIndex });
-              else if (SANITIZE_METADATA) scheduleStopAfterTools(choiceIndex);
-            } else {
-              scheduleStopAfterTools(choiceIndex);
-            }
-          }
+        if (
+          t === "agent_message_content_delta" ||
+          t === "agent_message_delta" ||
+          t === "agent_message"
+        ) {
+          handleTransportLine(line);
         } else if (t === "function_call_output") {
           if (shouldDropFunctionCallOutput(messagePayload)) {
             continue;

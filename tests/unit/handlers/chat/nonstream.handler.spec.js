@@ -608,7 +608,7 @@ describe("postChatNonStream guardrails", () => {
       { message: { content: "Partial" } },
       { choiceIndex: 0, emitIfMissing: true }
     );
-    expect(res.payload?.choices?.[0]?.message?.function_call?.name).toBe("doThing");
+    expect(res.payload?.choices?.[0]?.message?.tool_calls?.[0]?.function?.name).toBe("doThing");
   });
 
   it("includes tool_calls when the aggregator reports calls", async () => {
@@ -833,7 +833,7 @@ describe("postChatNonStream guardrails", () => {
     lastChild.stdout.emit("data", `${line}\n`);
     lastChild.stdout.emit("end");
 
-    expect(res.payload?.choices?.[0]?.message?.function_call?.name).toBe("doThing");
+    expect(res.payload?.choices?.[0]?.message?.tool_calls?.[0]?.function?.name).toBe("doThing");
   });
 
   it("honors task_complete events when determining finish reasons", async () => {
