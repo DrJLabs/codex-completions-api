@@ -7,49 +7,111 @@ with thresholds from `vitest.config.ts`. Coverage artifacts live under
 Thresholds: lines 80%, functions 80%, branches 75%, statements 80%.
 
 ## Current totals
-- Lines: 56.9% (3829/6729), missing 1555 lines to reach 80%.
-- Functions: 56.36% (527/935), missing 221 functions to reach 80%.
-- Branches: 40.38% (2943/7288), missing 2523 branches to reach 75%.
-- Statements: 53.46% (4084/7639), missing 2028 statements to reach 80%.
+- Lines: 66.3% (4461/6728), missing 922 lines to reach 80%.
+- Functions: 68.87% (644/935), missing 104 functions to reach 80%.
+- Branches: 49.27% (3591/7287), missing 1875 branches to reach 75%.
+- Statements: 62.37% (4764/7638), missing 1347 statements to reach 80%.
 
 ## Priority targets (lowest line coverage)
 | File | L | F | B | S |
 | --- | --- | --- | --- | --- |
-| `src/lib/bearer.js` | 0.0 | 0.0 | 0.0 | 0.0 |
-| `src/middleware/access-log.js` | 4.0 | 33.3 | 0.0 | 4.0 |
-| `src/services/codex-exec.js` | 5.0 | 0.0 | 0.0 | 4.8 |
-| `src/middleware/auth.js` | 7.7 | 0.0 | 0.0 | 7.1 |
-| `src/routes/metrics.js` | 8.0 | 0.0 | 0.0 | 6.9 |
-| `src/handlers/responses/stream-adapter.js` | 10.8 | 3.0 | 1.0 | 9.9 |
-| `src/handlers/chat/require-model.js` | 14.3 | 100.0 | 12.5 | 18.8 |
-| `src/middleware/metrics.js` | 16.7 | 25.0 | 0.0 | 16.7 |
-| `src/handlers/chat/stream.js` | 16.9 | 4.9 | 5.0 | 15.2 |
-| `src/services/codex-runner.js` | 18.5 | 0.0 | 6.3 | 18.5 |
-| `src/routes/usage.js` | 21.4 | 16.7 | 0.0 | 20.0 |
-| `src/handlers/chat/capture.js` | 27.5 | 17.6 | 5.0 | 26.4 |
-| `src/middleware/rate-limit.js` | 29.0 | 33.3 | 15.2 | 26.5 |
-| `src/services/metrics/chat.js` | 30.8 | 7.1 | 0.0 | 29.3 |
-| `src/handlers/chat/nonstream.js` | 30.9 | 17.2 | 15.3 | 28.9 |
-| `src/routes/chat.js` | 31.3 | 25.0 | 0.0 | 29.4 |
-| `src/handlers/responses/capture.js` | 33.3 | 23.1 | 5.0 | 34.3 |
-| `src/routes/responses.js` | 33.3 | 25.0 | 0.0 | 30.8 |
-| `src/app.js` | 34.9 | 20.0 | 13.0 | 33.3 |
-| `src/routes/models.js` | 40.0 | 28.6 | 12.5 | 35.3 |
+| `src/handlers/chat/stream.js` | 20.15 | 7.84 | 8.19 | 18.12 |
+| `src/handlers/chat/nonstream.js` | 36.11 | 22.41 | 20.33 | 34.22 |
+| `src/handlers/responses/nonstream.js` | 46.66 | 40.0 | 14.39 | 45.04 |
+| `src/lib/tools/xml.js` | 50.0 | 80.0 | 55.17 | 48.0 |
+| `src/services/transport/child-adapter.js` | 51.82 | 45.16 | 32.8 | 45.5 |
+| `src/handlers/chat/shared.js` | 55.08 | 71.42 | 39.31 | 52.38 |
+| `src/lib/capture/sanitize.js` | 57.14 | 40.0 | 42.16 | 49.43 |
+| `src/app.js` | 57.69 | 44.44 | 32.83 | 56.09 |
+| `src/services/sse.js` | 59.3 | 50.0 | 36.36 | 54.0 |
+| `src/services/metrics/index.js` | 67.82 | 64.0 | 30.98 | 62.12 |
+| `src/services/transport/index.js` | 71.38 | 64.1 | 56.81 | 67.85 |
+| `src/routes/health.js` | 71.42 | 60.0 | 53.48 | 71.42 |
+| `src/services/worker/supervisor.js` | 74.4 | 75.6 | 51.23 | 71.86 |
+| `src/handlers/responses/shared.js` | 75.37 | 76.92 | 56.09 | 69.82 |
+| `src/handlers/chat/request.js` | 76.03 | 95.83 | 61.03 | 71.07 |
+| `src/handlers/responses/stream-adapter.js` | 78.3 | 84.84 | 59.5 | 75.85 |
+| `src/handlers/responses/ingress-logging.js` | 78.94 | 75.0 | 63.69 | 72.72 |
+| `src/lib/ingress-guardrail.js` | 79.06 | 100 | 58.62 | 68.75 |
+| `src/lib/errors.js` | 79.16 | 71.42 | 65.95 | 79.16 |
+| `src/lib/json-rpc/schema.ts` | 81.81 | 96.87 | 55.64 | 71.22 |
 
 ## Suggested coverage focus
-- `src/lib/bearer.js`: unit tests for empty/invalid headers, case-insensitive
-  `Bearer` prefix, trimming, and missing headers in `bearerToken()`.
-- `src/middleware/auth.js`: exercise `requireStrictAuth`, `requireUsageAuth`,
-  and `requireTestAuth` across valid/invalid tokens and loopback gating.
-- `src/middleware/access-log.js`: cover happy-path logging and the error
-  fallback inside the `finish` handler.
-- `src/routes/metrics.js`: cover auth gates (metrics token, allow unauth,
-  allow loopback), plus the success path for rendering metrics.
-- `src/services/codex-exec.js`: cover prompt validation, spawn error/exit
-  failures, timeout path, empty output handling, and output cleanup.
-- `src/services/codex-runner.js`: cover env sanitization and lifecycle logging
-  around `spawnCodex()`.
-- `src/handlers/chat/*` and `src/handlers/responses/*`: cover stream/nonstream
-  success/error branches and capture paths.
-- `src/routes/*.js`: cover route-level auth, error responses, and the happy
-  path for each endpoint.
+- `src/handlers/chat/stream.js` + `src/handlers/chat/nonstream.js`: cover
+  stream/nonstream success/error branches, tools handling, and capture paths.
+- `src/handlers/responses/nonstream.js` + `src/handlers/responses/shared.js`:
+  cover nonstream error mapping and shared response shape helpers.
+- `src/app.js`: cover test router branches, CORS toggles, and error handlers.
+- `src/handlers/responses/stream-adapter.js`: cover remaining fallbacks and
+  event summary logging branches.
+- `src/services/transport/child-adapter.js` + `src/services/transport/index.js`:
+  cover teardown, retry, and error handling paths.
+- `src/services/sse.js` + `src/services/metrics/index.js`: cover streaming helper
+  branches and metrics normalization boundaries.
+- `src/lib/tools/xml.js` + `src/lib/capture/sanitize.js`: cover parsing/sanitize
+  branches and malformed inputs.
+- `src/routes/health.js` + `src/services/worker/supervisor.js`: cover readiness
+  and liveness branches across backend modes.
+- `src/lib/ingress-guardrail.js` + `src/lib/errors.js`: cover guardrail error
+  shapes and non-happy-path mappings.
+
+## Plan overview
+### Goals
+- Maintain existing global thresholds (lines 80%, functions 80%, branches 75%,
+  statements 80%) without lowering the bar.
+- Build deterministic unit tests for `src/**` that cover error paths, branch
+  decisions, and boundary conditions.
+- Keep tests fast and hermetic (no network, no real Codex CLI) by stubbing
+  external dependencies.
+
+### Scope
+- In scope: unit coverage for `src/**` (vitest v8, `npm run coverage:unit`).
+- Out of scope: integration/e2e coverage (tracked elsewhere) and coverage for
+  `tests/**` or `dist/**` (excluded by config).
+
+### Definition of done
+- `npm run coverage:unit` passes thresholds.
+- All new unit tests are deterministic and do not depend on timing races.
+- Any new helpers for testing are documented and reused across suites.
+
+## Workstreams and milestones
+### Phase 1: quick wins (low complexity, high ROI)
+- `src/lib/bearer.js` (0% coverage).
+- `src/middleware/auth.js`.
+- `src/middleware/access-log.js`.
+- `src/routes/metrics.js` (auth gates and render path).
+- `src/middleware/metrics.js`.
+
+### Phase 2: core services (controlled mocking)
+- `src/services/codex-exec.js` (success path + error/timeout cleanup).
+- `src/services/codex-runner.js` (env sanitization, spawn options, lifecycle).
+- `src/services/metrics/chat.js` (pure metrics helpers).
+- `src/middleware/rate-limit.js` (keying + boundary behavior).
+
+### Phase 3: handlers (branch-heavy paths)
+- `src/handlers/chat/stream.js` and `src/handlers/chat/nonstream.js`.
+- `src/handlers/chat/capture.js` and `src/handlers/chat/require-model.js`.
+- `src/handlers/responses/stream-adapter.js` and `src/handlers/responses/capture.js`.
+
+### Phase 4: routes and app wiring
+- `src/routes/chat.js`, `src/routes/responses.js`, `src/routes/usage.js`,
+  `src/routes/models.js`.
+- `src/app.js` (trust proxy, middleware ordering, test router guards).
+
+## Test design checklist
+- Use `vi.spyOn` or `vi.mock` to isolate dependencies (Codex spawn, FS, timers).
+- Prefer table-driven tests for branchy logic (auth gates, flags, env values).
+- Validate error responses (status, shape, headers) and happy paths.
+- For streaming paths, assert chunk ordering and proper termination.
+- Ensure cleanup code runs (timeouts cleared, temp files removed).
+
+## Tracking template
+- Phase 1: owner=__ status=todo target_files=__ notes=__
+- Phase 2: owner=__ status=todo target_files=__ notes=__
+- Phase 3: owner=__ status=todo target_files=__ notes=__
+- Phase 4: owner=__ status=todo target_files=__ notes=__
+
+## How to verify
+- Targeted: `npm run test:unit -- tests/unit/<new-spec>.js`
+- Full unit suite: `npm run test:unit`
+- Coverage gate: `npm run coverage:unit` (must pass thresholds)

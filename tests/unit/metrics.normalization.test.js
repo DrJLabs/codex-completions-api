@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createStreamObserver,
   observeHttpRequest,
+  observeWorkerRestartDelta,
   recordToolBufferEvent,
+  recordResponsesSseEvent,
   renderMetrics,
   resetMetrics,
+  setActiveStreams,
   setMaintenanceState,
+  setWorkerMetrics,
 } from "../../src/services/metrics/index.js";
 
 describe("metrics normalization", () => {
@@ -56,5 +61,82 @@ describe("metrics normalization", () => {
       .find((line) => line.trim().startsWith("codex_maintenance_mode"));
     expect(maintenanceLine).toBeTruthy();
     expect(maintenanceLine.trim().endsWith(" 1")).toBe(true);
+  });
+
+  it("tracks tool buffer anomaly resets after timeout", async () => {
+    vi.useFakeTimers();
+    recordToolBufferEvent("abort", { output_mode: "obsidian-xml", reason: "oops" });
+
+    let text = await renderMetrics();
+    let anomalyLine = text
+      .split("\n")
+      .find((line) => line.trim().startsWith("codex_tool_buffer_anomaly"));
+    expect(anomalyLine.trim().endsWith(" 1")).toBe(true);
+
+    vi.advanceTimersByTime(120000);
+    text = await renderMetrics();
+    anomalyLine = text
+      .split("\n")
+      .find((line) => line.trim().startsWith("codex_tool_buffer_anomaly"));
+    expect(anomalyLine.trim().endsWith(" 0")).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  it("records typed SSE events with normalized labels", async () => {
+    recordResponsesSseEvent({ route: "/v1/responses?x=1", model: "codev", event: "delta" });
+
+    const text = await renderMetrics();
+    expect(text).toMatch(/codex_responses_sse_event_total\{[^}]*route="\/v1\/responses"/);
+    expect(text).toMatch(/event="delta"/);
+    expect(text).toMatch(/model="codev"/);
+  });
+
+  it("clamps active stream gauges and ignores invalid values", async () => {
+    setActiveStreams(3);
+    setActiveStreams(Number.NaN);
+    setActiveStreams(-2);
+
+    const text = await renderMetrics();
+    const activeLine = text
+      .split("\n")
+      .find((line) => line.trim().startsWith("codex_streams_active"));
+    expect(activeLine.trim().endsWith(" 0")).toBe(true);
+  });
+
+  it("updates worker metrics from status payloads", async () => {
+    setWorkerMetrics({
+      metrics: { codex_worker_restarts_total: 2 },
+      next_restart_delay_ms: 1234,
+      health: { readiness: { ready: false } },
+    });
+
+    const text = await renderMetrics();
+    expect(text).toMatch(/codex_worker_restarts_total 2/);
+    expect(text).toMatch(/codex_worker_backoff_ms 1234/);
+    expect(text).toMatch(/codex_worker_ready 0/);
+  });
+
+  it("increments worker restart deltas", async () => {
+    observeWorkerRestartDelta({ restarts_total: 2 });
+    observeWorkerRestartDelta({ restarts_total: 3 });
+
+    const text = await renderMetrics();
+    expect(text).toMatch(/codex_worker_restarts_inc_total 3/);
+  });
+
+  it("records stream observer timings and outcomes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+    const observer = createStreamObserver({ route: "/v1/responses?x=1", model: "test" });
+
+    vi.advanceTimersByTime(250);
+    observer.end("error");
+
+    const text = await renderMetrics();
+    expect(text).toMatch(/codex_stream_end_total\{[^}]*outcome="error"/);
+    expect(text).toMatch(/codex_stream_ttfb_ms_count\{[^}]*route="\/v1\/responses"/);
+
+    vi.useRealTimers();
   });
 });

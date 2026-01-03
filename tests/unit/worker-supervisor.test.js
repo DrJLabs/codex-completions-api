@@ -51,6 +51,8 @@ beforeEach(async () => {
   process.env.WORKER_BACKOFF_INITIAL_MS = "30";
   process.env.WORKER_BACKOFF_MAX_MS = "30";
   process.env.WORKER_RESTART_MAX = "3";
+  process.env.CODEX_FORCE_PROVIDER = "openai";
+  process.env.PROXY_ENABLE_PARALLEL_TOOL_CALLS = "true";
 
   const module = await import("../../src/services/worker/supervisor.js");
   ensureWorkerSupervisor = module.ensureWorkerSupervisor;
@@ -68,10 +70,19 @@ afterEach(async () => {
   delete process.env.WORKER_BACKOFF_INITIAL_MS;
   delete process.env.WORKER_BACKOFF_MAX_MS;
   delete process.env.WORKER_RESTART_MAX;
+  delete process.env.CODEX_FORCE_PROVIDER;
+  delete process.env.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
   vi.clearAllMocks();
 });
 
 describe("CodexWorkerSupervisor health snapshots", () => {
+  test("launch args include provider and parallel tool call flags", () => {
+    const args = spawnCodexSpy.mock.calls[0]?.[0] ?? [];
+    expect(args).toContain("app-server");
+    expect(args).toContain('model_provider="openai"');
+    expect(args).toContain('parallel_tool_calls="true"');
+  });
+
   test("readiness toggles on handshake and exit events", async () => {
     expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
     const initial = getWorkerStatus();
@@ -142,5 +153,75 @@ describe("CodexWorkerSupervisor health snapshots", () => {
     expect(afterHandshake.health.readiness.ready).toBe(true);
     expect(afterHandshake.ready).toBe(true);
     expect(currentSupervisor.state.ready).toBe(true);
+  });
+
+  test("start is a no-op when already running", async () => {
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+
+    currentSupervisor.start();
+    await settle();
+
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("waitForReady times out without a ready signal", async () => {
+    await expect(currentSupervisor.waitForReady(10)).rejects.toThrow("worker readiness timeout");
+  });
+
+  test("recordHandshakeFailure updates readiness state", async () => {
+    currentSupervisor.recordHandshakeFailure(new Error("handshake exploded"));
+    await settle();
+
+    const status = getWorkerStatus();
+    expect(status.health.readiness.reason).toBe("handshake_failed");
+    expect(status.health.readiness.handshake?.error).toBe("handshake exploded");
+  });
+
+  test("recordHandshakePending includes extra details", async () => {
+    currentSupervisor.recordHandshakePending({ note: "waiting" });
+    await settle();
+
+    const status = getWorkerStatus();
+    expect(status.health.readiness.reason).toBe("handshake_pending");
+    expect(status.health.readiness.details?.note).toBe("waiting");
+  });
+
+  test("shutdown short-circuits when the child already exited", async () => {
+    const child = mockChildren[mockChildren.length - 1];
+    child.exitCode = 0;
+    child.signalCode = null;
+
+    await currentSupervisor.shutdown({ reason: "already_done" });
+
+    const status = getWorkerStatus();
+    expect(status.health.liveness.reason).toBe("shutdown_complete");
+  });
+
+  test("shutdown completes when child is missing", async () => {
+    currentSupervisor.state.child = null;
+    currentSupervisor.state.running = true;
+
+    await currentSupervisor.shutdown({ reason: "no_child" });
+
+    const status = getWorkerStatus();
+    expect(status.running).toBe(false);
+    expect(status.health.liveness.reason).toBe("shutdown_complete");
+  });
+
+  test("stops restarting after exceeding restart limit", async () => {
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 4; i += 1) {
+      const child = mockChildren[mockChildren.length - 1];
+      child.exitCode = 1;
+      child.signalCode = null;
+      child.emit("exit", 1, null);
+      await settle(45);
+    }
+
+    expect(spawnCodexSpy).toHaveBeenCalledTimes(4);
+    const status = getWorkerStatus();
+    expect(status.running).toBe(false);
+    expect(status.health.liveness.reason).toBe("restart_limit_exceeded");
   });
 });

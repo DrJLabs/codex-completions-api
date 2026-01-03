@@ -38,6 +38,76 @@ describe("ingress guardrail helpers", () => {
     expect(content).toContain("tool_result");
   });
 
+  test("buildIngressGuardrailContent omits signal list when no markers present", () => {
+    const content = buildIngressGuardrailContent({ markers: {} });
+    expect(content).toContain("[proxy][ingress_guardrail_v1]");
+    expect(content).not.toContain("Signals detected:");
+  });
+
+  test("maybeInjectIngressGuardrail returns early when disabled", () => {
+    const baseMessages = [
+      { role: "user", content: "<recent_conversations>hi</recent_conversations>" },
+    ];
+    const result = maybeInjectIngressGuardrail({
+      messages: baseMessages,
+      enabled: false,
+    });
+    expect(result.injected).toBe(false);
+    expect(result.markers).toBeNull();
+    expect(result.messages).toEqual(baseMessages);
+  });
+
+  test("maybeInjectIngressGuardrail returns early when no messages", () => {
+    const result = maybeInjectIngressGuardrail({ messages: [], enabled: true });
+    expect(result.injected).toBe(false);
+    expect(result.markers).toBeNull();
+    expect(result.messages).toEqual([]);
+  });
+
+  test("maybeInjectIngressGuardrail skips when guardrail already exists", () => {
+    const baseMessages = [
+      { role: "system", content: [{ text: "[proxy][ingress_guardrail_v1]" }] },
+      { role: "user", content: "<recent_conversations>hi</recent_conversations>" },
+    ];
+    const result = maybeInjectIngressGuardrail({
+      messages: baseMessages,
+      enabled: true,
+    });
+    expect(result.injected).toBe(false);
+    expect(result.markers).toBeNull();
+    expect(result.messages).toEqual(baseMessages);
+  });
+
+  test("maybeInjectIngressGuardrail skips when no qualifying markers", () => {
+    const baseMessages = [{ role: "user", content: "just chat" }];
+    const result = maybeInjectIngressGuardrail({
+      messages: baseMessages,
+      enabled: true,
+    });
+    expect(result.injected).toBe(false);
+    expect(result.markers).toEqual({
+      has_recent_conversations_tag: false,
+      has_saved_memories_tag: false,
+      has_use_tool_tag: false,
+      has_tool_result_marker: false,
+    });
+  });
+
+  test("maybeInjectIngressGuardrail skips when only use_tool tag is present", () => {
+    const baseMessages = [{ role: "user", content: "<use_tool>noop</use_tool>" }];
+    const result = maybeInjectIngressGuardrail({
+      messages: baseMessages,
+      enabled: true,
+    });
+    expect(result.injected).toBe(false);
+    expect(result.markers).toMatchObject({
+      has_recent_conversations_tag: false,
+      has_saved_memories_tag: false,
+      has_use_tool_tag: true,
+      has_tool_result_marker: false,
+    });
+  });
+
   test("maybeInjectIngressGuardrail prepends a system message once", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

@@ -54,4 +54,26 @@ describe("tracing middleware", () => {
     expect(res.locals.trace_id).toBeUndefined();
     res.emit("finish");
   });
+
+  test("ends span on close events", () => {
+    const end = vi.fn();
+    startHttpSpanMock.mockReturnValue({
+      span: {
+        spanContext: () => ({ traceId: "trace-2", spanId: "span-2" }),
+        setAttribute: vi.fn(),
+        end,
+      },
+      context: {},
+    });
+
+    const req = { method: "GET", route: { path: "/v1/health" } };
+    const res = new EventEmitter();
+    res.locals = {};
+    const next = vi.fn();
+
+    tracingMiddleware()(req, res, next);
+    res.emit("close");
+
+    expect(end).toHaveBeenCalledTimes(1);
+  });
 });

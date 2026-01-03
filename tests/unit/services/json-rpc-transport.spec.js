@@ -345,6 +345,60 @@ describe("JsonRpcTransport handshake", () => {
   });
 });
 
+describe("JsonRpcTransport auth login", () => {
+  it("caches auth login details when worker returns chatgpt response", async () => {
+    const child = createMockChild();
+    const methods = [];
+    wireJsonResponder(child, (message) => {
+      methods.push(message.method);
+      if (message.method === "account/login/start") {
+        writeRpcResult(child, message.id, {
+          result: {
+            type: "chatgpt",
+            auth_url: "https://example.test/login",
+            login_id: "login-1",
+          },
+        });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const first = await transport.getAuthLoginDetails();
+    const second = await transport.getAuthLoginDetails();
+
+    expect(first).toEqual({ auth_url: "https://example.test/login", login_id: "login-1" });
+    expect(second).toEqual(first);
+    expect(methods.filter((method) => method === "account/login/start")).toHaveLength(1);
+  });
+
+  it("returns null when the login response type is not chatgpt", async () => {
+    const child = createMockChild();
+    let calls = 0;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "account/login/start") {
+        calls += 1;
+        writeRpcResult(child, message.id, {
+          result: { type: "other", auth_url: "https://example.test/login" },
+        });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  it("returns null when the worker is unavailable", async () => {
+    __setChild(null);
+    const transport = getJsonRpcTransport();
+
+    await expect(transport.getAuthLoginDetails()).resolves.toBeNull();
+  });
+});
+
 describe("JsonRpcTransport request lifecycle", () => {
   it("rejects new requests when the worker is at capacity", async () => {
     CFG.WORKER_MAX_CONCURRENCY = 1;
@@ -412,6 +466,204 @@ describe("JsonRpcTransport request lifecycle", () => {
       new TransportError("request aborted", { code: "request_aborted" })
     );
     await expect(nextPending).resolves.toMatchObject({ code: "request_aborted" });
+  });
+
+  it("skips newConversation when an explicit conversation id is provided", async () => {
+    const child = createMockChild();
+    const methods = [];
+    wireJsonResponder(child, (message) => {
+      methods.push(message.method);
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "explicit" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-explicit",
+      turnParams: { conversation_id: "explicit" },
+    });
+    context.emitter.on("error", () => {});
+    const pending = context.promise.catch(() => {});
+
+    expect(methods).toContain("sendUserTurn");
+    expect(methods).not.toContain("newConversation");
+    expect(methods).not.toContain("addConversationListener");
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await pending;
+  });
+
+  it("continues when addConversationListener returns no subscription id", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-no-sub" });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    expect(context.listenerAttached).toBe(true);
+    expect(context.subscriptionId).toBeNull();
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
+  });
+
+  it("throws when newConversation returns no conversation id", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const contexts = transport.contextsByRequest;
+    const originalSet = contexts.set.bind(contexts);
+    contexts.set = (key, ctx) => {
+      ctx.emitter.on("error", () => {});
+      ctx.promise.catch(() => {});
+      return originalSet(key, ctx);
+    };
+
+    await expect(
+      transport.createChatRequest({ requestId: "req-missing-conversation" })
+    ).rejects.toMatchObject({ code: "worker_invalid_response" });
+
+    contexts.set = originalSet;
+  });
+
+  it("aborts immediately when the request signal is already aborted", async () => {
+    const child = createMockChild();
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const contexts = transport.contextsByRequest;
+    const originalSet = contexts.set.bind(contexts);
+    contexts.set = (key, ctx) => {
+      ctx.emitter.on("error", () => {});
+      ctx.promise.catch(() => {});
+      return originalSet(key, ctx);
+    };
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      transport.createChatRequest({ requestId: "req-aborted", signal: controller.signal })
+    ).rejects.toMatchObject({ code: "request_aborted" });
+
+    contexts.set = originalSet;
+  });
+
+  it("normalizes sendUserTurn items when no fallback text is provided", async () => {
+    const child = createMockChild();
+    let sendUserTurnParams = null;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
+      }
+      if (message.method === "sendUserTurn") {
+        sendUserTurnParams = message.params;
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({
+      requestId: "req-empty-items",
+      turnParams: { items: [] },
+    });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    expect(sendUserTurnParams?.items).toEqual([]);
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
+  });
+
+  it("normalizes sendUserMessage text into items and strips text", async () => {
+    const child = createMockChild();
+    let sendUserMessageParams = null;
+    wireJsonResponder(child, (message) => {
+      if (message.method === "initialize") {
+        writeRpcResult(child, message.id, { result: {} });
+      }
+      if (message.method === "newConversation") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "addConversationListener") {
+        writeRpcResult(child, message.id, { result: { subscription_id: "sub-1" } });
+      }
+      if (message.method === "sendUserTurn") {
+        writeRpcResult(child, message.id, { result: { conversation_id: "server-conv" } });
+      }
+      if (message.method === "sendUserMessage") {
+        sendUserMessageParams = message.params;
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-message-items" });
+    context.emitter.on("error", () => {});
+    context.promise.catch(() => {});
+
+    transport.sendUserMessage(context, { text: "Hello" });
+    await flushAsync();
+
+    expect(sendUserMessageParams?.text).toBeUndefined();
+    expect(sendUserMessageParams?.items).toEqual([{ type: "text", data: { text: "Hello" } }]);
+
+    transport.cancelContext(
+      context,
+      new TransportError("request aborted", { code: "request_aborted", retryable: false })
+    );
+    await context.promise.catch(() => {});
   });
 
   it("emits notifications and finalizes request payloads", async () => {
@@ -570,6 +822,123 @@ describe("JsonRpcTransport request lifecycle", () => {
 
     transport.cancelContext(context);
     await context.promise.catch(() => {});
+  });
+
+  it("collects content deltas and completes on task notifications", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-deltas" });
+    context.emitter.on("error", () => {});
+
+    writeRpcNotification(child, "codex/event/agent_message_content_delta", {
+      conversation_id: "server-conv",
+      msg: { content: [{ text: "hi" }] },
+    });
+    writeRpcNotification(child, "codex/event/agent_message_delta", {
+      conversation_id: "server-conv",
+      msg: { delta: { text: "structured" } },
+    });
+    writeRpcNotification(child, "codex/event/agent_message_delta", {
+      conversation_id: "server-conv",
+      msg: { delta: "skip" },
+    });
+    writeRpcNotification(child, "codex/event/token_count", {
+      conversation_id: "server-conv",
+      msg: { token_count: { prompt_tokens: 2, completion_tokens: 3 } },
+    });
+    writeRpcNotification(child, "codex/event/agent_message", {
+      conversation_id: "server-conv",
+      msg: { message: "final", finish_reason: "stop" },
+    });
+    writeRpcNotification(child, "codex/event/task_complete", {
+      conversation_id: "server-conv",
+      msg: { output: "done", finish_reason: "stop" },
+    });
+
+    const result = await context.promise;
+
+    expect(result.deltas).toHaveLength(2);
+    expect(result.finalMessage).toMatchObject({ message: "final" });
+    expect(result.result).toMatchObject({ output: "done" });
+    expect(result.finishReason).toBe("stop");
+    expect(result.usage).toMatchObject({ prompt_tokens: 2, completion_tokens: 3 });
+  });
+
+  it("uses item/completed notifications to fill final message", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-item-complete" });
+    context.emitter.on("error", () => {});
+
+    writeRpcNotification(child, "codex/event/item_completed", {
+      conversation_id: "server-conv",
+      msg: {
+        item: {
+          type: "agent_message",
+          content: [{ text: "from item" }],
+        },
+      },
+    });
+
+    const result = await context.promise;
+
+    expect(result.finalMessage).toMatchObject({ message: "from item" });
+    expect(result.finishReason).toBe("stop");
+    expect(result.result).toMatchObject({ item: expect.any(Object) });
+  });
+
+  it("fails the context on requestTimeout notifications", async () => {
+    const child = createMockChild();
+    const responses = {
+      initialize: { result: {} },
+      newConversation: { result: { conversation_id: "server-conv" } },
+      addConversationListener: { result: { subscription_id: "sub-1" } },
+      sendUserTurn: { result: { conversation_id: "server-conv" } },
+    };
+    wireJsonResponder(child, (message) => {
+      if (Object.prototype.hasOwnProperty.call(responses, message.method)) {
+        writeRpcResult(child, message.id, responses[message.method]);
+      }
+    });
+    __setChild(child);
+
+    const transport = getJsonRpcTransport();
+    const context = await transport.createChatRequest({ requestId: "req-timeout-note" });
+    context.emitter.on("error", () => {});
+    const pending = context.promise.catch((err) => err);
+
+    writeRpcNotification(child, "codex/event/requestTimeout", {
+      conversation_id: "server-conv",
+      msg: { reason: "timeout" },
+    });
+
+    await expect(pending).resolves.toMatchObject({ code: "worker_request_timeout" });
   });
 
   it("cancels contexts with a default abort error when none is provided", async () => {
