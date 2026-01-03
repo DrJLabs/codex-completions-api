@@ -48,7 +48,7 @@ vi.mock("../../../src/dev-logging.js", () => ({
 
 const buildRes = () => {
   const chunks = [];
-  return {
+  const res = {
     locals: {},
     writableEnded: false,
     write: (chunk) => {
@@ -60,6 +60,7 @@ const buildRes = () => {
     },
     getChunks: () => chunks.join(""),
   };
+  return res;
 };
 
 describe("responses stream adapter", () => {

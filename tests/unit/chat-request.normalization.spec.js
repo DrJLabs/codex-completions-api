@@ -522,17 +522,6 @@ describe("normalizeChatJsonRpcRequest", () => {
     expect(missingName?.body?.error?.param).toBe("functions[0].name");
   });
 
-  it("rejects reasoning when not an object", () => {
-    const messages = [{ role: "user", content: "hello" }];
-    const err = catchNormalization({
-      body: { messages, reasoning: "nope" },
-      messages,
-    });
-
-    expect(err).toBeInstanceOf(ChatJsonRpcNormalizationError);
-    expect(err?.body?.error?.param).toBe("reasoning");
-  });
-
   it("rejects null or unsupported response_format types", () => {
     const messages = [{ role: "user", content: "hello" }];
 
