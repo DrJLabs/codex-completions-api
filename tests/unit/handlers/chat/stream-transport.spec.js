@@ -60,6 +60,22 @@ describe("stream transport", () => {
     );
   });
 
+  it("handles parsed events directly", () => {
+    const runtime = { handleDelta: vi.fn() };
+
+    const { handleParsedEvent } = wireStreamTransport({ runtime });
+
+    const handled = handleParsedEvent({
+      type: "agent_message_delta",
+      params: {},
+      messagePayload: { delta: "hi" },
+      baseChoiceIndex: 0,
+    });
+
+    expect(handled).toBe(true);
+    expect(runtime.handleDelta).toHaveBeenCalled();
+  });
+
   it("flushes buffered data on end", () => {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
