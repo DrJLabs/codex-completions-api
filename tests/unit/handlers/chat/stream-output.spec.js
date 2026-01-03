@@ -150,4 +150,54 @@ describe("stream output coordinator", () => {
       expect.objectContaining({ choice_index: 0, error: "boom", phase: "segment" })
     );
   });
+
+  it("logs aggregator emission failures", () => {
+    const state = {
+      emitted: "",
+      forwardedUpTo: 0,
+      scanPos: 0,
+      lastToolEnd: -1,
+      textualToolContentSeen: false,
+      dropAssistantContentAfterTools: false,
+      sentAny: false,
+      hasToolEvidence: false,
+      structuredCount: 0,
+      forwardedToolCount: 0,
+      toolBuffer: { active: false },
+    };
+
+    const logToolBufferWarning = vi.fn();
+    const coordinator = createStreamOutputCoordinator({
+      isObsidianOutput: true,
+      outputMode: "obsidian",
+      stopAfterTools: false,
+      suppressTailAfterTools: false,
+      toolCallAggregator: { snapshot: () => [{ id: "tool_1", function: { arguments: "{}" } }] },
+      toolBufferMetrics: { start: vi.fn(), flush: vi.fn(), abort: vi.fn() },
+      ensureChoiceState: () => state,
+      sendChoiceDelta: vi.fn(),
+      emitTextualToolMetadata: vi.fn(() => false),
+      scheduleStopAfterTools: vi.fn(),
+      extractUseToolBlocks: () => ({ blocks: [], nextPos: 0 }),
+      trackToolBufferOpen: () => -1,
+      detectNestedToolBuffer: () => -1,
+      clampEmittableIndex: (_buffer, _forwarded, end) => end,
+      completeToolBuffer: vi.fn(),
+      abortToolBuffer: () => ({ literal: "" }),
+      shouldSkipBlock: () => false,
+      trimTrailingTextAfterToolBlocks: (text) => text,
+      buildObsidianXmlRecord: () => {
+        throw new Error("boom");
+      },
+      logToolBufferWarning,
+    });
+
+    const emitted = coordinator.emitAggregatorToolContent(0);
+
+    expect(emitted).toBe(false);
+    expect(logToolBufferWarning).toHaveBeenCalledWith(
+      "aggregator_tool_emit_failed",
+      expect.objectContaining({ choice_index: 0, error: "boom" })
+    );
+  });
 });

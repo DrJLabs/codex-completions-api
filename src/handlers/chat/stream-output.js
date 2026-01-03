@@ -146,7 +146,13 @@ export const createStreamOutputCoordinator = ({
         state.forwardedToolCount = records.length;
       }
       return emitted;
-    } catch {
+    } catch (err) {
+      if (typeof logToolBufferWarning === "function") {
+        logToolBufferWarning("aggregator_tool_emit_failed", {
+          choice_index: choiceIndex,
+          error: err?.message,
+        });
+      }
       return false;
     }
   };
