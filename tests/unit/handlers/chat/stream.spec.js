@@ -747,6 +747,23 @@ describe("postChatStream", () => {
     expect(captureArgs?.requestBody).toEqual({});
   });
 
+  it("finishes SSE when capture is disabled", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+    res.locals.endpoint_mode = "responses";
+
+    await postChatStream(req, res);
+
+    lastChild.emit("close");
+
+    expect(finishSSEMock).toHaveBeenCalled();
+  });
+
   it("sends keepalive comments when keepalive is enabled", async () => {
     computeKeepaliveMsMock.mockReturnValue(5);
     startKeepalivesMock.mockImplementation((_res, _ms, cb) => {
@@ -787,6 +804,28 @@ describe("postChatStream", () => {
 
     expect(clearSpy).toHaveBeenCalledWith(123);
     clearSpy.mockRestore();
+  });
+
+  it("drops deltas after the response closes", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    res.emit("close");
+    sendSSEMock.mockClear();
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message_delta", msg: { delta: "hello" } }) + "\n")
+    );
+
+    expect(sendSSEMock).not.toHaveBeenCalled();
   });
   it("respects stream adapter onChunk override", async () => {
     const postChatStream = await loadHandler();
@@ -1385,6 +1424,28 @@ describe("postChatStream", () => {
     );
 
     expect(finishPayload).toBeTruthy();
+  });
+
+  it("ignores child errors after finalize", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "task_complete", msg: { finish_reason: "stop" } }) + "\n")
+    );
+
+    const callCount = sendSSEMock.mock.calls.length;
+    lastChild.emit("error", new Error("boom"));
+
+    expect(sendSSEMock.mock.calls.length).toBe(callCount);
   });
 
   it("kills the child on stream idle timeout", async () => {
