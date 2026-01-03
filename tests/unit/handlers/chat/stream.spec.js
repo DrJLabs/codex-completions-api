@@ -1103,6 +1103,41 @@ describe("postChatStream", () => {
     expect(usagePayload?.usage?.total_tokens).toBe(8);
   });
 
+  it("uses token_count length signals for finish reason", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "token_count",
+          msg: {
+            token_count: {
+              prompt_tokens: 1,
+              completion_tokens: 2,
+              token_limit_reached: true,
+            },
+          },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const finishPayload = sendSSEMock.mock.calls.find(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.finish_reason === "length")
+    );
+
+    expect(finishPayload).toBeTruthy();
+  });
+
   it("uses provider usage events when available", async () => {
     const postChatStream = await loadHandler();
 
@@ -1133,6 +1168,35 @@ describe("postChatStream", () => {
     expect(usagePayload?.usage?.total_tokens).toBe(16);
   });
 
+  it("uses function_call finish reason when function_call is detected", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: { function_call: { name: "calc", arguments: "{}" } } },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const finishPayload = sendSSEMock.mock.calls.find(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.finish_reason === "function_call")
+    );
+
+    expect(finishPayload).toBeTruthy();
+  });
+
   it("emits finish chunks on task_complete events", async () => {
     const postChatStream = await loadHandler();
 
@@ -1159,6 +1223,30 @@ describe("postChatStream", () => {
     );
 
     expect(finishPayload).toBeTruthy();
+  });
+
+  it("kills the child on stream idle timeout", async () => {
+    vi.useFakeTimers();
+    const idleTimeoutMs = configMock.PROXY_STREAM_IDLE_TIMEOUT_MS;
+    configMock.PROXY_STREAM_IDLE_TIMEOUT_MS = 5;
+    try {
+      const postChatStream = await loadHandler();
+
+      const req = buildReq({
+        model: "gpt-test",
+        messages: [{ role: "user", content: "hi" }],
+      });
+      const res = buildRes();
+
+      await postChatStream(req, res);
+
+      vi.advanceTimersByTime(6);
+
+      expect(lastChild.kill).toHaveBeenCalledWith("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+      configMock.PROXY_STREAM_IDLE_TIMEOUT_MS = idleTimeoutMs;
+    }
   });
 
   it("defaults task_complete to length when no finish reason or content", async () => {
