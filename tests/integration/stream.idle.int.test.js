@@ -52,11 +52,11 @@ beforeAll(async () => {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  // wait health
+  // wait ready
   const start = Date.now();
   while (Date.now() - start < 5000) {
     try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
+      const r = await fetch(`http://127.0.0.1:${PORT}/readyz`);
       if (r.ok) break;
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
