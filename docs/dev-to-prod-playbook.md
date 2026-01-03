@@ -16,7 +16,7 @@ This repository historically kept a detailed dev→prod playbook under `docs/pri
 5. Verify:
    - `DOMAIN=<domain> KEY=<key> npm run smoke:prod`
    - Ensure `PROXY_METRICS_TOKEN` is set (or pass `METRICS_TOKEN=...`) when metrics are enabled, otherwise the smoke check will 403 on `/metrics`.
-   - Tool-call smoke defaults to `/v1/responses` in structured mode and tolerates missing tool calls (set `TOOL_SMOKE_ALLOW_MISSING=0` to enforce). Use `TOOL_SMOKE_ENDPOINT=chat` to assert chat tool_calls or `TOOL_SMOKE_MODES=textual` to validate `<use_tool>` output.
+   - Tool-call smoke targets `/v1/responses` with textual `<use_tool>` by default; override with `TOOL_SMOKE_ENDPOINT=chat TOOL_SMOKE_MODES=structured` when validating structured tool_calls.
 
 ## References
 

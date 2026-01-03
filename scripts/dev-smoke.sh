@@ -124,20 +124,15 @@ if [[ -n "$KEY" ]]; then
   TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
   TOOL_SMOKE_ENDPOINT="${TOOL_SMOKE_ENDPOINT:-responses}"
-  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-structured}"
-  TOOL_SMOKE_ALLOW_MISSING="${TOOL_SMOKE_ALLOW_MISSING:-1}"
+  TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-textual}"
   run_tool_smoke() {
     local mode="$1"; shift
     local flags=("$@")
-    local extra_flags=("${flags[@]}")
     local out
     out=$(mktemp)
-    if [[ "$TOOL_SMOKE_ALLOW_MISSING" == "1" ]]; then
-      extra_flags+=(--allow-missing-tools)
-    fi
     if BASE_URL="$BASE_CF" MODEL="$TOOL_SMOKE_MODEL" KEY="$KEY" TIMEOUT_MS="$TOOL_SMOKE_TIMEOUT_MS" \
       TOOL_SMOKE_ENDPOINT="$TOOL_SMOKE_ENDPOINT" \
-      node "$ROOT_DIR/scripts/smoke/stream-tool-call.js" "${extra_flags[@]}" >"$out" 2>&1; then
+      node "$ROOT_DIR/scripts/smoke/stream-tool-call.js" "${flags[@]}" >"$out" 2>&1; then
       pass "cf tool-call smoke (${mode})"
       cat "$out"
     else
