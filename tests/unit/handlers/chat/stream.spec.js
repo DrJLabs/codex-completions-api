@@ -728,6 +728,25 @@ describe("postChatStream", () => {
     expect(createChatStreamCapture).not.toHaveBeenCalled();
   });
 
+  it("falls back to empty request body when cloning fails", async () => {
+    const postChatStream = await loadHandler();
+    const { createChatStreamCapture } = await import("../../../../src/handlers/chat/capture.js");
+    const body = {
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+      bad: () => {},
+    };
+    body.self = body;
+
+    const req = buildReq(body);
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    const captureArgs = createChatStreamCapture.mock.calls[0]?.[0];
+    expect(captureArgs?.requestBody).toEqual({});
+  });
+
   it("sends keepalive comments when keepalive is enabled", async () => {
     computeKeepaliveMsMock.mockReturnValue(5);
     startKeepalivesMock.mockImplementation((_res, _ms, cb) => {
@@ -1284,6 +1303,62 @@ describe("postChatStream", () => {
     expect(finishPayload).toBeTruthy();
   });
 
+  it("downgrades tool_calls finish reason for choices without tool evidence", async () => {
+    const toolDelta = {
+      id: "tool-1",
+      type: "function",
+      function: { name: "calc", arguments: "{}" },
+    };
+    const maxChoices = configMock.PROXY_MAX_CHAT_CHOICES;
+    configMock.PROXY_MAX_CHAT_CHOICES = 2;
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => false),
+      ingestMessage: vi.fn(),
+      ingestDelta: vi.fn(() => ({ updated: true, deltas: [toolDelta] })),
+      snapshot: vi.fn(() => [toolDelta]),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    try {
+      const postChatStream = await loadHandler();
+
+      const req = buildReq({
+        model: "gpt-test",
+        messages: [{ role: "user", content: "hi" }],
+        n: 2,
+      });
+      const res = buildRes();
+
+      await postChatStream(req, res);
+
+      lastChild.stdout.emit(
+        "data",
+        Buffer.from(
+          JSON.stringify({
+            type: "agent_message_delta",
+            msg: { delta: { tool_calls: [toolDelta], content: "", index: 0 } },
+          }) + "\n"
+        )
+      );
+      lastChild.stdout.emit(
+        "data",
+        Buffer.from(
+          JSON.stringify({ type: "task_complete", msg: { finish_reason: "tool_calls" } }) + "\n"
+        )
+      );
+
+      const finishPayload = sendSSEMock.mock.calls.find(([, payload]) =>
+        payload?.choices?.some((choice) => choice?.finish_reason)
+      )?.[1];
+      const choice0 = finishPayload?.choices?.find((choice) => choice.index === 0);
+      const choice1 = finishPayload?.choices?.find((choice) => choice.index === 1);
+
+      expect(choice0?.finish_reason).toBe("tool_calls");
+      expect(choice1?.finish_reason).toBe("stop");
+    } finally {
+      configMock.PROXY_MAX_CHAT_CHOICES = maxChoices;
+    }
+  });
+
   it("emits finish chunks on task_complete events", async () => {
     const postChatStream = await loadHandler();
 
@@ -1333,6 +1408,31 @@ describe("postChatStream", () => {
     } finally {
       vi.useRealTimers();
       configMock.PROXY_STREAM_IDLE_TIMEOUT_MS = idleTimeoutMs;
+    }
+  });
+
+  it("kills the child on request timeout", async () => {
+    vi.useFakeTimers();
+    const timeoutMs = configMock.PROXY_TIMEOUT_MS;
+    configMock.PROXY_TIMEOUT_MS = 5;
+    try {
+      const postChatStream = await loadHandler();
+
+      const req = buildReq({
+        model: "gpt-test",
+        messages: [{ role: "user", content: "hi" }],
+      });
+      const res = buildRes();
+
+      await postChatStream(req, res);
+
+      vi.advanceTimersByTime(6);
+
+      expect(lastChild.kill).toHaveBeenCalledWith("SIGKILL");
+      expect(sendSSEMock).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      configMock.PROXY_TIMEOUT_MS = timeoutMs;
     }
   });
 
