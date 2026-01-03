@@ -979,6 +979,93 @@ describe("postChatStream", () => {
     expect(payloadWithTool?.choices?.[0]?.delta?.content).toBe("before <use_tool>call</use_tool>");
   });
 
+  it("holds back partial tool prefixes in obsidian output", async () => {
+    resolveOutputModeMock.mockReturnValue("obsidian-xml");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: "before <use_t" },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const sawPrefix = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content?.includes("<use_t"))
+    );
+    const sawBefore = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content?.includes("before "))
+    );
+
+    expect(sawPrefix).toBe(false);
+    expect(sawBefore).toBe(true);
+  });
+
+  it("drops tool blocks and tail content in text mode", async () => {
+    const toolLiteral = "<use_tool>call</use_tool>";
+    extractUseToolBlocksMock.mockReturnValueOnce({ blocks: [], nextPos: 0 }).mockReturnValueOnce({
+      blocks: [{ start: 0, end: toolLiteral.length }],
+      nextPos: toolLiteral.length,
+    });
+    resolveOutputModeMock.mockReturnValue("text");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: "prefix " },
+        }) + "\n"
+      )
+    );
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: toolLiteral },
+        }) + "\n"
+      )
+    );
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          type: "agent_message_delta",
+          msg: { delta: "after" },
+        }) + "\n"
+      )
+    );
+    lastChild.emit("close");
+
+    const sawAfter = sendSSEMock.mock.calls.some(([, payload]) =>
+      payload?.choices?.some((choice) => choice?.delta?.content?.includes("after"))
+    );
+
+    expect(sawAfter).toBe(false);
+  });
+
   it("flushes fallback content on child close when no choices sent", async () => {
     const postChatStream = await loadHandler();
 
