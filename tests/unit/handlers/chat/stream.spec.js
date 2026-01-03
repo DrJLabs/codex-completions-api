@@ -73,6 +73,10 @@ const clampEmittableIndexMock = vi.fn((_state, _forwarded, end) => end);
 const completeToolBufferMock = vi.fn();
 const abortToolBufferMock = vi.fn(() => ({ literal: "" }));
 const shouldSkipBlockMock = vi.fn(() => false);
+const createStreamRuntimeMock = vi.fn();
+const wireStreamTransportMock = vi.fn();
+const createStreamTimersMock = vi.fn();
+const createToolCallNormalizerMock = vi.fn();
 let lastChild = null;
 
 const createMockChild = () => {
@@ -178,6 +182,22 @@ vi.mock("../../../../src/handlers/chat/stream-event.js", async () => {
     parseStreamEventLine: vi.fn((...args) => actual.parseStreamEventLine(...args)),
   };
 });
+
+vi.mock("../../../../src/handlers/chat/stream-runtime.js", () => ({
+  createStreamRuntime: (...args) => createStreamRuntimeMock(...args),
+}));
+
+vi.mock("../../../../src/handlers/chat/stream-transport.js", () => ({
+  wireStreamTransport: (...args) => wireStreamTransportMock(...args),
+}));
+
+vi.mock("../../../../src/handlers/chat/stream-timers.js", () => ({
+  createStreamTimers: (...args) => createStreamTimersMock(...args),
+}));
+
+vi.mock("../../../../src/handlers/chat/tool-call-normalizer.js", () => ({
+  createToolCallNormalizer: (...args) => createToolCallNormalizerMock(...args),
+}));
 
 vi.mock("../../../../src/services/backend-mode.js", () => ({
   selectBackendMode: vi.fn(() => "json-rpc"),
@@ -346,6 +366,25 @@ beforeEach(() => {
   completeToolBufferMock.mockReset();
   abortToolBufferMock.mockReset().mockReturnValue({ literal: "" });
   shouldSkipBlockMock.mockReset().mockReturnValue(false);
+  createStreamRuntimeMock.mockReset().mockReturnValue({
+    handleDelta: vi.fn(),
+    handleMessage: vi.fn(),
+    handleUsage: vi.fn(),
+    handleResult: vi.fn(),
+    handleError: vi.fn(),
+  });
+  wireStreamTransportMock.mockReset().mockReturnValue({
+    handleLine: vi.fn(),
+  });
+  createStreamTimersMock.mockReset().mockReturnValue({
+    startIdleTimer: vi.fn(),
+    stopIdleTimer: vi.fn(),
+  });
+  createToolCallNormalizerMock.mockReset().mockReturnValue({
+    ingestDelta: vi.fn((payload) => payload),
+    ingestMessage: vi.fn((payload) => payload),
+    finalize: vi.fn(),
+  });
   toObsidianXmlMock.mockReset().mockReturnValue("");
   maybeInjectIngressGuardrailMock.mockReset().mockImplementation(({ messages }) => ({
     injected: false,
@@ -396,6 +435,34 @@ describe("postChatStream", () => {
     expect(applyCorsMock).toHaveBeenCalled();
     expect(res.statusCode).toBe(400);
     expect(res.payload?.error?.code).toBe("invalid_request_error");
+  });
+
+  it("creates a stream runtime for orchestration", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(createStreamRuntimeMock).toHaveBeenCalled();
+  });
+
+  it("wires stream transport to runtime", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    expect(wireStreamTransportMock).toHaveBeenCalled();
   });
 
   it("returns 400 when choice count is invalid", async () => {

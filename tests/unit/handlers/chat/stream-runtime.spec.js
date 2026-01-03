@@ -25,9 +25,17 @@ describe("stream runtime", () => {
       finishTracker: { onDelta: vi.fn(), onMessage: vi.fn(), finalize: vi.fn() },
     });
 
-    runtime.handleDelta({ choiceIndex: 0, delta: { content: "hi" } });
+    runtime.handleDelta({
+      choiceIndex: 0,
+      delta: { content: "hi" },
+      eventType: "agent_message_delta",
+    });
 
     expect(toolNormalizer.ingestDelta).toHaveBeenCalled();
-    expect(output.emitDelta).toHaveBeenCalledWith(0, { content: "hi" });
+    expect(output.emitDelta).toHaveBeenCalledWith(
+      0,
+      { content: "hi" },
+      expect.objectContaining({ eventType: "agent_message_delta" })
+    );
   });
 });
