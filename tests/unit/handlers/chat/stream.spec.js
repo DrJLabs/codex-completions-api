@@ -361,6 +361,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (lastChild) {
+    try {
+      lastChild.emit("close");
+    } catch {}
+    lastChild = null;
+  }
   vi.clearAllMocks();
 });
 

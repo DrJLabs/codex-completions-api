@@ -67,8 +67,6 @@ import { logStructured } from "../../services/logging/schema.js";
 
 export { buildCanonicalXml, extractTextualUseToolBlock } from "./tool-output.js";
 
-const TOOL_OUTPUT_OPTIONS = getToolOutputOptions();
-
 export const buildAssistantMessage = ({
   snapshot = [],
   choiceContent = "",
@@ -77,9 +75,10 @@ export const buildAssistantMessage = ({
   isObsidianOutput = true,
   functionCallPayload = null,
 } = {}) => {
+  const toolOutputOptions = getToolOutputOptions();
   const { records: toolCallRecords, truncated: toolCallsTruncated } = normalizeToolCallSnapshot(
     snapshot,
-    TOOL_OUTPUT_OPTIONS
+    toolOutputOptions
   );
   const hasToolCalls = toolCallRecords.length > 0;
   let assistantContent = choiceContent && choiceContent.length ? choiceContent : normalizedContent;
@@ -87,8 +86,8 @@ export const buildAssistantMessage = ({
     assistantContent = null;
   } else if (hasToolCalls) {
     assistantContent = isObsidianOutput
-      ? buildCanonicalXml(toolCallRecords, TOOL_OUTPUT_OPTIONS) ||
-        extractTextualUseToolBlock(choiceContent, TOOL_OUTPUT_OPTIONS) ||
+      ? buildCanonicalXml(toolCallRecords, toolOutputOptions) ||
+        extractTextualUseToolBlock(choiceContent, toolOutputOptions) ||
         normalizedContent ||
         choiceContent
       : null;
