@@ -4,6 +4,20 @@ import { spawn } from "node:child_process";
 import fetch from "node-fetch";
 import { waitForReady } from "./helpers.js";
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForLog(logs, matcher, { timeoutMs = 5000, intervalMs = 50 } = {}) {
+  const start = Date.now();
+  const pattern = matcher instanceof RegExp ? matcher : null;
+  const needle = pattern ? null : String(matcher);
+  while (Date.now() - start < timeoutMs) {
+    const content = logs.join("");
+    if (pattern ? pattern.test(content) : content.includes(needle)) return;
+    await wait(intervalMs);
+  }
+  throw new Error(`log timeout: ${matcher}`);
+}
+
 let PORT;
 let BASE;
 let child;
@@ -22,16 +36,12 @@ beforeAll(async () => {
       PROXY_RATE_LIMIT_WINDOW_MS: "5000",
       PROXY_RATE_LIMIT_MAX: "1",
     },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) break;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  child.stdout.setEncoding("utf8");
+  const stdout = [];
+  child.stdout.on("data", (chunk) => stdout.push(chunk));
+  await waitForLog(stdout, `:${PORT}/v1`);
   await waitForReady(PORT);
 }, 10_000);
 

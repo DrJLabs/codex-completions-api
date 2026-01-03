@@ -4,6 +4,20 @@ import getPort from "get-port";
 import fetch from "node-fetch";
 import { stopServer, waitForUrlOk } from "./helpers.js";
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForLog(logs, matcher, { timeoutMs = 5000, intervalMs = 50 } = {}) {
+  const start = Date.now();
+  const pattern = matcher instanceof RegExp ? matcher : null;
+  const needle = pattern ? null : String(matcher);
+  while (Date.now() - start < timeoutMs) {
+    const content = logs.join("");
+    if (pattern ? pattern.test(content) : content.includes(needle)) return;
+    await wait(intervalMs);
+  }
+  throw new Error(`log timeout: ${matcher}`);
+}
+
 async function startServerWithLogs(envOverrides = {}) {
   const PORT = await getPort();
   const desiredFlag = envOverrides.PROXY_USE_APP_SERVER;
@@ -35,6 +49,7 @@ async function startServerWithLogs(envOverrides = {}) {
   const stderr = [];
   child.stdout.on("data", (chunk) => stdout.push(chunk));
   child.stderr.on("data", (chunk) => stderr.push(chunk));
+  await waitForLog(stdout, `:${PORT}/v1`);
   await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
   return { PORT, child, stdout, stderr };
 }
