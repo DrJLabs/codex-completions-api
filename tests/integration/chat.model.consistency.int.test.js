@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
 import getPort from "get-port";
 import { spawn } from "node:child_process";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -51,14 +52,7 @@ beforeAll(async () => {
     },
     stdio: "ignore",
   });
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) break;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  await waitForReady(PORT);
 }, 10_000);
 
 afterAll(async () => {

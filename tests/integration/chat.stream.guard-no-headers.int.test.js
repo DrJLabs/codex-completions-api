@@ -3,6 +3,7 @@ import getPort from "get-port";
 import { spawn } from "node:child_process";
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { waitForReady } from "./helpers.js";
 
 let PORT;
 let child;
@@ -61,6 +62,7 @@ const startServer = async (extraEnv = {}) => {
     stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
   });
   await waitForHealth();
+  await waitForReady(PORT);
 };
 
 beforeAll(async () => {
