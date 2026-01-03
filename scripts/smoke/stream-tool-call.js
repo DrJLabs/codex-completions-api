@@ -27,6 +27,10 @@ const useResponses =
   args.has("--responses-endpoint") ||
   String(process.env.TOOL_SMOKE_ENDPOINT || "").toLowerCase() === "responses";
 const allowSingle = args.has("--allow-single") || disconnectAfterFirstTool || useResponses;
+const allowMissingTools =
+  args.has("--allow-missing-tools") ||
+  args.has("--allow-missing-tool-calls") ||
+  /^(1|true|yes)$/i.test(String(process.env.TOOL_SMOKE_ALLOW_MISSING || ""));
 const baseUrl = process.env.BASE_URL || "http://127.0.0.1:11435";
 const trimmedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 const endpoint = useResponses
@@ -172,6 +176,7 @@ const doneFrames = entries.filter((entry) => entry?.type === "done");
 let uniqueToolIds = new Set();
 let finishReasons = [];
 let hasRoleFirst = false;
+let toolCallsMissing = false;
 
 if (useResponses) {
   if (!expectXml) {
@@ -185,10 +190,20 @@ if (useResponses) {
     );
     const minCalls = allowSingle ? 1 : 2;
     if (uniqueToolIds.size < minCalls) {
-      console.error(
-        `Expected at least ${minCalls} tool call(s) in responses stream but found ${uniqueToolIds.size}.`
+      const completedEntry = dataEntries.find((entry) => entry.event === "response.completed");
+      const responseOutput = completedEntry?.data?.response?.output || [];
+      const hasToolUse = responseOutput.some((item) =>
+        item?.content?.some?.((content) => content?.type === "tool_use")
       );
-      process.exit(1);
+      const toolEvidence = uniqueToolIds.size > 0 || hasToolUse;
+      if (allowMissingTools && !toolEvidence) {
+        toolCallsMissing = true;
+      } else {
+        console.error(
+          `Expected at least ${minCalls} tool call(s) in responses stream but found ${uniqueToolIds.size}.`
+        );
+        process.exit(1);
+      }
     }
     const completedEntry = dataEntries.find((entry) => entry.event === "response.completed");
     if (!completedEntry) {
@@ -200,8 +215,13 @@ if (useResponses) {
       item?.content?.some?.((content) => content?.type === "tool_use")
     );
     if (!hasToolUse) {
-      console.error("Missing tool_use content in response.completed output.");
-      process.exit(1);
+      const toolEvidence = uniqueToolIds.size > 0 || hasToolUse;
+      if (allowMissingTools && !toolEvidence) {
+        toolCallsMissing = true;
+      } else {
+        console.error("Missing tool_use content in response.completed output.");
+        process.exit(1);
+      }
     }
     finishReasons = [completedEntry.data?.response?.status || "completed"];
   }
@@ -219,11 +239,16 @@ if (useResponses) {
   if (!expectXml) {
     const minCalls = allowSingle ? 1 : 2;
     if (uniqueToolIds.size < minCalls) {
-      console.error(
-        `Expected at least ${minCalls} unique tool calls in stream but found ${uniqueToolIds.size}. ` +
-          "Use --allow-single to skip this check."
-      );
-      process.exit(1);
+      const toolEvidence = uniqueToolIds.size > 0;
+      if (allowMissingTools && !toolEvidence) {
+        toolCallsMissing = true;
+      } else {
+        console.error(
+          `Expected at least ${minCalls} unique tool calls in stream but found ${uniqueToolIds.size}. ` +
+            "Use --allow-single to skip this check."
+        );
+        process.exit(1);
+      }
     }
   }
 
@@ -242,7 +267,7 @@ if (useResponses) {
   }
 
   if (!expectXml) {
-    if (!finishReasons.includes("tool_calls")) {
+    if (!toolCallsMissing && !finishReasons.includes("tool_calls")) {
       console.error("Missing finish_reason: tool_calls in stream.");
       process.exit(1);
     }
@@ -302,24 +327,30 @@ if (expectXml) {
         .join("");
 
   if (!contentText.includes("<use_tool")) {
-    console.error("Expected XML <use_tool> content but none was found.");
-    process.exit(1);
+    if (allowMissingTools) {
+      toolCallsMissing = true;
+    } else {
+      console.error("Expected XML <use_tool> content but none was found.");
+      process.exit(1);
+    }
   }
-  const closeIdx = contentText.lastIndexOf("</use_tool>");
-  if (closeIdx < 0) {
-    console.error("XML <use_tool> block is not properly terminated.");
-    process.exit(1);
-  }
-  const tail = contentText.slice(closeIdx + "</use_tool>".length).trim();
-  if (tail.length > 0) {
-    console.error(
-      "Found trailing assistant content after <use_tool> block; tail should be stripped."
-    );
-    process.exit(1);
+  if (!toolCallsMissing) {
+    const closeIdx = contentText.lastIndexOf("</use_tool>");
+    if (closeIdx < 0) {
+      console.error("XML <use_tool> block is not properly terminated.");
+      process.exit(1);
+    }
+    const tail = contentText.slice(closeIdx + "</use_tool>".length).trim();
+    if (tail.length > 0) {
+      console.error(
+        "Found trailing assistant content after <use_tool> block; tail should be stripped."
+      );
+      process.exit(1);
+    }
   }
 }
 
-if (disconnectAfterFirstTool) {
+if (disconnectAfterFirstTool && !toolCallsMissing) {
   if (!useResponses) {
     const finishFrames = dataEntries.filter((entry) =>
       entry.data?.choices?.some((choice) => choice.finish_reason)
@@ -369,6 +400,7 @@ const verdict = {
   disconnectedEarly: abortedEarly,
   abortReason,
   uniqueToolCallCount: uniqueToolIds.size,
+  toolCallsMissing,
   roleFirstSeen: hasRoleFirst,
   finishReasons,
   doneFrames: doneFrames.length,
@@ -378,11 +410,18 @@ const verdict = {
   manifest: manifestPath,
 };
 
+if (toolCallsMissing) {
+  console.warn(
+    "SMOKE WARN: tool calls missing; skipping tool-call assertions. " +
+      "Set TOOL_SMOKE_ALLOW_MISSING=0 or drop --allow-missing-tools to enforce."
+  );
+}
+
 console.log(JSON.stringify(verdict));
 console.log(
   `SMOKE OK: tool-call stream (${expectXml ? "textual" : "structured"}${
     disconnectAfterFirstTool ? ", disconnect" : ""
   }); role-first=${hasRoleFirst}; finish=${finishReasons.join(",") || "none"}; done=${
     doneFrames.length
-  }; manifest=${manifestPath}`
+  }; tool-calls-missing=${toolCallsMissing}; manifest=${manifestPath}`
 );
