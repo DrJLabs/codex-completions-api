@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import fetch from "node-fetch";
-import { spawn } from "node:child_process";
-import getPort from "get-port";
-import { waitForUrlOk, stopServer, wait } from "./helpers.js";
+import { spawnServer, stopServer, wait, waitForUrlOk } from "./helpers.js";
 import { config as CFG } from "../../src/config/index.js";
 
 const CAPTURE_TIMEOUT_MS = 4000;
@@ -36,12 +34,9 @@ const attachCaptureCollector = (stream, out) => {
 };
 
 async function startServerWithCapture(envOverrides = {}) {
-  const PORT = await getPort();
   const captures = [];
-  const child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: envOverrides.PROXY_API_KEY || "test-sk-ci",
       CODEX_BIN: envOverrides.CODEX_BIN || "scripts/fake-codex-jsonrpc.js",
       PROXY_USE_APP_SERVER: "true",
@@ -49,14 +44,11 @@ async function startServerWithCapture(envOverrides = {}) {
       FAKE_CODEX_CAPTURE_RPCS: "true",
       ...(envOverrides || {}),
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  attachCaptureCollector(child.stdout, captures);
-  attachCaptureCollector(child.stderr, captures);
-
-  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
-  return { PORT, child, captures };
+    { waitForReady: true }
+  );
+  attachCaptureCollector(server.child.stdout, captures);
+  attachCaptureCollector(server.child.stderr, captures);
+  return { PORT: server.PORT, child: server.child, captures };
 }
 
 const waitForCapture = async (captures, predicate, timeoutMs = CAPTURE_TIMEOUT_MS) => {

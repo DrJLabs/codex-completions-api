@@ -2,13 +2,11 @@
 // Spawns server.js on a random port with a deterministic JSON-RPC shim
 
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
-import { unlinkSync, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import fetch from "node-fetch";
-import { waitForReady } from "./helpers.js";
+import { startServer, stopServer } from "./helpers.js";
 
 let PORT;
 let BASE;
@@ -16,6 +14,7 @@ let API_KEY = "test-sk-ci";
 let child;
 let TOKEN_FILE;
 let PROTO_FILE;
+let tempDir;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const readJsonLines = async (filePath) => {
@@ -39,58 +38,31 @@ const readJsonLines = async (filePath) => {
   }
 };
 
-async function waitForHealth(timeoutMs = 5000) {
-  const start = Date.now();
-
-  while (true) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (res.ok) return;
-    } catch {}
-    if (Date.now() - start > timeoutMs) throw new Error("health timeout");
-    await wait(100);
-  }
-}
-
 beforeAll(async () => {
-  // Use an ephemeral free port to avoid flakiness from collisions with
-  // other test runs or system services (e.g., ForwardAuth on 18080).
-  PORT = await getPort();
-  BASE = `http://127.0.0.1:${PORT}/v1`;
-  TOKEN_FILE = path.join(process.cwd(), ".tmp-usage.test.ndjson");
-  PROTO_FILE = path.join(process.cwd(), ".tmp-proto-tracing.ndjson");
-  try {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path under cwd
-    if (existsSync(TOKEN_FILE)) unlinkSync(TOKEN_FILE);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path under cwd
-    if (existsSync(PROTO_FILE)) unlinkSync(PROTO_FILE);
-  } catch {}
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: API_KEY,
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      // FAKE_CODEX_MODE intentionally omitted to use default shim behavior.
-      PROXY_PROTECT_MODELS: "false",
-      TOKEN_LOG_PATH: TOKEN_FILE,
-      PROTO_LOG_PATH: PROTO_FILE,
-      PROXY_ENV: "dev",
-      PROXY_LOG_PROTO: "true",
-      PROXY_TRACE_REQUIRED: "true",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "server-int-"));
+  TOKEN_FILE = path.join(tempDir, "usage.ndjson");
+  PROTO_FILE = path.join(tempDir, "proto.ndjson");
+  const server = await startServer({
+    PROXY_API_KEY: API_KEY,
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    // FAKE_CODEX_MODE intentionally omitted to use default shim behavior.
+    PROXY_PROTECT_MODELS: "false",
+    TOKEN_LOG_PATH: TOKEN_FILE,
+    PROTO_LOG_PATH: PROTO_FILE,
+    PROXY_ENV: "dev",
+    PROXY_LOG_PROTO: "true",
+    PROXY_TRACE_REQUIRED: "true",
   });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  await waitForHealth();
-  await waitForReady(PORT);
+  PORT = server.PORT;
+  BASE = `http://127.0.0.1:${PORT}/v1`;
+  child = server.child;
 });
 
 afterAll(async () => {
-  if (child && !child.killed) {
+  await stopServer(child);
+  if (tempDir) {
     try {
-      child.kill("SIGTERM");
+      await rm(tempDir, { recursive: true, force: true });
     } catch {}
   }
 });

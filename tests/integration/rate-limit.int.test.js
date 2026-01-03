@@ -1,16 +1,16 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { waitForReady } from "./helpers.js";
+import { spawnServer } from "./helpers.js";
 
 let PORT;
 let child;
+let tempDir;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const READY_PATH = path.join(process.cwd(), ".tmp-stream-ready.txt");
-const RELEASE_PATH = path.join(process.cwd(), ".tmp-stream-release.txt");
+let READY_PATH;
+let RELEASE_PATH;
 
 const killChild = async () => {
   if (!child || child.killed) return;
@@ -22,32 +22,18 @@ const killChild = async () => {
   child = undefined;
 };
 
-const waitForHealth = async () => {
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) return;
-    } catch {}
-    await wait(100);
-  }
-  throw new Error("server did not become healthy in time");
-};
-
 const startServer = async (extraEnv = {}) => {
   await killChild();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
       ...extraEnv,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  await waitForHealth();
-  await waitForReady(PORT);
+    { waitForReady: true }
+  );
+  PORT = server.PORT;
+  child = server.child;
 };
 
 const cleanTempFiles = async () => {
@@ -58,12 +44,19 @@ const cleanTempFiles = async () => {
 };
 
 beforeAll(async () => {
-  PORT = await getPort();
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "rate-limit-"));
+  READY_PATH = path.join(tempDir, "stream-ready");
+  RELEASE_PATH = path.join(tempDir, "stream-release");
 });
 
 afterAll(async () => {
   await killChild();
   await cleanTempFiles();
+  if (tempDir) {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {}
+  }
 });
 
 test("non-stream second request gets 429 from rate limiter", async () => {
@@ -218,6 +211,7 @@ test("streaming concurrency guard deterministically rejects surplus streams", as
     const json429 = await rejection.json();
     expect(json429?.error?.code).toBe("concurrency_exceeded");
 
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
     await writeFile(RELEASE_PATH, String(Date.now()), "utf8");
     await background;
 
@@ -276,6 +270,7 @@ test("guard headers are hidden when PROXY_TEST_ENDPOINTS is disabled", async () 
     } catch {}
   })();
 
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- test temp file path
   await writeFile(RELEASE_PATH, String(Date.now()), "utf8");
   await background;
 });

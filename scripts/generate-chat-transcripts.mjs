@@ -21,6 +21,21 @@ const BASE_HEADERS = {
 };
 
 const JSON_RPC_CODEX = "scripts/fake-codex-jsonrpc.js";
+const BASE_FAKE_CODEX_ENV = {
+  FAKE_CODEX_MODE: "",
+  FAKE_CODEX_FINISH_REASON: "",
+  FAKE_CODEX_PARALLEL: "",
+  FAKE_CODEX_TOOL_CALL_COUNT: "",
+  FAKE_CODEX_TOOL_BURST_COUNT: "",
+  FAKE_CODEX_TOOL_CALL_CHOICES: "",
+  FAKE_CODEX_TOOL_ARGUMENT: "",
+  FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE: "",
+  FAKE_CODEX_TOOL_XML_CHUNK_SIZE: "",
+  FAKE_CODEX_TRUNCATE_TOOL_XML: "",
+  FAKE_CODEX_ABORT_AFTER_TOOL_XML: "",
+  FAKE_CODEX_EMIT_TEXTUAL_XML: "",
+  FAKE_CODEX_METADATA: "",
+};
 
 function gitCommitSha() {
   try {
@@ -381,7 +396,7 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
     filename,
     includeUsage,
     commitSha,
-    serverEnv: env,
+    serverEnv: { ...BASE_FAKE_CODEX_ENV, ...(env || {}) },
     metadata: {
       scenario: filename.replace(/\.json$/, ""),
       extra: { expected_status: expectStatus, ...(metadata || {}) },

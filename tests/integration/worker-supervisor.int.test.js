@@ -1,8 +1,6 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
-import { wait, waitForUrlOk } from "./helpers.js";
+import { spawnServer, stopServer, wait } from "./helpers.js";
 
 let PORT;
 let child;
@@ -47,11 +45,8 @@ async function waitForRestart(previousCount, timeoutMs = 5000) {
 }
 
 beforeAll(async () => {
-  PORT = await getPort();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: "test-sk-ci",
       CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
       PROXY_PROTECT_MODELS: "false",
@@ -62,20 +57,15 @@ beforeAll(async () => {
       FAKE_CODEX_WORKER_READY_DELAY_MS: "20",
       FAKE_CODEX_WORKER_HEARTBEAT_MS: "100",
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  await waitForUrlOk(`${baseUrl()}/healthz`);
+    { waitForReady: false }
+  );
+  PORT = server.PORT;
+  child = server.child;
   await waitForSupervisorReady();
 });
 
 afterAll(async () => {
-  if (child && !child.killed) {
-    try {
-      child.kill("SIGTERM");
-    } catch {}
-  }
+  await stopServer(child);
 });
 
 test("worker supervisor reports readiness and metrics", async () => {

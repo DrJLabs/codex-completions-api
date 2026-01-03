@@ -1,10 +1,8 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { wait } from "./helpers.js";
+import { startServer, stopServer, wait } from "./helpers.js";
 import { __whenAppendIdle } from "../../src/dev-logging.js";
 
 let PORT;
@@ -45,37 +43,22 @@ async function collectSSE(url, init, { timeoutMs = 5000 } = {}) {
 }
 
 beforeAll(async () => {
-  PORT = await getPort();
   tokenLogDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-usage-provider-"));
   tokenLogPath = path.join(tokenLogDir, "usage.ndjson");
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      PROXY_PROTECT_MODELS: "false",
-      PROXY_SSE_KEEPALIVE_MS: "0",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      FAKE_CODEX_MODE: "provider_usage",
-      TOKEN_LOG_PATH: tokenLogPath,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const server = await startServer({
+    PROXY_API_KEY: "test-sk-ci",
+    PROXY_PROTECT_MODELS: "false",
+    PROXY_SSE_KEEPALIVE_MS: "0",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "provider_usage",
+    TOKEN_LOG_PATH: tokenLogPath,
   });
-
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) break;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  PORT = server.PORT;
+  child = server.child;
 });
 
 afterAll(() => {
-  try {
-    if (child && !child.killed) child.kill("SIGTERM");
-  } catch {}
+  stopServer(child);
   if (tokenLogDir) {
     try {
       fs.rmSync(tokenLogDir, { recursive: true, force: true });

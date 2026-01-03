@@ -1,7 +1,6 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { spawnServer } from "./helpers.js";
 
 let PORT;
 let child;
@@ -9,28 +8,10 @@ let lines = [];
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function waitForHealth(timeoutMs = 5000) {
-  const start = Date.now();
-  while (true) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (res.ok) return;
-    } catch {}
-    if (Date.now() - start > timeoutMs) throw new Error("health timeout");
-    await wait(100);
-  }
-}
-
 beforeAll(async () => {
-  PORT = await getPort();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_PROTECT_MODELS: "false",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const server = await spawnServer({ PROXY_PROTECT_MODELS: "false" });
+  PORT = server.PORT;
+  child = server.child;
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (d) => {
     const s = d.toString();
@@ -39,7 +20,6 @@ beforeAll(async () => {
       lines.push(ln);
     }
   });
-  await waitForHealth();
 });
 
 afterAll(async () => {

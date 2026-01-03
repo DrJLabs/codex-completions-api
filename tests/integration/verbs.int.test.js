@@ -1,40 +1,22 @@
 import { test, expect, beforeAll, afterAll } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
+import { spawnServer, stopServer } from "./helpers.js";
 
 let PORT;
 let child;
 
 beforeAll(async () => {
-  PORT = await getPort();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      PROXY_PROTECT_MODELS: "false",
-    },
-    stdio: "ignore",
+  const server = await spawnServer({
+    PROXY_API_KEY: "test-sk-ci",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    PROXY_PROTECT_MODELS: "false",
   });
-  // wait for health
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) break;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  PORT = server.PORT;
+  child = server.child;
 }, 10_000);
 
 afterAll(async () => {
-  if (child && !child.killed) {
-    try {
-      child.kill("SIGTERM");
-    } catch {}
-  }
+  await stopServer(child);
 });
 
 test("HEAD /v1/chat/completions responds 200", async () => {

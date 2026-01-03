@@ -1,25 +1,13 @@
 import { beforeAll, afterAll, test, expect, describe } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
-import { waitForUrlOk } from "./helpers.js";
+import { spawnServer, stopServer } from "./helpers.js";
 
 async function startServer({ protect = false } = {}) {
-  const PORT = await getPort();
-  const child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      PROXY_PROTECT_MODELS: protect ? "true" : "false",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  return spawnServer({
+    PROXY_API_KEY: "test-sk-ci",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    PROXY_PROTECT_MODELS: protect ? "true" : "false",
   });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
-  return { PORT, child };
 }
 
 describe("/v1/models without gating", () => {
@@ -28,11 +16,7 @@ describe("/v1/models without gating", () => {
     ctx = await startServer({ protect: false });
   });
   afterAll(async () => {
-    if (ctx?.child && !ctx.child.killed) {
-      try {
-        ctx.child.kill("SIGTERM");
-      } catch {}
-    }
+    await stopServer(ctx?.child);
   });
 
   test("GET returns list with headers", async () => {
@@ -71,11 +55,7 @@ describe("/v1/models with PROXY_PROTECT_MODELS=true", () => {
     ctx = await startServer({ protect: true });
   });
   afterAll(async () => {
-    if (ctx?.child && !ctx.child.killed) {
-      try {
-        ctx.child.kill("SIGTERM");
-      } catch {}
-    }
+    await stopServer(ctx?.child);
   });
 
   test("GET without bearer returns 401 with WWW-Authenticate", async () => {
