@@ -601,6 +601,41 @@ describe("postChatStream", () => {
     );
   });
 
+  it("logs textual tool metadata errors in dev", async () => {
+    configMock.PROXY_ENV = "dev";
+    createToolCallAggregatorMock.mockReturnValue({
+      hasCalls: vi.fn(() => false),
+      ingestMessage: vi.fn(() => {
+        throw new Error("boom");
+      }),
+      ingestDelta: vi.fn(() => ({ updated: false })),
+      snapshot: vi.fn(() => []),
+      supportsParallelCalls: vi.fn(() => false),
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ type: "agent_message", msg: { message: "tool: hi" } }) + "\n")
+    );
+    lastChild.emit("close");
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[dev][stream] textual tool metadata error",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
   it("returns normalization errors from json-rpc normalization", async () => {
     const { ChatJsonRpcNormalizationError } = await import(
       "../../../../src/handlers/chat/request.js"
@@ -631,6 +666,30 @@ describe("postChatStream", () => {
     expect(releaseMock).toHaveBeenCalledWith("normalization_error");
   });
 
+  it("rethrows unexpected normalization errors after applying cors", async () => {
+    const releaseMock = vi.fn();
+    normalizeChatJsonRpcRequestMock.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    setupStreamGuardMock.mockReturnValue({
+      acquired: true,
+      token: "guard",
+      release: releaseMock,
+    });
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await expect(postChatStream(req, res)).rejects.toThrow("boom");
+
+    expect(applyCorsMock).toHaveBeenCalled();
+    expect(releaseMock).toHaveBeenCalledWith("normalization_error");
+  });
+
   it("sets output mode headers before normalization errors", async () => {
     const { ChatJsonRpcNormalizationError } = await import(
       "../../../../src/handlers/chat/request.js"
@@ -651,6 +710,22 @@ describe("postChatStream", () => {
 
     expect(res.headers.get("x-proxy-output-mode")).toBe("obsidian-xml");
     expect(res.locals.output_mode_effective).toBe("obsidian-xml");
+  });
+
+  it("skips stream capture for responses endpoint mode", async () => {
+    const postChatStream = await loadHandler();
+    const { createChatStreamCapture } = await import("../../../../src/handlers/chat/capture.js");
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+    res.locals.endpoint_mode = "responses";
+
+    await postChatStream(req, res);
+
+    expect(createChatStreamCapture).not.toHaveBeenCalled();
   });
 
   it("sends keepalive comments when keepalive is enabled", async () => {
@@ -675,6 +750,25 @@ describe("postChatStream", () => {
     expect(keepaliveCall).toBeTruthy();
   });
 
+  it("clears numeric keepalive intervals on close", async () => {
+    computeKeepaliveMsMock.mockReturnValue(5);
+    startKeepalivesMock.mockReturnValue(123);
+    const clearSpy = vi.spyOn(global, "clearInterval");
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    res.emit("close");
+
+    expect(clearSpy).toHaveBeenCalledWith(123);
+    clearSpy.mockRestore();
+  });
   it("respects stream adapter onChunk override", async () => {
     const postChatStream = await loadHandler();
 
@@ -930,6 +1024,28 @@ describe("postChatStream", () => {
 
     expect(sawError).toBe(true);
     expect(finishSSEMock).toHaveBeenCalled();
+  });
+
+  it("uses SSE error body when transport mapping is missing", async () => {
+    mapTransportErrorMock.mockReturnValue(null);
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      model: "gpt-test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.emit("error", new Error("boom"));
+    lastChild.emit("close");
+
+    const sawError = sendSSEMock.mock.calls.some(
+      ([, payload]) => payload?.error?.code === "spawn_error" && payload?.error?.message === "boom"
+    );
+
+    expect(sawError).toBe(true);
   });
 
   it("emits usage chunks when include_usage is requested", async () => {
