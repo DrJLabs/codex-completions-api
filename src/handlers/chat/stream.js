@@ -58,11 +58,14 @@ import { normalizeChatJsonRpcRequest, ChatJsonRpcNormalizationError } from "./re
 import { requireModel } from "./require-model.js";
 import { createStopAfterToolsController } from "./stop-after-tools-controller.js";
 import { parseStreamEventLine } from "./stream-event.js";
+import { createStreamEventRouter } from "./stream-event-router.js";
+import { createStreamMetadataSanitizer } from "./stream-metadata-sanitizer.js";
 import { createStreamOutputCoordinator } from "./stream-output.js";
 import { createStreamRuntime } from "./stream-runtime.js";
 import { createStreamTimers } from "./stream-timers.js";
 import { createStreamRuntimeEmitter } from "./stream-runtime-emitter.js";
 import { wireStreamTransport } from "./stream-transport.js";
+import { createStreamUsageTracker } from "./stream-usage-tracker.js";
 import { createToolCallNormalizer } from "./tool-call-normalizer.js";
 import { buildObsidianXmlRecord, trimTrailingTextAfterToolBlocks } from "./tool-output.js";
 import {
@@ -331,7 +334,8 @@ export async function postChatStream(req, res) {
   }
   const choiceCount = requestedChoiceCount;
   const choiceStates = new Map();
-  const sanitizedContentStates = new Map();
+  let metadataSanitizer = null;
+  let usageTracker = null;
   let textualToolCount = 0;
 
   const ensureChoiceState = (choiceIndex = 0) => {
@@ -355,22 +359,13 @@ export async function postChatStream(req, res) {
     return choiceStates.get(normalized);
   };
 
-  const getSanitizedContentState = (choiceIndex = 0) => {
-    const normalized = Number.isInteger(choiceIndex) && choiceIndex >= 0 ? choiceIndex : 0;
-    if (!sanitizedContentStates.has(normalized)) {
-      sanitizedContentStates.set(normalized, {
-        pending: "",
-        lastContext: { stage: "agent_message_delta", eventType: "agent_message_delta" },
-      });
-    }
-    return sanitizedContentStates.get(normalized);
-  };
-
   const forEachTrackedChoice = (callback) => {
     const indices = new Set();
     for (let idx = 0; idx < choiceCount; idx += 1) indices.add(idx);
     choiceStates.forEach((_state, idx) => indices.add(idx));
-    sanitizedContentStates.forEach((_state, idx) => indices.add(idx));
+    if (metadataSanitizer?.listChoiceIndexes) {
+      metadataSanitizer.listChoiceIndexes().forEach((idx) => indices.add(idx));
+    }
     if (!indices.size) indices.add(0);
     Array.from(indices)
       .sort((a, b) => a - b)
@@ -644,7 +639,10 @@ export async function postChatStream(req, res) {
       clearTimeout(timeout);
     } catch {}
     if (hasToolCallEvidence()) {
-      finalizeStream({ reason: "tool_calls", trigger: usageState.trigger || "backend_error" });
+      finalizeStream({
+        reason: "tool_calls",
+        trigger: usageTracker?.getTrigger?.() || "backend_error",
+      });
       return;
     }
     responded = true;
@@ -946,227 +944,6 @@ export async function postChatStream(req, res) {
       if (value) unknownFinishReasons.add(value);
     },
   });
-  const sanitizedMetadataSummary = { count: 0, keys: new Set(), sources: new Set() };
-  logSanitizerToggle({
-    enabled: SANITIZE_METADATA,
-    trigger: "request",
-    route: "/v1/chat/completions",
-    mode: "chat_stream",
-    reqId,
-  });
-  const seenSanitizedRemovalSignatures = new Set();
-  const mergedMetadata = { metadata: {}, sources: new Set() };
-  const metadataKeyRegister = new Set(metadataKeys());
-
-  const mergeMetadataInfo = (info) => {
-    if (!info || typeof info !== "object") {
-      const hasMetadata = Object.keys(mergedMetadata.metadata).length > 0;
-      const hasSources = mergedMetadata.sources.size > 0;
-      if (!hasMetadata && !hasSources) return null;
-      return {
-        metadata: { ...mergedMetadata.metadata },
-        sources: Array.from(mergedMetadata.sources),
-      };
-    }
-    const incomingMetadata =
-      info.metadata && typeof info.metadata === "object" ? info.metadata : {};
-    for (const [rawKey, rawValue] of Object.entries(incomingMetadata)) {
-      const normalized = normalizeMetadataKey(rawKey);
-      if (!normalized) continue;
-      // Keys derive from deterministic sanitizer allowlist.
-      // eslint-disable-next-line security/detect-object-injection
-      mergedMetadata.metadata[normalized] = rawValue;
-      metadataKeyRegister.add(normalized);
-    }
-    if (Array.isArray(info.sources)) {
-      for (const source of info.sources) {
-        if (typeof source === "string" && source) mergedMetadata.sources.add(source);
-      }
-    }
-    const hasMetadata = Object.keys(mergedMetadata.metadata).length > 0;
-    const hasSources = mergedMetadata.sources.size > 0;
-    if (!hasMetadata && !hasSources) return null;
-    return {
-      metadata: { ...mergedMetadata.metadata },
-      sources: Array.from(mergedMetadata.sources),
-    };
-  };
-
-  const getSanitizerSummaryData = () => ({
-    count: sanitizedMetadataSummary.count,
-    keys: Array.from(sanitizedMetadataSummary.keys),
-    sources: Array.from(sanitizedMetadataSummary.sources),
-  });
-
-  const shouldHoldPartialLine = (candidate, keys) => {
-    if (!candidate) return false;
-    const trimmed = candidate.trimStart();
-    if (!trimmed) return false;
-    const withoutContainers = trimmed.replace(/^[[{]\s*/, "");
-    const match = withoutContainers.match(/^['"]?([A-Za-z0-9._-]+)/);
-    if (!match) return false;
-    const candidateKey = normalizeMetadataKey(match[1]);
-    if (!candidateKey) return false;
-    const hasSeparator = /[:=]/.test(withoutContainers);
-    if (hasSeparator) return keys.has(candidateKey);
-    for (const key of keys) {
-      if (key.startsWith(candidateKey)) return true;
-    }
-    return false;
-  };
-
-  const drainPendingSanitized = (choiceIndex = 0, { flush = false, metadataInfo = null } = {}) => {
-    if (!SANITIZE_METADATA) return;
-    const state = getSanitizedContentState(choiceIndex);
-    if (!state.pending) return;
-    const info = metadataInfo || mergeMetadataInfo(null);
-    const emitPortion = (portion) => {
-      if (!portion) return;
-      const sanitizedPortion = applyMetadataSanitizer(portion, info, state.lastContext);
-      if (sanitizedPortion) {
-        appendContentSegment(sanitizedPortion, { choiceIndex });
-      } else if (portion.trim()) {
-        scheduleStopAfterTools(choiceIndex);
-      }
-    };
-    while (state.pending) {
-      if (!flush) {
-        const newlineIdx = state.pending.indexOf("\n");
-        if (newlineIdx >= 0) {
-          const portion = state.pending.slice(0, newlineIdx + 1);
-          state.pending = state.pending.slice(newlineIdx + 1);
-          emitPortion(portion);
-          continue;
-        }
-        if (shouldHoldPartialLine(state.pending, metadataKeyRegister)) break;
-      }
-      const portion = state.pending;
-      state.pending = "";
-      emitPortion(portion);
-      if (!flush) break;
-    }
-  };
-
-  const enqueueSanitizedSegment = (
-    segment,
-    metadataInfo,
-    context = {},
-    { flush = false, choiceIndex = 0 } = {}
-  ) => {
-    if (!SANITIZE_METADATA) {
-      if (segment) appendContentSegment(segment, { choiceIndex });
-      return;
-    }
-    const state = getSanitizedContentState(choiceIndex);
-    if (context.stage || context.eventType) {
-      state.lastContext = {
-        stage: context.stage || state.lastContext.stage,
-        eventType: context.eventType || state.lastContext.eventType,
-      };
-    }
-    const mergedInfo = mergeMetadataInfo(metadataInfo);
-    if (segment) state.pending += segment;
-    drainPendingSanitized(choiceIndex, { flush, metadataInfo: mergedInfo });
-  };
-
-  const flushSanitizedSegments = (context = {}) => {
-    if (!SANITIZE_METADATA) return;
-    const targets =
-      typeof context.choiceIndex === "number"
-        ? [context.choiceIndex]
-        : sanitizedContentStates.size
-          ? Array.from(sanitizedContentStates.keys())
-          : [0];
-    targets.forEach((idx) => {
-      const state = getSanitizedContentState(idx);
-      if (context.stage || context.eventType) {
-        state.lastContext = {
-          stage: context.stage || state.lastContext.stage,
-          eventType: context.eventType || state.lastContext.eventType,
-        };
-      }
-      drainPendingSanitized(idx, { flush: true });
-    });
-  };
-
-  const recordSanitizedMetadata = ({ stage, eventType, metadata, removed, sources }) => {
-    if (!SANITIZE_METADATA) return;
-    const metadataObject =
-      metadata && typeof metadata === "object" && Object.keys(metadata).length ? metadata : null;
-    const removedEntries = Array.isArray(removed)
-      ? removed.filter((entry) => entry && typeof entry === "object")
-      : [];
-    if (metadataObject) {
-      for (const key of Object.keys(metadataObject)) {
-        const normalizedKey = normalizeMetadataKey(key);
-        if (normalizedKey) {
-          sanitizedMetadataSummary.keys.add(normalizedKey);
-          metadataKeyRegister.add(normalizedKey);
-        }
-      }
-    }
-    const uniqueRemovedEntries = [];
-    if (removedEntries.length) {
-      for (const entry of removedEntries) {
-        const normalizedKey = normalizeMetadataKey(entry.key);
-        const signature = `${normalizedKey || ""}::${entry.raw || ""}`;
-        if (!signature.trim()) continue;
-        if (seenSanitizedRemovalSignatures.has(signature)) continue;
-        seenSanitizedRemovalSignatures.add(signature);
-        if (normalizedKey) {
-          sanitizedMetadataSummary.keys.add(normalizedKey);
-          metadataKeyRegister.add(normalizedKey);
-        }
-        uniqueRemovedEntries.push({ ...entry, key: normalizedKey || entry.key });
-      }
-      sanitizedMetadataSummary.count += uniqueRemovedEntries.length;
-    }
-    const sourceList = Array.isArray(sources)
-      ? sources.filter((source) => typeof source === "string" && source)
-      : [];
-    for (const source of sourceList) sanitizedMetadataSummary.sources.add(source);
-    if (!metadataObject && !uniqueRemovedEntries.length) return;
-    appendProtoEvent({
-      ts: Date.now(),
-      req_id: reqId,
-      route: "/v1/chat/completions",
-      mode: "chat_stream",
-      kind: "metadata_sanitizer",
-      toggle_enabled: true,
-      stage,
-      event_type: eventType,
-      metadata: metadataObject || undefined,
-      removed_lines: uniqueRemovedEntries.length ? uniqueRemovedEntries : undefined,
-      metadata_sources: sourceList.length ? sourceList : undefined,
-    });
-  };
-
-  const applyMetadataSanitizer = (segment, metadataInfo, { stage, eventType }) => {
-    if (!SANITIZE_METADATA) return segment;
-    const metadata = metadataInfo?.metadata || {};
-    const { text: sanitizedText, removed } = sanitizeMetadataTextSegment(segment ?? "", metadata);
-    if (metadataInfo || (removed && removed.length)) {
-      recordSanitizedMetadata({
-        stage,
-        eventType,
-        metadata: metadataInfo ? metadata : null,
-        removed,
-        sources: metadataInfo?.sources,
-      });
-    }
-    return sanitizedText;
-  };
-  const usageState = {
-    prompt: 0,
-    completion: 0,
-    emitted: false,
-    logged: false,
-    trigger: null,
-    countsSource: "estimate",
-    providerSupplied: false,
-    firstTokenMs: null,
-    totalDurationMs: null,
-  };
   const { startIdleTimer, stopIdleTimer } = createStreamTimers({
     idleMs: STREAM_IDLE_TIMEOUT_MS,
     onIdle: () => {
@@ -1177,38 +954,6 @@ export async function postChatStream(req, res) {
     },
   });
   startIdleTimer();
-
-  const updateUsageCounts = (trigger, { prompt, completion } = {}, { provider = false } = {}) => {
-    const promptNum = Number.isFinite(prompt) ? Number(prompt) : NaN;
-    const completionNum = Number.isFinite(completion) ? Number(completion) : NaN;
-    let touched = false;
-    if (!Number.isNaN(promptNum) && promptNum >= 0) {
-      usageState.prompt = provider ? promptNum : Math.max(usageState.prompt, promptNum);
-      touched = true;
-    }
-    if (!Number.isNaN(completionNum) && completionNum >= 0) {
-      usageState.completion = provider
-        ? completionNum
-        : Math.max(usageState.completion, completionNum);
-      touched = true;
-    }
-    if (touched) usageState.countsSource = "event";
-    if (!usageState.trigger) usageState.trigger = trigger;
-    if (provider) usageState.providerSupplied = true;
-  };
-
-  const resolvedCounts = () => {
-    const emittedLength = Array.from(choiceStates.values()).reduce(
-      (sum, state) => sum + state.emitted.length,
-      0
-    );
-    const estimatedCompletion = Math.ceil(emittedLength / 4);
-    const usingEvent = usageState.countsSource === "event";
-    const promptTokens = usingEvent ? usageState.prompt : promptTokensEst;
-    const completionTokens = usingEvent ? usageState.completion : estimatedCompletion;
-    const totalTokens = promptTokens + completionTokens;
-    return { promptTokens, completionTokens, totalTokens, estimatedCompletion };
-  };
 
   const trackToolSignals = (payload) => {
     if (!payload || typeof payload !== "object") return;
@@ -1341,6 +1086,71 @@ export async function postChatStream(req, res) {
   flushDanglingToolBuffers = outputCoordinator.flushDanglingToolBuffers;
   hasTextualToolPrefix = outputCoordinator.hasTextualToolPrefix;
 
+  metadataSanitizer = createStreamMetadataSanitizer({
+    sanitizeMetadata: SANITIZE_METADATA,
+    reqId,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    appendProtoEvent,
+    logSanitizerToggle,
+    metadataKeys,
+    normalizeMetadataKey,
+    sanitizeMetadataTextSegment,
+    appendContentSegment: (...args) => appendContentSegment(...args),
+    scheduleStopAfterTools: (...args) => scheduleStopAfterTools(...args),
+  });
+  const {
+    enqueueSanitizedSegment,
+    mergeMetadataInfo,
+    applyMetadataSanitizer,
+    recordSanitizedMetadata,
+    flushSanitizedSegments,
+    getSummaryData: getSanitizerSummaryData,
+    emitSummaryProtoEvent,
+  } = metadataSanitizer;
+
+  const resolveFinishForUsage = () =>
+    finalFinishReason
+      ? { reason: finalFinishReason, source: finalFinishSource }
+      : resolveFinishReason();
+
+  const getEmittedLength = () =>
+    Array.from(choiceStates.values()).reduce((sum, state) => sum + state.emitted.length, 0);
+
+  usageTracker = createStreamUsageTracker({
+    includeUsage,
+    choiceCount,
+    promptTokensEst,
+    startedAt: started,
+    getEmittedLength,
+    getFirstTokenAt: () => firstTokenAt,
+    sendChunk,
+    appendUsage,
+    logSanitizerSummary,
+    getSanitizerSummaryData,
+    resolveFinishReason: resolveFinishForUsage,
+    hasToolCallEvidence,
+    hasFunctionCall: () => hasFunctionCall,
+    toolCallAggregator,
+    getToolStats: () => lastToolStats,
+    stopAfterToolsMode: STOP_AFTER_TOOLS_MODE || "burst",
+    outputMode,
+    req,
+    res,
+    reqId,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    requestedModel,
+    effectiveModel,
+    getHttpContext,
+    sanitizeMetadata: SANITIZE_METADATA,
+    isDev: IS_DEV_ENV,
+  });
+  const updateUsageCounts = (...args) => usageTracker.updateUsageCounts(...args);
+  const emitUsageChunk = (trigger) => usageTracker.emitUsageChunk(trigger);
+  const logUsage = (trigger) => usageTracker.logUsage(trigger);
+  const markUsageTriggerIfMissing = (trigger) => usageTracker.markTriggerIfMissing(trigger);
+
   const { emitDeltaFromRuntime, emitMessageFromRuntime } = createStreamRuntimeEmitter({
     sanitizeMetadata: SANITIZE_METADATA,
     coerceAssistantContent,
@@ -1388,7 +1198,7 @@ export async function postChatStream(req, res) {
     toolNormalizer,
     finishTracker,
   });
-  const { handleLine: handleTransportLine } = wireStreamTransport({
+  const { handleParsedEvent } = wireStreamTransport({
     runtime: streamRuntime,
     resolveChoiceIndexFromPayload,
     extractMetadataFromPayload,
@@ -1399,114 +1209,6 @@ export async function postChatStream(req, res) {
     if (!payload || typeof payload !== "object") return false;
     const outputField = payload.output;
     return typeof outputField === "string" && outputField.includes("resources/list failed");
-  };
-
-  const emitUsageChunk = (trigger) => {
-    if (usageState.emitted || !includeUsage) return;
-    const { promptTokens, completionTokens } = resolvedCounts();
-    const aggregatedCompletion = completionTokens * choiceCount;
-    const aggregatedTotal = promptTokens + aggregatedCompletion;
-    const firstTokenMs = firstTokenAt === null ? null : Math.max(firstTokenAt - started, 0);
-    const totalDurationMs = Math.max(Date.now() - started, 0);
-    usageState.firstTokenMs = firstTokenMs;
-    usageState.totalDurationMs = totalDurationMs;
-    usageState.emitted = true;
-    sendChunk({
-      choices: [],
-      usage: {
-        prompt_tokens: promptTokens,
-        completion_tokens: aggregatedCompletion,
-        total_tokens: aggregatedTotal,
-        time_to_first_token_ms: firstTokenMs,
-        total_duration_ms: totalDurationMs,
-        // Story 2.6 placeholders remain
-        time_to_first_token: null,
-        throughput_after_first_token: null,
-        emission_trigger: trigger,
-      },
-    });
-  };
-
-  const logUsage = (trigger) => {
-    if (usageState.logged) return;
-    const { promptTokens, completionTokens, estimatedCompletion } = resolvedCounts();
-    const aggregatedCompletion = completionTokens * choiceCount;
-    const aggregatedTotal = promptTokens + aggregatedCompletion;
-    const aggregatedEstCompletion = estimatedCompletion * choiceCount;
-    const emittedAtMs = Date.now() - started;
-    const firstTokenMs =
-      usageState.firstTokenMs !== null
-        ? usageState.firstTokenMs
-        : firstTokenAt === null
-          ? null
-          : Math.max(firstTokenAt - started, 0);
-    const totalDurationMs = usageState.totalDurationMs ?? emittedAtMs;
-    const resolved = finalFinishReason
-      ? { reason: finalFinishReason, source: finalFinishSource }
-      : resolveFinishReason();
-    const {
-      count: sanitizedMetadataCount,
-      keys: sanitizedMetadataKeys,
-      sources: sanitizedMetadataSources,
-    } = getSanitizerSummaryData();
-    if (SANITIZE_METADATA) {
-      logSanitizerSummary({
-        enabled: true,
-        route: "/v1/chat/completions",
-        mode: "chat_stream",
-        reqId,
-        count: sanitizedMetadataCount,
-        keys: sanitizedMetadataKeys,
-        sources: sanitizedMetadataSources,
-      });
-    }
-    try {
-      const httpCtx = getHttpContext(res);
-      appendUsage({
-        req_id: reqId,
-        route: httpCtx.route || "/v1/chat/completions",
-        mode: httpCtx.mode || "chat_stream",
-        method: req.method || "POST",
-        status_code: 200,
-        requested_model: requestedModel,
-        effective_model: effectiveModel,
-        stream: true,
-        prompt_tokens: promptTokens,
-        completion_tokens: aggregatedCompletion,
-        total_tokens: aggregatedTotal,
-        prompt_tokens_est: promptTokensEst,
-        completion_tokens_est: aggregatedEstCompletion,
-        total_tokens_est: promptTokensEst + aggregatedEstCompletion,
-        duration_ms: emittedAtMs,
-        total_duration_ms: totalDurationMs,
-        status: 200,
-        user_agent: req.headers["user-agent"] || "",
-        emission_trigger: trigger,
-        emitted_at_ms: emittedAtMs,
-        counts_source: usageState.countsSource,
-        usage_included: includeUsage,
-        provider_supplied: usageState.providerSupplied,
-        time_to_first_token_ms: firstTokenMs,
-        finish_reason: resolved.reason,
-        finish_reason_source: resolved.source,
-        has_tool_calls: hasToolCallEvidence(),
-        has_function_call: hasFunctionCall,
-        tool_call_parallel_supported: toolCallAggregator.supportsParallelCalls(),
-        tool_call_emitted: toolCallAggregator.hasCalls(),
-        tool_call_count_total: lastToolStats.count,
-        tool_call_truncated_total: lastToolStats.truncated,
-        stop_after_tools_mode: STOP_AFTER_TOOLS_MODE || "burst",
-        choice_count: choiceCount,
-        metadata_sanitizer_enabled: SANITIZE_METADATA,
-        sanitized_metadata_count: SANITIZE_METADATA ? sanitizedMetadataCount : 0,
-        sanitized_metadata_keys: SANITIZE_METADATA ? sanitizedMetadataKeys : [],
-        sanitized_metadata_sources: SANITIZE_METADATA ? sanitizedMetadataSources : [],
-        output_mode: outputMode,
-      });
-    } catch (e) {
-      if (IS_DEV_ENV) console.error("[dev][response][chat][stream] usage log error:", e);
-    }
-    usageState.logged = true;
   };
 
   const finalizeStream = ({ reason, trigger } = {}) => {
@@ -1520,7 +1222,7 @@ export async function postChatStream(req, res) {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "finalize" });
     const resolvedTrigger =
       trigger ||
-      usageState.trigger ||
+      usageTracker.getTrigger() ||
       (includeUsage ? (finishSent ? "task_complete" : "token_count") : "task_complete");
     if (reason) trackFinishReason(reason, "finalize");
     const resolvedFinish = resolveFinishReason();
@@ -1535,8 +1237,8 @@ export async function postChatStream(req, res) {
       });
     }
     if (!finishSent) emitFinishChunk();
-    if (!usageState.emitted && includeUsage) emitUsageChunk(resolvedTrigger);
-    if (!usageState.logged) logUsage(resolvedTrigger);
+    if (!usageTracker.hasEmitted() && includeUsage) emitUsageChunk(resolvedTrigger);
+    if (!usageTracker.hasLogged()) logUsage(resolvedTrigger);
     if (toolCallAggregator.hasCalls()) {
       try {
         const summaries = [];
@@ -1580,23 +1282,7 @@ export async function postChatStream(req, res) {
       trail: finalFinishTrail,
       choiceCount,
     });
-    if (SANITIZE_METADATA) {
-      const {
-        count: sanitizedMetadataCount,
-        keys: sanitizedMetadataKeys,
-        sources: sanitizedMetadataSources,
-      } = getSanitizerSummaryData();
-      appendProtoEvent({
-        ts: Date.now(),
-        req_id: reqId,
-        route: "/v1/chat/completions",
-        mode: "chat_stream",
-        kind: "metadata_sanitizer_summary",
-        sanitized_count: sanitizedMetadataCount,
-        sanitized_keys: sanitizedMetadataKeys,
-        sanitized_sources: sanitizedMetadataSources,
-      });
-    }
+    emitSummaryProtoEvent();
     const outcome = resolvedFinish.reason || "ok";
     try {
       const outputParts = [];
@@ -1655,6 +1341,30 @@ export async function postChatStream(req, res) {
     } catch {}
   };
 
+  const eventRouter = createStreamEventRouter({
+    parseStreamEventLine,
+    extractMetadataFromPayload,
+    sanitizeMetadata: SANITIZE_METADATA,
+    appendProtoEvent,
+    reqId,
+    route: "/v1/chat/completions",
+    mode: "chat_stream",
+    handleParsedEvent,
+    trackToolSignals,
+    extractFinishReasonFromMessage,
+    trackFinishReason,
+    updateUsageCounts,
+    mergeMetadataInfo,
+    recordSanitizedMetadata,
+    shouldDropFunctionCallOutput,
+    getUsageTrigger: () => usageTracker.getTrigger(),
+    markUsageTriggerIfMissing,
+    hasAnyChoiceSent: () => Array.from(choiceStates.values()).some((state) => state.sentAny),
+    hasLengthEvidence: () => lengthEvidence,
+    emitFinishChunk,
+    finalizeStream,
+  });
+
   child.stdout.on("data", (chunk) => {
     if (finalized) return;
     startIdleTimer();
@@ -1676,122 +1386,8 @@ export async function postChatStream(req, res) {
       const line = buf.slice(0, idx);
       buf = buf.slice(idx + 1);
       try {
-        const parsed = parseStreamEventLine(line, {
-          extractMetadataFromPayload,
-          sanitizeMetadata: SANITIZE_METADATA,
-        });
-        if (!parsed) continue;
-        const { type: t, payload, params, messagePayload, metadataInfo } = parsed;
-        appendProtoEvent({
-          ts: Date.now(),
-          req_id: reqId,
-          route: "/v1/chat/completions",
-          mode: "chat_stream",
-          kind: "event",
-          event: payload,
-        });
-        if (messagePayload) {
-          trackToolSignals(messagePayload);
-          const finishCandidate = extractFinishReasonFromMessage(messagePayload);
-          if (finishCandidate) trackFinishReason(finishCandidate, t || "event");
-        }
-        if (
-          t === "agent_message_content_delta" ||
-          t === "agent_message_delta" ||
-          t === "agent_message"
-        ) {
-          handleTransportLine(line);
-        } else if (t === "function_call_output") {
-          if (shouldDropFunctionCallOutput(messagePayload)) {
-            continue;
-          }
-        } else if (t === "metadata") {
-          if (SANITIZE_METADATA && metadataInfo) {
-            mergeMetadataInfo(metadataInfo);
-            recordSanitizedMetadata({
-              stage: "metadata_event",
-              eventType: t,
-              metadata: metadataInfo.metadata,
-              removed: [],
-              sources: metadataInfo.sources,
-            });
-          }
-        } else if (t === "token_count") {
-          const promptTokens = Number(
-            messagePayload?.prompt_tokens ??
-              messagePayload?.promptTokens ??
-              messagePayload?.token_count?.prompt_tokens ??
-              params?.prompt_tokens ??
-              params?.promptTokens ??
-              params?.token_count?.prompt_tokens
-          );
-          const completionTokens = Number(
-            messagePayload?.completion_tokens ??
-              messagePayload?.completionTokens ??
-              messagePayload?.token_count?.completion_tokens ??
-              params?.completion_tokens ??
-              params?.completionTokens ??
-              params?.token_count?.completion_tokens
-          );
-          updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
-          const tokenFinishReason = extractFinishReasonFromMessage(messagePayload);
-          if (tokenFinishReason) trackFinishReason(tokenFinishReason, "token_count");
-        } else if (t === "usage") {
-          const promptTokens = Number(
-            messagePayload?.prompt_tokens ??
-              messagePayload?.usage?.prompt_tokens ??
-              params?.usage?.prompt_tokens ??
-              params?.prompt_tokens ??
-              params?.promptTokens ??
-              params?.token_count?.prompt_tokens
-          );
-          const completionTokens = Number(
-            messagePayload?.completion_tokens ??
-              messagePayload?.usage?.completion_tokens ??
-              params?.usage?.completion_tokens ??
-              params?.completion_tokens ??
-              params?.completionTokens ??
-              params?.token_count?.completion_tokens
-          );
-          updateUsageCounts(
-            "provider",
-            { prompt: promptTokens, completion: completionTokens },
-            { provider: true }
-          );
-        } else if (t === "task_complete") {
-          const finishReason = extractFinishReasonFromMessage(messagePayload);
-          if (finishReason) trackFinishReason(finishReason, "task_complete");
-          else if (!Array.from(choiceStates.values()).some((state) => state.sentAny))
-            trackFinishReason("length", "task_complete");
-          else if (lengthEvidence) trackFinishReason("length", "task_complete");
-          const promptTokens = Number(
-            messagePayload?.prompt_tokens ??
-              messagePayload?.token_count?.prompt_tokens ??
-              params?.token_count?.prompt_tokens ??
-              params?.prompt_tokens ??
-              params?.promptTokens
-          );
-          const completionTokens = Number(
-            messagePayload?.completion_tokens ??
-              messagePayload?.token_count?.completion_tokens ??
-              params?.token_count?.completion_tokens ??
-              params?.completion_tokens ??
-              params?.completionTokens
-          );
-          if (Number.isFinite(promptTokens) || Number.isFinite(completionTokens)) {
-            updateUsageCounts(usageState.trigger || "task_complete", {
-              prompt: promptTokens,
-              completion: completionTokens,
-            });
-          } else if (!usageState.trigger) {
-            usageState.trigger = "task_complete";
-          }
-          emitFinishChunk(finishReason || undefined);
-          finalizeStream({ reason: finishReason, trigger: usageState.trigger || "task_complete" });
-          return;
-        } else if (t === "error") {
-          // ignore error events from backend
-        }
+        const result = eventRouter.handleLine(line);
+        if (result?.stop) return;
       } catch {
         // ignore parse errors
       }
@@ -1820,7 +1416,8 @@ export async function postChatStream(req, res) {
     flushSanitizedSegments({ stage: "agent_message_delta", eventType: "close" });
     flushDanglingToolBuffers("disconnect");
     if (finalized) return;
-    if (!finishSent && usageState.trigger === "token_count" && !lengthEvidence) {
+    const usageTrigger = usageTracker.getTrigger();
+    if (!finishSent && usageTrigger === "token_count" && !lengthEvidence) {
       trackFinishReason("stop", "token_count_fallback");
     }
     const anyChoiceSent = Array.from(choiceStates.values()).some((state) => state.sentAny);
@@ -1850,7 +1447,7 @@ export async function postChatStream(req, res) {
         }
       }
     }
-    const trigger = usageState.trigger || (includeUsage ? "token_count" : "close");
+    const trigger = usageTrigger || (includeUsage ? "token_count" : "close");
     const inferredReason = finishSent ? finalFinishReason : lengthEvidence ? "length" : "stop";
     finalizeStream({ reason: inferredReason, trigger });
   };

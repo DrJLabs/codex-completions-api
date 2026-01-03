@@ -155,7 +155,10 @@ export const createStreamUsageTracker = ({
         finish_reason: resolved.reason,
         finish_reason_source: resolved.source,
         has_tool_calls: typeof hasToolCallEvidence === "function" ? hasToolCallEvidence() : false,
-        has_function_call: Boolean(hasFunctionCall),
+        has_function_call:
+          typeof hasFunctionCall === "function"
+            ? Boolean(hasFunctionCall())
+            : Boolean(hasFunctionCall),
         tool_call_parallel_supported: toolCallAggregator?.supportsParallelCalls?.() || false,
         tool_call_emitted: toolCallAggregator?.hasCalls?.() || false,
         tool_call_count_total: getToolStats().count,
