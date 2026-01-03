@@ -41,6 +41,7 @@ import {
   normalizeToolCallSnapshot,
   trimTrailingTextAfterToolBlocks,
 } from "./tool-output.js";
+import { normalizeToolCalls } from "./tool-call-normalizer.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
@@ -112,11 +113,25 @@ export const buildAssistantMessage = ({
     message.content = assistantContent;
   }
 
-  if (typeof message.content === "string" && message.content.includes("</use_tool>")) {
-    message.content = trimTrailingTextAfterToolBlocks(message.content);
+  const normalizedMessage = normalizeToolCalls(message);
+  if (
+    typeof normalizedMessage.content === "string" &&
+    normalizedMessage.content.includes("</use_tool>")
+  ) {
+    normalizedMessage.content = trimTrailingTextAfterToolBlocks(normalizedMessage.content);
   }
 
-  return { message, hasToolCalls, toolCallsTruncated, toolCallCount: toolCallRecords.length };
+  const normalizedToolCallCount = Array.isArray(normalizedMessage.tool_calls)
+    ? normalizedMessage.tool_calls.length
+    : toolCallRecords.length;
+  const normalizedHasToolCalls = hasToolCalls || normalizedToolCallCount > 0;
+
+  return {
+    message: normalizedMessage,
+    hasToolCalls: normalizedHasToolCalls,
+    toolCallsTruncated,
+    toolCallCount: normalizedToolCallCount,
+  };
 };
 
 const DEFAULT_MODEL = CFG.CODEX_MODEL;

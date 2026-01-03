@@ -226,7 +226,18 @@ describe("chat nonstream helper behavior", () => {
     expect(result.message.content).toBeNull();
   });
 
-  it("builds assistant message with function_call payload", async () => {
+  it("normalizes function_call into tool_calls", async () => {
+    const { normalizeToolCalls } = await import(
+      "../../../../src/handlers/chat/tool-call-normalizer.js"
+    );
+
+    const result = normalizeToolCalls({ function_call: { name: "x", arguments: "{}" } });
+
+    expect(result.tool_calls).toHaveLength(1);
+    expect(result.function_call).toBeUndefined();
+  });
+
+  it("builds assistant message with normalized tool_calls", async () => {
     const { buildAssistantMessage } = await loadHelpers();
 
     const result = buildAssistantMessage({
@@ -234,7 +245,8 @@ describe("chat nonstream helper behavior", () => {
       functionCallPayload: { name: "do_thing", arguments: "{}" },
     });
 
-    expect(result.message.function_call).toEqual({ name: "do_thing", arguments: "{}" });
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect(result.message.function_call).toBeUndefined();
     expect(result.message.content).toBeNull();
   });
 
