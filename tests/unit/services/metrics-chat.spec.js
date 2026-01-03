@@ -6,7 +6,7 @@ vi.mock("../../../src/services/metrics/index.js", () => ({
   recordToolBufferEvent: (...args) => recordToolBufferEventMock(...args),
 }));
 
-import toolBufferMetrics from "../../../src/services/metrics/chat.js";
+import { toolBufferMetrics } from "../../../src/services/metrics/chat.js";
 
 describe("toolBufferMetrics", () => {
   beforeEach(() => {
