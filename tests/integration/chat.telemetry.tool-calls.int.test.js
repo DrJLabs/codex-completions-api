@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import fetch from "node-fetch";
 import { startServer, stopServer, wait } from "./helpers.js";
 import { buildBurstEnv, buildLegacyCapEnv } from "../support/fixtures/tool-burst.fixture.js";
+import { __whenAppendIdle } from "../../src/dev-logging.js";
 
 const REQUEST_BODY = {
   model: "codex-5",
@@ -21,11 +22,24 @@ const createLogPaths = async () => {
   };
 };
 
-const readNdjson = async (filePath) => {
+const readNdjson = async (filePath, { timeoutMs = 1000, intervalMs = 25 } = {}) => {
+  let raw = "";
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await __whenAppendIdle(filePath);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- log path determined during test setup
+    if (existsSync(filePath)) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- log path determined during test setup
+      raw = await readFile(filePath, "utf8");
+      if (raw.trim()) break;
+    }
+    await wait(intervalMs);
+  }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- log path determined during test setup
-  if (!existsSync(filePath)) return [];
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- log path determined during test setup
-  const raw = await readFile(filePath, "utf8");
+  if (!raw.trim() && existsSync(filePath)) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- log path determined during test setup
+    raw = await readFile(filePath, "utf8");
+  }
   return raw
     .split("\n")
     .map((line) => line.trim())

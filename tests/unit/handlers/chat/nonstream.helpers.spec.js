@@ -48,6 +48,11 @@ const loadHelpers = async () => {
   return await import("../../../../src/handlers/chat/nonstream.js");
 };
 
+const loadToolOutput = async () => {
+  vi.resetModules();
+  return await import("../../../../src/handlers/chat/tool-output.js");
+};
+
 beforeEach(() => {
   process.env.PROXY_TOOL_BLOCK_DEDUP = "true";
   process.env.PROXY_TOOL_BLOCK_DELIMITER = "\\n\\n";
@@ -63,14 +68,14 @@ afterEach(() => {
 
 describe("chat nonstream helper behavior", () => {
   it("returns null for empty canonical xml inputs", async () => {
-    const { buildCanonicalXml } = await loadHelpers();
+    const { buildCanonicalXml } = await loadToolOutput();
 
     expect(buildCanonicalXml()).toBeNull();
     expect(buildCanonicalXml([])).toBeNull();
   });
 
   it("returns null when canonical xml has no valid args", async () => {
-    const { buildCanonicalXml } = await loadHelpers();
+    const { buildCanonicalXml } = await loadToolOutput();
 
     const snapshot = [
       { id: "tool_alpha", type: "function", function: { name: "alpha", arguments: "" } },
@@ -82,7 +87,7 @@ describe("chat nonstream helper behavior", () => {
   });
 
   it("builds canonical xml with dedupe and skips invalid JSON", async () => {
-    const { buildCanonicalXml } = await loadHelpers();
+    const { buildCanonicalXml } = await loadToolOutput();
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const snapshot = [
@@ -101,7 +106,7 @@ describe("chat nonstream helper behavior", () => {
 
   it("respects max tool block count when building xml", async () => {
     process.env.PROXY_TOOL_BLOCK_MAX = "1";
-    const { buildCanonicalXml } = await loadHelpers();
+    const { buildCanonicalXml } = await loadToolOutput();
 
     const snapshot = [
       buildRecord("lookup_user", JSON.stringify({ id: "1" })),
@@ -114,7 +119,7 @@ describe("chat nonstream helper behavior", () => {
   });
 
   it("extracts unique textual tool blocks with delimiter", async () => {
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
     const text = "<use_tool>one</use_tool><use_tool>two</use_tool>";
     const firstEnd = text.indexOf("</use_tool>") + "</use_tool>".length;
     const secondStart = text.indexOf("<use_tool>", firstEnd);
@@ -137,20 +142,20 @@ describe("chat nonstream helper behavior", () => {
   });
 
   it("returns null when no textual tool blocks are detected", async () => {
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
     extractUseToolBlocksMock.mockReturnValue({ blocks: [], nextPos: 0 });
 
     expect(extractTextualUseToolBlock("<use_tool>nope</use_tool>")).toBeNull();
   });
 
   it("returns null for empty textual tool content", async () => {
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
 
     expect(extractTextualUseToolBlock("")).toBeNull();
   });
 
   it("uses index-based block offsets and skips empty literals", async () => {
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
     const text = "<use_tool>one</use_tool>";
 
     extractUseToolBlocksMock.mockReturnValue({
@@ -167,7 +172,7 @@ describe("chat nonstream helper behavior", () => {
   });
 
   it("returns null when parsing textual tool blocks throws", async () => {
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
     extractUseToolBlocksMock.mockImplementation(() => {
       throw new Error("boom");
     });
@@ -178,7 +183,7 @@ describe("chat nonstream helper behavior", () => {
   it("joins tool blocks when dedupe is disabled and delimiter is empty", async () => {
     process.env.PROXY_TOOL_BLOCK_DEDUP = "false";
     process.env.PROXY_TOOL_BLOCK_DELIMITER = "";
-    const { extractTextualUseToolBlock } = await loadHelpers();
+    const { extractTextualUseToolBlock } = await loadToolOutput();
     const text = "<use_tool>one</use_tool><use_tool>two</use_tool>";
     const firstEnd = text.indexOf("</use_tool>") + "</use_tool>".length;
     const secondStart = text.indexOf("<use_tool>", firstEnd);

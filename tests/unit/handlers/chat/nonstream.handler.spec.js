@@ -797,7 +797,7 @@ describe("postChatNonStream guardrails", () => {
   });
 
   it("uses injected guardrail messages when provided", async () => {
-    maybeInjectIngressGuardrailMock.mockImplementation(({ messages }) => ({
+    maybeInjectIngressGuardrailMock.mockImplementation(() => ({
       injected: true,
       messages: [{ role: "user", content: "guarded" }],
       markers: ["guardrail"],

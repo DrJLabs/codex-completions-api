@@ -33,20 +33,44 @@ const endpoint = useResponses
   ? `${trimmedBase}/v1/responses`
   : `${trimmedBase}/v1/chat/completions`;
 const apiKey = process.env.KEY || process.env.PROXY_API_KEY;
-const toolName = process.env.TOOL_SMOKE_TOOL || "exec_command";
-const toolCmd = process.env.TOOL_SMOKE_CMD || "echo smoke";
+const toolName = process.env.TOOL_SMOKE_TOOL || "getCurrentTime";
+const toolArgsRaw =
+  process.env.TOOL_SMOKE_ARGS ||
+  (toolName === "exec_command" ? '{"cmd":"echo smoke"}' : '{"timezoneOffset":"0"}');
+let toolArgs = {};
+try {
+  const parsed = JSON.parse(toolArgsRaw);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    toolArgs = parsed;
+  }
+} catch {
+  toolArgs = {};
+}
+const toolArgsEntries = Object.entries(toolArgs);
+const toolArgsJson = JSON.stringify(toolArgs);
+const toolArgsXml = toolArgsEntries
+  .map(([key, value]) => {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return `<${key}>${text}</${key}>`;
+  })
+  .join("\n");
 
 if (!apiKey) {
   console.error("Missing KEY or PROXY_API_KEY environment variable.");
   process.exit(1);
 }
 
-const structuredPrompt = `Use ${toolName} with cmd="${toolCmd}" and return tool output.`;
+const structuredPrompt = `Use the Obsidian tool ${toolName} with ${toolArgsJson} and return tool output.`;
 const xmlPrompt = [
-  `Return exactly one <use_tool name="${toolName}"> block with JSON.`,
-  `Use {"cmd":"${toolCmd}"} as the payload and output nothing else.`,
-  `<use_tool name="${toolName}">{"cmd":"${toolCmd}"}</use_tool>`,
-].join("\n");
+  `Return exactly one <use_tool> block for the Obsidian tool "${toolName}".`,
+  "Use XML parameter tags and output nothing else.",
+  "<use_tool>",
+  `<name>${toolName}</name>`,
+  toolArgsXml,
+  "</use_tool>",
+]
+  .filter(Boolean)
+  .join("\n");
 
 const baseRequest = {
   model: process.env.MODEL || "codex-5",
@@ -64,18 +88,17 @@ const requestBody = useResponses
     };
 
 if (!expectXml) {
+  const parameterEntries = Object.keys(toolArgs);
   requestBody.tools = [
     {
       type: "function",
       function: {
         name: toolName,
-        description: "Runs a command in a PTY",
+        description: "Invoke an Obsidian tool",
         parameters: {
           type: "object",
-          properties: {
-            cmd: { type: "string" },
-          },
-          required: ["cmd"],
+          properties: Object.fromEntries(parameterEntries.map((key) => [key, { type: "string" }])),
+          required: parameterEntries.length ? parameterEntries : undefined,
         },
       },
     },

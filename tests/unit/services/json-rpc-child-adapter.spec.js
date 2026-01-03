@@ -298,7 +298,7 @@ describe("JsonRpcChildAdapter normalization", () => {
   });
 
   it("forwards unknown notifications and strips normalized text payloads", async () => {
-    const { adapter, emitter, context, resolvePromise, stdout } = await setupAdapter({
+    const { adapter, emitter, resolvePromise, stdout } = await setupAdapter({
       normalizedRequest: {
         turn: { items: [], text: "turn text" },
         message: { items: [], text: "message text" },

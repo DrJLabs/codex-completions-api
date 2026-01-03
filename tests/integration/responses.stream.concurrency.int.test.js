@@ -1,14 +1,14 @@
 import { beforeAll, afterAll, afterEach, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { waitForReady } from "./helpers.js";
+import { spawnServer } from "./helpers.js";
 
 let PORT;
 let child;
 let READY_PATH;
 let RELEASE_PATH;
+let tempDir;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,24 +29,10 @@ const cleanTempFiles = async () => {
   ]);
 };
 
-const waitForHealth = async () => {
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) return;
-    } catch {}
-    await wait(100);
-  }
-  throw new Error("server did not become healthy in time");
-};
-
 const startServer = async (extraEnv = {}) => {
   await killChild();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
       CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
@@ -59,16 +45,16 @@ const startServer = async (extraEnv = {}) => {
       STREAM_RELEASE_FILE: RELEASE_PATH,
       ...extraEnv,
     },
-    stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
-  });
-  await waitForHealth();
-  await waitForReady(PORT);
+    { waitForReady: true }
+  );
+  PORT = server.PORT;
+  child = server.child;
 };
 
 beforeAll(async () => {
-  PORT = await getPort();
-  READY_PATH = path.join(process.cwd(), `.tmp-responses-stream-ready-${PORT}.txt`);
-  RELEASE_PATH = path.join(process.cwd(), `.tmp-responses-stream-release-${PORT}.txt`);
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "responses-stream-concurrency-"));
+  READY_PATH = path.join(tempDir, "stream-ready");
+  RELEASE_PATH = path.join(tempDir, "stream-release");
 });
 
 afterEach(async () => {
@@ -78,6 +64,11 @@ afterEach(async () => {
 afterAll(async () => {
   await killChild();
   await cleanTempFiles();
+  if (tempDir) {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {}
+  }
 });
 
 test("responses streaming enforces concurrency guard", async () => {

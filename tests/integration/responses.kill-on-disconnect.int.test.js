@@ -1,23 +1,24 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import fetch from "node-fetch";
-import { wait, waitForReady } from "./helpers.js";
+import { startServer, stopServer, wait } from "./helpers.js";
 
 let PORT;
 let child;
 let PID_FILE;
 let readyFile;
 let releaseFile;
+let tempDir;
 
 beforeAll(async () => {
-  PORT = await getPort();
-  PID_FILE = path.join(process.cwd(), `.tmp-responses-child-pid-${PORT}.txt`);
-  readyFile = path.join(process.cwd(), `.tmp-responses-stream-ready-${PORT}.txt`);
-  releaseFile = path.join(process.cwd(), `.tmp-responses-stream-release-${PORT}.txt`);
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "responses-kill-"));
+  PID_FILE = path.join(tempDir, "child.pid");
+  readyFile = path.join(tempDir, "stream-ready");
+  releaseFile = path.join(tempDir, "stream-release");
   try {
     if (existsSync(PID_FILE)) unlinkSync(PID_FILE);
   } catch {}
@@ -27,39 +28,24 @@ beforeAll(async () => {
   try {
     if (existsSync(releaseFile)) unlinkSync(releaseFile);
   } catch {}
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      FAKE_CODEX_MODE: "long_stream",
-      PROXY_PROTECT_MODELS: "false",
-      PROXY_SSE_KEEPALIVE_MS: "0",
-      PROXY_KILL_ON_DISCONNECT: "true",
-      PROXY_TEST_ENDPOINTS: "true",
-      STREAM_READY_FILE: readyFile,
-      STREAM_RELEASE_FILE: releaseFile,
-      CHILD_PID_FILE: PID_FILE,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const server = await startServer({
+    PROXY_API_KEY: "test-sk-ci",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "long_stream",
+    PROXY_PROTECT_MODELS: "false",
+    PROXY_SSE_KEEPALIVE_MS: "0",
+    PROXY_KILL_ON_DISCONNECT: "true",
+    PROXY_TEST_ENDPOINTS: "true",
+    STREAM_READY_FILE: readyFile,
+    STREAM_RELEASE_FILE: releaseFile,
+    CHILD_PID_FILE: PID_FILE,
   });
-
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (res.ok) break;
-    } catch {}
-    await wait(100);
-  }
-  await waitForReady(PORT);
+  PORT = server.PORT;
+  child = server.child;
 }, 10_000);
 
 afterAll(async () => {
-  try {
-    if (child && !child.killed) child.kill("SIGTERM");
-  } catch {}
+  await stopServer(child);
   try {
     if (existsSync(PID_FILE)) unlinkSync(PID_FILE);
   } catch {}
@@ -69,6 +55,11 @@ afterAll(async () => {
   try {
     if (existsSync(releaseFile)) unlinkSync(releaseFile);
   } catch {}
+  if (tempDir) {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch {}
+  }
 });
 
 test("aborting responses stream cancels request without killing worker", async () => {

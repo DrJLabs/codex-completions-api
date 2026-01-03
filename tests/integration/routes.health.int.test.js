@@ -1,28 +1,19 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
-import { waitForUrlOk } from "./helpers.js";
+import { spawnServer } from "./helpers.js";
 
 let PORT;
 let child;
 
 beforeAll(async () => {
-  PORT = await getPort();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      PROXY_USE_APP_SERVER: "false",
-      PROXY_PROTECT_MODELS: "false",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const server = await spawnServer({
+    PROXY_API_KEY: "test-sk-ci",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    PROXY_USE_APP_SERVER: "false",
+    PROXY_PROTECT_MODELS: "false",
   });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
+  PORT = server.PORT;
+  child = server.child;
 });
 
 afterAll(async () => {

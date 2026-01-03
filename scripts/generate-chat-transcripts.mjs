@@ -21,6 +21,40 @@ const BASE_HEADERS = {
 };
 
 const JSON_RPC_CODEX = "scripts/fake-codex-jsonrpc.js";
+const BASE_FAKE_CODEX_ENV = {
+  FAKE_CODEX_WORKER_READY_DELAY_MS: "",
+  FAKE_CODEX_WORKER_HEARTBEAT_MS: "",
+  FAKE_CODEX_WORKER_AUTOEXIT_MS: "",
+  FAKE_CODEX_WORKER_SHUTDOWN_DELAY_MS: "",
+  FAKE_CODEX_WORKER_EXIT_CODE: "",
+  FAKE_CODEX_ERROR_AFTER_FIRST_TOOL: "",
+  FAKE_CODEX_UNAUTHORIZED: "",
+  FAKE_CODEX_AUTH_URL: "",
+  FAKE_CODEX_LOGIN_ID: "",
+  FAKE_CODEX_MODE: "",
+  FAKE_CODEX_FINISH_REASON: "",
+  FAKE_CODEX_PARALLEL: "",
+  FAKE_CODEX_TOOL_CALL_COUNT: "",
+  FAKE_CODEX_TOOL_BURST_COUNT: "",
+  FAKE_CODEX_CHOICE_COUNT: "",
+  FAKE_CODEX_TOOL_CALL_CHOICES: "",
+  FAKE_CODEX_JSONRPC_HANG: "",
+  FAKE_CODEX_HANDSHAKE_MODE: "",
+  FAKE_CODEX_SKIP_READY: "",
+  FAKE_CODEX_CAPTURE_RPCS: "",
+  FAKE_CODEX_TOOL_ARGUMENT: "",
+  FAKE_CODEX_TOOL_ARGUMENT_CHUNK_SIZE: "",
+  FAKE_CODEX_TOOL_XML_CHUNK_SIZE: "",
+  FAKE_CODEX_TRUNCATE_TOOL_XML: "",
+  FAKE_CODEX_ABORT_AFTER_TOOL_XML: "",
+  FAKE_CODEX_EMIT_TEXTUAL_XML: "",
+  FAKE_CODEX_STREAM_INTERVAL_MS: "",
+  FAKE_CODEX_STREAM_TICKS: "",
+  FAKE_CODEX_STREAM_RELEASE_MAX_TICKS: "",
+  FAKE_CODEX_STREAM_HANG_MS: "",
+  FAKE_CODEX_METADATA: "",
+  FAKE_CODEX_SKIP_FINISH_ON_DISCONNECT: "",
+};
 
 function gitCommitSha() {
   try {
@@ -381,7 +415,7 @@ async function captureChatScenario({ backend, scenario, commitSha }) {
     filename,
     includeUsage,
     commitSha,
-    serverEnv: env,
+    serverEnv: { ...BASE_FAKE_CODEX_ENV, ...(env || {}) },
     metadata: {
       scenario: filename.replace(/\.json$/, ""),
       extra: { expected_status: expectStatus, ...(metadata || {}) },

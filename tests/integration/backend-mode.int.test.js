@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
-import getPort from "get-port";
 import fetch from "node-fetch";
-import { stopServer, waitForUrlOk } from "./helpers.js";
+import { spawnServer, stopServer, waitForUrlOk } from "./helpers.js";
 
 async function startServerWithLogs(envOverrides = {}) {
-  const PORT = await getPort();
   const desiredFlag = envOverrides.PROXY_USE_APP_SERVER;
   const resolvedFlag =
     desiredFlag !== undefined
@@ -16,10 +13,10 @@ async function startServerWithLogs(envOverrides = {}) {
   const resolvedBin = envOverrides.CODEX_BIN || "scripts/fake-codex-jsonrpc.js";
   const resolvedSupervisor =
     envOverrides.CODEX_WORKER_SUPERVISED || (resolvedFlag === "true" ? "true" : undefined);
-  const child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const stdout = [];
+  const stderr = [];
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: envOverrides.PROXY_API_KEY || "test-sk-ci",
       CODEX_BIN: resolvedBin,
       PROXY_USE_APP_SERVER: resolvedFlag,
@@ -27,16 +24,12 @@ async function startServerWithLogs(envOverrides = {}) {
       PROXY_PROTECT_MODELS: envOverrides.PROXY_PROTECT_MODELS || "false",
       ...envOverrides,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  const stdout = [];
-  const stderr = [];
-  child.stdout.on("data", (chunk) => stdout.push(chunk));
-  child.stderr.on("data", (chunk) => stderr.push(chunk));
-  await waitForUrlOk(`http://127.0.0.1:${PORT}/healthz`);
-  return { PORT, child, stdout, stderr };
+    {
+      onStdout: (chunk) => stdout.push(chunk),
+      onStderr: (chunk) => stderr.push(chunk),
+    }
+  );
+  return { PORT: server.PORT, child: server.child, stdout, stderr };
 }
 
 describe("backend mode feature flag", () => {

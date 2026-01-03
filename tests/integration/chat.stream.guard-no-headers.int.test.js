@@ -1,8 +1,7 @@
-import { beforeAll, afterAll, afterEach, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
+import { afterAll, afterEach, test, expect } from "vitest";
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { spawnServer } from "./helpers.js";
 
 let PORT;
 let child;
@@ -28,24 +27,10 @@ const cleanTempFiles = async () => {
   ]);
 };
 
-const waitForHealth = async () => {
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) return;
-    } catch {}
-    await wait(100);
-  }
-  throw new Error("server did not become healthy in time");
-};
-
 const startServer = async (extraEnv = {}) => {
   await killChild();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: "test-sk-ci",
       PROXY_PROTECT_MODELS: "false",
       CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
@@ -58,14 +43,11 @@ const startServer = async (extraEnv = {}) => {
       STREAM_RELEASE_FILE: RELEASE_PATH,
       ...extraEnv,
     },
-    stdio: process.env.VITEST_DEBUG_STDIO === "inherit" ? "inherit" : "ignore",
-  });
-  await waitForHealth();
+    { waitForReady: true }
+  );
+  PORT = server.PORT;
+  child = server.child;
 };
-
-beforeAll(async () => {
-  PORT = await getPort();
-});
 
 afterEach(async () => {
   await cleanTempFiles();

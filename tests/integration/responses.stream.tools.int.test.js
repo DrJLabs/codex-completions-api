@@ -1,45 +1,28 @@
 import { beforeAll, afterAll, test, expect } from "vitest";
-import getPort from "get-port";
-import { spawn } from "node:child_process";
 import fetch from "node-fetch";
 import { parseSSE } from "../shared/transcript-utils.js";
-import { waitForReady } from "./helpers.js";
+import { startServer, stopServer } from "./helpers.js";
 
 let PORT;
 let child;
 
 beforeAll(async () => {
-  PORT = await getPort();
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      PROXY_API_KEY: "test-sk-ci",
-      PROXY_PROTECT_MODELS: "false",
-      CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
-      FAKE_CODEX_MODE: "textual_tool_tail",
-      PROXY_STOP_AFTER_TOOLS: "true",
-      PROXY_STOP_AFTER_TOOLS_MODE: "first",
-      PROXY_RESPONSES_OUTPUT_MODE: "obsidian-xml",
-      PROXY_SSE_KEEPALIVE_MS: "0",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const server = await startServer({
+    PROXY_API_KEY: "test-sk-ci",
+    PROXY_PROTECT_MODELS: "false",
+    CODEX_BIN: "scripts/fake-codex-jsonrpc.js",
+    FAKE_CODEX_MODE: "textual_tool_tail",
+    PROXY_STOP_AFTER_TOOLS: "true",
+    PROXY_STOP_AFTER_TOOLS_MODE: "first",
+    PROXY_RESPONSES_OUTPUT_MODE: "obsidian-xml",
+    PROXY_SSE_KEEPALIVE_MS: "0",
   });
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (r.ok) break;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  await waitForReady(PORT);
+  PORT = server.PORT;
+  child = server.child;
 });
 
 afterAll(async () => {
-  try {
-    if (child && !child.killed) child.kill("SIGTERM");
-  } catch {}
+  await stopServer(child);
 });
 
 const collectDeltas = (entries) =>

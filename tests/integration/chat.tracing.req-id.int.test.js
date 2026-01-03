@@ -1,10 +1,9 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
 import { beforeAll, afterAll, afterEach, test, expect } from "vitest";
-import { spawn } from "node:child_process";
-import getPort from "get-port";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { spawnServer } from "./helpers.js";
 
 const readJsonLines = async (filePath) => {
   try {
@@ -34,15 +33,12 @@ let usageLog;
 let sanitizeLog;
 
 const startServer = async () => {
-  PORT = await getPort();
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "tracing-"));
   protoLog = path.join(tempDir, "proto.ndjson");
   usageLog = path.join(tempDir, "usage.ndjson");
   sanitizeLog = path.join(tempDir, "sanitize.ndjson");
-  child = spawn("node", ["server.js"], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
+  const server = await spawnServer(
+    {
       PROXY_API_KEY: "test-sk-ci",
       PROXY_ENV: "dev",
       PROXY_TRACE_REQUIRED: "true",
@@ -56,17 +52,10 @@ const startServer = async () => {
       PROXY_SANDBOX_MODE: "read-only",
       PROXY_CODEX_WORKDIR: tempDir,
     },
-    stdio: "ignore",
-  });
-  const start = Date.now();
-  while (Date.now() - start < 8000) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/healthz`);
-      if (res.ok) return;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("dev server failed to start for tracing tests");
+    { waitForReady: false }
+  );
+  PORT = server.PORT;
+  child = server.child;
 };
 
 const stopServer = async () => {
