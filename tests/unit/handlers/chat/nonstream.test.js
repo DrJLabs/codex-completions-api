@@ -109,7 +109,7 @@ ignored`;
     expect(message.content).toBeNull();
   });
 
-  test("function_call payload uses function_call and null content", () => {
+  test("function_call payload uses tool_calls and null content", () => {
     const { message } = buildAssistantMessage({
       snapshot: [],
       choiceContent: "ignored",
@@ -119,7 +119,7 @@ ignored`;
       functionCallPayload: { name: "lookup", arguments: "{}" },
     });
 
-    expect(message.function_call).toMatchObject({ name: "lookup" });
+    expect(message.tool_calls?.[0]?.function?.name).toBe("lookup");
     expect(message.content).toBeNull();
   });
 });

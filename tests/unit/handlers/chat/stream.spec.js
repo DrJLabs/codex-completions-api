@@ -183,13 +183,27 @@ vi.mock("../../../../src/handlers/chat/stream-event.js", async () => {
   };
 });
 
-vi.mock("../../../../src/handlers/chat/stream-runtime.js", () => ({
-  createStreamRuntime: (...args) => createStreamRuntimeMock(...args),
-}));
+vi.mock("../../../../src/handlers/chat/stream-runtime.js", async () => {
+  const actual = await vi.importActual("../../../../src/handlers/chat/stream-runtime.js");
+  return {
+    ...actual,
+    createStreamRuntime: (...args) => {
+      createStreamRuntimeMock(...args);
+      return actual.createStreamRuntime(...args);
+    },
+  };
+});
 
-vi.mock("../../../../src/handlers/chat/stream-transport.js", () => ({
-  wireStreamTransport: (...args) => wireStreamTransportMock(...args),
-}));
+vi.mock("../../../../src/handlers/chat/stream-transport.js", async () => {
+  const actual = await vi.importActual("../../../../src/handlers/chat/stream-transport.js");
+  return {
+    ...actual,
+    wireStreamTransport: (...args) => {
+      wireStreamTransportMock(...args);
+      return actual.wireStreamTransport(...args);
+    },
+  };
+});
 
 vi.mock("../../../../src/handlers/chat/stream-timers.js", () => ({
   createStreamTimers: (...args) => createStreamTimersMock(...args),
@@ -366,16 +380,8 @@ beforeEach(() => {
   completeToolBufferMock.mockReset();
   abortToolBufferMock.mockReset().mockReturnValue({ literal: "" });
   shouldSkipBlockMock.mockReset().mockReturnValue(false);
-  createStreamRuntimeMock.mockReset().mockReturnValue({
-    handleDelta: vi.fn(),
-    handleMessage: vi.fn(),
-    handleUsage: vi.fn(),
-    handleResult: vi.fn(),
-    handleError: vi.fn(),
-  });
-  wireStreamTransportMock.mockReset().mockReturnValue({
-    handleLine: vi.fn(),
-  });
+  createStreamRuntimeMock.mockReset();
+  wireStreamTransportMock.mockReset();
   createStreamTimersMock.mockReset().mockReturnValue({
     startIdleTimer: vi.fn(),
     stopIdleTimer: vi.fn(),

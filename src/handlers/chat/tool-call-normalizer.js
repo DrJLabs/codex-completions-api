@@ -2,7 +2,7 @@ const buildLegacyToolCall = (functionCall) => {
   const id =
     functionCall && typeof functionCall.id === "string" && functionCall.id
       ? functionCall.id
-      : "legacy_function_call";
+      : "tool_0_0";
   return {
     id,
     type: "function",
