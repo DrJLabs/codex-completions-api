@@ -8,6 +8,8 @@ export const createStreamOutputCoordinator = ({
   toolCallAggregator,
   toolBufferMetrics,
   ensureChoiceState,
+  forEachChoice,
+  onTextualToolBlocks,
   sendChoiceDelta,
   emitTextualToolMetadata,
   scheduleStopAfterTools,
@@ -106,11 +108,15 @@ export const createStreamOutputCoordinator = ({
 
   const flushDanglingToolBuffers = (reason = "finalize") => {
     if (!isObsidianOutput) return;
-    const indices = Array.from(new Set([0]));
-    indices.forEach((idx) => {
-      const state = ensureChoiceState(idx);
-      flushActiveToolBuffer(state, idx, reason);
-    });
+    if (typeof forEachChoice === "function") {
+      forEachChoice((idx) => {
+        const state = ensureChoiceState(idx);
+        flushActiveToolBuffer(state, idx, reason);
+      });
+      return;
+    }
+    const state = ensureChoiceState(0);
+    flushActiveToolBuffer(state, 0, reason);
   };
 
   const emitAggregatorToolContent = (choiceIndex = 0, snapshot = null) => {
@@ -190,6 +196,9 @@ export const createStreamOutputCoordinator = ({
     try {
       const { blocks, nextPos } = extractUseToolBlocks(state.emitted, state.scanPos);
       if (blocks && blocks.length) {
+        if (typeof onTextualToolBlocks === "function") {
+          onTextualToolBlocks(blocks.length);
+        }
         state.hasToolEvidence = true;
         state.lastToolEnd = blocks[blocks.length - 1].end;
         state.scanPos = nextPos;

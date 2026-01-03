@@ -33,7 +33,14 @@ import {
   resolveChatCopilotDetection,
   resolveOutputMode,
 } from "./shared.js";
-import { createToolCallAggregator, toObsidianXml } from "../../lib/tool-call-aggregator.js";
+import { createToolCallAggregator } from "../../lib/tool-call-aggregator.js";
+import {
+  buildCanonicalXml,
+  extractTextualUseToolBlock,
+  getToolOutputOptions,
+  normalizeToolCallSnapshot,
+  trimTrailingTextAfterToolBlocks,
+} from "./tool-output.js";
 import {
   sanitizeMetadataTextSegment,
   extractMetadataFromPayload,
@@ -58,96 +65,9 @@ import {
 } from "../../lib/observability/transform-summary.js";
 import { logStructured } from "../../services/logging/schema.js";
 
-const fingerprintToolCall = (record) => {
-  if (!record || typeof record !== "object") return null;
-  if (record.id && typeof record.id === "string") return `id:${record.id}`;
-  const fn = record.function && typeof record.function === "object" ? record.function : {};
-  const name = typeof fn.name === "string" ? fn.name : "";
-  const args = typeof fn.arguments === "string" ? fn.arguments : "";
-  return `fn:${name}:${args}`;
-};
+export { buildCanonicalXml, extractTextualUseToolBlock } from "./tool-output.js";
 
-const normalizeToolCallSnapshot = (snapshot = []) => {
-  const list = Array.isArray(snapshot) ? snapshot.slice() : [];
-  let next = list;
-  if (TOOL_BLOCK_DEDUP && next.length) {
-    const seen = new Set();
-    next = next.filter((record) => {
-      const fingerprint = fingerprintToolCall(record);
-      if (!fingerprint) return true;
-      if (seen.has(fingerprint)) return false;
-      seen.add(fingerprint);
-      return true;
-    });
-  }
-  const maxBlocks = Number(CFG.PROXY_TOOL_BLOCK_MAX || 0);
-  const truncated = maxBlocks > 0 && next.length > maxBlocks;
-  const records = truncated ? next.slice(0, maxBlocks) : next;
-  return { records, truncated, observedCount: next.length };
-};
-
-const joinToolBlocks = (blocks = []) => {
-  if (!blocks.length) return null;
-  if (!TOOL_BLOCK_DELIMITER) return blocks.join("");
-  return blocks.join(TOOL_BLOCK_DELIMITER);
-};
-
-const trimTrailingTextAfterToolBlocks = (content = "") => {
-  if (!content || typeof content !== "string") return content;
-  const lastClose = content.lastIndexOf("</use_tool>");
-  if (lastClose === -1) return content;
-  return content.slice(0, lastClose + "</use_tool>".length).trim();
-};
-
-export const buildCanonicalXml = (snapshot = []) => {
-  if (!Array.isArray(snapshot) || !snapshot.length) return null;
-  const { records } = normalizeToolCallSnapshot(snapshot);
-  const xmlBlocks = [];
-  for (const record of records) {
-    const args = record?.function?.arguments || "";
-    if (!args) continue;
-    try {
-      JSON.parse(args);
-    } catch (err) {
-      console.error("[proxy][chat.nonstream] failed to build obsidian XML", err);
-      continue;
-    }
-    const xml = toObsidianXml(record);
-    if (xml) xmlBlocks.push(xml);
-  }
-  return joinToolBlocks(xmlBlocks);
-};
-
-export const extractTextualUseToolBlock = (text) => {
-  if (!text || !text.length) return null;
-  try {
-    const { blocks } = extractUseToolBlocks(text, 0);
-    if (!blocks || !blocks.length) return null;
-    const seen = TOOL_BLOCK_DEDUP ? new Set() : null;
-    const results = [];
-    for (const block of blocks) {
-      const start = Number.isInteger(block.start)
-        ? block.start
-        : Number.isInteger(block.indexStart)
-          ? block.indexStart
-          : 0;
-      const end = Number.isInteger(block.end)
-        ? block.end
-        : Number.isInteger(block.indexEnd)
-          ? block.indexEnd
-          : text.length;
-      const literal = text.slice(start, end);
-      if (!literal) continue;
-      if (seen) {
-        if (seen.has(literal)) continue;
-        seen.add(literal);
-      }
-      results.push(literal);
-    }
-    return joinToolBlocks(results);
-  } catch {}
-  return null;
-};
+const TOOL_OUTPUT_OPTIONS = getToolOutputOptions();
 
 export const buildAssistantMessage = ({
   snapshot = [],
@@ -157,16 +77,18 @@ export const buildAssistantMessage = ({
   isObsidianOutput = true,
   functionCallPayload = null,
 } = {}) => {
-  const { records: toolCallRecords, truncated: toolCallsTruncated } =
-    normalizeToolCallSnapshot(snapshot);
+  const { records: toolCallRecords, truncated: toolCallsTruncated } = normalizeToolCallSnapshot(
+    snapshot,
+    TOOL_OUTPUT_OPTIONS
+  );
   const hasToolCalls = toolCallRecords.length > 0;
   let assistantContent = choiceContent && choiceContent.length ? choiceContent : normalizedContent;
   if (canonicalReason === "content_filter") {
     assistantContent = null;
   } else if (hasToolCalls) {
     assistantContent = isObsidianOutput
-      ? buildCanonicalXml(toolCallRecords) ||
-        extractTextualUseToolBlock(choiceContent) ||
+      ? buildCanonicalXml(toolCallRecords, TOOL_OUTPUT_OPTIONS) ||
+        extractTextualUseToolBlock(choiceContent, TOOL_OUTPUT_OPTIONS) ||
         normalizedContent ||
         choiceContent
       : null;
@@ -213,9 +135,6 @@ const applyCors = (req, res) => applyCorsUtil(req, res, CORS_ENABLED, CORS_ALLOW
 const MAX_CHAT_CHOICES = Math.max(1, Number(CFG.PROXY_MAX_CHAT_CHOICES || 1));
 const ENABLE_PARALLEL_TOOL_CALLS = IS_DEV_ENV && CFG.PROXY_ENABLE_PARALLEL_TOOL_CALLS;
 const SANITIZE_METADATA = !!CFG.PROXY_SANITIZE_METADATA;
-const TOOL_BLOCK_DEDUP = !!CFG.PROXY_TOOL_BLOCK_DEDUP;
-const TOOL_BLOCK_DELIMITER =
-  typeof CFG.PROXY_TOOL_BLOCK_DELIMITER === "string" ? CFG.PROXY_TOOL_BLOCK_DELIMITER : "";
 const APPROVAL_POLICY = CFG.PROXY_APPROVAL_POLICY;
 
 const logUsageFailure = ({

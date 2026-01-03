@@ -5,6 +5,7 @@ import {
   modelNotFoundBody,
   tokensExceededBody,
 } from "../../../../src/lib/errors.js";
+import { parseStreamEventLine } from "../../../../src/handlers/chat/stream-event.js";
 
 const configMock = {
   CODEX_MODEL: "gpt-test",
@@ -170,6 +171,14 @@ vi.mock("../../../../src/handlers/chat/stop-after-tools-controller.js", () => ({
   createStopAfterToolsController: (...args) => createStopAfterToolsControllerMock(...args),
 }));
 
+vi.mock("../../../../src/handlers/chat/stream-event.js", async () => {
+  const actual = await vi.importActual("../../../../src/handlers/chat/stream-event.js");
+  return {
+    ...actual,
+    parseStreamEventLine: vi.fn((...args) => actual.parseStreamEventLine(...args)),
+  };
+});
+
 vi.mock("../../../../src/services/backend-mode.js", () => ({
   selectBackendMode: vi.fn(() => "json-rpc"),
 }));
@@ -275,6 +284,7 @@ const loadHandler = async () => {
 
 beforeEach(() => {
   applyCorsMock.mockReset();
+  parseStreamEventLine.mockReset();
   requireModelMock.mockReset().mockReturnValue("gpt-test");
   acceptedModelIdsMock.mockReset().mockReturnValue(new Set(["gpt-test"]));
   validateOptionalChatParamsMock.mockReset().mockReturnValue({ ok: true });
@@ -1939,5 +1949,24 @@ describe("postChatStream", () => {
       .find((payload) => payload?.tool_call_count);
 
     expect(toolStatPayload?.tool_call_count).toBe(1);
+  });
+
+  it("routes event lines through parseStreamEventLine", async () => {
+    const postChatStream = await loadHandler();
+
+    const req = buildReq({
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    });
+    const res = buildRes();
+
+    await postChatStream(req, res);
+
+    lastChild.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({ msg: { type: "codex/event/task_complete" } }) + "\n")
+    );
+
+    expect(parseStreamEventLine).toHaveBeenCalled();
   });
 });
