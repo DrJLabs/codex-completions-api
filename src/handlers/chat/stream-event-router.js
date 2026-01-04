@@ -21,6 +21,12 @@ export const createStreamEventRouter = ({
   emitFinishChunk,
   finalizeStream,
 } = {}) => {
+  const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
+  const resolveTokenCounts = (promptCandidates, completionCandidates) => ({
+    promptTokens: Number(firstDefined(...promptCandidates)),
+    completionTokens: Number(firstDefined(...completionCandidates)),
+  });
+
   const handleLine = (line) => {
     const parsed = parseStreamEventLine?.(line, {
       extractMetadataFromPayload,
@@ -28,6 +34,7 @@ export const createStreamEventRouter = ({
     });
     if (!parsed) return { handled: false };
     const { type: t, payload, params, messagePayload, metadataInfo } = parsed;
+    const canTrackFinish = typeof trackFinishReason === "function";
     if (typeof appendProtoEvent === "function") {
       appendProtoEvent({
         ts: Date.now(),
@@ -44,7 +51,7 @@ export const createStreamEventRouter = ({
         typeof extractFinishReasonFromMessage === "function"
           ? extractFinishReasonFromMessage(messagePayload)
           : null;
-      if (finishCandidate && typeof trackFinishReason === "function") {
+      if (finishCandidate && canTrackFinish) {
         trackFinishReason(finishCandidate, t || "event");
       }
     }
@@ -74,21 +81,23 @@ export const createStreamEventRouter = ({
         }
       }
     } else if (t === "token_count") {
-      const promptTokens = Number(
-        messagePayload?.prompt_tokens ??
-          messagePayload?.promptTokens ??
-          messagePayload?.token_count?.prompt_tokens ??
-          params?.prompt_tokens ??
-          params?.promptTokens ??
-          params?.token_count?.prompt_tokens
-      );
-      const completionTokens = Number(
-        messagePayload?.completion_tokens ??
-          messagePayload?.completionTokens ??
-          messagePayload?.token_count?.completion_tokens ??
-          params?.completion_tokens ??
-          params?.completionTokens ??
-          params?.token_count?.completion_tokens
+      const { promptTokens, completionTokens } = resolveTokenCounts(
+        [
+          messagePayload?.prompt_tokens,
+          messagePayload?.promptTokens,
+          messagePayload?.token_count?.prompt_tokens,
+          params?.prompt_tokens,
+          params?.promptTokens,
+          params?.token_count?.prompt_tokens,
+        ],
+        [
+          messagePayload?.completion_tokens,
+          messagePayload?.completionTokens,
+          messagePayload?.token_count?.completion_tokens,
+          params?.completion_tokens,
+          params?.completionTokens,
+          params?.token_count?.completion_tokens,
+        ]
       );
       if (typeof updateUsageCounts === "function") {
         updateUsageCounts("token_count", { prompt: promptTokens, completion: completionTokens });
@@ -97,25 +106,27 @@ export const createStreamEventRouter = ({
         typeof extractFinishReasonFromMessage === "function"
           ? extractFinishReasonFromMessage(messagePayload)
           : null;
-      if (tokenFinishReason && typeof trackFinishReason === "function") {
+      if (tokenFinishReason && canTrackFinish) {
         trackFinishReason(tokenFinishReason, "token_count");
       }
     } else if (t === "usage") {
-      const promptTokens = Number(
-        messagePayload?.prompt_tokens ??
-          messagePayload?.usage?.prompt_tokens ??
-          params?.usage?.prompt_tokens ??
-          params?.prompt_tokens ??
-          params?.promptTokens ??
-          params?.token_count?.prompt_tokens
-      );
-      const completionTokens = Number(
-        messagePayload?.completion_tokens ??
-          messagePayload?.usage?.completion_tokens ??
-          params?.usage?.completion_tokens ??
-          params?.completion_tokens ??
-          params?.completionTokens ??
-          params?.token_count?.completion_tokens
+      const { promptTokens, completionTokens } = resolveTokenCounts(
+        [
+          messagePayload?.prompt_tokens,
+          messagePayload?.usage?.prompt_tokens,
+          params?.usage?.prompt_tokens,
+          params?.prompt_tokens,
+          params?.promptTokens,
+          params?.token_count?.prompt_tokens,
+        ],
+        [
+          messagePayload?.completion_tokens,
+          messagePayload?.usage?.completion_tokens,
+          params?.usage?.completion_tokens,
+          params?.completion_tokens,
+          params?.completionTokens,
+          params?.token_count?.completion_tokens,
+        ]
       );
       if (typeof updateUsageCounts === "function") {
         updateUsageCounts(
@@ -129,30 +140,30 @@ export const createStreamEventRouter = ({
         typeof extractFinishReasonFromMessage === "function"
           ? extractFinishReasonFromMessage(messagePayload)
           : null;
-      if (finishReason && typeof trackFinishReason === "function") {
-        trackFinishReason(finishReason, "task_complete");
-      } else if (typeof hasAnyChoiceSent === "function" && !hasAnyChoiceSent()) {
-        if (typeof trackFinishReason === "function") {
+      if (canTrackFinish) {
+        if (finishReason) {
+          trackFinishReason(finishReason, "task_complete");
+        } else if (typeof hasAnyChoiceSent === "function" && !hasAnyChoiceSent()) {
           trackFinishReason("length", "task_complete");
-        }
-      } else if (typeof hasLengthEvidence === "function" && hasLengthEvidence()) {
-        if (typeof trackFinishReason === "function") {
+        } else if (typeof hasLengthEvidence === "function" && hasLengthEvidence()) {
           trackFinishReason("length", "task_complete");
         }
       }
-      const promptTokens = Number(
-        messagePayload?.prompt_tokens ??
-          messagePayload?.token_count?.prompt_tokens ??
-          params?.token_count?.prompt_tokens ??
-          params?.prompt_tokens ??
-          params?.promptTokens
-      );
-      const completionTokens = Number(
-        messagePayload?.completion_tokens ??
-          messagePayload?.token_count?.completion_tokens ??
-          params?.token_count?.completion_tokens ??
-          params?.completion_tokens ??
-          params?.completionTokens
+      const { promptTokens, completionTokens } = resolveTokenCounts(
+        [
+          messagePayload?.prompt_tokens,
+          messagePayload?.token_count?.prompt_tokens,
+          params?.token_count?.prompt_tokens,
+          params?.prompt_tokens,
+          params?.promptTokens,
+        ],
+        [
+          messagePayload?.completion_tokens,
+          messagePayload?.token_count?.completion_tokens,
+          params?.token_count?.completion_tokens,
+          params?.completion_tokens,
+          params?.completionTokens,
+        ]
       );
       const usageTrigger = typeof getUsageTrigger === "function" ? getUsageTrigger() : null;
       if (Number.isFinite(promptTokens) || Number.isFinite(completionTokens)) {
