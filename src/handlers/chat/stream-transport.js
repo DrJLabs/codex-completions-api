@@ -12,12 +12,7 @@ export const wireStreamTransport = ({
       ? (resolveChoiceIndexFromPayload(payload, messagePayload, params) ?? baseChoiceIndex ?? 0)
       : (baseChoiceIndex ?? 0);
 
-  const handleLine = (line) => {
-    const parsed = parseStreamEventLine(line, {
-      resolveChoiceIndexFromPayload,
-      extractMetadataFromPayload,
-      sanitizeMetadata,
-    });
+  const handleParsedEvent = (parsed) => {
     if (!parsed) return false;
     const { type, params, messagePayload, metadataInfo, baseChoiceIndex } = parsed;
     if (type === "agent_message_content_delta" || type === "agent_message_delta") {
@@ -47,6 +42,15 @@ export const wireStreamTransport = ({
     return false;
   };
 
+  const handleLine = (line) => {
+    const parsed = parseStreamEventLine(line, {
+      resolveChoiceIndexFromPayload,
+      extractMetadataFromPayload,
+      sanitizeMetadata,
+    });
+    return handleParsedEvent(parsed);
+  };
+
   if (child?.stdout?.on) {
     let buffer = "";
     const flushBuffer = () => {
@@ -68,5 +72,5 @@ export const wireStreamTransport = ({
     child.stdout.on("close", flushBuffer);
   }
 
-  return { handleLine };
+  return { handleLine, handleParsedEvent };
 };
