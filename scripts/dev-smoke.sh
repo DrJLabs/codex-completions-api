@@ -15,6 +15,12 @@ DOMAIN="${DEV_DOMAIN:-${DOMAIN:-}}"; [[ -n "$DOMAIN" ]] || { echo "ERROR: DEV_DO
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env.dev or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
+# shellcheck disable=SC1090
+. "$ROOT_DIR/scripts/lib/model-helpers.sh"
+# Allow .env.dev to control the model; default to codex low-effort alias.
+MODEL_RAW="${MODEL:-${SMOKE_MODEL:-gpt-5.2-codex-low}}"
+MODEL="$(normalize_model "$MODEL_RAW")"
+MODEL_EFFORT="$(infer_reasoning_effort "$MODEL_RAW")"
 BASE_CF="https://$DOMAIN"
 REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
 STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
@@ -101,14 +107,21 @@ if [[ -n "$METRICS_PAYLOAD" ]]; then
 fi
 
 if [[ -n "$KEY" ]]; then
-  PAY='{"model":"codex-5","stream":false,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}'
+  BASE_PAYLOAD=$(jq -c -n \
+    --arg model "$MODEL" \
+    --arg content "Say hello." \
+    --arg effort "$MODEL_EFFORT" \
+    '({model: $model, messages: [{role: "user", content: $content}]})
+     | if $effort != "" then . + {reasoning: {effort: $effort}} else . end')
+  PAY=$(jq -c '. + {stream: false}' <<<"$BASE_PAYLOAD")
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
     && pass "cf POST /v1/chat/completions (non-stream)" || fail "cf POST /v1/chat/completions (non-stream)"
 
   SSE_OUT=$(mktemp)
+  STREAM_PAY=$(jq -c '. + {stream: true}' <<<"$BASE_PAYLOAD")
   curl -sN --max-time "$STREAM_TIMEOUT" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d '{"model":"codex-5","stream":true,"reasoning":{"effort":"low"},"messages":[{"role":"user","content":"Say hello."}]}' \
+    -d "$STREAM_PAY" \
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \
@@ -121,7 +134,7 @@ if [[ -n "$KEY" ]]; then
   rm -f "$SSE_OUT"
 
   # Tool-call streaming smoke (structured + optional modes)
-  TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-codex-5}"
+  TOOL_SMOKE_MODEL="${TOOL_SMOKE_MODEL:-$MODEL}"
   TOOL_SMOKE_TIMEOUT_MS="${TOOL_SMOKE_TIMEOUT_MS:-30000}"
   TOOL_SMOKE_ENDPOINT="${TOOL_SMOKE_ENDPOINT:-responses}"
   TOOL_SMOKE_MODES="${TOOL_SMOKE_MODES:-textual}"

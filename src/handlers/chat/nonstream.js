@@ -628,7 +628,7 @@ export async function postChatNonStream(req, res) {
   )
     .toString()
     .toLowerCase();
-  const allowEffort = new Set(["low", "medium", "high", "xhigh", "minimal"]);
+  const allowEffort = new Set(["low", "medium", "high", "xhigh"]);
   if (!reasoningEffort) {
     const implied = impliedEffortForModel(requestedModel);
     if (implied) reasoningEffort = implied;

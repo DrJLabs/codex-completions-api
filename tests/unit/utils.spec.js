@@ -19,7 +19,7 @@ describe("model utils", () => {
   });
   it("implies effort from codex-5-high", () => {
     expect(impliedEffortForModel("codex-5-high")).toBe("high");
-    expect(impliedEffortForModel("codex-5-minimal")).toBe("minimal");
+    expect(impliedEffortForModel("codex-5-low")).toBe("low");
     expect(impliedEffortForModel("gpt-5.2")).toBe("");
   });
   it("normalizes codev-5.1-L to gpt-5.1 with low effort", () => {

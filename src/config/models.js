@@ -1,4 +1,4 @@
-const REASONING_VARIANTS = ["low", "medium", "high", "minimal"];
+const REASONING_VARIANTS = ["low", "medium", "high"];
 const DEV_BASE = "codev-5";
 const PROD_BASE = "codex-5";
 const GPT51_TARGET_MODEL = "gpt-5.1";

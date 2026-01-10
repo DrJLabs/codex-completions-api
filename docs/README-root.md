@@ -26,7 +26,7 @@ Goal: let any OpenAI Responses client (SDKs, IDEs, curl) talk to Codex CLI as if
 - App-server JSON-RPC parity: request normalization (`initialize`, `sendUserTurn`, `sendUserMessage`) mirrors the exported Codex schema and is covered by schema and integration tests.
 - Minimal shaping: strips ANSI; optional tool-block helpers for clients that parse `<use_tool>` blocks.
 - Dev vs Prod model IDs: dev advertises `codev-5*` plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` (map to `gpt-5.1` / `gpt-5.2` low/medium/high/xhigh); prod advertises `codex-5*` plus `gpt-5.2-codex-{L,M,H,XH}`. Both prefixes are accepted everywhere.
-- Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|minimal>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
+- Reasoning effort mapping: `reasoning.effort` → `--config model_reasoning_effort="<low|medium|high|xhigh>"` (also passes the legacy `--config reasoning.effort=...` for older CLIs).
 - Token usage tracking (approximate): logs estimated prompt/completion tokens per request and exposes query endpoints under `/v1/usage`.
 - Connection hygiene: graceful SSE cleanup on disconnect; keepalive/timers cleared; optional child termination on client close.
 - Worker supervisor: production and dev run long-lived `codex app-server` workers gated by handshake/readiness timers (see [Backend Modes](#backend-modes)). A deterministic JSON-RPC shim exists for CI and tests.
@@ -191,7 +191,7 @@ If the proxy returns a login URL, Codex uses a local callback on port `1435` —
 
 ### Model selection
 
-- Production advertises `codex-5{,-low,-medium,-high,-minimal}` plus `gpt-5.2-codex-{L,M,H,XH}`; development advertises `codev-5{,-low,-medium,-high,-minimal}` to avoid client confusion.
+- Production advertises `codex-5{,-low,-medium,-high}` plus `gpt-5.2-codex-{L,M,H,XH}`; development advertises `codev-5{,-low,-medium,-high}` to avoid client confusion.
 - Dev also exposes `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which map directly to `gpt-5.1` / `gpt-5.2` with implied low/medium/high/xhigh reasoning effort (uppercase suffix is optional; IDs are case-insensitive). Prod exposes the `gpt-5.2-codex-*` aliases for the same `gpt-5.2` target/effort mapping.
 - Both prefixes are accepted. The proxy normalizes model IDs to the effective Codex target (default `gpt-5.2`,
   `gpt-5.1` for `codev-5.1-*`, and `gpt-5.2` for `codev-5.2-*` / `gpt-5.2-codex-*`) and applies the implied
@@ -310,8 +310,8 @@ Notes:
 
 #### Model IDs and client compatibility
 
-- Prod advertises: `codex-5`, `codex-5-{low,medium,high,minimal}`, plus `gpt-5.2-codex-{L,M,H,XH}` which route to `gpt-5.2` automatically.
-- Dev advertises: `codev-5`, `codev-5-{low,medium,high,minimal}`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which route to `gpt-5.1` / `gpt-5.2` automatically.
+- Prod advertises: `codex-5`, `codex-5-{low,medium,high}`, plus `gpt-5.2-codex-{L,M,H,XH}` which route to `gpt-5.2` automatically.
+- Dev advertises: `codev-5`, `codev-5-{low,medium,high}`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which route to `gpt-5.1` / `gpt-5.2` automatically.
 - The server accepts both prefixes everywhere, but many SDKs/tools validate against `GET /v1/models` and will reject an ID that isn’t advertised by that environment. Use the environment‑appropriate prefix, or specify `model: "gpt-5.2"` and set `reasoning.effort`.
 
 Examples
@@ -353,12 +353,11 @@ Dev stack (public behind Traefik):
 
 Model IDs in dev vs prod:
 
-- Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, `codex-5-minimal`, plus `gpt-5.2-codex-{L,M,H,XH}` which normalize to `gpt-5.2` at low/medium/high/xhigh reasoning effort.
-- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, `codev-5-minimal`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which normalize to `gpt-5.1` / `gpt-5.2` at low/medium/high/xhigh reasoning effort.
+- Prod (advertised): `codex-5`, `codex-5-low`, `codex-5-medium`, `codex-5-high`, plus `gpt-5.2-codex-{L,M,H,XH}` which normalize to `gpt-5.2` at low/medium/high/xhigh reasoning effort.
+- Dev (advertised): `codev-5`, `codev-5-low`, `codev-5-medium`, `codev-5-high`, plus `codev-5.1-{L,M,H}` and `codev-5.2-{L,M,H,XH}` which normalize to `gpt-5.1` / `gpt-5.2` at low/medium/high/xhigh reasoning effort.
 - Both environments accept either prefix; dev advertises `codev-*` to avoid client confusion. All map to the effective model (`gpt-5.2` for the `codex/codev-5*` aliases, `gpt-5.1` for `codev-5.1-*`, and `gpt-5.2` for `codev-5.2-*` / `gpt-5.2-codex-*`) with the implied reasoning effort.
 - Do **not** override `CODEX_MODEL` in dev to force a specific reasoning tier. Leave it unset so the proxy maps
-  `codev-5-*` requests to `gpt-5.2` and `codev-5.1-*` / `codev-5.2-*` requests to `gpt-5.1` / `gpt-5.2` internally; dev API keys cannot call the minimal tier directly and will raise
-  `400 Unsupported model` otherwise.
+  `codev-5-*` requests to `gpt-5.2` and `codev-5.1-*` / `codev-5.2-*` requests to `gpt-5.1` / `gpt-5.2` internally; avoid using a `minimal` effort tier because the upstream `gpt-5.2` backend rejects it.
 
 Notes:
 
@@ -568,7 +567,7 @@ An example file is in `config/roo-openai-compatible.json`.
 - `model`: normalized to the effective Codex model before invoking the JSON-RPC transport. Aliases such as `codex/gpt-5.2` are accepted but rewritten to the underlying `gpt-5.2` call.
 - `messages[]`: transformed into the Codex schema (`system_prompt`, `messages`, `metadata`) and passed to `sendUserTurn`. System and assistant messages remain in the transcript; tool calls are flattened into text so existing Codex releases can parse them.
 - `stream: true`: emits SSE with a role-first chunk, incremental content deltas, and `[DONE]`.
-- `reasoning.effort ∈ {low,medium,high,minimal}`: forwarded via `--config model_reasoning_effort=...` (and the older `--config reasoning.effort=...` for backwards compatibility) in addition to the JSON payload.
+- `reasoning.effort ∈ {low,medium,high,xhigh}`: forwarded via `--config model_reasoning_effort=...` (and the older `--config reasoning.effort=...` for backwards compatibility) in addition to the JSON payload.
 - Sampling knobs (`temperature`, `top_p`, penalties, `max_tokens`) are ignored because Codex CLI does not expose them for app-server mode.
 
 ## How it works (main‑p)
@@ -600,7 +599,6 @@ The proxy advertises additional model ids that all map to GPT‑5 but set the re
 - `codex-5-low`
 - `codex-5-medium`
 - `codex-5-high`
-- `codex-5-minimal`
 
 Behavior:
 

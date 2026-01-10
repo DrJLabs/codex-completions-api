@@ -16,7 +16,7 @@ describe("buildAppServerArgs", () => {
       effectiveModel: "gpt-5.2",
       FORCE_PROVIDER: "chatgpt",
       reasoningEffort: "low",
-      allowEffort: new Set(["low", "medium", "high", "minimal"]),
+      allowEffort: new Set(["low", "medium", "high", "xhigh"]),
       enableParallelTools: true,
     });
     const configArgs = getConfigArgs(args);

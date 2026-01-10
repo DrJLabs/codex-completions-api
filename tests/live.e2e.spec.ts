@@ -54,7 +54,7 @@ test.describe("Live E2E (real Codex)", () => {
   test("non-stream chat returns content", async ({ request }) => {
     const res = await request.post("/v1/chat/completions", {
       data: {
-        model: "codex-5-minimal",
+        model: "codex-5-low",
         stream: false,
         messages: [{ role: "user", content: "Say hello." }],
       },
@@ -81,7 +81,7 @@ test.describe("Live E2E (real Codex)", () => {
             : {}),
         },
         body: JSON.stringify({
-          model: "codex-5-minimal",
+          model: "codex-5-low",
           stream: true,
           messages: [{ role: "user", content: "Say hello." }],
         }),

@@ -115,7 +115,7 @@ export const impliedEffortForModel = (requestedModel) => {
   if (MODEL_REASONING_OVERRIDES.has(m)) {
     return MODEL_REASONING_OVERRIDES.get(m) || "";
   }
-  const variants = ["low", "medium", "high", "minimal"];
+  const variants = ["low", "medium", "high"];
   for (const v of variants) {
     if (m === `codex-5-${v}` || m === `codev-5-${v}`) return v;
   }

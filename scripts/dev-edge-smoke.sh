@@ -16,8 +16,11 @@ fi
 
 DOMAIN="${DOMAIN:-${DEV_DOMAIN:-}}"
 KEY="${KEY:-${PROXY_API_KEY:-}}"
-# Prefer minimal public alias for faster responses; server normalizes to effective runtime model
-MODEL="${MODEL:-codex-5-minimal}"
+# shellcheck disable=SC1090
+. "$ROOT_DIR/scripts/lib/model-helpers.sh"
+# Allow .env.dev to control the model; default to codex low-effort alias.
+MODEL_RAW="${MODEL:-${SMOKE_MODEL:-gpt-5.2-codex-low}}"
+MODEL="$(normalize_model "$MODEL_RAW")"
 PROMPT="${PROMPT:-Say hello.}"
 
 if [[ -z "${DOMAIN}" || -z "${KEY}" ]]; then
