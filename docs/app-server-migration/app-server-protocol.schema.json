@@ -216,7 +216,6 @@
                 "high",
                 "low",
                 "medium",
-                "minimal",
                 "xhigh"
               ],
               "type": "string"
