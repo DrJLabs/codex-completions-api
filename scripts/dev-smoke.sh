@@ -107,18 +107,20 @@ if [[ -n "$METRICS_PAYLOAD" ]]; then
 fi
 
 if [[ -n "$KEY" ]]; then
-  REASONING_JSON=""
+  BASE_PAYLOAD=$(jq -c -n --arg model "$MODEL" --arg content "Say hello." \
+    '{model: $model, messages: [{role: "user", content: $content}]}')
   if [[ -n "$MODEL_EFFORT" ]]; then
-    REASONING_JSON=",\"reasoning\":{\"effort\":\"${MODEL_EFFORT}\"}"
+    BASE_PAYLOAD=$(jq -c --arg effort "$MODEL_EFFORT" '. + {reasoning: {effort: $effort}}' <<<"$BASE_PAYLOAD")
   fi
-  PAY="{\"model\":\"${MODEL}\",\"stream\":false${REASONING_JSON},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}"
+  PAY=$(jq -c '. + {stream: false}' <<<"$BASE_PAYLOAD")
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
     && pass "cf POST /v1/chat/completions (non-stream)" || fail "cf POST /v1/chat/completions (non-stream)"
 
   SSE_OUT=$(mktemp)
+  STREAM_PAY=$(jq -c '. + {stream: true}' <<<"$BASE_PAYLOAD")
   curl -sN --max-time "$STREAM_TIMEOUT" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d "{\"model\":\"${MODEL}\",\"stream\":true${REASONING_JSON},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}" \
+    -d "$STREAM_PAY" \
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \
