@@ -16,8 +16,18 @@ fi
 
 DOMAIN="${DOMAIN:-${DEV_DOMAIN:-}}"
 KEY="${KEY:-${PROXY_API_KEY:-}}"
-# Prefer minimal public alias for faster responses; server normalizes to effective runtime model
-MODEL="${MODEL:-codex-5-minimal}"
+normalize_model() {
+  case "$1" in
+    *-low) echo "${1%-low}-l" ;;
+    *-medium) echo "${1%-medium}-m" ;;
+    *-high) echo "${1%-high}-h" ;;
+    *-xhigh) echo "${1%-xhigh}-xh" ;;
+    *) echo "$1" ;;
+  esac
+}
+# Allow .env.dev to control the model; default to codex low-effort alias.
+MODEL_RAW="${MODEL:-${SMOKE_MODEL:-gpt-5.2-codex-low}}"
+MODEL="$(normalize_model "$MODEL_RAW")"
 PROMPT="${PROMPT:-Say hello.}"
 
 if [[ -z "${DOMAIN}" || -z "${KEY}" ]]; then
