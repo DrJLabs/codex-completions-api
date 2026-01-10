@@ -15,18 +15,12 @@ DOMAIN="${DEV_DOMAIN:-${DOMAIN:-}}"; [[ -n "$DOMAIN" ]] || { echo "ERROR: DEV_DO
 ORIGIN_HOST="${ORIGIN_HOST:-127.0.0.1}"
 # Prefer KEY, fall back to PROXY_API_KEY (from .env.dev or environment)
 KEY="${KEY:-${PROXY_API_KEY:-}}"
-normalize_model() {
-  case "$1" in
-    *-low) echo "${1%-low}-l" ;;
-    *-medium) echo "${1%-medium}-m" ;;
-    *-high) echo "${1%-high}-h" ;;
-    *-xhigh) echo "${1%-xhigh}-xh" ;;
-    *) echo "$1" ;;
-  esac
-}
+# shellcheck disable=SC1090
+. "$ROOT_DIR/scripts/lib/model-helpers.sh"
 # Allow .env.dev to control the model; default to codex low-effort alias.
 MODEL_RAW="${MODEL:-${SMOKE_MODEL:-gpt-5.2-codex-low}}"
 MODEL="$(normalize_model "$MODEL_RAW")"
+MODEL_EFFORT="$(infer_reasoning_effort "$MODEL_RAW")"
 BASE_CF="https://$DOMAIN"
 REQUEST_TIMEOUT="${SMOKE_REQUEST_TIMEOUT:-60}"
 STREAM_TIMEOUT="${SMOKE_STREAM_TIMEOUT:-120}"
@@ -113,14 +107,18 @@ if [[ -n "$METRICS_PAYLOAD" ]]; then
 fi
 
 if [[ -n "$KEY" ]]; then
-  PAY="{\"model\":\"${MODEL}\",\"stream\":false,\"reasoning\":{\"effort\":\"low\"},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}"
+  REASONING_JSON=""
+  if [[ -n "$MODEL_EFFORT" ]]; then
+    REASONING_JSON=",\"reasoning\":{\"effort\":\"${MODEL_EFFORT}\"}"
+  fi
+  PAY="{\"model\":\"${MODEL}\",\"stream\":false${REASONING_JSON},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}"
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
     && pass "cf POST /v1/chat/completions (non-stream)" || fail "cf POST /v1/chat/completions (non-stream)"
 
   SSE_OUT=$(mktemp)
   curl -sN --max-time "$STREAM_TIMEOUT" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d "{\"model\":\"${MODEL}\",\"stream\":true,\"reasoning\":{\"effort\":\"low\"},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}" \
+    -d "{\"model\":\"${MODEL}\",\"stream\":true${REASONING_JSON},\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}" \
     "$BASE_CF/v1/chat/completions" | sed '/^data: \[DONE\]$/q' > "$SSE_OUT" || true
   if grep -q '^data: \[DONE\]$' "$SSE_OUT" && \
      grep -q '"object":"chat.completion.chunk"' "$SSE_OUT" && \

@@ -16,15 +16,8 @@ fi
 
 DOMAIN="${DOMAIN:-${DEV_DOMAIN:-}}"
 KEY="${KEY:-${PROXY_API_KEY:-}}"
-normalize_model() {
-  case "$1" in
-    *-low) echo "${1%-low}-l" ;;
-    *-medium) echo "${1%-medium}-m" ;;
-    *-high) echo "${1%-high}-h" ;;
-    *-xhigh) echo "${1%-xhigh}-xh" ;;
-    *) echo "$1" ;;
-  esac
-}
+# shellcheck disable=SC1090
+. "$ROOT_DIR/scripts/lib/model-helpers.sh"
 # Allow .env.dev to control the model; default to codex low-effort alias.
 MODEL_RAW="${MODEL:-${SMOKE_MODEL:-gpt-5.2-codex-low}}"
 MODEL="$(normalize_model "$MODEL_RAW")"
