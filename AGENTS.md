@@ -44,6 +44,7 @@
 ## Git workflow
 
 - Use standard branches in the main working tree; do not create or use isolated git worktrees for routine work.
+- After pushing any updates to a PR branch, immediately comment `@codex review` and `/gemini review` on the PR and mention that in your response (do not wait for a prompt).
 
 ## Docs usage
 
