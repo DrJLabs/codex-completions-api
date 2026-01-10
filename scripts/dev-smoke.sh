@@ -107,11 +107,12 @@ if [[ -n "$METRICS_PAYLOAD" ]]; then
 fi
 
 if [[ -n "$KEY" ]]; then
-  BASE_PAYLOAD=$(jq -c -n --arg model "$MODEL" --arg content "Say hello." \
-    '{model: $model, messages: [{role: "user", content: $content}]}')
-  if [[ -n "$MODEL_EFFORT" ]]; then
-    BASE_PAYLOAD=$(jq -c --arg effort "$MODEL_EFFORT" '. + {reasoning: {effort: $effort}}' <<<"$BASE_PAYLOAD")
-  fi
+  BASE_PAYLOAD=$(jq -c -n \
+    --arg model "$MODEL" \
+    --arg content "Say hello." \
+    --arg effort "$MODEL_EFFORT" \
+    '({model: $model, messages: [{role: "user", content: $content}]})
+     | if $effort != "" then . + {reasoning: {effort: $effort}} else . end')
   PAY=$(jq -c '. + {stream: false}' <<<"$BASE_PAYLOAD")
   curl_cf -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
     -d "$PAY" "$BASE_CF/v1/chat/completions" | jq -e '.choices[0].message.content|length>0' >/dev/null \
