@@ -20,7 +20,7 @@ const ALLOWED_MESSAGE_ROLES = new Set([
   "function",
 ]);
 const ALLOWED_TOOL_CHOICES = new Set(["auto", "none", "required"]);
-const ALLOWED_REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh"]);
+const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 
 const IGNORE_CLIENT_SYSTEM_PROMPT = CFG.PROXY_IGNORE_CLIENT_SYSTEM_PROMPT;
 
