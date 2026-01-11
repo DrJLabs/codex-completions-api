@@ -63,6 +63,12 @@ docs/internal/
 !.codex-api/.gitkeep
 !.codex-api/README.md
 
+# Standard OpenAI Codex HOME (.codex-responses-api): contains secrets at runtime
+# Ignore everything except placeholders so the path exists after checkout.
+.codex-responses-api/*
+!.codex-responses-api/.gitkeep
+!.codex-responses-api/README.md
+
 # Test temp artifacts
 .tmp-*.ndjson
 .tmp*

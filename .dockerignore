@@ -20,6 +20,7 @@ web-bundles
 
 # Production Codex home (secrets)
 .codex-api/**
+.codex-responses-api/**
 
 # CI caches and OS cruft
 .DS_Store
