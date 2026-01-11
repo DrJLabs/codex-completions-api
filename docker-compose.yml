@@ -149,7 +149,9 @@ services:
       - ./.codex-responses-api:/app/.codex-responses-api
     networks:
       - traefik
-    # Do not bind to 127.0.0.1:11435 to avoid collision; use 127.0.0.1:11436:11435 if needed.
+    # Bind to a separate host port so Traefik's file provider can route to it.
+    ports:
+      - 127.0.0.1:${RESPONSES_HOST_PORT:-11436}:${RESPONSES_PORT:-11435}
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
