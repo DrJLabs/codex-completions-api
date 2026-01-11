@@ -57,12 +57,12 @@ git commit -m "chore: ignore responses codex home"
 **Step 1: Write the failing test**
 
 ```bash
-docker compose config | rg -n "codex-responses-api.onemainarmy.com"
+docker compose config | rg -n "responses.example.com"
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `docker compose config | rg -n "codex-responses-api.onemainarmy.com"`
+Run: `docker compose config | rg -n "responses.example.com"`
 Expected: no matches (hostname not routed yet).
 
 **Step 3: Write minimal implementation**
@@ -84,7 +84,7 @@ services:
       - PROXY_OUTPUT_MODE=openai-json
       - PROXY_COPILOT_AUTO_DETECT=false
       - PROXY_ENABLE_CORS=true
-      - PROXY_CORS_ALLOWED_ORIGINS=https://codex-responses-api.onemainarmy.com,http://localhost,https://localhost
+      - PROXY_CORS_ALLOWED_ORIGINS=${RESPONSES_CORS_ALLOWED_ORIGINS:-https://responses.example.com,http://localhost,https://localhost}
     volumes:
       - ./.codex-responses-api:/app/.codex-responses-api
     networks:
@@ -94,23 +94,23 @@ services:
       - traefik.enable=true
       - traefik.docker.network=traefik
       - traefik.http.services.codex-responses.loadbalancer.server.port=11435
-      - traefik.http.routers.codex-responses.rule=Host(`codex-responses-api.onemainarmy.com`) && PathPrefix(`/v1`)
+      - traefik.http.routers.codex-responses.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-responses.entrypoints=websecure
       - traefik.http.routers.codex-responses.tls=true
       - traefik.http.routers.codex-responses.middlewares=codex-cors,codex-headers,codex-ratelimit,codex-forwardauth
-      - traefik.http.routers.codex-responses-preflight.rule=Host(`codex-responses-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
+      - traefik.http.routers.codex-responses-preflight.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-responses-preflight.entrypoints=websecure
       - traefik.http.routers.codex-responses-preflight.tls=true
       - traefik.http.routers.codex-responses-preflight.priority=10000
       - traefik.http.routers.codex-responses-preflight.middlewares=codex-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-responses-preflight.service=noop@internal
-      - traefik.http.routers.codex-responses-models.rule=Host(`codex-responses-api.onemainarmy.com`) && (Path(`/v1/models`) || Path(`/v1/models/`))
+      - traefik.http.routers.codex-responses-models.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && (Path(`/v1/models`) || Path(`/v1/models/`))
       - traefik.http.routers.codex-responses-models.entrypoints=websecure
       - traefik.http.routers.codex-responses-models.tls=true
       - traefik.http.routers.codex-responses-models.priority=9000
       - traefik.http.routers.codex-responses-models.middlewares=codex-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-responses-models.service=codex-responses
-      - traefik.http.routers.codex-responses-health.rule=Host(`codex-responses-api.onemainarmy.com`) && Path(`/healthz`)
+      - traefik.http.routers.codex-responses-health.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && Path(`/healthz`)
       - traefik.http.routers.codex-responses-health.entrypoints=websecure
       - traefik.http.routers.codex-responses-health.tls=true
       - traefik.http.routers.codex-responses-health.service=codex-responses
@@ -119,7 +119,7 @@ services:
 
 **Step 4: Run test to verify it passes**
 
-Run: `docker compose config | rg -n "codex-responses-api.onemainarmy.com"`
+Run: `docker compose config | rg -n "responses.example.com"`
 Expected: router rules appear in the rendered config.
 
 **Step 5: Commit**
@@ -138,31 +138,32 @@ git commit -m "feat: add responses hostname service"
 **Step 1: Write the failing test**
 
 ```bash
-rg -n "codex-responses-api.onemainarmy.com" README.md .env.example
+rg -n "RESPONSES_DOMAIN" README.md .env.example
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `rg -n "codex-responses-api.onemainarmy.com" README.md .env.example`
+Run: `rg -n "RESPONSES_DOMAIN" README.md .env.example`
 Expected: no matches (docs not updated yet).
 
 **Step 3: Write minimal implementation**
 
 ```markdown
 # README.md additions
-- Standard host: `codex-responses-api.onemainarmy.com` (OpenAI-default output mode)
+- Standard host: `RESPONSES_DOMAIN` (OpenAI-default output mode)
 - CODEX_HOME: `./.codex-responses-api` (separate from Obsidian)
 ```
 
 ```dotenv
 # .env.example additions
 # Responses host for standard OpenAI clients
-RESPONSES_DOMAIN=codex-responses-api.onemainarmy.com
+RESPONSES_DOMAIN=responses.example.com
+RESPONSES_CORS_ALLOWED_ORIGINS=https://responses.example.com,http://localhost,https://localhost
 ```
 
 **Step 4: Run test to verify it passes**
 
-Run: `rg -n "codex-responses-api.onemainarmy.com" README.md .env.example`
+Run: `rg -n "RESPONSES_DOMAIN" README.md .env.example`
 Expected: matches in both files.
 
 **Step 5: Commit**
@@ -181,7 +182,7 @@ git commit -m "docs: document responses hostname"
 
 ```bash
 # Run on production host after deploy
-DOMAIN=codex-responses-api.onemainarmy.com npm run smoke:prod
+DOMAIN=responses.example.com npm run smoke:prod
 ```
 
 **Step 2: Run test to verify it fails**
@@ -195,7 +196,7 @@ Deploy changes on the host:
 
 **Step 4: Run test to verify it passes**
 
-Run: `DOMAIN=codex-responses-api.onemainarmy.com npm run smoke:prod`
+Run: `DOMAIN=responses.example.com npm run smoke:prod`
 Expected: passes all smoke checks.
 
 **Step 5: Commit**

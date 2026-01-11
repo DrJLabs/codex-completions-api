@@ -128,7 +128,7 @@ services:
       - PROXY_ENABLE_CORS=true
       - PROXY_ENABLE_METRICS=${PROXY_ENABLE_METRICS:-true}
       - PROXY_METRICS_TOKEN=${PROXY_METRICS_TOKEN:-}
-      - PROXY_CORS_ALLOWED_ORIGINS=https://codex-responses-api.onemainarmy.com,http://localhost,https://localhost
+      - PROXY_CORS_ALLOWED_ORIGINS=${RESPONSES_CORS_ALLOWED_ORIGINS:-https://responses.example.com,http://localhost,https://localhost}
       - PROXY_TIMEOUT_MS=${PROXY_TIMEOUT_MS:-300000}
       - PROXY_IDLE_TIMEOUT_MS=${PROXY_IDLE_TIMEOUT_MS:-15000}
       - PROXY_STREAM_IDLE_TIMEOUT_MS=${PROXY_STREAM_IDLE_TIMEOUT_MS:-300000}
@@ -158,13 +158,13 @@ services:
       - traefik.http.services.codex-responses.loadbalancer.server.port=11435
 
       # Protected API router
-      - traefik.http.routers.codex-responses.rule=Host(`codex-responses-api.onemainarmy.com`) && PathPrefix(`/v1`)
+      - traefik.http.routers.codex-responses.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-responses.entrypoints=websecure
       - traefik.http.routers.codex-responses.tls=true
       - traefik.http.routers.codex-responses.middlewares=codex-responses-cors,codex-headers,codex-ratelimit,codex-forwardauth
 
       # CORS preflight (OPTIONS): bypass ForwardAuth entirely; Traefik responds with headers
-      - traefik.http.routers.codex-responses-preflight.rule=Host(`codex-responses-api.onemainarmy.com`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
+      - traefik.http.routers.codex-responses-preflight.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-responses-preflight.entrypoints=websecure
       - traefik.http.routers.codex-responses-preflight.tls=true
       - traefik.http.routers.codex-responses-preflight.priority=10000
@@ -172,7 +172,7 @@ services:
       - traefik.http.routers.codex-responses-preflight.service=noop@internal
 
       # Public models router (no auth): allow clients to discover available models
-      - traefik.http.routers.codex-responses-models.rule=Host(`codex-responses-api.onemainarmy.com`) && (Path(`/v1/models`) || Path(`/v1/models/`))
+      - traefik.http.routers.codex-responses-models.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && (Path(`/v1/models`) || Path(`/v1/models/`))
       - traefik.http.routers.codex-responses-models.entrypoints=websecure
       - traefik.http.routers.codex-responses-models.tls=true
       - traefik.http.routers.codex-responses-models.priority=9000
@@ -182,14 +182,14 @@ services:
       # CORS middleware (edge)
       - traefik.http.middlewares.codex-responses-cors.headers.accessControlAllowMethods=GET,POST,HEAD,OPTIONS
       - traefik.http.middlewares.codex-responses-cors.headers.accessControlAllowHeaders=Authorization,Content-Type,Accept,OpenAI-Organization,OpenAI-Beta,OpenAI-Version,OpenAI-Project,X-Requested-With,X-Stainless-OS,X-Stainless-Lang,X-Stainless-Arch,X-Stainless-Runtime,X-Stainless-Runtime-Version,X-Stainless-Package-Version,X-Stainless-Timeout,X-Stainless-Retry-Count,dangerously-allow-browser
-      - traefik.http.middlewares.codex-responses-cors.headers.accessControlAllowOriginList=https://codex-responses-api.onemainarmy.com,http://localhost,https://localhost
+      - traefik.http.middlewares.codex-responses-cors.headers.accessControlAllowOriginList=${RESPONSES_CORS_ALLOWED_ORIGINS:-https://responses.example.com,http://localhost,https://localhost}
       - traefik.http.middlewares.codex-responses-cors.headers.accessControlAllowCredentials=true
       - traefik.http.middlewares.codex-responses-cors.headers.accessControlMaxAge=600
       - traefik.http.middlewares.codex-responses-cors.headers.accessControlExposeHeaders=Content-Type
       - traefik.http.middlewares.codex-responses-cors.headers.addVaryHeader=true
 
       # Public health router (no auth)
-      - traefik.http.routers.codex-responses-health.rule=Host(`codex-responses-api.onemainarmy.com`) && Path(`/healthz`)
+      - traefik.http.routers.codex-responses-health.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && Path(`/healthz`)
       - traefik.http.routers.codex-responses-health.entrypoints=websecure
       - traefik.http.routers.codex-responses-health.tls=true
       - traefik.http.routers.codex-responses-health.service=codex-responses

@@ -255,7 +255,7 @@ See docs/README.md for documentation pointers. Use `docs/private/` for local-onl
   - `traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify`
 - App attaches to Docker network `traefik` and is discovered via labels.
 - Edge is Cloudflare for `codex-api.onemainarmy.com`.
-- Standard OpenAI host uses `codex-responses-api.onemainarmy.com` (defaults to `openai-json` output mode).
+- Standard OpenAI host uses `RESPONSES_DOMAIN` (defaults to `openai-json` output mode).
 - Backend mode: production sets `PROXY_USE_APP_SERVER=true` and keeps a long-lived app-server worker alive. Ensure `.codex-api/auth.json` is present; if Codex is already logged in on the host, copy `~/.codex/auth.json` as a fallback.
 
 Codex HOME (production):
