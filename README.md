@@ -275,6 +275,7 @@ Codex HOME (responses host):
 
 - The standard host sets `CODEX_HOME` to `/app/.codex-responses-api`.
 - `docker-compose.yml` bind-mounts the project’s `./.codex-responses-api` into the container: `./.codex-responses-api:/app/.codex-responses-api` (writable).
+- This repo tracks `./.codex-responses-api/README.md` and an optional `.gitkeep` so the directory exists before deploy and avoids root-owned bind mounts.
 - Seed the responses home by running `SOURCE_HOME=.codev DEST_HOME=.codex-responses-api bash scripts/sync-codex-config.sh --force`, then replace `./.codex-responses-api/AGENTS.md` with the standard (non-Obsidian) instructions and copy `~/.codex/auth.json` into `./.codex-responses-api/auth.json` on the host.
 
 #### Sync Dev Config → Prod (`.codev` → `.codex-api`)

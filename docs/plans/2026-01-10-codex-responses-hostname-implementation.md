@@ -93,22 +93,22 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
-      - traefik.http.services.codex-responses.loadbalancer.server.port=11435
+      - traefik.http.services.codex-responses.loadbalancer.server.port=${RESPONSES_PORT:-11435}
       - traefik.http.routers.codex-responses.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`)
       - traefik.http.routers.codex-responses.entrypoints=websecure
       - traefik.http.routers.codex-responses.tls=true
-      - traefik.http.routers.codex-responses.middlewares=codex-cors,codex-headers,codex-ratelimit,codex-forwardauth
+      - traefik.http.routers.codex-responses.middlewares=codex-responses-cors,codex-headers,codex-ratelimit,codex-forwardauth
       - traefik.http.routers.codex-responses-preflight.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`) && Method(`OPTIONS`)
       - traefik.http.routers.codex-responses-preflight.entrypoints=websecure
       - traefik.http.routers.codex-responses-preflight.tls=true
       - traefik.http.routers.codex-responses-preflight.priority=10000
-      - traefik.http.routers.codex-responses-preflight.middlewares=codex-cors,codex-headers,codex-ratelimit
+      - traefik.http.routers.codex-responses-preflight.middlewares=codex-responses-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-responses-preflight.service=noop@internal
       - traefik.http.routers.codex-responses-models.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && (Path(`/v1/models`) || Path(`/v1/models/`))
       - traefik.http.routers.codex-responses-models.entrypoints=websecure
       - traefik.http.routers.codex-responses-models.tls=true
       - traefik.http.routers.codex-responses-models.priority=9000
-      - traefik.http.routers.codex-responses-models.middlewares=codex-cors,codex-headers,codex-ratelimit
+      - traefik.http.routers.codex-responses-models.middlewares=codex-responses-cors,codex-headers,codex-ratelimit
       - traefik.http.routers.codex-responses-models.service=codex-responses
       - traefik.http.routers.codex-responses-health.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && Path(`/healthz`)
       - traefik.http.routers.codex-responses-health.entrypoints=websecure

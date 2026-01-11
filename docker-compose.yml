@@ -155,7 +155,7 @@ services:
       - traefik.docker.network=traefik
 
       # Backend service port inside the container
-      - traefik.http.services.codex-responses.loadbalancer.server.port=11435
+      - traefik.http.services.codex-responses.loadbalancer.server.port=${RESPONSES_PORT:-11435}
 
       # Protected API router
       - traefik.http.routers.codex-responses.rule=Host(`${RESPONSES_DOMAIN:-responses.example.com}`) && PathPrefix(`/v1`)
