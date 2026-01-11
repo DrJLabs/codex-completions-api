@@ -40,7 +40,7 @@
 ## Q&A (answer before implementation)
 - Confirmed: standard hostname is `RESPONSES_DOMAIN`.
 - Confirmed: standard CODEX_HOME path is `./.codex-responses-api`.
-- Confirmed: standard host `RESPONSES_CORS_ALLOWED_ORIGINS` = `https://responses.example.com,http://localhost,https://localhost` (exclude `app://obsidian.md`).
+- Confirmed: standard host `PROXY_CORS_ALLOWED_ORIGINS` = `https://responses.example.com,http://localhost,https://localhost` (exclude `app://obsidian.md`). Set via compose using `RESPONSES_CORS_ALLOWED_ORIGINS` for the responses service.
 - Confirmed: seed `CODEX_HOME` by creating `./.codex-responses-api/`, running `SOURCE_HOME=.codev DEST_HOME=.codex-responses-api bash scripts/sync-codex-config.sh --force`, then replace `./.codex-responses-api/AGENTS.md` with standard instructions and copy `~/.codex/auth.json` into `./.codex-responses-api/auth.json` on the host.
 - Confirmed: avoid local port collision on `127.0.0.1:11435` by exposing only the Obsidian service locally; for the standard service either omit `ports:` entirely or map `127.0.0.1:11436:11435` with `PORT=11435` unchanged in the container.
 
@@ -51,7 +51,7 @@
    - `PROXY_COPILOT_AUTO_DETECT=false`
    - `CODEX_HOME=/app/.codex-responses-api`
    - Volume mount: `./.codex-responses-api:/app/.codex-responses-api`
-   - Host-specific `RESPONSES_CORS_ALLOWED_ORIGINS=https://responses.example.com,http://localhost,https://localhost`
+   - Host-specific `PROXY_CORS_ALLOWED_ORIGINS=${RESPONSES_CORS_ALLOWED_ORIGINS:-https://responses.example.com,http://localhost,https://localhost}`
    - No local port binding (or `127.0.0.1:11436:11435` if local access is required)
 3) Add Traefik routers for `RESPONSES_DOMAIN`:
    - `/v1` (protected) → `traefik.http.routers.codex-responses.rule=Host(\`${RESPONSES_DOMAIN}\`) && PathPrefix(\`/v1\`)`
