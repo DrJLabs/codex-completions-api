@@ -255,6 +255,7 @@ See docs/README.md for documentation pointers. Use `docs/private/` for local-onl
   - `traefik.http.middlewares.codex-forwardauth.forwardauth.address=http://127.0.0.1:18080/verify`
 - App attaches to Docker network `traefik` and is discovered via labels.
 - Edge is Cloudflare for `codex-api.onemainarmy.com`.
+- Standard OpenAI host uses `codex-responses-api.onemainarmy.com` (defaults to `openai-json` output mode).
 - Backend mode: production sets `PROXY_USE_APP_SERVER=true` and keeps a long-lived app-server worker alive. Ensure `.codex-api/auth.json` is present; if Codex is already logged in on the host, copy `~/.codex/auth.json` as a fallback.
 
 Codex HOME (production):
@@ -268,7 +269,13 @@ Codex HOME (production):
   - `config.toml` (repo-managed proxy config; copy from `.codev/config.toml`)
   - `AGENTS.md` (optional)
   - `auth.json` and any other credentials required by Codex (if applicable)
-  - The canonical bearer credential lives at `~/.codex/auth.json`; after each rotation copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
+- The canonical bearer credential lives at `~/.codex/auth.json`; after each rotation copy that file into `.codex-api/auth.json` (prod) and `.codev/auth.json` (dev) before starting stacks.
+
+Codex HOME (responses host):
+
+- The standard host sets `CODEX_HOME` to `/app/.codex-responses-api`.
+- `docker-compose.yml` bind-mounts the project’s `./.codex-responses-api` into the container: `./.codex-responses-api:/app/.codex-responses-api` (writable).
+- Seed the responses home by running `SOURCE_HOME=.codev DEST_HOME=.codex-responses-api bash scripts/sync-codex-config.sh --force`, then replace `./.codex-responses-api/AGENTS.md` with the standard (non-Obsidian) instructions and copy `~/.codex/auth.json` into `./.codex-responses-api/auth.json` on the host.
 
 #### Sync Dev Config → Prod (`.codev` → `.codex-api`)
 
